@@ -122,6 +122,7 @@
     <div class="top">
       <div class="av" id="av" onclick="openProfile()" style="cursor:pointer">U</div>
       <div class="who"><div class="n" id="who-n">Utilizator</div><div class="r" id="who-r">—</div></div>
+      <img id="firm-logo" alt="" style="display:none;height:30px;max-width:84px;object-fit:contain;margin-right:.3rem;border-radius:6px;background:#fff;padding:1px"/>
       <button class="out" id="notif-btn" onclick="openNotif()" title="Notificări" style="margin-right:.3rem;position:relative">🔔<span id="notif-badge" style="position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:.6rem;font-weight:700;padding:0 .28rem;display:none"></span></button>
       <button class="out" onclick="openChat()" title="Chat" style="margin-right:.3rem">💬</button>
       <button class="out" onclick="doLogout()">Ieși</button>
@@ -170,7 +171,7 @@ async function boot(){
   const {data:{session}}=await sb.auth.getSession();
   if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
   S.session=session;
-  const {data:mem}=await sb.from('memberships').select('tenant_id,role,tenants(name)').eq('active',true).limit(1).maybeSingle();
+  const {data:mem}=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url)').eq('active',true).limit(1).maybeSingle();
   if(!mem){lmsg('Contul tău nu e legat de nicio firmă. Cere administratorului să te adauge.','err');await sb.auth.signOut();$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
   S.tenant=mem.tenant_id; S.memberRole=mem.role;
   const email=session.user.email||'';
@@ -179,6 +180,7 @@ async function boot(){
   $('av').textContent=((S.uname||email)[0]||'U').toUpperCase();
   $('who-n').textContent=S.uname||email;
   $('who-r').textContent=(mem.tenants?mem.tenants.name:'Firma');
+  const _lp=mem.tenants&&mem.tenants.logo_url; if(_lp){ try{ const {data:lu}=await sb.storage.from('docs').createSignedUrl(_lp,86400); if(lu&&lu.signedUrl){ const im=$('firm-logo'); im.src=lu.signedUrl; im.style.display=''; } }catch(e){} }
   // default role: workers/drivers locked to their role; owner/admin/manager can switch
   if(['worker','driver','client'].includes(mem.role)){ S.role=mem.role; $('roles').classList.add('hidden'); }
   else { S.role='worker'; }

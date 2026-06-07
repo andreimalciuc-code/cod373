@@ -204,6 +204,7 @@
     <div class="brand"><div class="brand-logo">C373</div><div class="brand-name">Cod<span>373</span></div></div>
     <div class="company-switch">
       <div class="company-avatar" id="co-avatar">D</div>
+      <img id="co-logo" alt="" style="display:none;width:40px;height:40px;object-fit:contain;border-radius:8px;background:#fff;padding:2px"/>
       <div class="company-info"><div class="cn" id="co-name">Firma</div><div class="cp" id="co-role">owner</div></div>
     </div>
     <nav class="nav" id="nav"></nav>
@@ -840,6 +841,14 @@ const ADMIN_ROLES=['owner','admin'];
 const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Muncitor',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
 function canSee(key){ if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(state.role); if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(state.role); return true; }
 
+/* ════ LOGO FIRMĂ ════ */
+async function firmLogoUrl(secs){ const p=state.firm&&state.firm.logo_url; if(!p) return ''; try{ const { data }=await sb.storage.from('docs').createSignedUrl(p, secs||3600); return (data&&data.signedUrl)||''; }catch(e){ return ''; } }
+async function setHeaderLogo(path){
+  const img=$('co-logo'), av=$('co-avatar'); if(!img) return;
+  if(path){ try{ const { data }=await sb.storage.from('docs').createSignedUrl(path, 86400); if(data&&data.signedUrl){ img.src=data.signedUrl; img.style.display=''; if(av) av.style.display='none'; return; } }catch(e){} }
+  img.style.display='none'; if(av) av.style.display='';
+}
+
 /* ════ BOOT ════ */
 function getInviteToken(){ const u=new URLSearchParams(location.search).get('invite'); if(u){ try{ localStorage.setItem('c373_invite',u); }catch(e){} return u; } try{ return localStorage.getItem('c373_invite')||null; }catch(e){ return null; } }
 function clearInviteToken(){ try{ localStorage.removeItem('c373_invite'); }catch(e){} }
@@ -858,7 +867,7 @@ async function boot(){
   state.session = session;
   const tok=getInviteToken();
   if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK') toast('✅ Acces activat la firmă.'); if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
-  const { data:mem } = await sb.from('memberships').select('tenant_id, role, tenants(name,idno,vat_rate,vat_payer,currency,address,phone)').eq('active',true).limit(1).maybeSingle();
+  const { data:mem } = await sb.from('memberships').select('tenant_id, role, tenants(name,idno,vat_rate,vat_payer,currency,address,phone,logo_url)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.firm = mem.tenants||{name:'Firma'};
   // personele de teren (muncitor/sofer/subcontractant/client) folosesc aplicatia mobila
@@ -866,6 +875,7 @@ async function boot(){
   const coName = mem.tenants ? mem.tenants.name : 'Firma';
   $('co-name').textContent = coName;
   $('co-avatar').textContent = (coName.trim()[0]||'F').toUpperCase();
+  setHeaderLogo(mem.tenants&&mem.tenants.logo_url);
   $('co-role').textContent = mem.role;
   $('user-av').textContent = (session.user.email[0]||'A').toUpperCase();
   buildNav();
@@ -1189,6 +1199,10 @@ async function renderSetari(){
   const f=state.firm||{};
   $('content').innerHTML='<div class="panel" style="max-width:660px"><div class="panel-head"><h3>Setări firmă</h3></div><div class="modal-body">'
     +'<div id="set-msg"></div>'
+    +'<div class="field"><label>Logo firmă <span class="hint-i" title="Apare în antetul aplicației și pe toate documentele (facturi, devize, fișe). Recomandat: PNG/JPG, fundal alb sau transparent.">ⓘ</span></label>'
+      +'<div style="display:flex;align-items:center;gap:1rem"><div id="set-logo-prev" style="width:64px;height:64px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;color:var(--muted);font-size:.7rem">logo</div>'
+      +'<label class="btn-ghost" style="cursor:pointer">📤 Încarcă logo<input type="file" id="set-logo" accept="image/*" style="display:none" onchange="uploadFirmLogo(this)"/></label>'
+      +(f.logo_url?'<button class="btn-ghost" style="color:var(--red)" onclick="removeFirmLogo()">🗑 Elimină</button>':'')+'</div></div>'
     +'<div class="field"><label>Denumirea firmei *</label><input id="set-name" value="'+esc(f.name||'')+'"/></div>'
     +'<div class="row-2"><div class="field"><label>IDNO / Cod fiscal</label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
     +'<div class="field"><label>Telefon</label><input id="set-phone" value="'+esc(f.phone||'')+'"/></div></div>'
@@ -1206,6 +1220,23 @@ async function renderSetari(){
     +'<button class="btn-ghost" onclick="exportContabil()">📊 Export contabil facturi (CSV/1C)</button>'
     +(state.role==='owner'?'<button class="btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="deleteFirm()">🗑 Șterge definitiv firma și datele</button>':'')
     +'</div></div></div>';
+  firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
+}
+async function uploadFirmLogo(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  if(file.size>3*1024*1024){ toast('Logo prea mare (max 3 MB).'); return; }
+  toast('⏳ Se încarcă logoul…');
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/brand/logo_'+Date.now()+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/png'});
+  if(up.error){ toast('Eroare: '+esc(up.error.message)); return; }
+  const { error }=await sb.from('tenants').update({logo_url:path}).eq('id',state.tenant);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  state.firm.logo_url=path; setHeaderLogo(path); toast('✅ Logo actualizat.'); renderSetari();
+}
+async function removeFirmLogo(){
+  if(!confirm('Elimini logoul firmei?')) return;
+  await sb.from('tenants').update({logo_url:null}).eq('id',state.tenant);
+  state.firm.logo_url=null; setHeaderLogo(null); toast('Logo eliminat.'); renderSetari();
 }
 async function exportData(){
   toast('⏳ Se pregătește exportul…');
@@ -1460,12 +1491,13 @@ async function previzPDF(id){
   let clientName='—'; if(s.client_id){ const c=await sb.from('clients').select('name').eq('id',s.client_id).single(); clientName=(c.data&&c.data.name)||'—'; }
   let imgs=[]; if(s.photo_urls&&s.photo_urls.length){ const su=await sb.storage.from('docs').createSignedUrls(s.photo_urls,600); imgs=(su.data||[]).map(x=>x.signedUrl).filter(Boolean); }
   const firm=(state.firm&&state.firm.name)||'Firmă';
+  let plogo=''; { const _plu=await firmLogoUrl(600); if(_plu) plogo='<img src="'+_plu+'" style="max-height:48px;max-width:170px;margin-bottom:6px;object-fit:contain"><br>'; }
   const wt=s.work_type==='reparatie'?'Reparație':(s.work_type==='constructie'?'Construcție':'—');
   const qRows=QKEYS.filter(q=>s.answers&&s.answers[q.key]!=null&&s.answers[q.key]!=='').map(q=>'<tr><td style="color:#555;width:42%">'+esc(q.label)+'</td><td><b>'+esc(s.answers[q.key])+'</b></td></tr>').join('');
   const mRows=meas.map(m=>'<tr><td>'+esc(m.label)+'</td><td style="text-align:right"><b>'+esc(m.qty!=null?m.qty:'')+'</b> '+esc(m.unit||'')+'</td><td style="color:#666">'+esc(m.note||'')+'</td></tr>').join('');
   const html='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Fișă vizită — '+esc(s.name)+'</title>'
     +'<style>body{font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#1f2937;margin:24px;font-size:13px}h1{font-size:20px;margin:0}h2{font-size:14px;border-bottom:2px solid #eee;padding-bottom:4px;margin:18px 0 8px}table{width:100%;border-collapse:collapse}td{padding:5px 6px;border-bottom:1px solid #eee;vertical-align:top}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0f1c33;padding-bottom:10px}.muted{color:#6b7280;font-size:12px}.imgs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.imgs img{width:31%;border-radius:8px;border:1px solid #eee}@media print{.noprint{display:none}}</style></head><body>'
-    +'<div class="hd"><div><h1>Fișă de vizită șantier</h1><div class="muted">'+esc(firm)+'</div></div><div style="text-align:right" class="muted">Data vizitei: <b>'+esc(s.visit_date||'')+'</b><br>'+esc(s.surveyor_name||'')+'</div></div>'
+    +'<div class="hd"><div>'+plogo+'<h1>Fișă de vizită șantier</h1><div class="muted">'+esc(firm)+'</div></div><div style="text-align:right" class="muted">Data vizitei: <b>'+esc(s.visit_date||'')+'</b><br>'+esc(s.surveyor_name||'')+'</div></div>'
     +'<h2>Date generale</h2><table><tr><td style="width:42%;color:#555">Obiect</td><td><b>'+esc(s.name)+'</b></td></tr>'
     +'<tr><td style="color:#555">Client</td><td>'+esc(clientName)+'</td></tr>'
     +'<tr><td style="color:#555">Adresă</td><td>'+esc(s.address||'—')+'</td></tr>'
@@ -2184,6 +2216,7 @@ async function printDoc(key,id){
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   const { data:items } = await sb.from(m.lineItems.table).select('name,qty,unit,unit_price,vat_rate').eq(m.lineItems.parentKey,id);
   const f=state.firm||{};
+  let logoTag=''; { const _lu=await firmLogoUrl(600); if(_lu) logoTag='<img src="'+_lu+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }
   let sub=0,vat=0;
   const rows=(items||[]).map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0); const lv=lt*(+l.vat_rate||0)/100; sub+=lt; vat+=lv;
     return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+'</td><td class="r">'+esc(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td><td class="r">'+esc(l.vat_rate)+'%</td><td class="r">'+money(lt+lv)+'</td></tr>'; }).join('');
@@ -2203,7 +2236,7 @@ async function printDoc(key,id){
     +'@media print{body{padding:0}.noprint{display:none}}'
     +'.noprint{margin-top:24px;text-align:center}.noprint button{background:#2f6bff;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px}'
     +'</style></head><body>'
-    +'<div class="hd"><div><div style="font-size:18px;font-weight:800">'+esc(f.name||'Firma')+'</div>'
+    +'<div class="hd"><div>'+logoTag+'<div style="font-size:18px;font-weight:800">'+esc(f.name||'Firma')+'</div>'
       +'<div class="muted">'+(f.idno?'IDNO: '+esc(f.idno)+'<br>':'')+(f.address?esc(f.address)+'<br>':'')+(f.phone?'Tel: '+esc(f.phone):'')+'</div></div>'
       +'<div style="text-align:right"><div class="ti">'+esc(m.printable)+'</div><div style="font-weight:700;font-size:15px">Nr. '+esc(p.number||'—')+'</div>'
       +'<div class="muted">Data: '+esc((p.issue_date||p.valid_until||'').toString().slice(0,10)||'—')+'</div></div></div>'
