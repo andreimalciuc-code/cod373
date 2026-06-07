@@ -216,7 +216,7 @@
       <button class="menu-toggle" onclick="openNav()">☰</button>
       <div class="page-title"><span id="ptitle">Tablou de bord</span><small id="psub"></small></div>
       <div class="top-actions">
-        <div class="lang-sw"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
+        <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
         <button class="btn-ghost" id="notif-btn" onclick="openNotifPanel()" title="Notificări" style="position:relative">🔔<span id="notif-badge" style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:0 .3rem;display:none"></span></button>
         <button class="btn-ghost" id="btn-iesi" onclick="doLogout()">Ieși</button>
         <div class="user-av" id="user-av">A</div>
@@ -845,17 +845,10 @@ const MOD_RU = {
   etape:['Этапы работ','Фазы объектов.'], recenzii:['Отзывы клиентов','Комментарии и оценки.'],
   echipament:['Снаряжение','Одежда, инструменты, СИЗ по сотрудникам.']
 };
-let LANG = localStorage.getItem('c373_lang') || 'ro';
-function mt(k){ const m=MODULES[k]||{}; if(LANG==='ru'&&MOD_RU[k]) return {title:MOD_RU[k][0], sub:MOD_RU[k][1]||m.sub}; return {title:m.title, sub:m.sub}; }
-function tg(g){ return (LANG==='ru'&&GROUPS_RU[g])||g; }
-function setLang(l){
-  LANG=l; localStorage.setItem('c373_lang',l);
-  document.querySelectorAll('[data-lang-btn]').forEach(b=>b.classList.toggle('on',b.dataset.langBtn===l));
-  const out=document.getElementById('btn-iesi'); if(out) out.textContent = l==='ru'?'Выход':'Ieși';
-  buildNav();
-  const active=document.querySelector('.nav-item.active');
-  go(active?active.dataset.view:'dashboard');
-}
+let LANG = 'ro'; /* intern mereu RO; traducerea (RU/DE/EN) o face i18n.js după textul-sursă */
+function mt(k){ const m=MODULES[k]||{}; return {title:m.title, sub:m.sub}; }
+function tg(g){ return g; }
+function setLang(l){ if(window.C373setLang) window.C373setLang(l); }
 const STATUS_RU={planned:'Запланирован',active:'Активен',paused:'Пауза',done:'Завершён',cancelled:'Отменён',draft:'Черновик',sent:'Отправлен',confirmed:'Подтверждён',received:'Получен',accepted:'Принят',rejected:'Отклонён',paid:'Оплачен',overdue:'Просрочен',open:'Открыт',in_progress:'В работе',resolved:'Решён',available:'Доступен',in_use:'Используется',maintenance:'Обслуживание',lost:'Утерян',idle:'Свободен',en_route:'В пути',loading:'Погрузка',new:'Новый',watching:'Отслеживается',preparing:'Подготовка',submitted:'Подан',dismissed:'Отклонён',lead:'Лид',contacted:'Контакт',offer:'КП',won:'Выигран',pending:'Ожидает',delivered:'Доставлен',failed:'Ошибка',person:'Физлицо',company:'Компания',ok:'OK',expiring:'Истекает',expired:'Истёк',approved:'Утверждён',invoiced:'Счёт выставлен',answered:'Отвечен',closed:'Закрыт',plan:'Запланирован',delayed:'Задержан'};
 const UI={
   cauta:{ro:'🔍 Caută…',ru:'🔍 Поиск…'}, toate:{ro:'Toate stările',ru:'Все статусы'},
@@ -2314,5 +2307,6 @@ async function printDoc(key,id){
   await boot();
 })();
 </script>
+<script src="i18n.js"></script>
 </body>
 </html>
