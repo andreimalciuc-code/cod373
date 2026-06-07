@@ -531,7 +531,7 @@ const MODULES = {
     lineItems:{table:'estimate_items',parentKey:'estimate_id',totals:['subtotal','vat_total','total']} },
 
   facturi:{ title:'Facturi', sub:'Facturi emise + e-Factura.', icon:'🧾', group:'Finanțe', table:'invoices',
-    newLabel:'Factură nouă', printable:'FACTURĂ FISCALĂ', efactura:true, orderBy:{col:'created_at',asc:false},
+    newLabel:'Factură nouă', printable:'FACTURĂ FISCALĂ', efactura:true, pageEditor:'factura.html', orderBy:{col:'created_at',asc:false},
     select:'id,number,status,total,issue_date,due_date,efactura_status,clients(name)',
     columns:[
       {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number)+'</span>'},
@@ -2165,23 +2165,7 @@ async function delRecord(key,id){
 }
 
 /* ════ CONVERSIE DEVIZ → FACTURĂ ════ */
-async function estimateToInvoice(estId){
-  if(!confirm('Creezi o factură din acest deviz?')) return;
-  const { data:est, error } = await sb.from('estimates').select('client_id,site_id,subtotal,vat_total,total,number').eq('id',estId).single();
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const { data:items } = await sb.from('estimate_items').select('name,qty,unit,unit_price,vat_rate').eq('estimate_id',estId);
-  const number='F-'+Date.now().toString().slice(-6);
-  const { data:inv, error:e1 } = await sb.from('invoices').insert({
-    tenant_id:state.tenant, client_id:est.client_id||null, site_id:est.site_id||null, estimate_id:estId,
-    number, status:'draft', subtotal:est.subtotal||0, vat_total:est.vat_total||0, total:est.total||0
-  }).select('id').single();
-  if(e1){ toast('Eroare: '+esc(e1.message)); return; }
-  if(items&&items.length){
-    const rows=items.map(it=>({ tenant_id:state.tenant, invoice_id:inv.id, name:it.name, qty:it.qty, unit:it.unit, unit_price:it.unit_price, vat_rate:it.vat_rate }));
-    const { error:e2 }=await sb.from('invoice_items').insert(rows); if(e2){ toast('Factură creată, dar liniile au eșuat: '+esc(e2.message)); }
-  }
-  toast('🧾 Factura '+number+' a fost creată din deviz.'); go('facturi');
-}
+function estimateToInvoice(estId){ window.open('factura.html?estimate='+estId,'_blank'); toast('Se deschide factura cu liniile din deviz…'); }
 
 /* ════ helper descărcare ════ */
 function download(content, filename, mime){

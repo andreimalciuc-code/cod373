@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cod373 — Factură</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<style>
+  :root{ --ink:#0f1c33; --muted:#6b7793; --line:#e6eaf2; --primary:#2f6bff; --bg:#f4f6fb; --red:#dc2626; --green:#16a34a; }
+  *{ box-sizing:border-box; } body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); background:var(--bg); font-size:14px; }
+  header{ background:#fff; border-bottom:1px solid var(--line); padding:.7rem 1rem; display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; position:sticky; top:0; z-index:30; }
+  header h1{ font-size:1.05rem; margin:0; } .spacer{ flex:1; }
+  .pill{ font-size:.72rem; padding:.18rem .6rem; border-radius:999px; font-weight:700; }
+  .pill.draft{ background:#eef2ff; color:#3730a3; } .pill.sent{ background:#fef9c3; color:#854d0e; } .pill.paid{ background:#dcfce7; color:#15803d; } .pill.overdue{ background:#fee2e2; color:#b91c1c; } .pill.cancelled{ background:#f1f5f9; color:#64748b; }
+  .btn{ border:1px solid var(--line); background:#fff; border-radius:9px; padding:.5rem .8rem; font-size:.85rem; cursor:pointer; color:var(--ink); white-space:nowrap; }
+  .btn:hover{ background:#f1f5f9; } .btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); } .btn.green{ background:var(--green); color:#fff; border-color:var(--green); }
+  .wrap{ max-width:1240px; margin:0 auto; padding:1.1rem; display:grid; grid-template-columns:1fr 320px; gap:1.1rem; align-items:start; }
+  @media(max-width:880px){ .wrap{ grid-template-columns:1fr; } }
+  .panel{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:1.1rem; margin-bottom:1.1rem; }
+  .panel h3{ margin:0 0 .8rem; font-size:.95rem; }
+  .right{ position:sticky; top:72px; }
+  .field{ margin-bottom:.7rem; } label{ display:block; font-size:.78rem; font-weight:600; margin-bottom:.25rem; color:#46506a; }
+  input,select,textarea{ width:100%; padding:.5rem .65rem; border:1px solid var(--line); border-radius:9px; font-size:.88rem; font-family:inherit; outline:none; background:#fff; }
+  input:focus,select:focus,textarea:focus{ border-color:var(--primary); }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+  .lines{ width:100%; border-collapse:collapse; }
+  .lines th{ text-align:left; font-size:.7rem; text-transform:uppercase; color:var(--muted); padding:.3rem .35rem; border-bottom:1px solid var(--line); }
+  .lines td{ padding:.25rem .25rem; vertical-align:top; border-bottom:1px solid #f1f4fa; }
+  .lines td input{ padding:.45rem .5rem; } .grip{ cursor:grab; color:#c2cbdb; padding:.4rem .1rem; }
+  .ta-wrap{ position:relative; }
+  .dd{ position:absolute; z-index:40; left:0; right:0; top:100%; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 30px rgba(15,28,51,.14); max-height:280px; overflow:auto; margin-top:2px; }
+  .dd .it{ padding:.5rem .7rem; cursor:pointer; display:flex; gap:.5rem; align-items:center; font-size:.85rem; border-bottom:1px solid #f4f6fb; }
+  .dd .it:hover{ background:#eff4ff; } .dd .it .nm{ flex:1; } .dd .it .pr{ color:var(--muted); font-size:.78rem; white-space:nowrap; } .dd .add{ color:var(--primary); font-weight:700; }
+  .sub{ color:var(--muted); font-size:.8rem; }
+  .totrow{ display:flex; justify-content:space-between; padding:.35rem 0; }
+  .totrow.g{ font-size:1.15rem; font-weight:800; border-top:2px solid var(--ink); margin-top:.4rem; padding-top:.6rem; }
+  .delx{ background:none; border:none; color:#c2452f; cursor:pointer; font-size:1.1rem; padding:.3rem; }
+  .center{ text-align:center; padding:3rem 1rem; color:var(--muted); }
+  .toast{ position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:.6rem 1rem; border-radius:10px; font-size:.85rem; z-index:80; opacity:0; transition:.2s; } .toast.show{ opacity:1; }
+  .ov{ position:fixed; inset:0; background:rgba(15,28,51,.5); display:flex; align-items:center; justify-content:center; z-index:90; padding:1rem; } .modal{ background:#fff; border-radius:14px; width:100%; max-width:420px; padding:1.1rem; } .modal h3{ margin:0 0 .8rem; }
+  .addline{ background:none; border:1px dashed var(--line); color:var(--primary); border-radius:9px; padding:.5rem .8rem; cursor:pointer; font-size:.85rem; margin-top:.5rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧾 Factură</h1>
+  <span id="hd-num" class="sub"></span>
+  <span id="hd-status"></span>
+  <div class="spacer"></div>
+  <button class="btn" onclick="goBack()">↩ Înapoi</button>
+  <button class="btn" id="btn-pdf" onclick="pdf()">🖨 PDF</button>
+  <button class="btn primary" id="btn-save" onclick="save()">💾 Salvează</button>
+</header>
+<div id="root"><div class="center">Se încarcă…</div></div>
+<div id="toast" class="toast"></div>
+<div id="modal-mount"></div>
+
+<script>
+const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
+const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(+n||0)+' MDL';
+const num2=n=>{ const r=Math.round((+n||0)*100)/100; return r%1===0?r:r.toFixed(2); };
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
+function param(k){ return new URLSearchParams(location.search).get(k); }
+function goBack(){ if(history.length>1) history.back(); else location.href='app.html'; }
+function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
+
+const STATUS={draft:'Ciornă',sent:'Trimisă',paid:'Plătită',overdue:'Restantă',cancelled:'Anulată'};
+const FIN=['owner','admin','manager','accountant'];
+let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
+        inv:{status:'draft',number:'',client_id:'',issue_date:new Date().toISOString().slice(0,10),due_date:''},
+        lines:[], clients:[], catalog:[] };
+
+async function boot(){
+  const { data:{ session } }=await sb.auth.getSession();
+  if(!session){ $('root').innerHTML='<div class="center">🔒 Trebuie să fii autentificat.<br><br><a class="btn primary" href="app.html">Deschide aplicația</a></div>'; return; }
+  const mem=await sb.from('memberships').select('tenant_id, role, tenants(name,idno,address,phone,vat_rate,logo_url)').eq('active',true).limit(1).maybeSingle();
+  S.role=mem.data?mem.data.role:null; S.tenant=mem.data?mem.data.tenant_id:null; S.firm=(mem.data&&mem.data.tenants)||{}; S.canEdit=FIN.includes(S.role);
+  if(!S.canEdit){ $('root').innerHTML='<div class="center">🔒 Doar proprietar/administrator/manager/contabil pot emite facturi.</div>'; return; }
+  await loadCatalog();
+  const id=param('id');
+  if(id){ await loadInvoice(id); }
+  else { S.inv.number=genNumber(); if(param('client')) S.inv.client_id=param('client'); S.lines=[blankLine()];
+    const d=new Date(); d.setDate(d.getDate()+14); S.inv.due_date=d.toISOString().slice(0,10);
+    if(param('estimate')) await fromEstimate(param('estimate'));
+  }
+  render();
+}
+function genNumber(){ const d=new Date(); return d.getFullYear()+'-'+String(Math.floor(Math.random()*900+100)); }
+function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20) }; }
+
+async function loadCatalog(){
+  const [cl, svc, nrm, mat]=await Promise.all([
+    sb.from('clients').select('id,name').order('name'),
+    sb.from('services').select('id,name,unit,price,vat_rate').eq('active',true),
+    sb.from('norms').select('id,name,unit,unit_price'),
+    sb.from('materials').select('id,name,unit,last_price,vat_rate').eq('active',true)
+  ]);
+  S.clients=cl.data||[];
+  S.catalog=[].concat(
+    (svc.data||[]).map(x=>({icon:'🧰',name:x.name,unit:x.unit||'buc',price:+x.price||0,vat:+x.vat_rate||20})),
+    (nrm.data||[]).map(x=>({icon:'📐',name:x.name,unit:x.unit||'m2',price:+x.unit_price||0,vat:20})),
+    (mat.data||[]).map(x=>({icon:'📦',name:x.name,unit:x.unit||'buc',price:+x.last_price||0,vat:+x.vat_rate||20}))
+  );
+}
+async function loadInvoice(id){
+  const e=await sb.from('invoices').select('*').eq('id',id).single();
+  if(e.error){ toast('Eroare: '+e.error.message); return; }
+  S.id=id; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', site_id:e.data.site_id||null,
+    issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'' };
+  const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
+  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate }));
+  if(!S.lines.length) S.lines=[blankLine()];
+}
+async function fromEstimate(eid){
+  const e=await sb.from('estimates').select('client_id').eq('id',eid).single();
+  if(e.data&&e.data.client_id) S.inv.client_id=e.data.client_id;
+  const it=await sb.from('estimate_items').select('*').eq('estimate_id',eid);
+  const items=(it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
+  if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate }));
+  S._fromEstimate=eid;
+}
+
+function totals(){ let sub=0,vat=0; S.lines.forEach(l=>{ const t=(+l.qty||0)*(+l.unit_price||0); sub+=t; vat+=t*(+l.vat_rate||0)/100; }); return {sub,vat,total:sub+vat}; }
+
+function render(){
+  $('hd-num').textContent=S.inv.number||'';
+  $('hd-status').innerHTML='<span class="pill '+(S.inv.status||'draft')+'">'+(STATUS[S.inv.status]||'')+'</span>';
+  const clientOpts='<option value="">— alege client —</option>'+S.clients.map(c=>'<option value="'+c.id+'" '+(S.inv.client_id===c.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
+  $('root').innerHTML='<div class="wrap"><div class="left">'
+    +'<div class="panel"><h3>Detalii factură</h3>'
+      +'<div class="field"><label>Client</label><div style="display:flex;gap:.4rem"><select id="f-client" style="flex:1" onchange="S.inv.client_id=this.value">'+clientOpts+'</select><button class="btn" onclick="newClient()">＋ nou</button></div></div>'
+      +'<div class="row2"><div class="field"><label>Număr factură *</label><input id="f-num" value="'+esc(S.inv.number)+'" oninput="S.inv.number=this.value"/></div>'
+      +'<div class="field"><label>Stare</label><select id="f-status" onchange="S.inv.status=this.value;render()">'+Object.keys(STATUS).map(k=>'<option value="'+k+'" '+(S.inv.status===k?'selected':'')+'>'+STATUS[k]+'</option>').join('')+'</select></div></div>'
+      +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.inv.issue_date||'')+'" oninput="S.inv.issue_date=this.value"/></div>'
+      +'<div class="field"><label>Scadență</label><input type="date" id="f-due" value="'+esc(S.inv.due_date||'')+'" oninput="S.inv.due_date=this.value"/></div></div>'
+    +'</div>'
+    +'<div class="panel"><h3>Linii factură <span class="sub" style="font-weight:400">— tastează ca să cauți serviciu/normă/material</span></h3>'
+      +'<table class="lines"><thead><tr><th style="width:18px"></th><th>Descriere</th><th style="width:72px">Cant.</th><th style="width:64px">UM</th><th style="width:96px">Preț</th><th style="width:64px">TVA%</th><th style="width:104px;text-align:right">Total</th><th style="width:24px"></th></tr></thead><tbody id="lines-body"></tbody></table>'
+      +'<button class="addline" onclick="addLine()">＋ adaugă linie</button>'
+    +'</div></div>'
+    +'<div class="right"><div class="panel"><h3>Sumar</h3><div id="sum"></div>'
+        +'<button class="btn primary" style="width:100%;margin-top:.8rem" onclick="save()">💾 Salvează factura</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="save(true)">🖨 Salvează & PDF</button>'
+        +(S.inv.status!=='paid'?'<button class="btn green" style="width:100%;margin-top:.5rem" onclick="markPaid()">💵 Marchează plătită</button>':'<div class="sub" style="margin-top:.6rem;text-align:center">✅ Factură încasată</div>')
+      +'</div>'
+      +'<div class="panel"><h3>e-Factura (SFS)</h3><div class="sub">Poți genera XML-ul pentru SFS din lista de Facturi (butonul 🏛️). Integrarea completă cu SFS se activează la cerere.</div></div>'
+    +'</div></div>';
+  renderLines(); renderSummary();
+}
+function renderLines(){
+  const b=$('lines-body');
+  b.innerHTML=S.lines.map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0)*(1+(+l.vat_rate||0)/100);
+    return '<tr data-i="'+i+'"><td class="grip">≡</td>'
+      +'<td><div class="ta-wrap"><input value="'+esc(l.name)+'" placeholder="Caută sau scrie…" oninput="lineSearch('+i+',this.value)" onfocus="lineSearch('+i+',this.value)" onblur="hideDD('+i+')" autocomplete="off"/><div class="dd" id="dd-'+i+'" style="display:none"></div></div></td>'
+      +'<td><input type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
+      +'<td><input value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
+      +'<td><input type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
+      +'<td><input type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>'
+      +'<td style="text-align:right;font-weight:600;padding-top:.6rem">'+money(lt)+'</td>'
+      +'<td><button class="delx" onclick="delLine('+i+')">×</button></td></tr>';
+  }).join('');
+  Sortable.create(b,{ handle:'.grip', animation:150, onEnd:e=>{ const m=S.lines.splice(e.oldIndex,1)[0]; S.lines.splice(e.newIndex,0,m); render(); } });
+}
+function renderSummary(){ const t=totals();
+  $('sum').innerHTML='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.sub)+'</b></div><div class="totrow"><span class="sub">TVA</span><b>'+money(t.vat)+'</b></div><div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
+}
+function lineEdit(i,k,v){ S.lines[i][k]=v; if(k!=='unit') { renderLines(); renderSummary(); } }
+function addLine(){ S.lines.push(blankLine()); renderLines(); }
+function delLine(i){ S.lines.splice(i,1); if(!S.lines.length) S.lines=[blankLine()]; renderLines(); renderSummary(); }
+
+function lineSearch(i,q){ S.lines[i].name=q; const dd=$('dd-'+i); if(!dd) return;
+  const ql=(q||'').toLowerCase().trim();
+  let list = ql ? S.catalog.filter(c=>c.name.toLowerCase().includes(ql)).slice(0,8) : S.catalog.slice(0,8);
+  let html=list.map(c=>{ const idx=S.catalog.indexOf(c); return '<div class="it" onmousedown="event.preventDefault();pickCatalog('+i+','+idx+')"><span>'+c.icon+'</span><span class="nm">'+esc(c.name)+'</span><span class="pr">'+esc(c.unit)+' · '+money(c.price)+'</span></div>'; }).join('');
+  if(ql && !S.catalog.some(c=>c.name.toLowerCase()===ql)){ html+='<div class="it add" onmousedown="event.preventDefault();quickAddService('+i+')"><span>＋</span><span class="nm">Adaugă serviciu nou „'+esc(q)+'"</span></div>'; }
+  dd.innerHTML=html||'<div class="it sub">Niciun rezultat.</div>'; dd.style.display='';
+}
+function hideDD(i){ setTimeout(()=>{ const dd=$('dd-'+i); if(dd) dd.style.display='none'; },150); }
+function pickCatalog(i,ci){ const c=S.catalog[ci]; if(!c) return; const l=S.lines[i]; l.name=c.name; l.unit=c.unit; l.unit_price=c.price; l.vat_rate=c.vat; renderLines(); renderSummary(); }
+function quickAddService(i){
+  const name=S.lines[i].name||'';
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Serviciu nou</h3><div id="qa-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div class="field"><label>Denumire *</label><input id="qa-name" value="'+esc(name)+'"/></div><div class="row2"><div class="field"><label>UM</label><input id="qa-unit" value="m2"/></div><div class="field"><label>Tarif (MDL)</label><input id="qa-price" type="number" step="any" value="0"/></div></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" onclick="saveQuickService('+i+')">Creează</button></div></div></div>';
+  setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
+}
+function closeM(){ $('modal-mount').innerHTML=''; }
+async function saveQuickService(i){
+  const name=($('qa-name').value||'').trim(); if(!name){ $('qa-msg').textContent='Denumirea e obligatorie.'; return; }
+  const unit=($('qa-unit').value||'buc').trim(), price=+$('qa-price').value||0;
+  const ins=await sb.from('services').insert({tenant_id:S.tenant,name,unit,price,vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20)}).select('id,name,unit,price,vat_rate').single();
+  if(ins.error){ $('qa-msg').textContent='Eroare: '+ins.error.message; return; }
+  S.catalog.unshift({icon:'🧰',name:ins.data.name,unit:ins.data.unit,price:+ins.data.price,vat:+ins.data.vat_rate});
+  const l=S.lines[i]; l.name=ins.data.name; l.unit=ins.data.unit; l.unit_price=+ins.data.price; l.vat_rate=+ins.data.vat_rate;
+  closeM(); toast('✅ Serviciu creat și adăugat.'); renderLines(); renderSummary();
+}
+function newClient(){
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Client nou</h3><div id="nc-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div class="field"><label>Denumire / nume *</label><input id="nc-name"/></div><div class="row2"><div class="field"><label>Telefon</label><input id="nc-phone"/></div><div class="field"><label>IDNO</label><input id="nc-idno"/></div></div><div class="field"><label>Adresă</label><input id="nc-addr"/></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" onclick="saveNewClient()">Creează</button></div></div></div>';
+  setTimeout(()=>$('nc-name')&&$('nc-name').focus(),50);
+}
+async function saveNewClient(){
+  const name=($('nc-name').value||'').trim(); if(!name){ $('nc-msg').textContent='Denumirea e obligatorie.'; return; }
+  const rec={tenant_id:S.tenant,name,phone:($('nc-phone').value||'').trim()||null,idno:($('nc-idno').value||'').trim()||null,address:($('nc-addr').value||'').trim()||null};
+  const ins=await sb.from('clients').insert(rec).select('id,name').single();
+  if(ins.error){ $('nc-msg').textContent='Eroare: '+ins.error.message; return; }
+  S.clients.push({id:ins.data.id,name:ins.data.name}); S.clients.sort((a,b)=>a.name.localeCompare(b.name));
+  S.inv.client_id=ins.data.id; closeM(); toast('✅ Client creat.'); render();
+}
+
+async function save(thenPdf){
+  if(!(S.inv.number||'').trim()){ toast('Numărul facturii e obligatoriu.'); return; }
+  if(!S.inv.client_id){ toast('Alege un client.'); return; }
+  const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
+  $('btn-save').disabled=true; const t=totals();
+  const rec={ tenant_id:S.tenant, client_id:S.inv.client_id||null, number:S.inv.number, status:S.inv.status,
+    issue_date:S.inv.issue_date||null, due_date:S.inv.due_date||null, estimate_id:S._fromEstimate||null,
+    subtotal:t.sub, vat_total:t.vat, total:t.total };
+  try{
+    if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }
+    else { const ins=await sb.from('invoices').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
+    await sb.from('invoice_items').delete().eq('invoice_id',S.id);
+    const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,position:i+1}));
+    const im=await sb.from('invoice_items').insert(items); if(im.error) throw im.error;
+    $('btn-save').disabled=false; toast('✅ Factură salvată.'); if(thenPdf) pdf();
+  }catch(e){ $('btn-save').disabled=false; toast('Eroare: '+(e.message||e)); }
+}
+async function markPaid(){
+  if(!S.id){ toast('Salvează întâi factura.'); return; }
+  if(!confirm('Marchezi factura ca plătită? Se înregistrează încasarea.')) return;
+  const { error }=await sb.rpc('pay_invoice',{p_invoice:S.id});
+  if(error){ toast('Eroare: '+error.message); return; }
+  S.inv.status='paid'; toast('✅ Factură marcată plătită.'); render();
+}
+
+async function pdf(){
+  const t=totals(); const cl=S.clients.find(c=>c.id===S.inv.client_id)||{};
+  let logo=''; if(S.firm.logo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(S.firm.logo_url,600); if(data&&data.signedUrl) logo='<img src="'+data.signedUrl+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }catch(e){} }
+  const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0); const lv=lt*(+l.vat_rate||0)/100;
+    return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td><td class="r">'+num2(l.vat_rate)+'%</td><td class="r">'+money(lt+lv)+'</td></tr>'; }).join('');
+  const f=S.firm;
+  const doc='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Factură '+esc(S.inv.number||'')+'</title><style>'
+    +'body{font-family:Arial,sans-serif;color:#0f1c33;padding:32px;max-width:800px;margin:0 auto;font-size:13px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2f6bff;padding-bottom:16px;margin-bottom:20px}.ti{font-size:22px;font-weight:800;color:#2f6bff}.muted{color:#6b7793}.box{display:flex;gap:24px;margin:0 0 20px}.box>div{flex:1;background:#f4f6fb;border-radius:10px;padding:12px 14px}.box h4{font-size:11px;text-transform:uppercase;color:#6b7793;margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px 10px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}.tot{margin-top:16px;margin-left:auto;width:280px}.tot div{display:flex;justify-content:space-between;padding:5px 0}.tot .g{font-size:17px;font-weight:800;border-top:2px solid #0f1c33;margin-top:6px;padding-top:8px}.ft{margin-top:30px;color:#6b7793;font-size:11px;border-top:1px solid #e5e9f2;padding-top:12px}@media print{.noprint{display:none}}'
+    +'</style></head><body><div class="hd"><div>'+logo+'<div style="font-size:18px;font-weight:800">'+esc(f.name||'Firma')+'</div><div class="muted">'+(f.idno?'IDNO: '+esc(f.idno)+'<br>':'')+(f.address?esc(f.address)+'<br>':'')+(f.phone?'Tel: '+esc(f.phone):'')+'</div></div>'
+    +'<div style="text-align:right"><div class="ti">FACTURĂ FISCALĂ</div><div style="font-weight:700;font-size:15px">Nr. '+esc(S.inv.number||'—')+'</div><div class="muted">Emisă: '+esc(S.inv.issue_date||'')+(S.inv.due_date?'<br>Scadență: '+esc(S.inv.due_date):'')+'</div></div></div>'
+    +'<div class="box"><div><h4>Furnizor</h4><b>'+esc(f.name||'')+'</b></div><div><h4>Client</h4><b>'+esc(cl.name||'—')+'</b></div></div>'
+    +'<table><thead><tr><th>#</th><th>Denumire</th><th class="r">Cant.</th><th>UM</th><th class="r">Preț</th><th class="r">TVA</th><th class="r">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" style="text-align:center;color:#888;padding:18px">Fără linii.</td></tr>')+'</tbody></table>'
+    +'<div class="tot"><div><span>Subtotal:</span><b>'+money(t.sub)+'</b></div><div><span>TVA:</span><b>'+money(t.vat)+'</b></div><div class="g"><span>TOTAL:</span><span>'+money(t.total)+'</span></div></div>'
+    +'<div class="ft">Factură generată cu Cod373. '+(S.inv.status==='paid'?'ACHITATĂ.':'Vă rugăm achitați până la scadență.')+'</div>'
+    +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div></body></html>';
+  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
+}
+boot();
+</script>
+</body>
+</html>

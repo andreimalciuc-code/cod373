@@ -289,14 +289,8 @@ async function pdf(){
 /* ---- conversii ---- */
 async function toInvoice(){
   if(!S.id){ toast('Salvează întâi oferta.'); return; }
-  if(!confirm('Creezi o factură din această ofertă?')) return;
-  const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
-  const t=totals(); const num='FACT-'+new Date().toISOString().slice(2,10).replace(/-/g,'')+'-'+Math.floor(Math.random()*900+100);
-  const inv=await sb.from('invoices').insert({tenant_id:tid,client_id:S.est.client_id||null,number:num,status:'draft',issue_date:new Date().toISOString().slice(0,10),subtotal:t.sub,vat_total:t.vat,total:t.total}).select('id').single();
-  if(inv.error){ toast('Eroare: '+inv.error.message); return; }
-  const items=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>({tenant_id:tid,invoice_id:inv.data.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,position:i+1}));
-  await sb.from('invoice_items').insert(items);
-  toast('✅ Factură creată din ofertă.');
+  await save();
+  if(S.id) window.open('factura.html?estimate='+S.id,'_blank');
 }
 async function toSite(){
   if(!S.est.client_id){ toast('Alege un client.'); return; }
