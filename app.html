@@ -1354,6 +1354,7 @@ const QKEYS=[
   {key:'acces',       label:'Acces pentru utilaje / camion', type:'select', options:['Da','Limitat','Nu']},
   {key:'curent',      label:'Curent electric pe șantier',   type:'select', options:['Da','Nu']},
   {key:'apa',         label:'Sursă de apă',                 type:'select', options:['Da','Nu']},
+  {key:'wc',          label:'WC / toaletă pe șantier',      type:'select', options:['Da','Nu','Provizoriu (de adus)']},
   {key:'termen',      label:'Termen dorit de client',       type:'date'},
   {key:'buget_client',label:'Buget orientativ al clientului (MDL)', type:'number'},
   {key:'riscuri',     label:'Riscuri / observații importante', type:'textarea'}
@@ -1399,7 +1400,7 @@ async function openPrevizForm(row, meas){
   }).join('');
   const body='<div id="pv-msg"></div>'
     +'<div class="field"><label>Denumirea fișei *</label><input id="pv-name" value="'+esc(row?row.name:'')+'" placeholder="Ex: Vila Durlești — vizita 1"/></div>'
-    +'<div class="row-2"><div class="field"><label>Client</label><select id="pv-client"><option value="">— (niciunul) —</option>'+clients.map(o=>'<option value="'+o.value+'" '+((row&&row.client_id)===o.value?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select></div>'
+    +'<div class="row-2"><div class="field"><label>Client</label>'+qcWrap('clients','pv-client','<select id="pv-client" style="flex:1"><option value="">— (niciunul) —</option>'+clients.map(o=>'<option value="'+o.value+'" '+((row&&row.client_id)===o.value?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>')+'</div>'
     +'<div class="field"><label>Data vizitei</label><input id="pv-date" type="date" value="'+esc((row&&row.visit_date)||new Date().toISOString().slice(0,10))+'"/></div></div>'
     +'<div class="field"><label>Adresă</label><input id="pv-addr" value="'+esc(row?row.address:'')+'"/></div>'
     +'<div class="row-2"><div class="field"><label>Tip lucrare</label><select id="pv-wt"><option value="">—</option><option value="constructie" '+((row&&row.work_type)==='constructie'?'selected':'')+'>Construcție</option><option value="reparatie" '+((row&&row.work_type)==='reparatie'?'selected':'')+'>Reparație</option></select></div>'
@@ -1612,6 +1613,41 @@ async function loadRefOptions(refKey){
   return (data||[]).map(x=>({ value:x.id, label:x[r.label]||('#'+String(x.id).slice(0,6)) }));
 }
 
+/* ════ CREARE RAPIDĂ „＋ nou" din orice listă de alegere ════ */
+const QUICK={
+  clients:{ table:'clients', label:'name', title:'Client nou', fields:[{k:'name',l:'Denumire / nume',req:true},{k:'phone',l:'Telefon'},{k:'email',l:'Email'},{k:'address',l:'Adresă'}] },
+  employees:{ table:'employees', label:'full_name', title:'Angajat / specialist nou', fields:[{k:'full_name',l:'Nume complet',req:true},{k:'specialty',l:'Specialitate'},{k:'position',l:'Funcție'},{k:'phone',l:'Telefon'}] },
+  subcontractors:{ table:'subcontractors', label:'name', title:'Subcontractant nou', fields:[{k:'name',l:'Denumire',req:true},{k:'specialties',l:'Specialități'},{k:'phone',l:'Telefon'}] },
+  suppliers:{ table:'suppliers', label:'name', title:'Furnizor nou', fields:[{k:'name',l:'Denumire',req:true},{k:'phone',l:'Telefon'},{k:'email',l:'Email'}] },
+  materials:{ table:'materials', label:'name', title:'Material nou', fields:[{k:'name',l:'Denumire',req:true},{k:'unit',l:'Unitate (UM)',def:'buc'},{k:'category',l:'Categorie'}] },
+  vehicles:{ table:'vehicles', label:'label', title:'Vehicul nou', fields:[{k:'label',l:'Denumire / număr',req:true},{k:'plate',l:'Nr. înmatriculare'}] },
+  sites:{ table:'sites', label:'name', title:'Șantier nou', fields:[{k:'name',l:'Denumire',req:true},{k:'address',l:'Adresă'}] }
+};
+function qcBtn(refKey, selectId){ if(!QUICK[refKey]) return ''; return '<button type="button" class="btn-ghost" style="flex:none;padding:.55rem .7rem;white-space:nowrap" title="Creează unul nou" onclick="quickCreate(\''+refKey+'\',(id,l)=>qcAddOption(\''+selectId+'\',id,l))">＋ nou</button>'; }
+function qcWrap(refKey, selectId, selectHtml){ return QUICK[refKey] ? ('<div style="display:flex;gap:.4rem;align-items:stretch">'+selectHtml+qcBtn(refKey,selectId)+'</div>') : selectHtml; }
+function qcAddOption(selectId,id,label){ const s=$(selectId); if(!s) return; const o=document.createElement('option'); o.value=id; o.textContent=label; o.selected=true; s.appendChild(o); s.value=id; s.dispatchEvent(new Event('change')); }
+function quickCreate(refKey, cb){
+  const q=QUICK[refKey]; if(!q){ toast('Nu se poate crea aici.'); return; }
+  window._qcCb=cb; window._qcKey=refKey;
+  const body=q.fields.map(f=>'<div class="field"><label>'+esc(f.l)+(f.req?' *':'')+'</label><input id="qc-'+f.k+'" value="'+esc(f.def||'')+'"/></div>').join('');
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:70" onclick="if(event.target===this)closeQc()"><div class="modal" style="max-width:420px">'
+    +'<div class="modal-head"><h3>＋ '+esc(q.title)+'</h3><button class="x" onclick="closeQc()">×</button></div>'
+    +'<div class="modal-body"><div id="qc-msg"></div>'+body+'</div>'
+    +'<div class="modal-foot"><button class="btn-ghost" onclick="closeQc()">'+TR('anuleaza')+'</button><button class="btn-primary" id="qc-save" onclick="saveQc()">Creează</button></div></div></div>';
+  setTimeout(()=>{ const f=document.querySelector('#qc-'+q.fields[0].k); if(f) f.focus(); },50);
+}
+function closeQc(){ $('picker-mount').innerHTML=''; }
+async function saveQc(){
+  const q=QUICK[window._qcKey]; const rec={tenant_id:state.tenant};
+  for(const f of q.fields){ const v=($('qc-'+f.k).value||'').trim(); if(f.req&&!v){ showMsg('qc-msg','Completează „'+f.l+'".'); return; } if(v) rec[f.k]=v; }
+  const btn=$('qc-save'); if(btn){ btn.disabled=true; btn.textContent='Se creează…'; }
+  const ins=await sb.from(q.table).insert(rec).select('id,'+q.label).single();
+  if(ins.error){ showMsg('qc-msg','Eroare: '+esc(ins.error.message)); if(btn){ btn.disabled=false; btn.textContent='Creează'; } return; }
+  const id=ins.data.id, label=ins.data[q.label]||'(nou)';
+  closeQc(); toast('✅ Creat: '+esc(label));
+  if(typeof window._qcCb==='function') window._qcCb(id,label);
+}
+
 async function openForm(key,row){
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
   // preload ref options
@@ -1625,7 +1661,7 @@ async function openForm(key,row){
     if(f.type==='textarea') body+='<textarea id="f-'+f.key+'">'+esc(v)+'</textarea>';
     else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="f-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
     else if(f.type==='select'){ body+='<select id="f-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
-    else if(f.type==='ref'){ body+='<select id="f-'+f.key+'"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
+    else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
     else if(f.type==='photo'){ body+='<input id="f-'+f.key+'" type="file" accept="image/*" capture="environment"/>'+(v?' <a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="font-size:.8rem;color:var(--primary);cursor:pointer">vezi poza curentă</a>':''); }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
@@ -1724,7 +1760,7 @@ async function openSiteWizard(prefill){
   const body=''
     +'<div id="wiz-msg"></div>'
     +'<div class="field"><label>Denumirea proiectului *</label><input id="wz-name" value="'+esc(p.name||'')+'" placeholder="Ex: Vila Durlești"/></div>'
-    +'<div class="row-2"><div class="field"><label>Client</label><select id="wz-client"><option value="">— (niciunul) —</option>'+clients.map(o=>'<option value="'+o.value+'" '+(String(p.client_id||'')===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select></div>'
+    +'<div class="row-2"><div class="field"><label>Client</label>'+qcWrap('clients','wz-client','<select id="wz-client" style="flex:1"><option value="">— (niciunul) —</option>'+clients.map(o=>'<option value="'+o.value+'" '+(String(p.client_id||'')===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>')+'</div>'
     +'<div class="field"><label>Tip lucrare</label><select id="wz-wt"><option value="constructie">Construcție (obiect nou)</option><option value="reparatie">Reparație / renovare</option></select></div></div>'
     +'<div class="row-2"><div class="field"><label>Suprafață (m²) <span class="hint-i" title="Pe baza ei se estimează automat durata fiecărei lucrări.">ⓘ</span></label><input id="wz-area" type="number" value="'+esc(p.area_m2||'')+'" oninput="wizSetAreaDefault()"/></div>'
     +'<div class="field"><label>Buget contractat (MDL)</label><input id="wz-budget" type="number" value="'+esc(p.budget||'')+'"/></div></div>'
@@ -1746,7 +1782,7 @@ function renderWizWorks(){
   if(!wizCtx.works.length){ el.innerHTML='<div style="color:var(--muted);font-size:.85rem;padding:.5rem 0">Nicio lucrare. Apasă „Adaugă lucrări din norme" — durata se calculează automat din suprafață și randamentul normei.</div>'; return; }
   let totalDays=0, totalCost=0;
   const rows=wizCtx.works.map((w,i)=>{ const d=workDays(w); totalDays+=d; const c=(+w.qty||0)*(+w.unit_price||0); totalCost+=c;
-    const exOpts='<option value="">— alege executant —</option>'+(window._execList||[]).map((x,xi)=>'<option value="'+xi+'" '+(w.executor_id===x.id?'selected':'')+'>'+(x.kind==='angajat'?'👷':'🏢')+' '+esc(x.name)+(x.specialty?' · '+esc(x.specialty):'')+'</option>').join('');
+    const exOpts='<option value="">— alege executant —</option>'+(window._execList||[]).map((x,xi)=>'<option value="'+xi+'" '+(w.executor_id===x.id?'selected':'')+'>'+(x.kind==='angajat'?'👷':'🏢')+' '+esc(x.name)+(x.specialty?' · '+esc(x.specialty):'')+'</option>').join('')+'<option value="__newE">＋ angajat nou…</option><option value="__newS">＋ subcontractant nou…</option>';
     return '<tr>'
       +'<td class="li-name">'+esc(w.name)+'<div style="color:var(--muted);font-size:.75rem">'+esc(w.unit||'m2')+' · '+money(w.unit_price)+'/'+esc(w.unit||'m2')+'</div></td>'
       +'<td><input type="number" step="any" style="width:80px" value="'+esc(w.qty)+'" oninput="wizEdit('+i+',\'qty\',this.value)"/></td>'
@@ -1760,7 +1796,13 @@ function renderWizWorks(){
 }
 function wizEdit(i,k,v){ wizCtx.works[i][k]=v; if(k==='qty') wizCtx.works[i]._qtyTouched=true; renderWizWorks(); }
 function wizDel(i){ wizCtx.works.splice(i,1); renderWizWorks(); }
-function wizSetExec(i,xi){ const x=(window._execList||[])[+xi]; if(!x){ wizCtx.works[i].executor_kind=null; wizCtx.works[i].executor_id=null; wizCtx.works[i].executor_name=null; } else { wizCtx.works[i].executor_kind=x.kind; wizCtx.works[i].executor_id=x.id; wizCtx.works[i].executor_name=x.name; if(!wizCtx.works[i].specialty) wizCtx.works[i].specialty=x.specialty; } }
+function wizSetExec(i,xi){
+  if(xi==='__newE'||xi==='__newS'){ const kind=xi==='__newE'?'employees':'subcontractors';
+    quickCreate(kind, async(id)=>{ window._execList=null; await ensureExecutors(); const x=(window._execList||[]).find(e=>e.id===id);
+      if(x){ wizCtx.works[i].executor_kind=x.kind; wizCtx.works[i].executor_id=x.id; wizCtx.works[i].executor_name=x.name; if(!wizCtx.works[i].specialty) wizCtx.works[i].specialty=x.specialty; }
+      renderWizWorks(); });
+    renderWizWorks(); return; }
+  const x=(window._execList||[])[+xi]; if(!x){ wizCtx.works[i].executor_kind=null; wizCtx.works[i].executor_id=null; wizCtx.works[i].executor_name=null; } else { wizCtx.works[i].executor_kind=x.kind; wizCtx.works[i].executor_id=x.id; wizCtx.works[i].executor_name=x.name; if(!wizCtx.works[i].specialty) wizCtx.works[i].specialty=x.specialty; } }
 /* picker lucrări pentru wizard */
 async function openWorkPicker(){
   await ensureNorms();
