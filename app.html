@@ -165,6 +165,7 @@
       <div class="field"><label>Email</label><input id="login-email" type="email" autocomplete="email" placeholder="nume@firma.md" /></div>
       <div class="field"><label>Parolă</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></div>
       <button class="btn-primary btn-block" id="btn-login" onclick="doLogin()">Intră în cont</button>
+      <p class="alt" style="margin-top:.7rem"><a onclick="doForgotPassword()">Am uitat parola</a> · <a onclick="doMagicLogin()">Intră cu link pe email</a></p>
       <p class="alt">Nu ai cont? <a onclick="showScreen('signup')">Creează firmă nouă</a></p>
     </div>
 
@@ -295,6 +296,39 @@ async function doLogin(){
   await boot();
 }
 async function doLogout(){ await sb.auth.signOut(); location.reload(); }
+function appBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
+async function doForgotPassword(){
+  const email=($('login-email').value||'').trim();
+  if(!email){ showMsg('login-msg','Scrie întâi emailul, apoi apasă „Am uitat parola".'); $('login-email').focus(); return; }
+  showMsg('login-msg','Se trimite…');
+  const { error }=await sb.auth.resetPasswordForEmail(email, { redirectTo: appBase()+'app.html' });
+  if(error){ showMsg('login-msg', error.message); return; }
+  showMsg('login-msg','📧 Ți-am trimis un email cu link de resetare a parolei. Deschide-l și vei putea seta o parolă nouă.','ok');
+}
+async function doMagicLogin(){
+  const email=($('login-email').value||'').trim();
+  if(!email){ showMsg('login-msg','Scrie întâi emailul, apoi apasă „Intră cu link pe email".'); $('login-email').focus(); return; }
+  showMsg('login-msg','Se trimite…');
+  const { error }=await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: appBase()+'app.html', shouldCreateUser:false } });
+  if(error){ showMsg('login-msg', error.message); return; }
+  showMsg('login-msg','📧 Ți-am trimis un link de logare pe email. Dă click pe el și intri direct, fără parolă.','ok');
+}
+function showResetPasswordForm(){
+  $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login');
+  $('screen-login').innerHTML='<h2>Setează o parolă nouă</h2><p class="sub">Alege o parolă nouă pentru contul tău.</p><div id="rp-msg"></div>'
+    +'<div class="field"><label>Parolă nouă (min. 6 caractere)</label><input id="rp-pass" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
+    +'<div class="field"><label>Confirmă parola</label><input id="rp-pass2" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
+    +'<button class="btn-primary btn-block" id="rp-btn" onclick="doSetNewPassword()">Salvează parola și intră</button>';
+}
+async function doSetNewPassword(){
+  const p=$('rp-pass').value, p2=$('rp-pass2').value;
+  if(p.length<6){ showMsg('rp-msg','Parola trebuie să aibă minim 6 caractere.'); return; }
+  if(p!==p2){ showMsg('rp-msg','Parolele nu coincid.'); return; }
+  $('rp-btn').disabled=true; showMsg('rp-msg','');
+  const { error }=await sb.auth.updateUser({ password:p });
+  if(error){ $('rp-btn').disabled=false; showMsg('rp-msg', error.message); return; }
+  toast('✅ Parolă setată.'); await boot();
+}
 async function doCreateCompany(){
   const name=$('onb-name').value.trim(), idno=$('onb-idno').value.trim();
   if(!name){ showMsg('onb-msg','Scrie denumirea firmei.'); return; }
@@ -2300,7 +2334,7 @@ async function printDoc(key,id){
   }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   // daca sesiunea soseste dupa load (ex. magic link din email), pornim boot-ul
-  sb.auth.onAuthStateChange((evt)=>{ if(evt==='SIGNED_IN' && !state.tenant) boot(); });
+  sb.auth.onAuthStateChange((evt)=>{ if(evt==='PASSWORD_RECOVERY'){ showResetPasswordForm(); return; } if(evt==='SIGNED_IN' && !state.tenant) boot(); });
   await boot();
 })();
 </script>

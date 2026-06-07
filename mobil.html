@@ -113,6 +113,7 @@
       <div class="fld"><label>Email</label><input id="l-email" type="email" autocomplete="email" placeholder="nume@firma.md" /></div>
       <div class="fld"><label>Parolă</label><input id="l-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></div>
       <button class="btn" id="l-btn" onclick="doLogin()">Intră</button>
+      <p class="alt" style="margin-top:.6rem"><a onclick="mForgot()">Am uitat parola</a> · <a onclick="mMagic()">Link pe email</a></p>
       <p class="alt">Administrare pe calculator? <a onclick="location.href='app.html'">Deschide panoul</a></p>
     </div>
   </div>
@@ -166,6 +167,18 @@ async function doLogin(){
   await boot();
 }
 async function doLogout(){await sb.auth.signOut();location.reload();}
+function mBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
+async function mForgot(){ const email=($('l-email').value||'').trim(); if(!email){ lmsg('Scrie întâi emailul.'); return; } lmsg('Se trimite…','ok');
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:mBase()+'mobil.html'}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de resetare a parolei. Deschide emailul.','ok'); }
+async function mMagic(){ const email=($('l-email').value||'').trim(); if(!email){ lmsg('Scrie întâi emailul.'); return; } lmsg('Se trimite…','ok');
+  const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:mBase()+'mobil.html',shouldCreateUser:false}}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de logare. Dă click pe el și intri fără parolă.','ok'); }
+function mShowReset(){ $('app').classList.add('hidden'); $('login').classList.remove('hidden');
+  document.querySelector('#login .card').innerHTML='<h2>Parolă nouă</h2><p class="sub">Setează o parolă nouă pentru cont.</p><div id="lmsg"></div>'
+    +'<div class="fld"><label>Parolă nouă (min. 6)</label><input id="rp1" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
+    +'<div class="fld"><label>Confirmă</label><input id="rp2" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
+    +'<button class="btn" id="rpb" onclick="mSetPass()">Salvează și intră</button>'; }
+async function mSetPass(){ const p=$('rp1').value,p2=$('rp2').value; if(p.length<6){lmsg('Minim 6 caractere.');return;} if(p!==p2){lmsg('Parolele nu coincid.');return;}
+  $('rpb').disabled=true; const {error}=await sb.auth.updateUser({password:p}); if(error){$('rpb').disabled=false;lmsg(error.message);return;} toast('✅ Parolă setată.'); location.reload(); }
 
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
@@ -721,6 +734,7 @@ function closeSheet(){$('sheet-mount').innerHTML='';}
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
   if(!cfgOk()){$('cfg-warn').classList.remove('hidden');$('cfg-warn').innerHTML='⚙️ Configurare incompletă (cheia publishable).';$('l-btn').disabled=true;return;}
   sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  sb.auth.onAuthStateChange((evt)=>{ if(evt==='PASSWORD_RECOVERY'){ mShowReset(); return; } if(evt==='SIGNED_IN' && !S.tenant) boot(); });
   await boot();
 })();
 </script>
