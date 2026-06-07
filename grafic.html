@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cod373 — Grafic lucrări</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<style>
+  :root{ --ink:#0f1c33; --muted:#5b6b85; --line:#e6eaf2; --primary:#2563eb; --bg:#f6f8fc; --red:#dc2626; --green:#16a34a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); background:var(--bg); }
+  header{ background:#fff; border-bottom:1px solid var(--line); padding:.7rem 1rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap; position:sticky; top:0; z-index:20; }
+  header h1{ font-size:1.05rem; margin:0; }
+  header .meta{ color:var(--muted); font-size:.82rem; }
+  .spacer{ flex:1; }
+  .btn{ border:1px solid var(--line); background:#fff; border-radius:9px; padding:.45rem .7rem; font-size:.82rem; cursor:pointer; color:var(--ink); white-space:nowrap; }
+  .btn:hover{ background:#f1f5f9; }
+  .btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
+  .btn.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .wrap{ padding:1rem; max-width:1500px; margin:0 auto; }
+  .cards{ display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:.8rem; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:.7rem 1rem; flex:1; min-width:150px; }
+  .card .k{ font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .card .v{ font-size:1.15rem; font-weight:700; margin-top:.15rem; }
+  .toolbar{ display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:.7rem; }
+  .toolbar .group{ display:flex; gap:.25rem; align-items:center; background:#fff; border:1px solid var(--line); border-radius:10px; padding:.2rem; }
+  .toolbar .group .btn{ border:none; padding:.35rem .6rem; }
+  .layout{ display:grid; grid-template-columns:330px 1fr; gap:1rem; align-items:start; }
+  @media(max-width:900px){ .layout{ grid-template-columns:1fr; } }
+  .panel{ background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .panel-h{ padding:.6rem .9rem; border-bottom:1px solid var(--line); font-weight:600; font-size:.9rem; display:flex; align-items:center; justify-content:space-between; }
+  .stage-list{ list-style:none; margin:0; padding:.3rem; max-height:70vh; overflow:auto; }
+  .stage-li{ display:flex; align-items:center; gap:.55rem; padding:.5rem .55rem; border-radius:10px; cursor:pointer; }
+  .stage-li:hover{ background:#f6f8fc; }
+  .stage-li .grip{ cursor:grab; color:#b8c2d4; font-size:1.1rem; line-height:1; }
+  .stage-li .dot{ width:11px; height:11px; border-radius:50%; flex:none; }
+  .stage-li .nm{ flex:1; font-size:.85rem; font-weight:600; }
+  .stage-li .nm small{ display:block; color:var(--muted); font-weight:400; font-size:.74rem; }
+  .stage-li .pc{ font-size:.74rem; color:var(--muted); }
+  .sortable-ghost{ opacity:.4; }
+  #gantt-wrap{ overflow-x:auto; }
+  .legend{ display:flex; gap:.8rem; flex-wrap:wrap; font-size:.76rem; color:var(--muted); margin-top:.5rem; align-items:center; }
+  .legend i{ width:12px; height:12px; border-radius:3px; display:inline-block; margin-right:.25rem; vertical-align:middle; }
+  /* Gantt bar colors (by status) */
+  .gantt .bar-wrapper.gx-plan .bar{ fill:#94a3b8; } .gantt .bar-wrapper.gx-plan .bar-progress{ fill:#64748b; }
+  .gantt .bar-wrapper.gx-active .bar{ fill:#3b82f6; } .gantt .bar-wrapper.gx-active .bar-progress{ fill:#1d4ed8; }
+  .gantt .bar-wrapper.gx-done .bar{ fill:#22c55e; } .gantt .bar-wrapper.gx-done .bar-progress{ fill:#15803d; }
+  .gantt .bar-wrapper.gx-delayed .bar{ fill:#ef4444; } .gantt .bar-wrapper.gx-delayed .bar-progress{ fill:#b91c1c; }
+  /* by specialty palette */
+  .gantt .bar-wrapper.sp0 .bar{ fill:#6366f1; } .gantt .bar-wrapper.sp0 .bar-progress{ fill:#4338ca; }
+  .gantt .bar-wrapper.sp1 .bar{ fill:#0ea5e9; } .gantt .bar-wrapper.sp1 .bar-progress{ fill:#0369a1; }
+  .gantt .bar-wrapper.sp2 .bar{ fill:#14b8a6; } .gantt .bar-wrapper.sp2 .bar-progress{ fill:#0f766e; }
+  .gantt .bar-wrapper.sp3 .bar{ fill:#f59e0b; } .gantt .bar-wrapper.sp3 .bar-progress{ fill:#b45309; }
+  .gantt .bar-wrapper.sp4 .bar{ fill:#ec4899; } .gantt .bar-wrapper.sp4 .bar-progress{ fill:#be185d; }
+  .gantt .bar-wrapper.sp5 .bar{ fill:#8b5cf6; } .gantt .bar-wrapper.sp5 .bar-progress{ fill:#6d28d9; }
+  .gantt .bar-wrapper.sp6 .bar{ fill:#84cc16; } .gantt .bar-wrapper.sp6 .bar-progress{ fill:#4d7c0f; }
+  .gantt .bar-label{ font-size:12px; }
+  .gantt-container .today-highlight{ fill:#fff4e6; opacity:.6; }
+  /* modal */
+  .overlay{ position:fixed; inset:0; background:rgba(15,28,51,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem; }
+  .modal{ background:#fff; border-radius:16px; width:100%; max-width:460px; max-height:92vh; overflow:auto; }
+  .modal-h{ padding:.9rem 1.1rem; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+  .modal-h h3{ margin:0; font-size:1rem; }
+  .modal-b{ padding:1.1rem; }
+  .modal-f{ padding:.8rem 1.1rem; border-top:1px solid var(--line); display:flex; justify-content:space-between; gap:.5rem; }
+  .field{ margin-bottom:.8rem; } .field label{ display:block; font-size:.8rem; font-weight:600; margin-bottom:.3rem; }
+  .field input,.field select,.field textarea{ width:100%; padding:.55rem .7rem; border:1px solid var(--line); border-radius:9px; font-size:.9rem; font-family:inherit; outline:none; }
+  .field textarea{ resize:vertical; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+  .x{ background:none; border:none; font-size:1.4rem; cursor:pointer; color:var(--muted); line-height:1; }
+  .center{ text-align:center; padding:3rem 1rem; color:var(--muted); }
+  .toast{ position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:.6rem 1rem; border-radius:10px; font-size:.85rem; z-index:60; opacity:0; transition:opacity .2s; }
+  .toast.show{ opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📅 Grafic lucrări</h1>
+  <span class="meta" id="site-meta"></span>
+  <select id="site-pick" class="btn" style="display:none" onchange="location.search='?site='+this.value"></select>
+  <div class="spacer"></div>
+  <button class="btn" onclick="window.print()">🖨 Printează</button>
+  <button class="btn" onclick="goBack()">↩ Înapoi la aplicație</button>
+</header>
+<div class="wrap" id="root"><div class="center">Se încarcă…</div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://vzatmfhkwiojqkowtftg.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => (n==null||n==='')?'—':new Intl.NumberFormat('ro-RO',{maximumFractionDigits:0}).format(+n)+' MDL';
+const dt = d => d? new Date(d).toLocaleDateString('ro-RO',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
+function param(k){ return new URLSearchParams(location.search).get(k); }
+function goBack(){ if(history.length>1) history.back(); else location.href='app.html'; }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function iso(d){ return new Date(d).toISOString().slice(0,10); }
+
+let STATE={ siteId:null, site:null, stages:[], execs:[], norms:[], normMat:{}, role:null, colorBy:'status', view:'Day', gantt:null };
+const STATUS={ plan:'Planificat', active:'În lucru', done:'Finalizat', delayed:'Întârziat' };
+const STATUS_COLOR={ plan:'#94a3b8', active:'#3b82f6', done:'#22c55e', delayed:'#ef4444' };
+const FIN_ROLES=['owner','admin','manager','accountant'];
+
+async function boot(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ $('root').innerHTML='<div class="center">🔒 Trebuie să fii autentificat.<br><br><a class="btn primary" href="app.html">Deschide aplicația și loghează-te</a><br><br><small>Apoi redeschide acest link.</small></div>'; return; }
+  const mem = await sb.from('memberships').select('role').eq('active',true).limit(1).maybeSingle();
+  STATE.role = mem.data ? mem.data.role : null;
+  STATE.siteId = param('site');
+  if(!STATE.siteId){ await pickSite(); return; }
+  await loadAll();
+}
+async function pickSite(){
+  const { data } = await sb.from('sites').select('id,name').order('created_at',{ascending:false});
+  const list=data||[];
+  if(!list.length){ $('root').innerHTML='<div class="center">Niciun șantier. Creează unul în aplicație.</div>'; return; }
+  const sel=$('site-pick'); sel.style.display=''; sel.innerHTML='<option value="">— alege șantierul —</option>'+list.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  $('root').innerHTML='<div class="center">Alege un șantier din colțul de sus ↗</div>';
+}
+async function loadAll(){
+  const [siteR, stagesR, ordR, subR, empR, subcR, normR, nmR] = await Promise.all([
+    sb.from('sites').select('id,name,code,budget,work_type,area_m2,start_date,deadline,status').eq('id',STATE.siteId).single(),
+    sb.from('site_stages').select('id,name,position,status,progress,start_date,end_date,qty,unit,norm_id,executor_kind,executor_id,executor_name,specialty,est_cost,description,photo_urls').eq('site_id',STATE.siteId),
+    sb.from('material_orders').select('total,status').eq('site_id',STATE.siteId),
+    sb.from('subcontracts').select('amount,status').eq('site_id',STATE.siteId),
+    sb.from('employees').select('id,full_name,specialty').eq('active',true),
+    sb.from('subcontractors').select('id,name,specialties'),
+    sb.from('norms').select('id,code,name,unit,category,unit_price,daily_output'),
+    sb.from('norm_materials').select('norm_code,material_name,unit,qty_per_unit,kind')
+  ]);
+  if(siteR.error){ $('root').innerHTML='<div class="center">Eroare: '+esc(siteR.error.message)+'</div>'; return; }
+  STATE.site=siteR.data;
+  STATE.stages=(stagesR.data||[]).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  STATE.execs=[].concat((empR.data||[]).map(x=>({kind:'angajat',id:x.id,name:x.full_name,specialty:x.specialty||''})),
+                        (subcR.data||[]).map(x=>({kind:'subcontractant',id:x.id,name:x.name,specialty:x.specialties||''})));
+  STATE.norms=normR.data||[]; STATE.normMat={}; (nmR.data||[]).forEach(x=>{ (STATE.normMat[x.norm_code]=STATE.normMat[x.norm_code]||[]).push(x); });
+  STATE._cost = ((ordR.data||[]).filter(o=>o.status!=='cancelled').reduce((t,o)=>t+(+o.total||0),0))
+              + ((subR.data||[]).filter(o=>o.status!=='cancelled').reduce((t,o)=>t+(+o.amount||0),0));
+  render();
+}
+
+/* specialty -> palette index */
+const SPEC_ORDER=[];
+function specClass(sp){ sp=(sp||'—'); let i=SPEC_ORDER.indexOf(sp); if(i<0){ SPEC_ORDER.push(sp); i=SPEC_ORDER.length-1; } return 'sp'+(i%7); }
+function barClass(st){ return STATE.colorBy==='status' ? ('gx-'+(st.status||'plan')) : specClass(st.specialty); }
+
+function ganttTasks(){
+  // ensure every stage has dates so it renders
+  let cursor = STATE.site.start_date ? new Date(STATE.site.start_date) : new Date();
+  return STATE.stages.map(st=>{
+    let s=st.start_date?new Date(st.start_date):new Date(cursor);
+    let e=st.end_date?new Date(st.end_date):addDays(s, Math.max(0,durationDays(st)-1));
+    if(e<s) e=s; cursor=addDays(e,1);
+    return { id:String(st.id), name:st.name+(st.executor_name?(' · '+st.executor_name):''), start:iso(s), end:iso(e),
+             progress:+st.progress||0, custom_class:barClass(st), dependencies:'' };
+  });
+}
+function durationDays(st){ const n=STATE.norms.find(n=>n.id===st.norm_id); const out=n?+n.daily_output:15; const q=+st.qty||0; return Math.max(1, Math.ceil((q||out)/(out||15))); }
+
+function render(){
+  const s=STATE.site; const fin=FIN_ROLES.includes(STATE.role);
+  const budget=+s.budget||0, cost=STATE._cost||0, margin=budget-cost, mp=budget?Math.round(margin/budget*100):0;
+  $('site-meta').innerHTML='<b>'+esc(s.name)+'</b>'+(s.work_type?' · '+(s.work_type==='reparatie'?'reparație':'construcție'):'')+(s.area_m2?' · '+s.area_m2+' m²':'');
+  document.title='Cod373 — Grafic: '+s.name;
+  const marginCards = fin? (
+      card('Buget contractat', money(budget))
+    + card('Cheltuieli', money(cost), '#dc2626')
+    + card('Marjă live', money(margin)+' <small style="font-size:.7rem">('+mp+'%)</small>', margin>=0?'#16a34a':'#dc2626') ) : '';
+  const totalDur = ganttTasks().reduce((t,x)=>t,0);
+  $('root').innerHTML=
+    '<div class="cards">'+marginCards+card('Etape', STATE.stages.length)+card('Progres mediu', avgProgress()+'%')+'</div>'
+    +'<div class="toolbar">'
+      +'<div class="group" title="Zoom"><button class="btn" data-vm="Quarter Day" onclick="setView(\'Quarter Day\')">6h</button><button class="btn" data-vm="Day" onclick="setView(\'Day\')">Zi</button><button class="btn" data-vm="Week" onclick="setView(\'Week\')">Săpt.</button><button class="btn" data-vm="Month" onclick="setView(\'Month\')">Lună</button></div>'
+      +'<div class="group" title="Colorează după"><button class="btn" data-cb="status" onclick="setColor(\'status\')">🎨 Stare</button><button class="btn" data-cb="specialty" onclick="setColor(\'specialty\')">🔧 Specialitate</button></div>'
+      +'<button class="btn primary" onclick="openStage()">＋ Etapă</button>'
+      +'<button class="btn" onclick="autoChain()" title="Recalculează datele în lanț, în ordinea curentă, din durate">🔗 Înlănțuie automat</button>'
+      +'<button class="btn" onclick="scrollToday()">📍 Astăzi</button>'
+    +'</div>'
+    +'<div class="layout">'
+      +'<div class="panel"><div class="panel-h">Etape <span style="font-weight:400;color:var(--muted);font-size:.78rem">trage ≡ ca să reordonezi</span></div><ul class="stage-list" id="stage-list"></ul></div>'
+      +'<div class="panel"><div class="panel-h">Cronologie</div><div id="gantt-wrap"><svg id="gantt"></svg></div>'
+        +'<div style="padding:.6rem .9rem" class="legend" id="legend"></div></div>'
+    +'</div>'
+    +'<div class="panel" style="margin-top:1rem"><div class="panel-h">Materiale &amp; consumabile estimate (din grafic)</div><div id="bom" style="padding:.6rem .9rem"></div></div>';
+  renderList(); renderGantt(); renderLegend(); renderBOM();
+  document.querySelectorAll('[data-vm]').forEach(b=>b.classList.toggle('active',b.dataset.vm===STATE.view));
+  document.querySelectorAll('[data-cb]').forEach(b=>b.classList.toggle('active',b.dataset.cb===STATE.colorBy));
+}
+function card(k,v,color){ return '<div class="card"><div class="k">'+esc(k)+'</div><div class="v"'+(color?' style="color:'+color+'"':'')+'>'+v+'</div></div>'; }
+function avgProgress(){ if(!STATE.stages.length) return 0; return Math.round(STATE.stages.reduce((t,s)=>t+(+s.progress||0),0)/STATE.stages.length); }
+
+function renderGantt(){
+  const tasks=ganttTasks();
+  if(!tasks.length){ $('gantt-wrap').innerHTML='<div class="center">Nicio etapă. Apasă „＋ Etapă".</div>'; return; }
+  $('gantt-wrap').innerHTML='<svg id="gantt"></svg>';
+  STATE.gantt=new Gantt('#gantt', tasks, {
+    view_mode: STATE.view, bar_height:24, bar_corner_radius:5, padding:16,
+    custom_popup_html: function(task){ const st=STATE.stages.find(x=>String(x.id)===task.id)||{};
+      return '<div style="padding:.6rem .8rem;min-width:200px"><div style="font-weight:700;margin-bottom:.2rem">'+esc(st.name||task.name)+'</div>'
+        +'<div style="font-size:.78rem;color:#cbd5e1">'+dt(task.start)+' → '+dt(task.end)+'</div>'
+        +(st.executor_name?'<div style="font-size:.78rem">'+(st.executor_kind==='subcontractant'?'🏢 ':'👷 ')+esc(st.executor_name)+'</div>':'')
+        +'<div style="font-size:.78rem">Progres: '+(+st.progress||0)+'% · '+(STATUS[st.status]||st.status||'')+'</div>'
+        +(st.description?'<div style="font-size:.74rem;color:#cbd5e1;margin-top:.3rem">'+esc(st.description)+'</div>':'')+'</div>'; },
+    on_click: function(task){ openStage(task.id); },
+    on_date_change: function(task,start,end){ saveDates(task.id, iso(start), iso(end)); },
+    on_progress_change: function(task,progress){ saveProgress(task.id, Math.round(progress)); }
+  });
+}
+function renderList(){
+  const ul=$('stage-list');
+  ul.innerHTML=STATE.stages.map(st=>{
+    const col = STATE.colorBy==='status' ? (STATUS_COLOR[st.status]||'#94a3b8') : specColor(st.specialty);
+    return '<li class="stage-li" data-id="'+st.id+'">'
+      +'<span class="grip" title="Trage ca să reordonezi">≡</span>'
+      +'<span class="dot" style="background:'+col+'"></span>'
+      +'<span class="nm" onclick="openStage(\''+st.id+'\')">'+esc(st.name)+'<small>'+dt(st.start_date)+' → '+dt(st.end_date)+(st.executor_name?(' · '+esc(st.executor_name)):'')+'</small></span>'
+      +'<span class="pc">'+(+st.progress||0)+'%</span></li>';
+  }).join('');
+  Sortable.create(ul,{ handle:'.grip', animation:150, ghostClass:'sortable-ghost', onEnd:reorder });
+}
+function specColor(sp){ const pal=['#6366f1','#0ea5e9','#14b8a6','#f59e0b','#ec4899','#8b5cf6','#84cc16']; let i=SPEC_ORDER.indexOf(sp||'—'); if(i<0){SPEC_ORDER.push(sp||'—');i=SPEC_ORDER.length-1;} return pal[i%7]; }
+function renderLegend(){
+  let html='';
+  if(STATE.colorBy==='status'){ html=Object.keys(STATUS).map(k=>'<span><i style="background:'+STATUS_COLOR[k]+'"></i>'+STATUS[k]+'</span>').join(''); }
+  else { const specs=[...new Set(STATE.stages.map(s=>s.specialty||'—'))]; html=specs.map(s=>'<span><i style="background:'+specColor(s)+'"></i>'+esc(s)+'</span>').join(''); }
+  $('legend').innerHTML=html+'<span style="margin-left:auto">Trage barele pentru a muta/redimensiona · trage marginea progresului pentru %</span>';
+}
+
+async function reorder(evt){
+  const ids=[...$('stage-list').querySelectorAll('.stage-li')].map(li=>li.dataset.id);
+  STATE.stages.sort((a,b)=>ids.indexOf(String(a.id))-ids.indexOf(String(b.id)));
+  STATE.stages.forEach((s,i)=>s.position=i+1);
+  renderGantt();
+  for(let i=0;i<STATE.stages.length;i++){ await sb.from('site_stages').update({position:i+1}).eq('id',STATE.stages[i].id); }
+  toast('✅ Ordine salvată.');
+}
+function setView(v){ STATE.view=v; if(STATE.gantt){ try{STATE.gantt.change_view_mode(v);}catch(e){renderGantt();} } document.querySelectorAll('[data-vm]').forEach(b=>b.classList.toggle('active',b.dataset.vm===v)); }
+function setColor(c){ STATE.colorBy=c; renderGantt(); renderList(); renderLegend(); document.querySelectorAll('[data-cb]').forEach(b=>b.classList.toggle('active',b.dataset.cb===c)); }
+function scrollToday(){ const w=$('gantt-wrap'); const hl=w.querySelector('.today-highlight'); if(hl){ w.scrollLeft = hl.getBBox().x - w.clientWidth/2; } else toast('Astăzi nu e în interval.'); }
+
+async function saveDates(id,start,end){ const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.start_date=start; st.end_date=end; } await sb.from('site_stages').update({start_date:start,end_date:end}).eq('id',id); renderList(); toast('✅ Date actualizate.'); }
+async function saveProgress(id,p){ p=Math.max(0,Math.min(100,p)); const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.progress=p; if(p>=100&&st.status!=='done'){st.status='done'; await sb.from('site_stages').update({progress:p,status:'done'}).eq('id',id); renderGantt(); } else await sb.from('site_stages').update({progress:p}).eq('id',id); } renderList(); }
+async function autoChain(){
+  let cur = STATE.site.start_date ? new Date(STATE.site.start_date) : new Date();
+  for(const st of STATE.stages){ const d=durationDays(st); const s=new Date(cur); const e=addDays(s,d-1); cur=addDays(e,1);
+    st.start_date=iso(s); st.end_date=iso(e); await sb.from('site_stages').update({start_date:st.start_date,end_date:st.end_date}).eq('id',st.id); }
+  renderGantt(); renderList(); toast('✅ Datele au fost înlănțuite din durate.');
+}
+
+/* ---- BOM ---- */
+function computeBOM(){
+  const agg={};
+  STATE.stages.forEach(st=>{ const n=STATE.norms.find(n=>n.id===st.norm_id); if(!n) return; const q=+st.qty||0; if(!q) return;
+    (STATE.normMat[n.code]||[]).forEach(m=>{ const k=m.material_name+'|'+m.unit+'|'+m.kind; if(!agg[k]) agg[k]={name:m.material_name,unit:m.unit,kind:m.kind,qty:0}; agg[k].qty+=q*(+m.qty_per_unit||0); }); });
+  return Object.values(agg).sort((a,b)=>a.kind===b.kind?a.name.localeCompare(b.name):(a.kind==='material'?-1:1));
+}
+function renderBOM(){
+  const bom=computeBOM();
+  if(!bom.length){ $('bom').innerHTML='<span style="color:var(--muted);font-size:.82rem">Materialele apar când etapele provin din norme cu consum definit.</span>'; return; }
+  const fmt=q=>{ const r=Math.round(q*100)/100; return r%1===0?r:r.toFixed(2); };
+  $('bom').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:.85rem">'+bom.map(b=>'<tr style="border-bottom:1px solid var(--line)"><td style="padding:.35rem 0">'+(b.kind==='consumabil'?'🧴 ':'🧱 ')+esc(b.name)+'</td><td style="text-align:right;white-space:nowrap"><b>'+fmt(b.qty)+'</b> '+esc(b.unit)+'</td></tr>').join('')+'</table>';
+}
+
+/* ---- editare / adăugare etapă ---- */
+function openStage(id){
+  const st = id? STATE.stages.find(x=>String(x.id)===String(id)) : {};
+  const isNew=!id;
+  const normOpts='<option value="">— lucrare liberă —</option>'+STATE.norms.map(n=>'<option value="'+n.id+'" '+(st.norm_id===n.id?'selected':'')+'>'+esc(n.name)+' ('+esc(n.unit)+')</option>').join('');
+  const exOpts='<option value="">— neatribuit —</option>'+STATE.execs.map((x,i)=>'<option value="'+i+'" '+(st.executor_id===x.id?'selected':'')+'>'+(x.kind==='angajat'?'👷':'🏢')+' '+esc(x.name)+(x.specialty?' · '+esc(x.specialty):'')+'</option>').join('');
+  const statusOpts=Object.keys(STATUS).map(k=>'<option value="'+k+'" '+((st.status||'plan')===k?'selected':'')+'>'+STATUS[k]+'</option>').join('');
+  const photos=(st.photo_urls||[]).map((p,i)=>'<a onclick="openPhoto(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary);font-size:.78rem;margin-right:.5rem">🖼️ poza '+(i+1)+'</a>').join('');
+  $('root').insertAdjacentHTML('beforeend',
+    '<div class="overlay" id="ov" onclick="if(event.target===this)closeOv()"><div class="modal">'
+    +'<div class="modal-h"><h3>'+(isNew?'＋ Etapă nouă':'📝 Editează etapa')+'</h3><button class="x" onclick="closeOv()">×</button></div>'
+    +'<div class="modal-b"><div id="ov-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div class="field"><label>Din normă</label><select id="e-norm" onchange="pickNorm(this.value)">'+normOpts+'</select></div>'
+    +'<div class="field"><label>Denumire *</label><input id="e-name" value="'+esc(st.name||'')+'"/></div>'
+    +'<div class="row2"><div class="field"><label>Cantitate</label><input id="e-qty" type="number" step="any" value="'+esc(st.qty!=null?st.qty:'')+'"/></div><div class="field"><label>UM</label><input id="e-unit" value="'+esc(st.unit||'m2')+'"/></div></div>'
+    +'<div class="row2"><div class="field"><label>Început</label><input id="e-start" type="date" value="'+esc(st.start_date||'')+'"/></div><div class="field"><label>Sfârșit</label><input id="e-end" type="date" value="'+esc(st.end_date||'')+'"/></div></div>'
+    +'<div class="row2"><div class="field"><label>Stare</label><select id="e-status">'+statusOpts+'</select></div><div class="field"><label>Progres (%)</label><input id="e-prog" type="number" min="0" max="100" value="'+(+st.progress||0)+'"/></div></div>'
+    +'<div class="field"><label>Executant</label><select id="e-exec">'+exOpts+'</select></div>'
+    +'<div class="field"><label>Descriere (argumentată, compactă)</label><textarea id="e-desc" rows="2">'+esc(st.description||'')+'</textarea></div>'
+    +(photos?'<div class="field"><label>Poze</label><div>'+photos+'</div></div>':'')
+    +'<div class="field"><label>Adaugă poze</label><input id="e-photos" type="file" accept="image/*" capture="environment" multiple/></div>'
+    +'</div><div class="modal-f">'
+    +(isNew?'<span></span>':'<button class="btn" style="color:var(--red);border-color:var(--red)" onclick="delStage(\''+st.id+'\')">🗑 Șterge</button>')
+    +'<div style="display:flex;gap:.5rem"><button class="btn" onclick="closeOv()">Anulează</button><button class="btn primary" id="e-save" onclick="saveStage('+(isNew?'null':'\''+st.id+'\'')+')">Salvează</button></div>'
+    +'</div></div></div>');
+}
+function closeOv(){ const o=$('ov'); if(o) o.remove(); }
+function pickNorm(id){ const n=STATE.norms.find(x=>x.id===id); if(!n) return; if(!$('e-name').value) $('e-name').value=n.name; $('e-unit').value=n.unit||'m2'; }
+async function openPhoto(enc){ const path=decodeURIComponent(enc); const { data,error }=await sb.storage.from('docs').createSignedUrl(path,120); if(error){ toast('Eroare poză'); return; } window.open(data.signedUrl,'_blank'); }
+async function uploadPhotos(input){ const out=[]; const files=(input&&input.files)?[...input.files]:[]; for(const f of files){ const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=STATE.site.id+'/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(up.error) throw up.error; out.push(path); } return out; }
+async function saveStage(id){
+  const name=($('e-name').value||'').trim(); if(!name){ $('ov-msg').textContent='Denumirea e obligatorie.'; return; }
+  const btn=$('e-save'); btn.disabled=true; btn.textContent='Se salvează…';
+  const normId=$('e-norm').value||null; const n=STATE.norms.find(x=>x.id===normId);
+  const x=STATE.execs[+$('e-exec').value]; const qty=+$('e-qty').value||null;
+  let existing=id? (STATE.stages.find(s=>String(s.id)===String(id)).photo_urls||[]) : [];
+  let added=[]; try{ added=await uploadPhotos($('e-photos')); }catch(e){ $('ov-msg').textContent='Eroare poze: '+e.message; btn.disabled=false; btn.textContent='Salvează'; return; }
+  const rec={ name, qty, unit:($('e-unit').value||'').trim()||null, norm_id:normId,
+    start_date:$('e-start').value||null, end_date:$('e-end').value||null,
+    status:$('e-status').value, progress:+$('e-prog').value||0,
+    executor_kind:x?x.kind:null, executor_id:x?x.id:null, executor_name:x?x.name:null,
+    specialty:(n?n.category:(x?x.specialty:null)), description:($('e-desc').value||'').trim()||null,
+    photo_urls:(existing.concat(added)).length?existing.concat(added):null };
+  if(n && qty!=null) rec.est_cost=qty*(+n.unit_price||0);
+  let res;
+  if(id){ res=await sb.from('site_stages').update(rec).eq('id',id); }
+  else { rec.tenant_id=(await sb.from('sites').select('tenant_id').eq('id',STATE.site.id).single()).data.tenant_id; rec.site_id=STATE.site.id; rec.position=STATE.stages.length+1; res=await sb.from('site_stages').insert(rec); }
+  if(res.error){ $('ov-msg').textContent='Eroare: '+res.error.message; btn.disabled=false; btn.textContent='Salvează'; return; }
+  closeOv(); toast('✅ Salvat.'); await loadAll();
+}
+async function delStage(id){ if(!confirm('Ștergi această etapă?')) return; const { error }=await sb.from('site_stages').delete().eq('id',id); if(error){ toast('Eroare'); return; } closeOv(); toast('Etapă ștearsă.'); await loadAll(); }
+
+boot();
+</script>
+</body>
+</html>

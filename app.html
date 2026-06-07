@@ -1427,7 +1427,8 @@ function renderList(){
   const body=data.map(r=>'<tr>'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
       +'<td><div class="rowact">'
       +(m.invitable&&ADMIN_ROLES.includes(state.role)?'<button class="iconbtn" title="Dă acces (invitație prin link)" onclick="inviteEntity(\''+m.invitable+'\',\''+r.id+'\')">🔑</button>':'')
-      +(m.scheduler?'<button class="iconbtn" title="Grafic lucrări & marjă live" onclick="openSiteDetail(\''+r.id+'\')">📅</button>':'')
+      +(m.scheduler?'<button class="iconbtn" title="Grafic lucrări (filă nouă) — interactiv, cu reordonare prin glisare" onclick="window.open(\'grafic.html?site=\'+\''+r.id+'\',\'_blank\')">📅</button>':'')
+      +(m.scheduler?'<button class="iconbtn" title="Rezumat rapid (marjă & etape)" onclick="openSiteDetail(\''+r.id+'\')">📊</button>':'')
       +(m.teamable?'<button class="iconbtn" title="Acces / echipă" onclick="siteTeam(\''+r.id+'\')">👥</button>':'')
       +(m.portalable?'<button class="iconbtn" title="Link portal client" onclick="genPortal(\''+r.id+'\')">🔗</button>':'')
       +(m.toSite?'<button class="iconbtn" title="Creează șantier din ofertă" onclick="estimateToSite(\''+r.id+'\')">🏗️</button>':'')
@@ -1705,7 +1706,8 @@ async function openSiteDetail(siteId){
     +(stages.length? '<div style="margin-top:1rem">'+(bomTable(stages.map(st=>({norm_id:st.norm_id,qty:st.qty})),'Materiale &amp; consumabile estimate (din grafic)')||'<div style="color:var(--muted);font-size:.8rem">Materialele estimate apar când lucrările provin din norme cu consum definit.</div>')+'</div>' : '')
     +'</div>'
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">Închide</button>'
-    +'<button class="btn-primary" onclick="closeModal();editRecord(\'santiere\',\''+siteId+'\')">✏️ Editează datele șantierului</button></div></div></div>';
+    +'<div style="display:flex;gap:.5rem"><button class="btn-ghost" onclick="window.open(\'grafic.html?site=\'+\''+siteId+'\',\'_blank\')">📅 Grafic complet ↗</button>'
+    +'<button class="btn-primary" onclick="closeModal();editRecord(\'santiere\',\''+siteId+'\')">✏️ Editează datele șantierului</button></div></div></div></div>';
 }
 async function delStage(id,siteId){ if(!confirm('Ștergi această etapă din grafic?')) return; const { error }=await sb.from('site_stages').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Etapă ștearsă.'); openSiteDetail(siteId); }
 async function addStagePrompt(siteId,pos){
