@@ -129,6 +129,7 @@ async function boot(){
   if(!session){ $('root').innerHTML='<div class="center">🔒 Trebuie să fii autentificat.<br><br><a class="btn primary" href="app.html">Deschide aplicația și loghează-te</a><br><br><small>Apoi redeschide acest link.</small></div>'; return; }
   const mem = await sb.from('memberships').select('role').eq('active',true).limit(1).maybeSingle();
   STATE.role = mem.data ? mem.data.role : null;
+  STATE.canEdit = ['owner','admin','manager'].includes(STATE.role);
   STATE.siteId = param('site');
   if(!STATE.siteId){ await pickSite(); return; }
   await loadAll();
@@ -259,12 +260,13 @@ function render(){
       +'<div class="group" title="Zoom"><button class="btn" data-vm="Quarter Day" onclick="setView(\'Quarter Day\')">6h</button><button class="btn" data-vm="Day" onclick="setView(\'Day\')">Zi</button><button class="btn" data-vm="Week" onclick="setView(\'Week\')">Săpt.</button><button class="btn" data-vm="Month" onclick="setView(\'Month\')">Lună</button></div>'
       +'<div class="group" title="Colorează după"><button class="btn" data-cb="status" onclick="setColor(\'status\')">🎨 Stare</button><button class="btn" data-cb="specialty" onclick="setColor(\'specialty\')">🔧 Specialitate</button></div>'
       +'<button class="btn '+(STATE.criticalOn?'active':'')+'" onclick="toggleCritical()" title="Evidențiază lanțul de etape care determină data de finalizare">🔴 Drum critic</button>'
-      +'<button class="btn primary" onclick="openStage()">＋ Etapă</button>'
-      +'<button class="btn" onclick="openStage(null,true)" title="Adaugă un jalon / punct de control (zi unică)">◆ Jalon</button>'
-      +'<button class="btn" onclick="autoChain()" title="Recalculează datele în lanț din durate (respectă ordinea)">🔗 Înlănțuie</button>'
-      +'<button class="btn" onclick="saveBaseline()" title="Salvează planul actual ca referință; abaterile se vor afișa la fiecare etapă">📌 Salvează planul</button>'
+      +(STATE.canEdit?'<button class="btn primary" onclick="openStage()">＋ Etapă</button>'
+        +'<button class="btn" onclick="openStage(null,true)" title="Adaugă un jalon / punct de control (zi unică)">◆ Jalon</button>'
+        +'<button class="btn" onclick="autoChain()" title="Recalculează datele în lanț din durate (respectă ordinea)">🔗 Înlănțuie</button>'
+        +'<button class="btn" onclick="saveBaseline()" title="Salvează planul actual ca referință; abaterile se vor afișa la fiecare etapă">📌 Salvează planul</button>':'')
       +'<button class="btn" onclick="scrollToday()">📍 Astăzi</button>'
       +'<button class="btn" onclick="exportPNG()" title="Descarcă graficul ca imagine">🖼️ Export</button>'
+      +(STATE.canEdit?'':'<span style="font-size:.78rem;color:var(--muted);align-self:center">👁️ Doar vizualizare</span>')
     +'</div>'
     +'<div class="filters">'
       +'<input id="f-q" placeholder="🔍 caută etapă…" value="'+esc(STATE.filter.q)+'" oninput="STATE.filter.q=this.value.toLowerCase();refresh()" style="min-width:160px"/>'
@@ -340,12 +342,12 @@ function renderList(){
     const ms = st.is_milestone ? '<span class="badge ms">◆ jalon</span>' : '';
     const late = autoDelayed(st) ? '<span class="badge late">⚠ întârziat</span>' : '';
     return '<li class="stage-li" data-id="'+st.id+'">'
-      +'<span class="grip" title="Trage ca să reordonezi">≡</span>'
+      +(STATE.canEdit?'<span class="grip" title="Trage ca să reordonezi">≡</span>':'<span style="width:6px"></span>')
       +'<span class="dot" style="background:'+(st.is_milestone?'#0f1c33':col)+'"></span>'
       +'<span class="nm" onclick="openStage(\''+st.id+'\')">'+(st.is_milestone?'◆ ':'')+esc(st.name)+ms+crit+late+devBadge(st)+'<small>'+dt(st.start_date)+(st.is_milestone?'':' → '+dt(st.end_date))+(st.executor_name?(' · '+esc(st.executor_name)):'')+'</small></span>'
       +'<span class="pc">'+(st.is_milestone?'':(+st.progress||0)+'%')+'</span></li>';
   }).join('');
-  Sortable.create(ul,{ handle:'.grip', animation:150, ghostClass:'sortable-ghost', onEnd:reorder });
+  if(STATE.canEdit) Sortable.create(ul,{ handle:'.grip', animation:150, ghostClass:'sortable-ghost', onEnd:reorder });
 }
 function specColor(sp){ const pal=['#6366f1','#0ea5e9','#14b8a6','#f59e0b','#ec4899','#8b5cf6','#84cc16']; let i=SPEC_ORDER.indexOf(sp||'—'); if(i<0){SPEC_ORDER.push(sp||'—');i=SPEC_ORDER.length-1;} return pal[i%7]; }
 function renderLegend(){
@@ -369,6 +371,7 @@ function setColor(c){ STATE.colorBy=c; renderGantt(); renderList(); renderLegend
 function scrollToday(){ const w=$('gantt-wrap'); const hl=w.querySelector('.today-highlight'); if(hl){ w.scrollLeft = hl.getBBox().x - w.clientWidth/2; } else toast('Astăzi nu e în interval.'); }
 function toggleCritical(){ STATE.criticalOn=!STATE.criticalOn; render(); toast(STATE.criticalOn?'🔴 Drum critic activat':'Drum critic dezactivat'); }
 async function saveBaseline(){
+  if(!STATE.canEdit){ toast('👁️ Doar vizualizare'); return; }
   if(!confirm('Salvezi planul actual ca referință? Abaterile viitoare se vor măsura față de aceste date.')) return;
   for(const st of STATE.stages){ if(st.start_date&&st.end_date){ st.baseline_start=st.start_date; st.baseline_end=st.end_date; await sb.from('site_stages').update({baseline_start:st.start_date,baseline_end:st.end_date}).eq('id',st.id); } }
   toast('📌 Plan de referință salvat.'); render();
@@ -390,10 +393,11 @@ function exportPNG(){
   img.src=url;
 }
 
-async function saveDates(id,start,end){ const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.start_date=start; st.end_date=end; if(st.is_milestone) st.end_date=start; } await sb.from('site_stages').update({start_date:st?st.start_date:start,end_date:st?st.end_date:end}).eq('id',id);
+async function saveDates(id,start,end){ if(!STATE.canEdit){ renderGantt(); toast('👁️ Doar vizualizare'); return; } const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.start_date=start; st.end_date=end; if(st.is_milestone) st.end_date=start; } await sb.from('site_stages').update({start_date:st?st.start_date:start,end_date:st?st.end_date:end}).eq('id',id);
   const moved=await enforceDeps(); renderGantt(); renderList(); toast(moved?('✅ Mutat. '+moved+' etap'+(moved===1?'ă dependentă mutată':'e dependente mutate')):'✅ Date actualizate.'); }
-async function saveProgress(id,p){ p=Math.max(0,Math.min(100,p)); const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.progress=p; if(p>=100&&st.status!=='done'){st.status='done'; await sb.from('site_stages').update({progress:p,status:'done'}).eq('id',id); renderGantt(); } else await sb.from('site_stages').update({progress:p}).eq('id',id); } renderList(); }
+async function saveProgress(id,p){ if(!STATE.canEdit){ renderGantt(); return; } p=Math.max(0,Math.min(100,p)); const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.progress=p; if(p>=100&&st.status!=='done'){st.status='done'; await sb.from('site_stages').update({progress:p,status:'done'}).eq('id',id); renderGantt(); } else await sb.from('site_stages').update({progress:p}).eq('id',id); } renderList(); }
 async function autoChain(){
+  if(!STATE.canEdit){ toast('👁️ Doar vizualizare'); return; }
   let cur = STATE.site.start_date ? new Date(STATE.site.start_date) : new Date();
   for(const st of STATE.stages){ const d=durationDays(st); const s=new Date(cur); const e=addDays(s,d-1); cur=addDays(e,1);
     st.start_date=iso(s); st.end_date=iso(e); await sb.from('site_stages').update({start_date:st.start_date,end_date:st.end_date}).eq('id',st.id); }
@@ -442,12 +446,14 @@ function openStage(id, asMilestone){
     +(isNew?'<span></span>':'<button class="btn" style="color:var(--red);border-color:var(--red)" onclick="delStage(\''+st.id+'\')">🗑 Șterge</button>')
     +'<div style="display:flex;gap:.5rem"><button class="btn" onclick="closeOv()">Anulează</button><button class="btn primary" id="e-save" onclick="saveStage('+(isNew?'null':'\''+st.id+'\'')+')">Salvează</button></div>'
     +'</div></div></div>');
+  if(!STATE.canEdit){ const ov=$('ov'); ov.querySelectorAll('input,select,textarea').forEach(el=>el.disabled=true); const f=ov.querySelector('.modal-f'); if(f) f.innerHTML='<span></span><button class="btn" onclick="closeOv()">Închide</button>'; const h=ov.querySelector('.modal-h h3'); if(h) h.textContent='👁️ '+(st.name||'Detalii etapă'); }
 }
 function closeOv(){ const o=$('ov'); if(o) o.remove(); }
 function pickNorm(id){ const n=STATE.norms.find(x=>x.id===id); if(!n) return; if(!$('e-name').value) $('e-name').value=n.name; $('e-unit').value=n.unit||'m2'; }
 async function openPhoto(enc){ const path=decodeURIComponent(enc); const { data,error }=await sb.storage.from('docs').createSignedUrl(path,120); if(error){ toast('Eroare poză'); return; } window.open(data.signedUrl,'_blank'); }
 async function uploadPhotos(input){ const out=[]; const files=(input&&input.files)?[...input.files]:[]; for(const f of files){ const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=STATE.site.id+'/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(up.error) throw up.error; out.push(path); } return out; }
 async function saveStage(id){
+  if(!STATE.canEdit){ closeOv(); toast('👁️ Doar vizualizare'); return; }
   const name=($('e-name').value||'').trim(); if(!name){ $('ov-msg').textContent='Denumirea e obligatorie.'; return; }
   const btn=$('e-save'); btn.disabled=true; btn.textContent='Se salvează…';
   const normId=$('e-norm').value||null; const n=STATE.norms.find(x=>x.id===normId);
@@ -470,7 +476,7 @@ async function saveStage(id){
   if(res.error){ $('ov-msg').textContent='Eroare: '+res.error.message; btn.disabled=false; btn.textContent='Salvează'; return; }
   closeOv(); toast('✅ Salvat.'); await loadAll(); const m=await enforceDeps(); if(m){ renderGantt(); renderList(); }
 }
-async function delStage(id){ if(!confirm('Ștergi această etapă?')) return; const { error }=await sb.from('site_stages').delete().eq('id',id); if(error){ toast('Eroare'); return; } closeOv(); toast('Etapă ștearsă.'); await loadAll(); }
+async function delStage(id){ if(!STATE.canEdit){ toast('👁️ Doar vizualizare'); return; } if(!confirm('Ștergi această etapă?')) return; const { error }=await sb.from('site_stages').delete().eq('id',id); if(error){ toast('Eroare'); return; } closeOv(); toast('Etapă ștearsă.'); await loadAll(); }
 
 boot();
 </script>

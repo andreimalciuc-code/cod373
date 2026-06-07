@@ -393,7 +393,8 @@ async function openSite(id){
   const body='<div class="card" style="margin:0 0 .8rem"><div class="row"><div class="grow"><div class="s">Progres lucrare</div></div><b>'+(s.progress||0)+'%</b></div><div class="prog" style="margin-top:.4rem"><span style="width:'+(s.progress||0)+'%"></span></div>'
     +(s.address?'<div class="s" style="margin-top:.6rem">📍 '+esc(s.address)+'</div>':'')+(s.deadline?'<div class="s">📅 Termen: '+esc(s.deadline)+'</div>':'')
     +(openDef?'<div class="s" style="margin-top:.4rem">🔧 '+openDef+' defecte deschise</div>':'')+'</div>'
-    +'<h4 style="margin:.6rem 0 .3rem">'+(S.role==='client'?'📅 Graficul lucrărilor':'Etape')+'</h4>'+stagesHtml
+    +'<h4 style="margin:.6rem 0 .3rem">📅 Graficul lucrărilor</h4>'+stagesHtml
+    +(S.role==='client'?'':'<button class="btn btn-soft" style="margin-top:.8rem;width:100%" onclick="window.open(\'grafic.html?site='+id+'\',\'_blank\')">📅 Deschide graficul complet'+(['manager','owner','admin'].includes(S.role)?' (editare)':' (vizualizare)')+'</button>')
     +(S.role==='client'?'':'<h4 style="margin:1rem 0 .3rem">Stoc pe șantier</h4>'+stockHtml)
     +(S.role==='client'
         ? '<button class="btn" style="margin-top:1.2rem" onclick="closeSheet();S.psite=\''+id+'\';goV(\'poze\')">📷 Vezi pozele lucrării</button>'
