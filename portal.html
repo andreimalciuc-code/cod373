@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cod373 — Portal client</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#f4f6fb;--surface:#fff;--ink:#0f1c33;--muted:#6b7793;--line:#e5e9f2;--primary:#2f6bff;--accent:#ff8a3d;--green:#16b364;--green-soft:#e3f8ee;--amber-soft:#fdf2dd;--blue-soft:#e8f0ff}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:680px;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+  .top{display:flex;align-items:center;gap:.6rem;padding:.4rem 0 1.4rem}
+  .lg{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.68rem}
+  .nm{font-weight:800;font-size:1.15rem}.nm span{color:var(--accent)}
+  .hero{background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border-radius:18px;padding:1.6rem;margin-bottom:1.2rem}
+  .hero .lab{font-size:.8rem;color:#9fb0d4;text-transform:uppercase;letter-spacing:.05em}
+  .hero h1{font-size:1.5rem;margin:.3rem 0 .2rem}
+  .hero .addr{color:#cdd7 ;color:#aab8d6;font-size:.9rem}
+  .hero .pwrap{margin-top:1.2rem}
+  .hero .ptrack{height:12px;background:rgba(255,255,255,.15);border-radius:10px;overflow:hidden}
+  .hero .pfill{height:100%;background:linear-gradient(90deg,var(--accent),#ffb27a);border-radius:10px;transition:width .6s}
+  .hero .pmeta{display:flex;justify-content:space-between;margin-top:.5rem;font-size:.85rem;color:#cdd9f2}
+  .pill{display:inline-block;padding:.2rem .7rem;border-radius:20px;font-size:.78rem;font-weight:600;background:rgba(255,255,255,.16);color:#fff}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:1.2rem;margin-bottom:1rem}
+  .card h3{font-size:1rem;margin-bottom:.9rem}
+  .stage{display:flex;align-items:center;gap:.8rem;padding:.7rem 0;border-bottom:1px solid var(--line)}
+  .stage:last-child{border-bottom:none}
+  .dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
+  .dot.done{background:var(--green-soft);color:var(--green)}.dot.active{background:var(--blue-soft);color:var(--primary)}.dot.plan{background:#eef0f5;color:var(--muted)}.dot.delayed{background:var(--amber-soft);color:#92400e}
+  .stage .g{flex:1}.stage .t{font-weight:600}.stage .s{font-size:.8rem;color:var(--muted)}
+  .stage .pc{font-weight:700;color:var(--primary)}
+  .kv{display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line);font-size:.92rem}
+  .kv:last-child{border-bottom:none}.kv .k{color:var(--muted)}
+  .center{text-align:center;padding:4rem 1.5rem;color:var(--muted)}
+  .center .ei{font-size:3rem;margin-bottom:1rem}
+  .foot{text-align:center;color:var(--muted);font-size:.8rem;margin-top:1.5rem}
+  .loading{text-align:center;padding:4rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div class="lg">C373</div><div class="nm">Cod<span>373</span> · Portal client</div></div>
+  <div id="content"><div class="loading">Se încarcă…</div></div>
+  <div class="foot">Pagină generată de Cod373 — vizualizare pentru client, fără cost.</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
+const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function money(n){return n==null?'':Number(n).toLocaleString('ro-RO')+' MDL';}
+const SL={planned:['Planificat'],active:['În execuție'],paused:['În pauză'],done:['Finalizat'],cancelled:['Anulat']};
+const STG={plan:'plan',active:'active',done:'done',delayed:'delayed'};
+function center(ic,msg){document.getElementById('content').innerHTML='<div class="center"><div class="ei">'+ic+'</div>'+esc(msg)+'</div>';}
+
+(async function(){
+  const token=new URLSearchParams(location.search).get('token');
+  if(!token){ center('🔒','Link invalid. Cere firmei un link valid de acces.'); return; }
+  const { data, error }=await sb.rpc('portal_data',{p_token:token});
+  if(error){ center('⚠️','A apărut o eroare. Încearcă din nou mai târziu.'); return; }
+  if(!data || data.error){
+    const m={invalid:'Link invalid sau revocat.',expired:'Linkul a expirat.',nosite:'Proiectul nu mai este disponibil.'}[data&&data.error]||'Link indisponibil.';
+    center('🔒',m); return;
+  }
+  const s=data.site, stages=data.stages||[];
+  let stagesHtml='';
+  if(stages.length){
+    stagesHtml='<div class="card"><h3>Etapele lucrării</h3>'+stages.map(st=>{
+      const cls=STG[st.status]||'plan'; const ic=st.status==='done'?'✓':st.status==='active'?'●':st.status==='delayed'?'!':'○';
+      return '<div class="stage"><div class="dot '+cls+'">'+ic+'</div><div class="g"><div class="t">'+esc(st.name)+'</div>'
+        +'<div class="s">'+(st.start_date?esc(st.start_date):'')+(st.end_date?(' → '+esc(st.end_date)):'')+'</div></div>'
+        +'<div class="pc">'+(st.progress||0)+'%</div></div>';
+    }).join('')+'</div>';
+  }
+  let costHtml='';
+  if(data.show_costs && s.budget!=null){
+    costHtml='<div class="card"><h3>Detalii financiare</h3><div class="kv"><span class="k">Buget contractat</span><b>'+money(s.budget)+'</b></div></div>';
+  }
+  document.getElementById('content').innerHTML=
+    '<div class="hero"><div class="lab">Proiectul dumneavoastră</div><h1>'+esc(s.name)+'</h1>'
+    +(s.address?'<div class="addr">📍 '+esc(s.address)+'</div>':'')
+    +'<div class="pwrap"><div class="ptrack"><div class="pfill" style="width:'+(s.progress||0)+'%"></div></div>'
+    +'<div class="pmeta"><span>Progres lucrări</span><span><b>'+(s.progress||0)+'%</b></span></div></div>'
+    +'<div style="margin-top:1rem"><span class="pill">'+esc((SL[s.status]||['—'])[0])+'</span>'
+    +(s.deadline?' <span class="pill">Termen: '+esc(s.deadline)+'</span>':'')+'</div></div>'
+    +stagesHtml+costHtml
+    +'<div class="card" style="background:var(--blue-soft);border:none"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
+})();
+</script>
+</body>
+</html>

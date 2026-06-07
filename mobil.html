@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+<title>Cod373 — Teren</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0f1c33" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#f4f6fb;--surface:#fff;--ink:#0f1c33;--muted:#6b7793;--line:#e5e9f2;
+        --primary:#2f6bff;--accent:#ff8a3d;--green:#16b364;--green-soft:#e3f8ee;--red:#f04438;--red-soft:#fde7e5;--amber:#f7a325;--amber-soft:#fdf2dd;--blue-soft:#e8f0ff}
+  html,body{height:100%}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+  button,input,select{font-family:inherit}
+  .hidden{display:none!important}
+
+  /* phone frame on desktop, full-bleed on phone */
+  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;position:relative}
+
+  /* LOGIN */
+  .login{flex:1;display:flex;flex-direction:column;justify-content:center;padding:2rem 1.5rem;background:linear-gradient(160deg,#0f1c33,#1a2b4a);min-height:100vh}
+  .login .logo{display:flex;align-items:center;gap:.6rem;margin-bottom:2rem;justify-content:center}
+  .login .lg{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.8rem}
+  .login .nm{font-weight:800;font-size:1.5rem;color:#fff}.login .nm span{color:var(--accent)}
+  .login .card{background:#fff;border-radius:18px;padding:1.6rem}
+  .login h2{font-size:1.15rem;margin-bottom:.3rem}.login .sub{color:var(--muted);font-size:.85rem;margin-bottom:1.2rem}
+  .fld{margin-bottom:.9rem}
+  .fld label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:.3rem}
+  .fld input,.fld select{width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;font-size:1rem;outline:none}
+  .fld input:focus,.fld select:focus{border-color:var(--primary)}
+  .btn{width:100%;background:var(--primary);color:#fff;border:none;padding:.95rem;border-radius:12px;font-weight:700;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.4rem}
+  .btn:active{transform:scale(.99)}.btn:disabled{opacity:.6}
+  .btn-soft{background:var(--blue-soft);color:var(--primary)}
+  .btn-line{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .msg{padding:.7rem .9rem;border-radius:10px;font-size:.82rem;margin-bottom:.8rem}
+  .msg.err{background:var(--red-soft);color:#b42318}.msg.ok{background:var(--green-soft);color:#067647}
+  .login .alt{margin-top:1rem;text-align:center;font-size:.85rem;color:var(--muted)}
+  .login .alt a{color:var(--primary);font-weight:600;cursor:pointer}
+  .cfg-warn{background:var(--amber-soft);color:#92400e;padding:.7rem .9rem;border-radius:10px;font-size:.78rem;margin-bottom:1rem}
+
+  /* APP HEADER */
+  .top{background:var(--surface);padding:1rem 1.1rem;display:flex;align-items:center;gap:.7rem;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  .av{width:42px;height:42px;border-radius:12px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0}
+  .who{flex:1;min-width:0}
+  .who .n{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who .r{font-size:.76rem;color:var(--muted)}
+  .top .out{background:none;border:1px solid var(--line);border-radius:10px;padding:.45rem .7rem;font-size:.78rem;font-weight:600;color:var(--muted);cursor:pointer}
+
+  /* role switch */
+  .roles{display:flex;gap:.4rem;padding:.7rem 1.1rem;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto}
+  .roles button{flex:1;white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:10px;padding:.5rem .6rem;font-size:.82rem;font-weight:600;color:var(--muted);cursor:pointer}
+  .roles button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+  /* SCREEN */
+  .screen{flex:1;padding:1rem 1.1rem 5.5rem;overflow-y:auto}
+  .scr-title{font-size:1.05rem;font-weight:800;margin:.2rem 0 1rem}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:1rem;margin-bottom:.8rem}
+  .card .t{font-weight:700;font-size:.98rem}
+  .card .s{color:var(--muted);font-size:.82rem;margin-top:.15rem}
+  .row{display:flex;align-items:center;gap:.7rem}
+  .row .grow{flex:1;min-width:0}
+  .pill{display:inline-block;padding:.16rem .55rem;border-radius:20px;font-size:.72rem;font-weight:600}
+  .pill.green{background:var(--green-soft);color:#067647}.pill.blue{background:var(--blue-soft);color:#1d4ed8}
+  .pill.amber{background:var(--amber-soft);color:#92400e}.pill.red{background:var(--red-soft);color:#b42318}.pill.grey{background:#eef0f5;color:#475467}
+  .prog{height:8px;background:var(--line);border-radius:10px;overflow:hidden;margin-top:.6rem}
+  .prog span{display:block;height:100%;background:var(--green)}
+  .empty{text-align:center;color:var(--muted);padding:2.5rem 1rem}.empty .ei{font-size:2.2rem;margin-bottom:.5rem}
+  .loading{text-align:center;color:var(--muted);padding:2rem}
+  .mini-btn{border:none;border-radius:10px;padding:.55rem .8rem;font-weight:700;font-size:.82rem;cursor:pointer}
+  .mini-btn.go{background:var(--green);color:#fff}.mini-btn.pr{background:var(--primary);color:#fff}.mini-btn.gh{background:#fff;border:1px solid var(--line);color:var(--ink)}
+
+  /* BOTTOM NAV */
+  .bottom{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);display:flex;max-width:460px;margin:0 auto;z-index:20}
+  .bottom button{flex:1;background:none;border:none;padding:.6rem 0 .75rem;display:flex;flex-direction:column;align-items:center;gap:.2rem;color:var(--muted);font-size:.68rem;font-weight:600;cursor:pointer}
+  .bottom button .bi{font-size:1.3rem}
+  .bottom button.on{color:var(--primary)}
+
+  /* SHEET (bottom modal) */
+  .sheet-bg{position:fixed;inset:0;background:rgba(15,28,51,.5);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+  .sheet{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:460px;padding:1.2rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto}
+  .sheet h3{font-size:1.05rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center}
+  .sheet h3 .x{background:none;border:none;font-size:1.4rem;color:var(--muted)}
+
+  .chat-list{display:flex;flex-direction:column;gap:.5rem;padding-bottom:.5rem}
+  .bub{max-width:80%;padding:.55rem .8rem;border-radius:14px;font-size:.9rem;line-height:1.35}
+  .bub .bn{font-size:.72rem;font-weight:700;color:var(--primary);margin-bottom:.15rem}
+  .bub.them{background:#fff;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+  .bub.me{background:var(--primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+  .bub .bt{font-size:.65rem;opacity:.6;margin-top:.2rem;text-align:right}
+  .chat-bar{display:flex;gap:.5rem;position:sticky;bottom:0;background:var(--bg);padding:.6rem 0 .2rem}
+  .chat-bar input{flex:1;padding:.8rem .9rem;border:1px solid var(--line);border-radius:14px;font-size:1rem;outline:none}
+  #toast{position:fixed;bottom:5rem;left:50%;transform:translateX(-50%) translateY(10px);background:var(--ink);color:#fff;padding:.8rem 1.1rem;border-radius:12px;font-size:.85rem;opacity:0;transition:all .25s;z-index:60;max-width:90%;text-align:center;pointer-events:none}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- LOGIN -->
+  <div id="login" class="login">
+    <div class="logo"><div class="lg">C373</div><div class="nm">Cod<span>373</span></div></div>
+    <div class="card">
+      <div id="cfg-warn" class="cfg-warn hidden"></div>
+      <h2>Aplicația de teren</h2>
+      <p class="sub">Intră cu contul tău Cod373.</p>
+      <div id="lmsg"></div>
+      <div class="fld"><label>Email</label><input id="l-email" type="email" autocomplete="email" placeholder="nume@firma.md" /></div>
+      <div class="fld"><label>Parolă</label><input id="l-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></div>
+      <button class="btn" id="l-btn" onclick="doLogin()">Intră</button>
+      <p class="alt">Administrare pe calculator? <a onclick="location.href='app.html'">Deschide panoul</a></p>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app" class="hidden">
+    <div class="top">
+      <div class="av" id="av" onclick="openProfile()" style="cursor:pointer">U</div>
+      <div class="who"><div class="n" id="who-n">Utilizator</div><div class="r" id="who-r">—</div></div>
+      <button class="out" id="notif-btn" onclick="openNotif()" title="Notificări" style="margin-right:.3rem;position:relative">🔔<span id="notif-badge" style="position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:.6rem;font-weight:700;padding:0 .28rem;display:none"></span></button>
+      <button class="out" onclick="openChat()" title="Chat" style="margin-right:.3rem">💬</button>
+      <button class="out" onclick="doLogout()">Ieși</button>
+    </div>
+    <div class="roles" id="roles">
+      <button data-role="worker" class="on" onclick="setRole('worker')">👷 Muncitor</button>
+      <button data-role="driver" onclick="setRole('driver')">🚚 Șofer</button>
+      <button data-role="manager" onclick="setRole('manager')">📋 Responsabil</button>
+    </div>
+    <div class="screen" id="screen"></div>
+    <div class="bottom" id="bottom"></div>
+  </div>
+
+</div>
+<div id="sheet-mount"></div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
+const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
+let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
+function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
+function $(id){return document.getElementById(id);}
+function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function money(n){return n==null||n===''?'—':Number(n).toLocaleString('ro-RO')+' MDL';}
+function toast(m){const t=$('toast');t.innerHTML=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),3500);}
+function lmsg(t,k='err'){$('lmsg').innerHTML=t?'<div class="msg '+k+'">'+esc(t)+'</div>':'';}
+function today(){return new Date().toISOString().slice(0,10);}
+async function nameMap(table,col){ const {data}=await sb.from(table).select('id,'+col); const m={}; (data||[]).forEach(r=>m[r.id]=r[col]); return m; }
+function pillSite(s){const m={planned:['Planificat','blue'],active:['Activ','green'],paused:['Pauză','amber'],done:['Gata','grey'],cancelled:['Anulat','grey']}[s]||['—','grey'];return '<span class="pill '+m[1]+'">'+m[0]+'</span>';}
+
+/* AUTH */
+async function doLogin(){
+  const email=$('l-email').value.trim(),pass=$('l-pass').value;
+  if(!email||!pass){lmsg('Completează email și parolă.');return;}
+  $('l-btn').disabled=true;lmsg('');
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  $('l-btn').disabled=false;
+  if(error){lmsg(error.message);return;}
+  await boot();
+}
+async function doLogout(){await sb.auth.signOut();location.reload();}
+
+async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
+  S.session=session;
+  const {data:mem}=await sb.from('memberships').select('tenant_id,role,tenants(name)').eq('active',true).limit(1).maybeSingle();
+  if(!mem){lmsg('Contul tău nu e legat de nicio firmă. Cere administratorului să te adauge.','err');await sb.auth.signOut();$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
+  S.tenant=mem.tenant_id; S.memberRole=mem.role;
+  const email=session.user.email||'';
+  S.email=email; S.uname=email;
+  try{ const {data:prof}=await sb.from('profiles').select('full_name,phone').eq('id',session.user.id).maybeSingle(); if(prof&&prof.full_name){ S.uname=prof.full_name; } S.profile=prof||{}; }catch(e){}
+  $('av').textContent=((S.uname||email)[0]||'U').toUpperCase();
+  $('who-n').textContent=S.uname||email;
+  $('who-r').textContent=(mem.tenants?mem.tenants.name:'Firma');
+  // default role: workers/drivers locked to their role; owner/admin/manager can switch
+  if(['worker','driver','client'].includes(mem.role)){ S.role=mem.role; $('roles').classList.add('hidden'); }
+  else { S.role='worker'; }
+  document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
+  $('login').classList.add('hidden');$('app').classList.remove('hidden');
+  render();
+}
+function setRole(r){ S.role=r; S.view='acasa'; document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===r)); render(); }
+
+/* NAV per role */
+const NAV={
+  worker:[['acasa','🏠','Acasă'],['comanda','🛒','Comandă'],['pontaj','⏱️','Pontaj'],['poze','📷','Poze'],['defecte','🔧','Defecte']],
+  driver:[['acasa','🏠','Acasă'],['livrari','🚚','Livrări']],
+  manager:[['acasa','🏠','Acasă'],['santiere','🏗️','Șantiere'],['comanda','🛒','Comandă'],['poze','📷','Poze']],
+  client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['poze','📷','Poze']]
+};
+function render(){
+  const nav=NAV[S.role]||NAV.worker;
+  if(!nav.find(n=>n[0]===S.view)) S.view=nav[0][0];
+  $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
+  const fn={acasa:scrAcasa,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
+  $('screen').scrollTop=0; fn(); loadNotifCount();
+}
+function goV(v){S.view=v;render();}
+
+/* ACASA */
+async function myClientSiteIds(){
+  const {data}=await sb.from('site_team').select('site_id,user_id');
+  return (data||[]).filter(r=>r.user_id===S.session.user.id).map(r=>r.site_id);
+}
+async function scrClientHome(){
+  $('screen').innerHTML='<div class="scr-title">Proiectele mele</div>'
+    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">Bun venit! Aici vezi progresul lucrărilor tale.</div></div>'
+    +'<div id="ch" style="margin-top:1rem"><div class="loading">Se încarcă…</div></div>';
+  const ids=await myClientSiteIds();
+  if(!ids.length){ $('ch').innerHTML='<div class="empty"><div class="ei">📁</div>Nu ai încă proiecte atribuite. Firma îți va acorda acces în curând.</div>'; return; }
+  const {data}=await sb.from('sites').select('id,name,address,status,progress,deadline');
+  S.sites=data||[]; const mine=(data||[]).filter(s=>ids.includes(s.id));
+  $('ch').innerHTML=mine.map(s=>'<div class="card" onclick="openSite(\''+s.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+' ›</div><div class="s">'+esc(s.address||'')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div><div class="s" style="margin-top:.4rem">Progres: '+(s.progress||0)+'%</div></div>').join('')||'<div class="empty">Niciun proiect.</div>';
+}
+/* CLIENT — Oferte (devize) */
+async function scrClientOferte(){
+  $('screen').innerHTML='<div class="scr-title">📄 Ofertele mele</div><div id="co"><div class="loading">Se încarcă…</div></div>';
+  const ids=await myClientSiteIds();
+  const {data}=await sb.from('estimates').select('id,number,total,status,valid_until,site_id');
+  const mine=(data||[]).filter(e=>ids.includes(e.site_id)).sort((a,b)=>(a.number<b.number?1:-1));
+  if(!mine.length){ $('co').innerHTML='<div class="empty"><div class="ei">📄</div>Nu ai oferte încă.</div>'; return; }
+  const st={draft:['Ciornă','grey'],sent:['Primită','blue'],accepted:['Acceptată','green'],rejected:['Respinsă','red']};
+  $('co').innerHTML=mine.map(e=>{ const s=st[e.status]||['—','grey'];
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">Ofertă '+esc(e.number||'—')+'</div><div class="s">'+(e.valid_until?'Valabilă până '+esc(e.valid_until):'')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div><div class="row" style="margin-top:.5rem"><div class="grow s">Total</div><b>'+money(e.total)+'</b></div>'
+    +(e.status==='sent'?'<div class="row" style="gap:.5rem;margin-top:.6rem"><button class="mini-btn go" onclick="respondOferta(\''+e.id+'\',\'accepted\')">Accept</button><button class="mini-btn gh" onclick="respondOferta(\''+e.id+'\',\'rejected\')">Refuz</button></div>':'')
+    +'</div>'; }).join('');
+}
+async function respondOferta(id,status){
+  const {error}=await sb.from('estimates').update({status}).eq('id',id);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  toast(status==='accepted'?'✅ Ofertă acceptată.':'Ofertă refuzată.'); scrClientOferte();
+}
+
+/* CLIENT — Facturi & plăți */
+async function scrClientFacturi(){
+  $('screen').innerHTML='<div class="scr-title">💳 Facturile mele</div><div id="cf"><div class="loading">Se încarcă…</div></div>';
+  const ids=await myClientSiteIds();
+  const {data}=await sb.from('invoices').select('id,number,total,status,issue_date,due_date,site_id');
+  const mine=(data||[]).filter(i=>ids.includes(i.site_id)).sort((a,b)=>(a.number<b.number?1:-1));
+  if(!mine.length){ $('cf').innerHTML='<div class="empty"><div class="ei">💳</div>Nu ai facturi încă.</div>'; return; }
+  const st={draft:['Ciornă','grey'],sent:['De plată','amber'],paid:['Plătită','green'],overdue:['Restantă','red'],cancelled:['Anulată','grey']};
+  $('cf').innerHTML=mine.map(i=>{ const s=st[i.status]||['—','grey']; const payable=(i.status==='sent'||i.status==='overdue');
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">Factura '+esc(i.number||'—')+'</div><div class="s">'+(i.due_date?'Scadență '+esc(i.due_date):(i.issue_date?'Emisă '+esc(i.issue_date):''))+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div><div class="row" style="margin-top:.5rem"><div class="grow s">De achitat</div><b>'+money(i.total)+'</b></div>'
+    +(payable?'<button class="btn" style="margin-top:.7rem" onclick="payInvoiceSheet(\''+i.id+'\',\''+esc(i.number||'')+'\','+(+i.total||0)+')">💳 Plătește</button>':'')
+    +(i.status==='paid'?'<button class="btn btn-line" style="margin-top:.7rem" onclick="receipt(\''+esc(i.number||'')+'\','+(+i.total||0)+',\''+esc(i.issue_date||'')+'\')">🧾 Vezi chitanța</button>':'')
+    +'</div>'; }).join('');
+}
+function receipt(number,total,issue){
+  openSheet('Chitanță',
+    '<div class="card" style="margin:0;text-align:center"><div style="font-size:2.2rem">✅</div>'
+    +'<div class="t" style="margin-top:.4rem">Plată confirmată</div>'
+    +'<div class="s">Factura '+esc(number)+'</div>'
+    +'<div style="font-size:1.7rem;font-weight:800;margin:.6rem 0">'+money(total)+'</div>'
+    +'<div class="s">'+(issue?'Emisă: '+esc(issue):'')+'</div>'
+    +'<div class="s" style="margin-top:.8rem;color:var(--green)">Achitată integral · Mulțumim!</div></div>'
+    +'<p style="font-size:.75rem;color:var(--muted);margin-top:.8rem;text-align:center">Chitanță generată de Cod373 ('+esc(S.email||'')+').</p>');
+}
+async function payInvoiceSheet(id,number,total){
+  const {data:ba}=await sb.from('bank_accounts').select('bank,iban');
+  const acc=(ba&&ba[0])||null;
+  openSheet('Plată factura '+number,
+    '<div id="pay-msg"></div>'
+    +'<div class="card" style="margin:0 0 1rem;text-align:center"><div class="s">Sumă de plată</div><div style="font-size:1.8rem;font-weight:800;margin-top:.2rem">'+money(total)+'</div></div>'
+    +(acc?'<div class="card" style="margin:0 0 1rem"><div class="s">Transfer bancar către</div><b>'+esc(acc.bank||'Bancă')+'</b><div style="font-family:monospace;margin-top:.3rem">'+esc(acc.iban||'IBAN nedefinit')+'</div></div>':'')
+    +'<button class="btn" id="pay-btn" onclick="doPay(\''+id+'\')">💳 Plătește online (card)</button>'
+    +'<p style="font-size:.78rem;color:var(--muted);margin-top:.8rem">Demo: plata online cu cardul prin MAIB/Paynet se activează la lansare. Apăsarea confirmă plata în sistem.</p>');
+}
+async function doPay(id){
+  $('pay-btn').disabled=true; $('pay-btn').textContent='Se procesează…';
+  const {data,error}=await sb.rpc('pay_invoice',{p_invoice:id});
+  if(error){ $('pay-msg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>'; $('pay-btn').disabled=false; $('pay-btn').textContent='💳 Plătește online (card)'; return; }
+  if(data==='ALREADY'){ toast('Factura era deja plătită.'); }
+  else toast('✅ Plată confirmată. Mulțumim!');
+  closeSheet(); scrClientFacturi();
+}
+
+async function scrAcasa(){
+  if(S.role==='client') return scrClientHome();
+  $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
+  const {data:all}=await sb.from('sites').select('id,name,address,status,progress,deadline');
+  S.sites=all||[];
+  const sites=(all||[]).filter(s=>['planned','active','paused'].includes(s.status));
+  const list=sites.map(s=>'<div class="card" onclick="openSite(\''+s.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+' ›</div><div class="s">'+esc(s.address||'fără adresă')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div></div>').join('');
+  const acts=S.role==='driver'
+    ? '<button class="mini-btn pr" onclick="goV(\'livrari\')">🚚 Livrări</button> <button class="mini-btn go" onclick="sendLocation()">📍 Trimite locația</button>'
+    : '<button class="mini-btn pr" onclick="goV(\'comanda\')">🛒 Comandă</button> <button class="mini-btn go" onclick="goV(\'poze\')">📷 Poză</button> <button class="mini-btn gh" onclick="goV(\'pontaj\')">⏱️ Pontaj</button> <button class="mini-btn gh" onclick="sheetDailyLog()">📓 Raport zilnic</button>';
+  $('screen').innerHTML='<div class="scr-title">Salut! 👋</div>'
+    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">Rol: '+({worker:'Muncitor',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator')+(S.role==='worker'||S.role==='driver'?' · fără prețuri':'')+'</div></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
+    +'<div class="scr-title" style="font-size:.95rem">Șantierele tale</div>'
+    +(list||'<div class="empty"><div class="ei">🏗️</div>Niciun șantier activ.</div>');
+}
+
+/* RAPORT ZILNIC (jurnal de șantier) */
+async function sheetDailyLog(){
+  const {data:sites}=await sb.from('sites').select('id,name');
+  const so=(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  openSheet('📓 Raport zilnic',
+    '<div id="dlg-msg"></div>'
+    +'<div class="fld"><label>Șantier</label><select id="dl-site"><option value="">— alege —</option>'+so+'</select></div>'
+    +'<div class="fld"><label>Data</label><input id="dl-date" type="date" value="'+today()+'"/></div>'
+    +'<div class="fld"><label>Vreme</label><input id="dl-weather" placeholder="însorit, ploaie, -2°C..."/></div>'
+    +'<div class="fld"><label>Muncitori prezenți</label><input id="dl-crew" type="number" inputmode="numeric" placeholder="8"/></div>'
+    +'<div class="fld"><label>Lucrări efectuate</label><textarea id="dl-work" style="width:100%;min-height:70px;padding:.7rem;border:1px solid var(--line);border-radius:12px"></textarea></div>'
+    +'<button class="btn" id="dl-save" onclick="saveDailyLog()">Salvează raportul</button>');
+}
+async function saveDailyLog(){
+  const d=$('dl-date').value; if(!d){ $('dlg-msg').innerHTML='<div class="msg err">Alege data.</div>'; return; }
+  $('dl-save').disabled=true;
+  const {error}=await sb.from('daily_logs').insert({tenant_id:S.tenant,site_id:$('dl-site').value||null,log_date:d,weather:$('dl-weather').value.trim()||null,crew_count:$('dl-crew').value?+$('dl-crew').value:null,work_done:$('dl-work').value.trim()||null,created_by:S.session.user.id});
+  $('dl-save').disabled=false;
+  if(error){ $('dlg-msg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>'; return; }
+  closeSheet(); toast('✅ Raport zilnic salvat.');
+}
+
+/* ȘOFER — trimite locația GPS */
+async function sendLocation(){
+  if(!navigator.geolocation){ toast('Telefonul nu permite localizarea.'); return; }
+  toast('📍 Se obține locația…');
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const lat=pos.coords.latitude, lng=pos.coords.longitude;
+    const { data:veh } = await sb.from('vehicles').select('id').eq('driver_id',S.session.user.id).limit(1);
+    if(!veh||!veh.length){ toast('Nu ai un vehicul atribuit. Cere biroului să te lege de un vehicul.'); return; }
+    const { error } = await sb.from('vehicles').update({last_lat:lat,last_lng:lng,last_seen_at:new Date().toISOString(),status:'en_route'}).eq('id',veh[0].id);
+    if(error){ toast('Eroare: '+esc(error.message)); return; }
+    toast('📍 Locație trimisă. Apari pe harta firmei.');
+  }, err=>{ toast('Nu am putut obține locația ('+esc(err.message)+').'); }, {enableHighAccuracy:true,timeout:10000});
+}
+
+/* DETALIU ȘANTIER */
+async function openSite(id){
+  const s=(S.sites||[]).find(x=>x.id===id)||{};
+  openSheet(s.name||'Șantier','<div class="loading">Se încarcă…</div>');
+  const [stagesR, stockR, defR, revR] = await Promise.all([
+    sb.from('site_stages').select('*').eq('site_id',id),
+    sb.from('stock').select('*').eq('site_id',id),
+    sb.from('defects').select('id,title,status').eq('site_id',id),
+    sb.from('reviews').select('id,author_name,rating,body,reply,stage_id,created_at').eq('site_id',id)
+  ]);
+  S.curSite=id; window._rev={rating:0};
+  const stages=(stagesR.data||[]).slice().sort((a,b)=>((a.position||0)-(b.position||0)));
+  S.curStages=stages;
+  const reviews=(revR.data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1));
+  const stName=(sid)=>{ const st=stages.find(x=>x.id===sid); return st?st.name:''; };
+  const stars=(n)=>'<span style="color:#f7a325">'+'★'.repeat(n||0)+'</span><span style="color:#d8dee9">'+'★'.repeat(5-(n||0))+'</span>';
+  const stageOpts=stages.map(st=>'<option value="'+st.id+'">'+esc(st.name)+'</option>').join('');
+  const revList = reviews.length
+    ? reviews.map(rv=>'<div class="card" style="margin:.5rem 0;padding:.7rem"><div class="row"><div class="grow"><b>'+esc(rv.author_name||'Client')+'</b>'+(rv.stage_id?' <span class="s">· '+esc(stName(rv.stage_id))+'</span>':'')+'</div>'+(rv.rating?stars(rv.rating):'')+'</div><div style="margin-top:.3rem">'+esc(rv.body)+'</div>'+(rv.reply?'<div class="card" style="margin:.5rem 0 0;background:var(--blue-soft);padding:.5rem"><b>Răspuns firmă:</b> '+esc(rv.reply)+'</div>':'')+'</div>').join('')
+    : '<div class="s">Niciun comentariu încă. Fii primul!</div>';
+  const revForm='<div class="card" style="margin:.6rem 0 0;padding:.8rem"><b>Lasă un comentariu</b>'
+    +(stageOpts?'<div class="fld" style="margin:.5rem 0"><label>Etapa (opțional)</label><select id="rev-stage"><option value="">— general —</option>'+stageOpts+'</select></div>':'')
+    +'<div id="rev-stars" style="font-size:1.6rem;margin:.4rem 0;cursor:pointer">'+[1,2,3,4,5].map(n=>'<span onclick="setRevStars('+n+')" data-star="'+n+'" style="color:#d8dee9">★</span>').join('')+'</div>'
+    +'<textarea id="rev-body" placeholder="Cum vi se pare lucrarea la această etapă?" style="width:100%;min-height:64px;padding:.6rem;border:1px solid var(--line);border-radius:12px"></textarea>'
+    +'<button class="btn" style="margin-top:.5rem" onclick="addReview()">Trimite comentariul</button></div>';
+  const matMap=await nameMap('materials','name');
+  const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
+  let stagesHtml = stages.length
+    ? stages.map(st=>'<div class="row" style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div class="grow"><b>'+esc(st.name)+'</b></div><span class="pill '+(stCol[st.status]||'grey')+'">'+(st.progress||0)+'%</span></div>').join('')
+    : '<div class="s">Nicio etapă definită încă.</div>';
+  let stockHtml = (stockR.data&&stockR.data.length)
+    ? stockR.data.map(st=>'<div class="row" style="padding:.35rem 0"><div class="grow">'+esc(matMap[st.material_id]||'Material')+'</div><b>'+esc(st.qty)+'</b>'+(Number(st.qty)<Number(st.min_qty)?' <span class="pill red">sub minim</span>':'')+'</div>').join('')
+    : '<div class="s">Fără stoc înregistrat.</div>';
+  const openDef=(defR.data||[]).filter(d=>d.status!=='resolved').length;
+  const body='<div class="card" style="margin:0 0 .8rem"><div class="row"><div class="grow"><div class="s">Progres lucrare</div></div><b>'+(s.progress||0)+'%</b></div><div class="prog" style="margin-top:.4rem"><span style="width:'+(s.progress||0)+'%"></span></div>'
+    +(s.address?'<div class="s" style="margin-top:.6rem">📍 '+esc(s.address)+'</div>':'')+(s.deadline?'<div class="s">📅 Termen: '+esc(s.deadline)+'</div>':'')
+    +(openDef?'<div class="s" style="margin-top:.4rem">🔧 '+openDef+' defecte deschise</div>':'')+'</div>'
+    +'<h4 style="margin:.6rem 0 .3rem">Etape</h4>'+stagesHtml
+    +(S.role==='client'?'':'<h4 style="margin:1rem 0 .3rem">Stoc pe șantier</h4>'+stockHtml)
+    +(S.role==='client'
+        ? '<button class="btn" style="margin-top:1.2rem" onclick="closeSheet();S.psite=\''+id+'\';goV(\'poze\')">📷 Vezi pozele lucrării</button>'
+        : '<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1.2rem">'
+          +'<button class="btn" style="width:auto;flex:1" onclick="closeSheet();S.psite=\''+id+'\';goV(\'poze\')">📷 Poză</button>'
+          +'<button class="btn btn-line" style="width:auto;flex:1" onclick="closeSheet();S.dsite=\''+id+'\';goV(\'defecte\');setTimeout(sheetDefect,200)">🔧 Defect</button>'
+          +(S.role!=='driver'?'<button class="btn btn-soft" style="width:auto;flex:1" onclick="closeSheet();goV(\'comanda\')">🛒 Comandă</button>':'')+'</div>')
+    +'<h4 style="margin:1.4rem 0 .3rem">💬 Comentarii & recenzii</h4>'+revList+revForm;
+  const sh=document.querySelector('.sheet'); if(sh){ sh.innerHTML='<h3>'+esc(s.name||'Șantier')+'<button class="x" onclick="closeSheet()">×</button></h3>'+body; }
+}
+function setRevStars(n){ window._rev={rating:n}; document.querySelectorAll('#rev-stars [data-star]').forEach(s=>{ s.style.color=(+s.dataset.star<=n)?'#f7a325':'#d8dee9'; }); }
+async function addReview(){
+  const body=($('rev-body').value||'').trim(); if(!body){ toast('Scrie un comentariu.'); return; }
+  const stage=document.getElementById('rev-stage'); const stage_id=stage?(stage.value||null):null;
+  const rating=(window._rev&&window._rev.rating)||null;
+  const { error }=await sb.from('reviews').insert({ tenant_id:S.tenant, site_id:S.curSite, stage_id, user_id:S.session.user.id, author_name:S.uname||S.email, rating, body });
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  toast('✅ Mulțumim pentru feedback!'); openSite(S.curSite);
+}
+
+/* PONTAJ (muncitor/manager) */
+async function scrPontaj(){
+  $('screen').innerHTML='<div class="scr-title">Pontaj</div><button class="btn" onclick="sheetPontaj()">＋ Pontează ore</button><div id="pj" style="margin-top:1rem"><div class="loading">Se încarcă…</div></div>';
+  const {data}=await sb.from('timesheets').select('id,work_date,hours,approved,employee_id,site_id');
+  const em=await nameMap('employees','full_name'); const sm=await nameMap('sites','name');
+  const rows=(data||[]).slice().sort((a,b)=>(a.work_date<b.work_date?1:(a.work_date>b.work_date?-1:0))).slice(0,20);
+  if(!rows.length){$('pj').innerHTML='<div class="empty"><div class="ei">⏱️</div>Niciun pontaj încă.</div>';return;}
+  $('pj').innerHTML=rows.map(r=>'<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(r.employee_id?(em[r.employee_id]||'—'):'—')+' · '+esc(r.hours)+'h</div><div class="s">'+esc(r.site_id?(sm[r.site_id]||'fără șantier'):'fără șantier')+' · '+esc(r.work_date)+'</div></div>'+(r.approved?'<span class="pill green">Aprobat</span>':'<span class="pill blue">Trimis</span>')+'</div></div>').join('');
+}
+async function sheetPontaj(){
+  const [emp,sites]=await Promise.all([
+    sb.from('employees').select('id,full_name').eq('active',true).order('full_name'),
+    sb.from('sites').select('id,name').order('name')
+  ]);
+  const eo=(emp.data||[]).map(e=>'<option value="'+e.id+'">'+esc(e.full_name)+'</option>').join('');
+  const so=(sites.data||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  openSheet('Pontează ore',
+    '<div id="smsg"></div>'
+    +'<div class="fld"><label>Angajat</label><select id="p-emp">'+(eo||'<option value="">— niciun angajat —</option>')+'</select></div>'
+    +'<div class="fld"><label>Șantier</label><select id="p-site"><option value="">— fără —</option>'+so+'</select></div>'
+    +'<div class="fld"><label>Data</label><input id="p-date" type="date" value="'+today()+'"/></div>'
+    +'<div class="fld"><label>Ore lucrate</label><input id="p-hours" type="number" inputmode="decimal" value="8"/></div>'
+    +'<button class="btn" id="p-save" onclick="savePontaj()">Salvează pontajul</button>');
+}
+async function savePontaj(){
+  const emp=$('p-emp').value, site=$('p-site').value||null, d=$('p-date').value, h=Number($('p-hours').value);
+  if(!emp){$('smsg').innerHTML='<div class="msg err">Alege un angajat.</div>';return;}
+  if(!d||!h){$('smsg').innerHTML='<div class="msg err">Completează data și orele.</div>';return;}
+  $('p-save').disabled=true;
+  const {error}=await sb.from('timesheets').insert({tenant_id:S.tenant,employee_id:emp,site_id:site,work_date:d,hours:h});
+  $('p-save').disabled=false;
+  if(error){$('smsg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>';return;}
+  closeSheet();toast('✅ Pontaj salvat.');scrPontaj();
+}
+
+/* LIVRARI (sofer) */
+async function scrLivrari(){
+  $('screen').innerHTML='<div class="scr-title">Livrări</div><div id="dl"><div class="loading">Se încarcă…</div></div>';
+  const {data}=await sb.from('deliveries').select('id,status,scheduled_at,order_id,site_id,vehicle_id');
+  const sm=await nameMap('sites','name'); const om=await nameMap('material_orders','number'); const vm=await nameMap('vehicles','label');
+  const rows=(data||[]).slice().reverse();
+  if(!rows.length){$('dl').innerHTML='<div class="empty"><div class="ei">🚚</div>Nicio livrare programată.</div>';return;}
+  const stat={pending:['În așteptare','amber'],accepted:['Acceptată','blue'],en_route:['Pe drum','blue'],delivered:['Livrată','green'],failed:['Eșuată','red']};
+  $('dl').innerHTML=rows.map(r=>{
+    const st=stat[r.status]||['—','grey']; let act='';
+    if(r.status==='pending') act='<button class="mini-btn go" onclick="setDeliv(\''+r.id+'\',\'accepted\')">Accept</button>';
+    else if(r.status==='accepted') act='<button class="mini-btn pr" onclick="setDeliv(\''+r.id+'\',\'en_route\')">Pornesc</button>';
+    else if(r.status==='en_route') act='<button class="mini-btn go" onclick="setDeliv(\''+r.id+'\',\'delivered\')">Am livrat</button>';
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(r.site_id?(sm[r.site_id]||'Destinație'):'Destinație')+'</div><div class="s">Comanda '+esc(r.order_id?(om[r.order_id]||'—'):'—')+(r.vehicle_id&&vm[r.vehicle_id]?(' · '+esc(vm[r.vehicle_id])):'')+'</div></div><span class="pill '+st[1]+'">'+st[0]+'</span></div>'+(act?'<div style="margin-top:.7rem;text-align:right">'+act+'</div>':'')+'</div>';
+  }).join('');
+}
+async function setDeliv(id,status){
+  const patch={status}; if(status==='delivered') patch.delivered_at=new Date().toISOString();
+  const {error}=await sb.from('deliveries').update(patch).eq('id',id);
+  if(error){toast('Eroare: '+esc(error.message));return;}
+  toast('🚚 Stare actualizată.');scrLivrari();
+}
+
+/* SANTIERE (manager) */
+async function scrSantiere(){
+  $('screen').innerHTML='<div class="scr-title">Șantiere</div><div id="ss"><div class="loading">Se încarcă…</div></div>';
+  const {data}=await sb.from('sites').select('id,name,address,status,progress,deadline').order('created_at',{ascending:false});
+  if(!data||!data.length){$('ss').innerHTML='<div class="empty"><div class="ei">🏗️</div>Niciun șantier.</div>';return;}
+  $('ss').innerHTML=data.map(s=>'<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+'</div><div class="s">'+esc(s.address||'—')+(s.deadline?(' · termen '+esc(s.deadline)):'')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div></div>').join('');
+}
+
+/* DEFECTE (muncitor) — raportează */
+async function scrDefecte(){
+  $('screen').innerHTML='<div class="scr-title">Defecte</div><button class="btn" onclick="sheetDefect()">＋ Raportează un defect</button><div id="df" style="margin-top:1rem"><div class="loading">Se încarcă…</div></div>';
+  const {data}=await sb.from('defects').select('id,title,priority,status,photo_url,site_id');
+  const sm=await nameMap('sites','name');
+  const rows=(data||[]).slice().reverse();
+  if(!rows.length){$('df').innerHTML='<div class="empty"><div class="ei">🔧</div>Niciun defect raportat.</div>';return;}
+  const st={open:['Deschis','red'],in_progress:['În lucru','amber'],resolved:['Rezolvat','green']};
+  $('df').innerHTML=rows.map(r=>{const s=st[r.status]||['—','grey'];return '<div class="card"><div class="row"><div class="grow"><div class="t">'+(r.photo_url?'📷 ':'')+esc(r.title)+'</div><div class="s">'+esc(r.site_id?(sm[r.site_id]||'—'):'—')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div></div>';}).join('');
+}
+async function sheetDefect(){
+  const {data:sites}=await sb.from('sites').select('id,name').order('name');
+  const so=(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  openSheet('Raportează un defect',
+    '<div id="smsg"></div>'
+    +'<div class="fld"><label>Titlu</label><input id="d-title" placeholder="ex: fisură în perete"/></div>'
+    +'<div class="fld"><label>Șantier</label><select id="d-site"><option value="">— fără —</option>'+so+'</select></div>'
+    +'<div class="fld"><label>Prioritate</label><select id="d-prio"><option value="low">Joasă</option><option value="normal" selected>Normală</option><option value="high">Înaltă</option></select></div>'
+    +'<div class="fld"><label>Poză (opțional)</label><input id="d-photo" type="file" accept="image/*" capture="environment"/></div>'
+    +'<button class="btn" id="d-save" onclick="saveDefect()">Trimite</button>');
+}
+async function saveDefect(){
+  const title=$('d-title').value.trim(); if(!title){$('smsg').innerHTML='<div class="msg err">Scrie un titlu.</div>';return;}
+  $('d-save').disabled=true;
+  let photoPath=null; const pf=$('d-photo');
+  if(pf && pf.files && pf.files[0]){
+    const file=pf.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    photoPath=S.tenant+'/defects/'+Date.now()+'_'+safe;
+    const up=await sb.storage.from('docs').upload(photoPath,file,{contentType:file.type||'image/jpeg'});
+    if(up.error){ $('smsg').innerHTML='<div class="msg err">Eroare poză: '+esc(up.error.message)+'</div>'; $('d-save').disabled=false; return; }
+  }
+  const {error}=await sb.from('defects').insert({tenant_id:S.tenant,title,site_id:$('d-site').value||null,priority:$('d-prio').value,status:'open',photo_url:photoPath,created_by:S.session.user.id});
+  $('d-save').disabled=false;
+  if(error){$('smsg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>';return;}
+  closeSheet();toast('✅ Defect raportat'+(photoPath?' cu poză.':'.'));scrDefecte();
+}
+
+/* COMANDĂ MATERIALE (muncitor — fără prețuri) */
+let _matQ='';
+async function scrComanda(){
+  $('screen').innerHTML='<div class="scr-title">Comandă</div>'
+    +'<div class="card"><div class="fld" style="margin:0"><label>Pentru șantier</label><select id="o-site"><option value="">— alege —</option></select></div></div>'
+    +'<div class="roles" style="padding:0;border:none;margin-bottom:.6rem;background:none"><button id="ot-m" class="on" onclick="setOrdKind(\'m\')">📦 Materiale</button><button id="ot-t" onclick="setOrdKind(\'t\')">🛠️ Instrumente</button></div>'
+    +'<input id="o-q" placeholder="🔍 caută…" oninput="filterMats(this.value)" style="width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;margin-bottom:.8rem;font-size:1rem;outline:none"/>'
+    +'<div id="mat-list"><div class="loading">Se încarcă…</div></div><div id="cart-bar"></div>';
+  const {data:sites}=await sb.from('sites').select('id,name');
+  $('o-site').innerHTML='<option value="">— alege —</option>'+(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit'), sb.from('tools').select('id,name') ]);
+  S.mats=mr.data||[]; S.tools=(tr.data||[]).map(t=>({id:t.id,name:t.name,unit:'buc'}));
+  if(!S.cart)S.cart={}; if(!S.ordKind)S.ordKind='m'; _matQ=''; renderMats('');
+}
+function setOrdKind(k){ S.ordKind=k; const a=document.getElementById('ot-m'),b=document.getElementById('ot-t'); if(a)a.classList.toggle('on',k==='m'); if(b)b.classList.toggle('on',k==='t'); _matQ=''; const q=$('o-q'); if(q)q.value=''; renderMats(''); }
+function curList(){ return S.ordKind==='t'?(S.tools||[]):(S.mats||[]); }
+function filterMats(q){ _matQ=(q||'').toLowerCase(); renderMats(_matQ); }
+function renderMats(q){
+  const el=$('mat-list'); if(!el)return; const src=curList();
+  if(!src.length){ el.innerHTML='<div class="empty"><div class="ei">'+(S.ordKind==='t'?'🛠️':'📦')+'</div>Catalogul e gol. Cere biroului să adauge '+(S.ordKind==='t'?'instrumente':'materiale')+'.</div>'; renderCartBar(); return; }
+  const list=src.filter(m=>!q||(m.name||'').toLowerCase().includes(q));
+  el.innerHTML=(list.map(m=>{ const key=S.ordKind+':'+m.id; const qy=(S.cart[key]&&S.cart[key].qty)||0;
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(m.name)+'</div><div class="s">'+esc(m.unit||'buc')+'</div></div>'
+      +'<div class="row" style="gap:.5rem"><button class="mini-btn gh" onclick="cartAdd(\''+m.id+'\',-1)">－</button>'
+      +'<b style="min-width:24px;text-align:center">'+qy+'</b>'
+      +'<button class="mini-btn pr" onclick="cartAdd(\''+m.id+'\',1)">＋</button></div></div></div>'; }).join(''))||'<div class="empty">Niciun rezultat.</div>';
+  renderCartBar();
+}
+function cartAdd(id,d){ const m=curList().find(x=>x.id===id); if(!m)return; const key=S.ordKind+':'+id;
+  if(!S.cart[key])S.cart[key]={name:m.name,unit:m.unit||'buc',qty:0,kind:S.ordKind,refId:id};
+  S.cart[key].qty=Math.max(0,S.cart[key].qty+d); if(S.cart[key].qty===0)delete S.cart[key]; renderMats(_matQ); }
+function renderCartBar(){ const el=$('cart-bar'); if(!el)return; const n=Object.keys(S.cart||{}).reduce((a,k)=>a+S.cart[k].qty,0);
+  el.innerHTML=n?'<button class="btn" style="margin-top:1rem" onclick="sendOrder()">Trimite comanda ('+n+' poziții)</button>':''; }
+async function sendOrder(){
+  const items=Object.keys(S.cart||{}).map(k=>S.cart[k]).filter(x=>x.qty>0);
+  if(!items.length){ toast('Coșul e gol.'); return; }
+  const site=$('o-site').value||null;
+  const ins=await sb.from('material_orders').insert({tenant_id:S.tenant,site_id:site,status:'draft',total:0,created_by:S.session.user.id}).select('id').single();
+  if(ins.error){ toast('Eroare: '+esc(ins.error.message)); return; }
+  const rows=items.map(it=>({tenant_id:S.tenant,order_id:ins.data.id,material_id:it.kind==='m'?it.refId:null,name:(it.kind==='t'?'🛠️ '+it.name:it.name),qty:it.qty,unit:it.unit,unit_price:0,vat_rate:20}));
+  const r2=await sb.from('material_order_items').insert(rows);
+  if(r2.error){ toast('Eroare: '+esc(r2.error.message)); return; }
+  S.cart={}; toast('✅ Comandă trimisă la birou ('+items.length+' poziții).'); scrComanda();
+}
+
+/* POZE PE ȘANTIER (etape de lucru) */
+async function scrPoze(){
+  const isClient=S.role==='client';
+  $('screen').innerHTML='<div class="scr-title">Poze de pe șantier</div>'
+    +'<div class="card"><div class="fld" style="margin:0"><label>Șantier</label><select id="ph-site" onchange="loadPhotos()"><option value="">— alege —</option></select></div></div>'
+    +(isClient?'':'<label class="btn" style="cursor:pointer"><input id="ph-file" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadSitePhoto()"/>📷 Adaugă poză de la etapă</label>')
+    +'<div id="photo-grid" style="margin-top:1rem"></div>';
+  let {data:sites}=await sb.from('sites').select('id,name');
+  sites=sites||[];
+  if(isClient){ const ids=await myClientSiteIds(); sites=sites.filter(s=>ids.includes(s.id)); }
+  $('ph-site').innerHTML='<option value="">— alege —</option>'+sites.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  if(sites&&sites.length){ $('ph-site').value=(S.psite&&sites.find(x=>x.id===S.psite))?S.psite:sites[0].id; S.psite=null; loadPhotos(); } else { $('photo-grid').innerHTML='<div class="empty"><div class="ei">🏗️</div>Niciun șantier. Cere biroului să adauge unul.</div>'; }
+}
+async function loadPhotos(){
+  const site=$('ph-site').value; const el=$('photo-grid'); if(!el)return;
+  if(!site){ el.innerHTML='<div class="empty">Alege un șantier.</div>'; return; }
+  el.innerHTML='<div class="loading">Se încarcă…</div>';
+  const {data}=await sb.from('documents').select('id,name,file_url,created_at').eq('entity_type','site').eq('entity_id',site);
+  const docs=(data||[]).slice().reverse();
+  if(!docs.length){ el.innerHTML='<div class="empty"><div class="ei">📷</div>Nicio poză încă pentru acest șantier.</div>'; return; }
+  const items=await Promise.all(docs.map(async d=>{ const s=await sb.storage.from('docs').createSignedUrl(d.file_url,300); return {url:(s.data&&s.data.signedUrl)||'',cap:d.name}; }));
+  el.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">'+items.map(i=>'<div class="card" style="padding:.4rem"><img src="'+esc(i.url)+'" loading="lazy" style="width:100%;height:120px;object-fit:cover;border-radius:8px;background:var(--line)"/><div class="s" style="margin-top:.3rem">'+esc(i.cap)+'</div></div>').join('')+'</div>';
+}
+async function uploadSitePhoto(){
+  const f=$('ph-file'); const site=$('ph-site').value;
+  if(!site){ toast('Alege întâi șantierul.'); return; }
+  if(!f.files||!f.files[0])return;
+  const cap=(prompt('Etapa / descriere (ex: Turnare beton, Zidărie etaj 2):','Poză șantier')||'Poză șantier').trim();
+  const file=f.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path=S.tenant+'/sites/'+site+'/'+Date.now()+'_'+safe;
+  toast('⏳ Se încarcă poza…');
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
+  if(up.error){ toast('Eroare: '+esc(up.error.message)); return; }
+  const {error}=await sb.from('documents').insert({tenant_id:S.tenant,name:cap,file_url:path,mime:file.type||'image/jpeg',size_bytes:file.size,entity_type:'site',entity_id:site,uploaded_by:S.session.user.id});
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  toast('✅ Poză adăugată la șantier.'); loadPhotos();
+}
+
+/* NOTIFICĂRI */
+async function loadNotifCount(){
+  try{ const {data}=await sb.from('notifications').select('id,created_at');
+    const seen=+(localStorage.getItem('c373_notif_seen')||0);
+    const n=(data||[]).filter(x=>new Date(x.created_at).getTime()>seen).length;
+    const b=$('notif-badge'); if(b){ if(n>0){ b.textContent=n>9?'9+':n; b.style.display='inline-block'; } else b.style.display='none'; }
+  }catch(e){}
+}
+async function openNotif(){
+  const {data}=await sb.from('notifications').select('id,title,body,entity_type,created_at');
+  const list=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1)).slice(0,40);
+  localStorage.setItem('c373_notif_seen', Date.now()); loadNotifCount();
+  const ic={material_order:'🛒',estimate:'📄',invoice:'🧾',defect:'🔧'};
+  const html=list.length? list.map(n=>'<div class="card" style="margin:0 0 .6rem"><div class="row"><div class="grow"><div class="t">'+(ic[n.entity_type]||'🔔')+' '+esc(n.title)+'</div>'+(n.body?'<div class="s">'+esc(n.body)+'</div>':'')+'</div><div class="s" style="white-space:nowrap;font-size:.7rem">'+esc((n.created_at||'').slice(5,16).replace('T',' '))+'</div></div></div>').join('') : '<div class="empty"><div class="ei">🔔</div>Nicio notificare.</div>';
+  openSheet('🔔 Notificări', html);
+}
+
+/* CHAT DE ECHIPĂ */
+async function openChat(){
+  S.view='chat';
+  document.querySelectorAll('#bottom button').forEach(b=>b.classList.remove('on'));
+  $('screen').innerHTML='<div class="scr-title">💬 Chat echipă</div><div id="chat-list" class="chat-list"><div class="loading">Se încarcă…</div></div>'
+    +'<div class="chat-bar"><input id="chat-input" placeholder="Scrie un mesaj…" onkeydown="if(event.key===\'Enter\')sendMsg()"/><button class="btn" style="width:auto;padding:.8rem 1.1rem" onclick="sendMsg()">➤</button></div>';
+  await loadMsgs(true);
+  clearInterval(window._chatPoll);
+  window._chatPoll=setInterval(()=>{ if(S.view==='chat'&&$('chat-list')) loadMsgs(false); else clearInterval(window._chatPoll); }, 4000);
+}
+async function loadMsgs(scroll){
+  const {data}=await sb.from('messages').select('id,user_id,sender_name,body,created_at');
+  const msgs=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?-1:(a.created_at>b.created_at?1:0))).slice(-60);
+  const el=$('chat-list'); if(!el)return;
+  if(!msgs.length){ el.innerHTML='<div class="empty"><div class="ei">💬</div>Niciun mesaj încă. Scrie primul!</div>'; return; }
+  const me=S.session.user.id;
+  el.innerHTML=msgs.map(m=>{ const mine=m.user_id===me; const t=(m.created_at||'').slice(11,16);
+    return '<div class="bub '+(mine?'me':'them')+'">'+(mine?'':'<div class="bn">'+esc(m.sender_name||'Coleg')+'</div>')+esc(m.body)+'<div class="bt">'+esc(t)+'</div></div>'; }).join('');
+  if(scroll){ const sc=$('screen'); sc.scrollTop=sc.scrollHeight; }
+}
+async function sendMsg(){
+  const inp=$('chat-input'); const v=(inp.value||'').trim(); if(!v)return; inp.value='';
+  const {error}=await sb.from('messages').insert({tenant_id:S.tenant,user_id:S.session.user.id,sender_name:S.uname||S.email,body:v});
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  await loadMsgs(true);
+}
+
+/* PROFILUL MEU */
+async function openProfile(){
+  let prof=S.profile||{};
+  try{ const {data}=await sb.from('profiles').select('*').eq('id',S.session.user.id).maybeSingle(); if(data)prof=data; }catch(e){}
+  openSheet('Profilul meu',
+    '<div id="pf-msg"></div>'
+    +'<div class="fld"><label>Email</label><input value="'+esc(S.email)+'" disabled/></div>'
+    +'<div class="fld"><label>Nume complet</label><input id="pf-name" value="'+esc(prof.full_name||'')+'" placeholder="ex: Ion Zidaru"/></div>'
+    +'<div class="fld"><label>Telefon</label><input id="pf-phone" value="'+esc(prof.phone||'')+'" placeholder="0__ ___ ___"/></div>'
+    +'<button class="btn" id="pf-save" onclick="saveProfile()">Salvează</button>'
+    +'<button class="btn btn-line" style="margin-top:.6rem" onclick="doLogout()">Ieși din cont</button>');
+}
+async function saveProfile(){
+  const full_name=$('pf-name').value.trim(), phone=$('pf-phone').value.trim();
+  $('pf-save').disabled=true;
+  const {error}=await sb.from('profiles').update({full_name:full_name||null,phone:phone||null}).eq('id',S.session.user.id);
+  $('pf-save').disabled=false;
+  if(error){ $('pf-msg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>'; return; }
+  S.uname=full_name||S.email; S.profile={full_name,phone};
+  $('who-n').textContent=S.uname; $('av').textContent=((S.uname)[0]||'U').toUpperCase();
+  closeSheet(); toast('✅ Profil salvat.');
+}
+
+/* SHEET */
+function openSheet(title,html){
+  $('sheet-mount').innerHTML='<div class="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet"><h3>'+esc(title)+'<button class="x" onclick="closeSheet()">×</button></h3>'+html+'</div></div>';
+}
+function closeSheet(){$('sheet-mount').innerHTML='';}
+
+/* START */
+(async function(){
+  if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+  if(!cfgOk()){$('cfg-warn').classList.remove('hidden');$('cfg-warn').innerHTML='⚙️ Configurare incompletă (cheia publishable).';$('l-btn').disabled=true;return;}
+  sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  await boot();
+})();
+</script>
+</body>
+</html>

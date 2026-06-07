@@ -1,0 +1,11 @@
+<svg width="320" height="80" viewBox="0 0 320 80" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aplomb">
+  <!-- Plumb-bob mark: precizie verticală = control total -->
+  <g>
+    <circle cx="34" cy="14" r="3.4" fill="#0F1C33"/>
+    <line x1="34" y1="14" x2="34" y2="34" stroke="#0F1C33" stroke-width="2.4" stroke-linecap="round"/>
+    <polygon points="34,30 47,46 34,68 21,46" fill="#FF8A3D"/>
+    <polygon points="34,30 47,46 34,46" fill="#E9742B"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="68" y="52" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="38" font-weight="800" letter-spacing="-1.2" fill="#0F1C33">Aplomb</text>
+</svg>

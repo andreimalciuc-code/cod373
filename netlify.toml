@@ -1,0 +1,9 @@
+# Configurare deploy Netlify pentru Cod373 (site static)
+[build]
+  publish = "."
+
+# pagina implicită = aplicația
+[[redirects]]
+  from = "/"
+  to = "/app.html"
+  status = 302

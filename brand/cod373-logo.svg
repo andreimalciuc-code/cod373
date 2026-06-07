@@ -1,0 +1,11 @@
+<svg width="320" height="80" viewBox="0 0 320 80" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cod373">
+  <!-- Mark: badge cu prefixul +373 (codul Moldovei) -->
+  <g>
+    <rect x="8" y="16" width="48" height="48" rx="12" fill="#0F1C33"/>
+    <text x="32" y="48" text-anchor="middle" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="20" font-weight="800" letter-spacing="-0.5" fill="#FF8A3D">373</text>
+    <rect x="8" y="56" width="48" height="8" rx="0" fill="#FF8A3D"/>
+    <rect x="8" y="56" width="48" height="8" rx="0" fill="#FF8A3D" opacity="0"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="70" y="52" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="36" font-weight="800" letter-spacing="-1.2" fill="#0F1C33">Cod<tspan fill="#FF8A3D">373</tspan></text>
+</svg>
