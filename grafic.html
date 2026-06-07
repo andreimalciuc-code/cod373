@@ -59,6 +59,20 @@
   .gantt .bar-wrapper.sp6 .bar{ fill:#84cc16; } .gantt .bar-wrapper.sp6 .bar-progress{ fill:#4d7c0f; }
   .gantt .bar-label{ font-size:12px; }
   .gantt-container .today-highlight{ fill:#fff4e6; opacity:.6; }
+  /* drum critic */
+  .gantt .bar-wrapper.critical .bar{ stroke:#dc2626; stroke-width:2.6; }
+  .gantt .bar-wrapper.critical .bar-label{ font-weight:700; }
+  /* jalon (milestone) */
+  .gantt .bar-wrapper.milestone .bar{ fill:#0f1c33; }
+  .gantt .bar-wrapper.milestone .bar-progress{ fill:#0f1c33; }
+  /* baseline underbar */
+  .gantt .baseline-bar{ fill:#cbd5e1; opacity:.7; }
+  .filters{ display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:.7rem; }
+  .filters select,.filters input{ padding:.4rem .6rem; border:1px solid var(--line); border-radius:9px; font-size:.82rem; background:#fff; outline:none; }
+  .badge{ font-size:.7rem; padding:.05rem .4rem; border-radius:999px; margin-left:.3rem; font-weight:600; }
+  .badge.late{ background:#fee2e2; color:#b91c1c; } .badge.early{ background:#dcfce7; color:#15803d; } .badge.ontime{ background:#eef2ff; color:#3730a3; }
+  .badge.crit{ background:#fee2e2; color:#b91c1c; } .badge.ms{ background:#f1f5f9; color:#0f1c33; }
+  .alertbar{ background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:10px; padding:.5rem .8rem; font-size:.82rem; margin-bottom:.7rem; }
   /* modal */
   .overlay{ position:fixed; inset:0; background:rgba(15,28,51,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem; }
   .modal{ background:#fff; border-radius:16px; width:100%; max-width:460px; max-height:92vh; overflow:auto; }
@@ -102,7 +116,10 @@ function goBack(){ if(history.length>1) history.back(); else location.href='app.
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function iso(d){ return new Date(d).toISOString().slice(0,10); }
 
-let STATE={ siteId:null, site:null, stages:[], execs:[], norms:[], normMat:{}, role:null, colorBy:'status', view:'Day', gantt:null };
+let STATE={ siteId:null, site:null, stages:[], execs:[], norms:[], normMat:{}, role:null, colorBy:'status', view:'Day', gantt:null,
+            criticalOn:false, filter:{exec:'',spec:'',status:'',q:''}, crit:{}, baselineSaved:false };
+const todayISO=()=>iso(new Date());
+function autoDelayed(st){ return st.status!=='done' && st.end_date && st.end_date<todayISO(); }
 const STATUS={ plan:'Planificat', active:'În lucru', done:'Finalizat', delayed:'Întârziat' };
 const STATUS_COLOR={ plan:'#94a3b8', active:'#3b82f6', done:'#22c55e', delayed:'#ef4444' };
 const FIN_ROLES=['owner','admin','manager','accountant'];
@@ -126,7 +143,7 @@ async function pickSite(){
 async function loadAll(){
   const [siteR, stagesR, ordR, subR, empR, subcR, normR, nmR] = await Promise.all([
     sb.from('sites').select('id,name,code,budget,work_type,area_m2,start_date,deadline,status').eq('id',STATE.siteId).single(),
-    sb.from('site_stages').select('id,name,position,status,progress,start_date,end_date,qty,unit,norm_id,executor_kind,executor_id,executor_name,specialty,est_cost,description,photo_urls').eq('site_id',STATE.siteId),
+    sb.from('site_stages').select('id,name,position,status,progress,start_date,end_date,qty,unit,norm_id,executor_kind,executor_id,executor_name,specialty,est_cost,description,photo_urls,depends_on,is_milestone,baseline_start,baseline_end').eq('site_id',STATE.siteId),
     sb.from('material_orders').select('total,status').eq('site_id',STATE.siteId),
     sb.from('subcontracts').select('amount,status').eq('site_id',STATE.siteId),
     sb.from('employees').select('id,full_name,specialty').eq('active',true),
@@ -150,37 +167,111 @@ const SPEC_ORDER=[];
 function specClass(sp){ sp=(sp||'—'); let i=SPEC_ORDER.indexOf(sp); if(i<0){ SPEC_ORDER.push(sp); i=SPEC_ORDER.length-1; } return 'sp'+(i%7); }
 function barClass(st){ return STATE.colorBy==='status' ? ('gx-'+(st.status||'plan')) : specClass(st.specialty); }
 
+function durationDays(st){ if(st.is_milestone) return 1; const n=STATE.norms.find(n=>n.id===st.norm_id); const out=n?+n.daily_output:15; const q=+st.qty||0; return Math.max(1, Math.ceil((q||out)/(out||15))); }
+function matchFilter(st){ const f=STATE.filter;
+  if(f.exec && String(st.executor_id||'')!==f.exec) return false;
+  if(f.spec && (st.specialty||'—')!==f.spec) return false;
+  if(f.status){ if(f.status==='delayed'){ if(!(st.status==='delayed'||autoDelayed(st))) return false; } else if(st.status!==f.status) return false; }
+  if(f.q && !((st.name||'')+' '+(st.executor_name||'')+' '+(st.description||'')).toLowerCase().includes(f.q)) return false;
+  return true;
+}
+function visibleStages(){ return STATE.stages.filter(matchFilter); }
 function ganttTasks(){
-  // ensure every stage has dates so it renders
+  const vis=visibleStages(); const visIds=new Set(vis.map(s=>String(s.id)));
   let cursor = STATE.site.start_date ? new Date(STATE.site.start_date) : new Date();
-  return STATE.stages.map(st=>{
+  return vis.map(st=>{
     let s=st.start_date?new Date(st.start_date):new Date(cursor);
     let e=st.end_date?new Date(st.end_date):addDays(s, Math.max(0,durationDays(st)-1));
+    if(st.is_milestone) e=s;
     if(e<s) e=s; cursor=addDays(e,1);
-    return { id:String(st.id), name:st.name+(st.executor_name?(' · '+st.executor_name):''), start:iso(s), end:iso(e),
-             progress:+st.progress||0, custom_class:barClass(st), dependencies:'' };
+    let cls=barClass(st);
+    if(st.is_milestone) cls+=' milestone';
+    if(STATE.criticalOn && STATE.crit[st.id]) cls+=' critical';
+    return { id:String(st.id), name:(st.is_milestone?'◆ ':'')+st.name+(st.executor_name?(' · '+st.executor_name):''), start:iso(s), end:iso(e),
+             progress:st.is_milestone?100:(+st.progress||0), custom_class:cls, dependencies:'' };
   });
 }
-function durationDays(st){ const n=STATE.norms.find(n=>n.id===st.norm_id); const out=n?+n.daily_output:15; const q=+st.qty||0; return Math.max(1, Math.ceil((q||out)/(out||15))); }
+const SVGNS='http://www.w3.org/2000/svg';
+function drawDeps(){
+  if(!STATE.gantt||!STATE.gantt.bars) return;
+  const barById={}; STATE.gantt.bars.forEach(b=>barById[String(b.task.id)]=b);
+  const layer=STATE.gantt.bars[0] && STATE.gantt.bars[0].group && STATE.gantt.bars[0].group.parentNode;
+  if(!layer) return;
+  visibleStages().forEach(st=>{ (st.depends_on||[]).forEach(pid=>{ const pb=barById[String(pid)], cb=barById[String(st.id)]; if(!pb||!cb) return;
+    const x1=pb.x+pb.width, y1=pb.y+pb.height/2, x2=cb.x, y2=cb.y+cb.height/2;
+    const crit=STATE.criticalOn&&STATE.crit[st.id]&&STATE.crit[pid];
+    const col=crit?'#dc2626':'#9aa6bd'; const sw=crit?2.2:1.4;
+    const d='M '+x1+' '+y1+' H '+(x1+9)+' V '+y2+' H '+(x2-2);
+    const p=document.createElementNS(SVGNS,'path'); p.setAttribute('d',d); p.setAttribute('fill','none'); p.setAttribute('stroke',col); p.setAttribute('stroke-width',sw);
+    const ah=document.createElementNS(SVGNS,'path'); ah.setAttribute('d','M '+x2+' '+y2+' l -7 -4.5 l 0 9 z'); ah.setAttribute('fill',col);
+    layer.appendChild(p); layer.appendChild(ah);
+  }); });
+}
+/* CPM - drum critic */
+function computeCritical(){
+  const stages=STATE.stages; const ids=stages.map(s=>String(s.id)); const byId={}; stages.forEach(s=>byId[String(s.id)]=s);
+  const dur={}; stages.forEach(s=>dur[String(s.id)]=durationDays(s));
+  const preds={}; stages.forEach(s=>preds[String(s.id)]=(s.depends_on||[]).map(String).filter(d=>byId[d]));
+  const succs={}; ids.forEach(i=>succs[i]=[]); stages.forEach(s=>preds[String(s.id)].forEach(p=>succs[p].push(String(s.id))));
+  const order=[],seen={},tmp={};
+  (function(){ function visit(id){ if(seen[id]||tmp[id])return; tmp[id]=1; preds[id].forEach(visit); tmp[id]=0; seen[id]=1; order.push(id); } ids.forEach(visit); })();
+  const ES={},EF={}; order.forEach(id=>{ const ps=preds[id]; ES[id]=ps.length?Math.max(...ps.map(p=>EF[p]||0)):0; EF[id]=ES[id]+dur[id]; });
+  const projEnd=Math.max(0,...ids.map(i=>EF[i]||0));
+  const LF={},LS={}; [...order].reverse().forEach(id=>{ const ss=succs[id]; LF[id]=ss.length?Math.min(...ss.map(s=>LS[s])):projEnd; LS[id]=LF[id]-dur[id]; });
+  const crit={}; ids.forEach(i=>crit[byId[i].id]=(LS[i]-ES[i])<=0.001);
+  return {crit, projEnd};
+}
+/* impune dependentele: fiecare etapa incepe dupa cea mai tarzie predecesoare */
+async function enforceDeps(){
+  const byId={}; STATE.stages.forEach(s=>byId[String(s.id)]=s);
+  const order=[],seen={},tmp={};
+  (function(){ function visit(s){ const id=String(s.id); if(seen[id]||tmp[id])return; tmp[id]=1; (s.depends_on||[]).forEach(d=>byId[String(d)]&&visit(byId[String(d)])); tmp[id]=0; seen[id]=1; order.push(s); } STATE.stages.forEach(visit); })();
+  const changed=[];
+  for(const st of order){ const preds=(st.depends_on||[]).map(d=>byId[String(d)]).filter(Boolean); if(!preds.length||!st.start_date) continue;
+    const latest=preds.reduce((m,p)=>{ const pe=p.end_date?new Date(p.end_date):null; return (pe&&(!m||pe>m))?pe:m; }, null);
+    if(!latest) continue; const minStart=addDays(latest,1);
+    if(new Date(st.start_date)<minStart){ const dur=durationDays(st); const ns=minStart; const ne=st.is_milestone?ns:addDays(ns,dur-1);
+      st.start_date=iso(ns); st.end_date=iso(ne); changed.push(st); }
+  }
+  for(const st of changed){ await sb.from('site_stages').update({start_date:st.start_date,end_date:st.end_date}).eq('id',st.id); }
+  return changed.length;
+}
 
 function render(){
   const s=STATE.site; const fin=FIN_ROLES.includes(STATE.role);
   const budget=+s.budget||0, cost=STATE._cost||0, margin=budget-cost, mp=budget?Math.round(margin/budget*100):0;
   $('site-meta').innerHTML='<b>'+esc(s.name)+'</b>'+(s.work_type?' · '+(s.work_type==='reparatie'?'reparație':'construcție'):'')+(s.area_m2?' · '+s.area_m2+' m²':'');
   document.title='Cod373 — Grafic: '+s.name;
+  STATE.crit = computeCritical().crit;
   const marginCards = fin? (
       card('Buget contractat', money(budget))
     + card('Cheltuieli', money(cost), '#dc2626')
     + card('Marjă live', money(margin)+' <small style="font-size:.7rem">('+mp+'%)</small>', margin>=0?'#16a34a':'#dc2626') ) : '';
-  const totalDur = ganttTasks().reduce((t,x)=>t,0);
+  const proj=projectInfo();
+  const delayed=STATE.stages.filter(autoDelayed).length;
+  const specs=[...new Set(STATE.stages.map(s=>s.specialty||'—'))];
+  const opt=(v,sel)=>'<option value="'+esc(v)+'"'+(STATE.filter[sel]===v?' selected':'')+'>';
   $('root').innerHTML=
-    '<div class="cards">'+marginCards+card('Etape', STATE.stages.length)+card('Progres mediu', avgProgress()+'%')+'</div>'
+    '<div class="cards">'+marginCards+card('Etape', STATE.stages.length+(STATE.stages.some(s=>s.is_milestone)?' <small style="font-size:.7rem">('+STATE.stages.filter(s=>s.is_milestone).length+' jaloane)</small>':''))
+      +card('Progres (ponderat)', weightedProgress()+'%')+card('Finalizare estimată', proj.endText, proj.color)+'</div>'
+    +(delayed?'<div class="alertbar">⚠️ <b>'+delayed+'</b> etap'+(delayed===1?'ă întârziată':'e întârziate')+' (termen depășit, neterminate). <button class="btn" style="padding:.2rem .5rem;margin-left:.4rem" onclick="STATE.filter.status=\'delayed\';render()">Arată-le</button></div>':'')
     +'<div class="toolbar">'
       +'<div class="group" title="Zoom"><button class="btn" data-vm="Quarter Day" onclick="setView(\'Quarter Day\')">6h</button><button class="btn" data-vm="Day" onclick="setView(\'Day\')">Zi</button><button class="btn" data-vm="Week" onclick="setView(\'Week\')">Săpt.</button><button class="btn" data-vm="Month" onclick="setView(\'Month\')">Lună</button></div>'
       +'<div class="group" title="Colorează după"><button class="btn" data-cb="status" onclick="setColor(\'status\')">🎨 Stare</button><button class="btn" data-cb="specialty" onclick="setColor(\'specialty\')">🔧 Specialitate</button></div>'
+      +'<button class="btn '+(STATE.criticalOn?'active':'')+'" onclick="toggleCritical()" title="Evidențiază lanțul de etape care determină data de finalizare">🔴 Drum critic</button>'
       +'<button class="btn primary" onclick="openStage()">＋ Etapă</button>'
-      +'<button class="btn" onclick="autoChain()" title="Recalculează datele în lanț, în ordinea curentă, din durate">🔗 Înlănțuie automat</button>'
+      +'<button class="btn" onclick="openStage(null,true)" title="Adaugă un jalon / punct de control (zi unică)">◆ Jalon</button>'
+      +'<button class="btn" onclick="autoChain()" title="Recalculează datele în lanț din durate (respectă ordinea)">🔗 Înlănțuie</button>'
+      +'<button class="btn" onclick="saveBaseline()" title="Salvează planul actual ca referință; abaterile se vor afișa la fiecare etapă">📌 Salvează planul</button>'
       +'<button class="btn" onclick="scrollToday()">📍 Astăzi</button>'
+      +'<button class="btn" onclick="exportPNG()" title="Descarcă graficul ca imagine">🖼️ Export</button>'
+    +'</div>'
+    +'<div class="filters">'
+      +'<input id="f-q" placeholder="🔍 caută etapă…" value="'+esc(STATE.filter.q)+'" oninput="STATE.filter.q=this.value.toLowerCase();refresh()" style="min-width:160px"/>'
+      +'<select onchange="STATE.filter.exec=this.value;refresh()"><option value="">Toți executanții</option>'+STATE.execs.map(x=>opt(x.id,'exec')+(x.kind==='angajat'?'👷 ':'🏢 ')+esc(x.name)+'</option>').join('')+'</select>'
+      +'<select onchange="STATE.filter.spec=this.value;refresh()"><option value="">Toate specialitățile</option>'+specs.map(s=>opt(s,'spec')+esc(s)+'</option>').join('')+'</select>'
+      +'<select onchange="STATE.filter.status=this.value;refresh()"><option value="">Toate stările</option><option value="plan"'+(STATE.filter.status==='plan'?' selected':'')+'>Planificat</option><option value="active"'+(STATE.filter.status==='active'?' selected':'')+'>În lucru</option><option value="done"'+(STATE.filter.status==='done'?' selected':'')+'>Finalizat</option><option value="delayed"'+(STATE.filter.status==='delayed'?' selected':'')+'>Întârziat</option></select>'
+      +((STATE.filter.q||STATE.filter.exec||STATE.filter.spec||STATE.filter.status)?'<button class="btn" onclick="STATE.filter={exec:\'\',spec:\'\',status:\'\',q:\'\'};render()">✕ resetează</button>':'')
     +'</div>'
     +'<div class="layout">'
       +'<div class="panel"><div class="panel-h">Etape <span style="font-weight:400;color:var(--muted);font-size:.78rem">trage ≡ ca să reordonezi</span></div><ul class="stage-list" id="stage-list"></ul></div>'
@@ -192,12 +283,25 @@ function render(){
   document.querySelectorAll('[data-vm]').forEach(b=>b.classList.toggle('active',b.dataset.vm===STATE.view));
   document.querySelectorAll('[data-cb]').forEach(b=>b.classList.toggle('active',b.dataset.cb===STATE.colorBy));
 }
+function refresh(){ renderList(); renderGantt(); renderLegend(); }
+function weightedProgress(){ let tot=0,don=0; STATE.stages.forEach(s=>{ const d=durationDays(s); tot+=d; don+=d*(+s.progress||0)/100; }); return tot?Math.round(don/tot*100):0; }
+function projectInfo(){
+  const ends=STATE.stages.map(s=>s.end_date).filter(Boolean).sort(); const end=ends.length?ends[ends.length-1]:null;
+  if(!end) return {endText:'—',color:null};
+  let txt=dt(end); let color=null;
+  const bl=STATE.stages.map(s=>s.baseline_end).filter(Boolean).sort();
+  if(bl.length){ const blEnd=bl[bl.length-1]; const diff=Math.round((new Date(end)-new Date(blEnd))/86400000);
+    if(diff>0){ txt+=' (+'+diff+'z)'; color='#dc2626'; } else if(diff<0){ txt+=' ('+diff+'z)'; color='#16a34a'; } }
+  else if(STATE.site.deadline){ const diff=Math.round((new Date(end)-new Date(STATE.site.deadline))/86400000); if(diff>0) color='#dc2626'; }
+  return {endText:txt,color};
+}
 function card(k,v,color){ return '<div class="card"><div class="k">'+esc(k)+'</div><div class="v"'+(color?' style="color:'+color+'"':'')+'>'+v+'</div></div>'; }
 function avgProgress(){ if(!STATE.stages.length) return 0; return Math.round(STATE.stages.reduce((t,s)=>t+(+s.progress||0),0)/STATE.stages.length); }
 
 function renderGantt(){
+  STATE.crit = computeCritical().crit;
   const tasks=ganttTasks();
-  if(!tasks.length){ $('gantt-wrap').innerHTML='<div class="center">Nicio etapă. Apasă „＋ Etapă".</div>'; return; }
+  if(!tasks.length){ $('gantt-wrap').innerHTML='<div class="center">Nicio etapă vizibilă. Schimbă filtrele sau apasă „＋ Etapă".</div>'; return; }
   $('gantt-wrap').innerHTML='<svg id="gantt"></svg>';
   STATE.gantt=new Gantt('#gantt', tasks, {
     view_mode: STATE.view, bar_height:24, bar_corner_radius:5, padding:16,
@@ -211,16 +315,35 @@ function renderGantt(){
     on_date_change: function(task,start,end){ saveDates(task.id, iso(start), iso(end)); },
     on_progress_change: function(task,progress){ saveProgress(task.id, Math.round(progress)); }
   });
+  drawDeps(); drawBaselines();
 }
+function drawBaselines(){
+  if(!STATE.gantt||!STATE.gantt.bars) return;
+  STATE.gantt.bars.forEach(b=>{ const st=STATE.stages.find(x=>String(x.id)===String(b.task.id)); if(!st||!st.baseline_start||!st.baseline_end) return;
+    try{ const aS=new Date(b.task.start), aE=new Date(b.task.end); const days=Math.max(1,(aE-aS)/86400000+1); const dw=b.width/days;
+      const bs=new Date(st.baseline_start), be=new Date(st.baseline_end);
+      const x=b.x + ((bs-aS)/86400000)*dw; const w=Math.max(3,((be-bs)/86400000+1)*dw);
+      const ns=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      ns.setAttribute('class','baseline-bar'); ns.setAttribute('x',x); ns.setAttribute('y',b.y+b.height+1); ns.setAttribute('width',w); ns.setAttribute('height',4); ns.setAttribute('rx',2);
+      const parent=(b.group&&b.group.parentNode)||document.querySelector('#gantt'); parent.appendChild(ns);
+    }catch(e){}
+  });
+}
+function devBadge(st){ if(!st.baseline_end||!st.end_date) return ''; const d=Math.round((new Date(st.end_date)-new Date(st.baseline_end))/86400000);
+  if(d===0) return '<span class="badge ontime">la timp</span>'; if(d>0) return '<span class="badge late">+'+d+'z</span>'; return '<span class="badge early">'+d+'z</span>'; }
 function renderList(){
-  const ul=$('stage-list');
-  ul.innerHTML=STATE.stages.map(st=>{
+  const ul=$('stage-list'); const vis=visibleStages();
+  if(!vis.length){ ul.innerHTML='<li style="padding:1rem;color:var(--muted);font-size:.85rem">Nicio etapă pentru filtrele alese.</li>'; return; }
+  ul.innerHTML=vis.map(st=>{
     const col = STATE.colorBy==='status' ? (STATUS_COLOR[st.status]||'#94a3b8') : specColor(st.specialty);
+    const crit = STATE.crit[st.id] ? '<span class="badge crit" title="pe drumul critic">critic</span>' : '';
+    const ms = st.is_milestone ? '<span class="badge ms">◆ jalon</span>' : '';
+    const late = autoDelayed(st) ? '<span class="badge late">⚠ întârziat</span>' : '';
     return '<li class="stage-li" data-id="'+st.id+'">'
       +'<span class="grip" title="Trage ca să reordonezi">≡</span>'
-      +'<span class="dot" style="background:'+col+'"></span>'
-      +'<span class="nm" onclick="openStage(\''+st.id+'\')">'+esc(st.name)+'<small>'+dt(st.start_date)+' → '+dt(st.end_date)+(st.executor_name?(' · '+esc(st.executor_name)):'')+'</small></span>'
-      +'<span class="pc">'+(+st.progress||0)+'%</span></li>';
+      +'<span class="dot" style="background:'+(st.is_milestone?'#0f1c33':col)+'"></span>'
+      +'<span class="nm" onclick="openStage(\''+st.id+'\')">'+(st.is_milestone?'◆ ':'')+esc(st.name)+ms+crit+late+devBadge(st)+'<small>'+dt(st.start_date)+(st.is_milestone?'':' → '+dt(st.end_date))+(st.executor_name?(' · '+esc(st.executor_name)):'')+'</small></span>'
+      +'<span class="pc">'+(st.is_milestone?'':(+st.progress||0)+'%')+'</span></li>';
   }).join('');
   Sortable.create(ul,{ handle:'.grip', animation:150, ghostClass:'sortable-ghost', onEnd:reorder });
 }
@@ -233,9 +356,10 @@ function renderLegend(){
 }
 
 async function reorder(evt){
-  const ids=[...$('stage-list').querySelectorAll('.stage-li')].map(li=>li.dataset.id);
-  STATE.stages.sort((a,b)=>ids.indexOf(String(a.id))-ids.indexOf(String(b.id)));
-  STATE.stages.forEach((s,i)=>s.position=i+1);
+  const domIds=[...$('stage-list').querySelectorAll('.stage-li')].map(li=>li.dataset.id);
+  const visSet=new Set(domIds); const queue=[...domIds]; const byId={}; STATE.stages.forEach(s=>byId[String(s.id)]=s);
+  const newOrder=STATE.stages.map(s=> visSet.has(String(s.id)) ? queue.shift() : String(s.id));
+  STATE.stages=newOrder.map(id=>byId[id]); STATE.stages.forEach((s,i)=>s.position=i+1);
   renderGantt();
   for(let i=0;i<STATE.stages.length;i++){ await sb.from('site_stages').update({position:i+1}).eq('id',STATE.stages[i].id); }
   toast('✅ Ordine salvată.');
@@ -243,8 +367,31 @@ async function reorder(evt){
 function setView(v){ STATE.view=v; if(STATE.gantt){ try{STATE.gantt.change_view_mode(v);}catch(e){renderGantt();} } document.querySelectorAll('[data-vm]').forEach(b=>b.classList.toggle('active',b.dataset.vm===v)); }
 function setColor(c){ STATE.colorBy=c; renderGantt(); renderList(); renderLegend(); document.querySelectorAll('[data-cb]').forEach(b=>b.classList.toggle('active',b.dataset.cb===c)); }
 function scrollToday(){ const w=$('gantt-wrap'); const hl=w.querySelector('.today-highlight'); if(hl){ w.scrollLeft = hl.getBBox().x - w.clientWidth/2; } else toast('Astăzi nu e în interval.'); }
+function toggleCritical(){ STATE.criticalOn=!STATE.criticalOn; render(); toast(STATE.criticalOn?'🔴 Drum critic activat':'Drum critic dezactivat'); }
+async function saveBaseline(){
+  if(!confirm('Salvezi planul actual ca referință? Abaterile viitoare se vor măsura față de aceste date.')) return;
+  for(const st of STATE.stages){ if(st.start_date&&st.end_date){ st.baseline_start=st.start_date; st.baseline_end=st.end_date; await sb.from('site_stages').update({baseline_start:st.start_date,baseline_end:st.end_date}).eq('id',st.id); } }
+  toast('📌 Plan de referință salvat.'); render();
+}
+function exportPNG(){
+  const svg=document.querySelector('#gantt-wrap svg.gantt')||document.querySelector('#gantt-wrap svg');
+  if(!svg){ toast('Nimic de exportat.'); return; }
+  const clone=svg.cloneNode(true); const bb=svg.getBBox? null:null;
+  const w=svg.scrollWidth||svg.getBoundingClientRect().width, h=svg.scrollHeight||svg.getBoundingClientRect().height;
+  clone.setAttribute('width',w); clone.setAttribute('height',h);
+  // inject computed styles inline (frappe colors come from our CSS)
+  const css=[...document.styleSheets].map(s=>{ try{ return [...s.cssRules].map(r=>r.cssText).join(''); }catch(e){ return ''; } }).join('');
+  const style=document.createElementNS('http://www.w3.org/2000/svg','style'); style.textContent=css; clone.insertBefore(style,clone.firstChild);
+  const xml=new XMLSerializer().serializeToString(clone);
+  const img=new Image(); const svgBlob=new Blob([xml],{type:'image/svg+xml;charset=utf-8'}); const url=URL.createObjectURL(svgBlob);
+  img.onload=function(){ const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0);
+    URL.revokeObjectURL(url); c.toBlob(function(b){ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='grafic-'+(STATE.site.name||'santier').replace(/[^a-z0-9]/gi,'_')+'.png'; a.click(); toast('🖼️ Imagine descărcată.'); }); };
+  img.onerror=function(){ URL.revokeObjectURL(url); toast('Export indisponibil în acest browser. Folosește 🖨 Printează.'); };
+  img.src=url;
+}
 
-async function saveDates(id,start,end){ const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.start_date=start; st.end_date=end; } await sb.from('site_stages').update({start_date:start,end_date:end}).eq('id',id); renderList(); toast('✅ Date actualizate.'); }
+async function saveDates(id,start,end){ const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.start_date=start; st.end_date=end; if(st.is_milestone) st.end_date=start; } await sb.from('site_stages').update({start_date:st?st.start_date:start,end_date:st?st.end_date:end}).eq('id',id);
+  const moved=await enforceDeps(); renderGantt(); renderList(); toast(moved?('✅ Mutat. '+moved+' etap'+(moved===1?'ă dependentă mutată':'e dependente mutate')):'✅ Date actualizate.'); }
 async function saveProgress(id,p){ p=Math.max(0,Math.min(100,p)); const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.progress=p; if(p>=100&&st.status!=='done'){st.status='done'; await sb.from('site_stages').update({progress:p,status:'done'}).eq('id',id); renderGantt(); } else await sb.from('site_stages').update({progress:p}).eq('id',id); } renderList(); }
 async function autoChain(){
   let cur = STATE.site.start_date ? new Date(STATE.site.start_date) : new Date();
@@ -268,9 +415,10 @@ function renderBOM(){
 }
 
 /* ---- editare / adăugare etapă ---- */
-function openStage(id){
-  const st = id? STATE.stages.find(x=>String(x.id)===String(id)) : {};
+function openStage(id, asMilestone){
+  const st = id? STATE.stages.find(x=>String(x.id)===String(id)) : { is_milestone:!!asMilestone };
   const isNew=!id;
+  const depOpts=STATE.stages.filter(x=>String(x.id)!==String(st.id)).map(x=>'<option value="'+x.id+'" '+((st.depends_on||[]).map(String).includes(String(x.id))?'selected':'')+'>'+(x.is_milestone?'◆ ':'')+esc(x.name)+'</option>').join('');
   const normOpts='<option value="">— lucrare liberă —</option>'+STATE.norms.map(n=>'<option value="'+n.id+'" '+(st.norm_id===n.id?'selected':'')+'>'+esc(n.name)+' ('+esc(n.unit)+')</option>').join('');
   const exOpts='<option value="">— neatribuit —</option>'+STATE.execs.map((x,i)=>'<option value="'+i+'" '+(st.executor_id===x.id?'selected':'')+'>'+(x.kind==='angajat'?'👷':'🏢')+' '+esc(x.name)+(x.specialty?' · '+esc(x.specialty):'')+'</option>').join('');
   const statusOpts=Object.keys(STATUS).map(k=>'<option value="'+k+'" '+((st.status||'plan')===k?'selected':'')+'>'+STATUS[k]+'</option>').join('');
@@ -285,6 +433,8 @@ function openStage(id){
     +'<div class="row2"><div class="field"><label>Început</label><input id="e-start" type="date" value="'+esc(st.start_date||'')+'"/></div><div class="field"><label>Sfârșit</label><input id="e-end" type="date" value="'+esc(st.end_date||'')+'"/></div></div>'
     +'<div class="row2"><div class="field"><label>Stare</label><select id="e-status">'+statusOpts+'</select></div><div class="field"><label>Progres (%)</label><input id="e-prog" type="number" min="0" max="100" value="'+(+st.progress||0)+'"/></div></div>'
     +'<div class="field"><label>Executant</label><select id="e-exec">'+exOpts+'</select></div>'
+    +'<div class="field"><label>Depinde de (etape anterioare) <span title="Etapele care trebuie terminate înainte. Se desenează săgeți, iar la mutarea predecesoarei această etapă se mută automat." style="cursor:help;color:var(--muted)">ⓘ</span></label><select id="e-deps" multiple size="3" style="height:auto">'+depOpts+'</select></div>'
+    +'<div class="field"><label style="display:flex;align-items:center;gap:.4rem;font-weight:400"><input type="checkbox" id="e-ms" '+(st.is_milestone?'checked':'')+' style="width:auto"/> Este jalon (punct de control, fără durată)</label></div>'
     +'<div class="field"><label>Descriere (argumentată, compactă)</label><textarea id="e-desc" rows="2">'+esc(st.description||'')+'</textarea></div>'
     +(photos?'<div class="field"><label>Poze</label><div>'+photos+'</div></div>':'')
     +'<div class="field"><label>Adaugă poze</label><input id="e-photos" type="file" accept="image/*" capture="environment" multiple/></div>'
@@ -304,18 +454,21 @@ async function saveStage(id){
   const x=STATE.execs[+$('e-exec').value]; const qty=+$('e-qty').value||null;
   let existing=id? (STATE.stages.find(s=>String(s.id)===String(id)).photo_urls||[]) : [];
   let added=[]; try{ added=await uploadPhotos($('e-photos')); }catch(e){ $('ov-msg').textContent='Eroare poze: '+e.message; btn.disabled=false; btn.textContent='Salvează'; return; }
+  const deps=[...$('e-deps').selectedOptions].map(o=>o.value); const isMs=$('e-ms').checked;
+  let endVal=$('e-end').value||null; if(isMs) endVal=$('e-start').value||null;
   const rec={ name, qty, unit:($('e-unit').value||'').trim()||null, norm_id:normId,
-    start_date:$('e-start').value||null, end_date:$('e-end').value||null,
+    start_date:$('e-start').value||null, end_date:endVal,
     status:$('e-status').value, progress:+$('e-prog').value||0,
     executor_kind:x?x.kind:null, executor_id:x?x.id:null, executor_name:x?x.name:null,
     specialty:(n?n.category:(x?x.specialty:null)), description:($('e-desc').value||'').trim()||null,
-    photo_urls:(existing.concat(added)).length?existing.concat(added):null };
+    photo_urls:(existing.concat(added)).length?existing.concat(added):null,
+    depends_on:deps.length?deps:null, is_milestone:isMs };
   if(n && qty!=null) rec.est_cost=qty*(+n.unit_price||0);
   let res;
   if(id){ res=await sb.from('site_stages').update(rec).eq('id',id); }
   else { rec.tenant_id=(await sb.from('sites').select('tenant_id').eq('id',STATE.site.id).single()).data.tenant_id; rec.site_id=STATE.site.id; rec.position=STATE.stages.length+1; res=await sb.from('site_stages').insert(rec); }
   if(res.error){ $('ov-msg').textContent='Eroare: '+res.error.message; btn.disabled=false; btn.textContent='Salvează'; return; }
-  closeOv(); toast('✅ Salvat.'); await loadAll();
+  closeOv(); toast('✅ Salvat.'); await loadAll(); const m=await enforceDeps(); if(m){ renderGantt(); renderList(); }
 }
 async function delStage(id){ if(!confirm('Ștergi această etapă?')) return; const { error }=await sb.from('site_stages').delete().eq('id',id); if(error){ toast('Eroare'); return; } closeOv(); toast('Etapă ștearsă.'); await loadAll(); }
 
