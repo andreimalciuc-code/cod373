@@ -859,8 +859,8 @@ async function boot(){
   const { data:mem } = await sb.from('memberships').select('tenant_id, role, tenants(name,idno,vat_rate,vat_payer,currency,address,phone)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.firm = mem.tenants||{name:'Firma'};
-  // clientul si subcontractantul folosesc aplicatia mobila (interfata lor)
-  if(['client','subcontractor'].includes(state.role)){ location.replace('mobil.html'); return; }
+  // personele de teren (muncitor/sofer/subcontractant/client) folosesc aplicatia mobila
+  if(['client','subcontractor','worker','driver'].includes(state.role)){ location.replace('mobil.html'); return; }
   const coName = mem.tenants ? mem.tenants.name : 'Firma';
   $('co-name').textContent = coName;
   $('co-avatar').textContent = (coName.trim()[0]||'F').toUpperCase();
@@ -1305,10 +1305,19 @@ async function genInvite(entityType, entityId){
   $('inv-gen').disabled=false;
   if(error){ showMsg('inv-msg','Eroare: '+esc(error.message)); return; }
   const link=inviteLink(data);
-  $('modal-mount').querySelector('.modal-body').innerHTML='<p style="color:var(--green,#16a34a);font-weight:600">✅ Link generat!</p>'
-    +'<p style="font-size:.85rem;color:var(--muted)">Trimite-l persoanei (WhatsApp, email, SMS):</p>'
+  // trimite automat un email cu magic link care duce la linkul de invitatie (intra fara parola)
+  let emailStatus='';
+  if(email){
+    try{ const { error:oerr }=await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: link, shouldCreateUser:true } });
+      emailStatus = oerr ? ('<p style="font-size:.82rem;color:var(--red)">⚠️ Emailul nu a putut fi trimis ('+esc(oerr.message)+'). Folosește linkul de mai jos.</p>')
+        : ('<p style="font-size:.85rem;color:var(--green,#16a34a)">📧 Email trimis la <b>'+esc(email)+'</b> — persoana dă click și intră direct (fără parolă).</p>');
+    }catch(e){ emailStatus='<p style="font-size:.82rem;color:var(--red)">⚠️ Emailul nu a putut fi trimis. Folosește linkul de mai jos.</p>'; }
+  }
+  $('modal-mount').querySelector('.modal-body').innerHTML='<p style="color:var(--green,#16a34a);font-weight:600">✅ Acces creat!</p>'
+    +emailStatus
+    +'<p style="font-size:.85rem;color:var(--muted);margin-top:.6rem">Link de rezervă (dacă emailul întârzie sau ajunge în spam) — trimite-l pe WhatsApp/SMS:</p>'
     +'<div class="field"><input id="inv-link" readonly value="'+esc(link)+'" onclick="this.select()" style="font-size:.8rem"/></div>'
-    +'<button class="btn-primary btn-block" onclick="copyInvite(\''+data+'\')">📋 Copiază linkul</button>';
+    +'<button class="btn-primary btn-block" onclick="copyInvite(\''+data+'\')">📋 Copiază linkul de rezervă</button>';
   if($('inv-gen')) $('inv-gen').style.display='none';
   if(typeof renderInvites==='function' && $('inv-body')) renderInvites();
 }
@@ -2025,6 +2034,8 @@ async function printDoc(key,id){
     $('btn-login').disabled=$('btn-signup').disabled=true; return;
   }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // daca sesiunea soseste dupa load (ex. magic link din email), pornim boot-ul
+  sb.auth.onAuthStateChange((evt)=>{ if(evt==='SIGNED_IN' && !state.tenant) boot(); });
   await boot();
 })();
 </script>
