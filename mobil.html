@@ -361,9 +361,31 @@ async function openSite(id){
     +'<button class="btn" style="margin-top:.5rem" onclick="addReview()">Trimite comentariul</button></div>';
   const matMap=await nameMap('materials','name');
   const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
-  let stagesHtml = stages.length
-    ? stages.map(st=>'<div class="row" style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div class="grow"><b>'+esc(st.name)+'</b></div><span class="pill '+(stCol[st.status]||'grey')+'">'+(st.progress||0)+'%</span></div>').join('')
-    : '<div class="s">Nicio etapă definită încă.</div>';
+  const todayS=new Date().toISOString().slice(0,10);
+  const stTint={done:'rgba(22,179,100,.28)',active:'rgba(47,107,255,.28)',plan:'rgba(148,163,184,.3)',delayed:'rgba(239,68,68,.28)'};
+  const stSolid={done:'#16b364',active:'#2f6bff',plan:'#94a3b8',delayed:'#ef4444'};
+  const fd=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p[2]+'.'+p[1]; };
+  let stagesHtml;
+  if(!stages.length){ stagesHtml='<div class="s">Nicio etapă definită încă.</div>'; }
+  else {
+    const dated=stages.filter(x=>x.start_date&&x.end_date);
+    if(dated.length){
+      const min=Math.min(...dated.map(x=>+new Date(x.start_date))), max=Math.max(...dated.map(x=>+new Date(x.end_date))); const span=Math.max(86400000,max-min);
+      stagesHtml=stages.map(st=>{ let stt=st.status; if(stt!=='done'&&st.end_date&&st.end_date<todayS&&!st.is_milestone) stt='delayed';
+        const cls=stt||'plan'; let bar='';
+        if(st.start_date&&st.end_date){ const l=(+new Date(st.start_date)-min)/span*100;
+          if(st.is_milestone){ bar='<span style="position:absolute;left:'+l+'%;top:50%;width:12px;height:12px;transform:translate(-50%,-50%) rotate(45deg);background:#0f1c33;border:2px solid #fff;border-radius:2px"></span>'; }
+          else { const w=Math.max(3,((+new Date(st.end_date)-+new Date(st.start_date))/span)*100);
+            bar='<div style="position:absolute;left:'+l+'%;width:'+w+'%;height:100%;border-radius:6px;background:'+(stTint[cls]||stTint.plan)+';overflow:hidden"><div style="position:absolute;left:0;top:0;height:100%;width:'+(st.progress||0)+'%;background:'+(stSolid[cls]||stSolid.plan)+'"></div></div>'; }
+        }
+        return '<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div class="row" style="margin-bottom:.35rem"><div class="grow"><b>'+(st.is_milestone?'◆ ':'')+esc(st.name)+'</b>'+(st.start_date?' <span class="s">'+fd(st.start_date)+(st.is_milestone?'':' → '+fd(st.end_date))+'</span>':'')+'</div><b style="font-size:.85rem;color:'+(stSolid[cls]||'#6b7793')+'">'+(st.is_milestone?'◆':(st.progress||0)+'%')+'</b></div>'
+          +'<div style="position:relative;height:15px;background:#eef1f6;border-radius:6px">'+bar+'</div></div>';
+      }).join('')
+      +'<div style="margin-top:.6rem;display:flex;gap:.7rem;flex-wrap:wrap;font-size:.7rem;color:var(--muted)"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#16b364;vertical-align:middle"></i> Finalizat</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#2f6bff;vertical-align:middle"></i> În lucru</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#94a3b8;vertical-align:middle"></i> Planificat</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#ef4444;vertical-align:middle"></i> Întârziat</span><span>◆ Jalon</span></div>';
+    } else {
+      stagesHtml=stages.map(st=>'<div class="row" style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div class="grow"><b>'+esc(st.name)+'</b></div><span class="pill '+(stCol[st.status]||'grey')+'">'+(st.progress||0)+'%</span></div>').join('');
+    }
+  }
   let stockHtml = (stockR.data&&stockR.data.length)
     ? stockR.data.map(st=>'<div class="row" style="padding:.35rem 0"><div class="grow">'+esc(matMap[st.material_id]||'Material')+'</div><b>'+esc(st.qty)+'</b>'+(Number(st.qty)<Number(st.min_qty)?' <span class="pill red">sub minim</span>':'')+'</div>').join('')
     : '<div class="s">Fără stoc înregistrat.</div>';
@@ -371,7 +393,7 @@ async function openSite(id){
   const body='<div class="card" style="margin:0 0 .8rem"><div class="row"><div class="grow"><div class="s">Progres lucrare</div></div><b>'+(s.progress||0)+'%</b></div><div class="prog" style="margin-top:.4rem"><span style="width:'+(s.progress||0)+'%"></span></div>'
     +(s.address?'<div class="s" style="margin-top:.6rem">📍 '+esc(s.address)+'</div>':'')+(s.deadline?'<div class="s">📅 Termen: '+esc(s.deadline)+'</div>':'')
     +(openDef?'<div class="s" style="margin-top:.4rem">🔧 '+openDef+' defecte deschise</div>':'')+'</div>'
-    +'<h4 style="margin:.6rem 0 .3rem">Etape</h4>'+stagesHtml
+    +'<h4 style="margin:.6rem 0 .3rem">'+(S.role==='client'?'📅 Graficul lucrărilor':'Etape')+'</h4>'+stagesHtml
     +(S.role==='client'?'':'<h4 style="margin:1rem 0 .3rem">Stoc pe șantier</h4>'+stockHtml)
     +(S.role==='client'
         ? '<button class="btn" style="margin-top:1.2rem" onclick="closeSheet();S.psite=\''+id+'\';goV(\'poze\')">📷 Vezi pozele lucrării</button>'
