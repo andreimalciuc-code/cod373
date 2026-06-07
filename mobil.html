@@ -193,6 +193,7 @@ const NAV={
   worker:[['acasa','🏠','Acasă'],['comanda','🛒','Comandă'],['pontaj','⏱️','Pontaj'],['poze','📷','Poze'],['defecte','🔧','Defecte']],
   driver:[['acasa','🏠','Acasă'],['livrari','🚚','Livrări']],
   manager:[['acasa','🏠','Acasă'],['santiere','🏗️','Șantiere'],['comanda','🛒','Comandă'],['poze','📷','Poze']],
+  subcontractor:[['acasa','🏗️','Lucrările mele'],['poze','📷','Poze'],['defecte','🔧','Probleme']],
   client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['poze','📷','Poze']]
 };
 function render(){
@@ -281,8 +282,47 @@ async function doPay(id){
   closeSheet(); scrClientFacturi();
 }
 
+async function scrSubHome(){
+  $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
+  const me=S.session.user.id;
+  const [subsR, sitesR, scR, stagesR]=await Promise.all([
+    sb.from('subcontractors').select('id,name,specialties').eq('user_id',me),
+    sb.from('sites').select('id,name,address,status,progress,deadline'),
+    sb.from('subcontracts').select('id,title,amount,status,start_date,end_date,site_id'),
+    sb.from('site_stages').select('id,name,status,progress,start_date,end_date,site_id,executor_id,executor_kind')
+  ]);
+  const myIds=(subsR.data||[]).map(x=>x.id);
+  const subName=(subsR.data&&subsR.data[0])?subsR.data[0].name:'Subcontractant';
+  const sites=sitesR.data||[]; S.sites=sites;
+  const stBy={}; (stagesR.data||[]).filter(st=>st.executor_kind==='subcontractant'&&myIds.includes(st.executor_id)).forEach(st=>{(stBy[st.site_id]=stBy[st.site_id]||[]).push(st);});
+  const cBy={}; (scR.data||[]).forEach(c=>{(cBy[c.site_id]=cBy[c.site_id]||[]).push(c);});
+  const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
+  const stLbl={plan:'Planificat',active:'În lucru',done:'Finalizat',delayed:'Întârziat'};
+  const html=sites.map(s=>{
+    const stages=(stBy[s.id]||[]); const contracts=(cBy[s.id]||[]); const cTot=contracts.reduce((t,c)=>t+(+c.amount||0),0);
+    const stHtml=stages.length? stages.map(st=>'<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div class="row" style="margin-bottom:.3rem"><div class="grow"><b>'+esc(st.name)+'</b> <span class="pill '+(stCol[st.status]||'grey')+'">'+(stLbl[st.status]||st.status)+'</span></div><b>'+(st.progress||0)+'%</b></div><div class="prog"><span style="width:'+(st.progress||0)+'%"></span></div><button class="mini-btn gh" style="margin-top:.4rem" onclick="subSetProgress(\''+st.id+'\','+(st.progress||0)+')">✏️ Actualizează progresul</button></div>').join('')
+      : '<div class="s">Nicio lucrare alocată aici.</div>';
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+'</div><div class="s">'+esc(s.address||'')+'</div></div>'+pillSite(s.status)+'</div>'
+      +(cTot?'<div class="s" style="margin-top:.4rem">📄 Contract: <b>'+money(cTot)+'</b>'+(contracts[0]&&contracts[0].end_date?(' · termen '+esc(contracts[0].end_date)):'')+'</div>':'')
+      +'<h4 style="margin:.7rem 0 .2rem">Lucrările mele aici</h4>'+stHtml
+      +'<button class="btn btn-soft" style="margin-top:.6rem;width:100%" onclick="window.open(\'grafic.html?site='+s.id+'\',\'_blank\')">📅 Vezi graficul complet</button>'
+      +'<button class="btn" style="margin-top:.4rem;width:100%" onclick="S.psite=\''+s.id+'\';goV(\'poze\')">📷 Adaugă poză</button></div>';
+  }).join('')||'<div class="empty"><div class="ei">🏗️</div>Nicio lucrare alocată încă. Biroul te va contracta pe un șantier.</div>';
+  $('screen').innerHTML='<div class="scr-title">Salut! 👋</div>'
+    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc(subName)+'</div><div class="s" style="color:#9fb0d4">Rol: Subcontractant</div></div>'
+    +html;
+}
+async function subSetProgress(id,cur){
+  const v=prompt('Progresul lucrării (0–100%):', cur);
+  if(v===null) return; const p=Math.max(0,Math.min(100,parseInt(v,10)||0));
+  const patch={progress:p}; if(p>=100) patch.status='done'; else if(p>0) patch.status='active';
+  const {error}=await sb.from('site_stages').update(patch).eq('id',id);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  toast('✅ Progres actualizat: '+p+'%'); scrSubHome();
+}
 async function scrAcasa(){
   if(S.role==='client') return scrClientHome();
+  if(S.role==='subcontractor') return scrSubHome();
   $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
   const {data:all}=await sb.from('sites').select('id,name,address,status,progress,deadline');
   S.sites=all||[];

@@ -835,7 +835,7 @@ const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi'];
 const FINANCE_ROLES=['owner','admin','accountant','manager'];
 const ADMIN_KEYS=['utilizatori','setari'];
 const ADMIN_ROLES=['owner','admin'];
-const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Muncitor',driver:'Șofer',client:'Client'};
+const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Muncitor',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
 function canSee(key){ if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(state.role); if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(state.role); return true; }
 
 /* ════ BOOT ════ */
@@ -859,6 +859,8 @@ async function boot(){
   const { data:mem } = await sb.from('memberships').select('tenant_id, role, tenants(name,idno,vat_rate,vat_payer,currency,address,phone)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.firm = mem.tenants||{name:'Firma'};
+  // clientul si subcontractantul folosesc aplicatia mobila (interfata lor)
+  if(['client','subcontractor'].includes(state.role)){ location.replace('mobil.html'); return; }
   const coName = mem.tenants ? mem.tenants.name : 'Firma';
   $('co-name').textContent = coName;
   $('co-avatar').textContent = (coName.trim()[0]||'F').toUpperCase();
@@ -1279,7 +1281,7 @@ function copyInvite(token){ const l=inviteLink(token); navigator.clipboard.write
 async function revokeInvite(id){ if(!confirm('Anulezi această invitație? Linkul nu va mai funcționa.')) return; const { error }=await sb.rpc('revoke_invite',{p_id:id}); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Invitație anulată.'); renderInvites(); }
 
 async function inviteEntity(type, id){
-  const def={ employee:'worker', client:'client', subcontractor:'worker' }[type]||'worker';
+  const def={ employee:'worker', client:'client', subcontractor:'subcontractor' }[type]||'worker';
   let name='';
   try{ const tbl={employee:'employees',client:'clients',subcontractor:'subcontractors'}[type]; const col=type==='employee'?'full_name':'name';
     const { data }=await sb.from(tbl).select(col).eq('id',id).single(); name=data?data[col]:''; }catch(e){}
