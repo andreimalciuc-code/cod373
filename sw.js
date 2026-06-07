@@ -1,7 +1,7 @@
 /* Cod373 service worker — network-first pentru pagini, cache-first pentru resurse */
-const CACHE = 'cod373-v3';
+const CACHE = 'cod373-v4';
 const ASSETS = [
-  './app.html', './mobil.html', './portal.html', './erp.html', './grafic.html',
+  './app.html', './mobil.html', './portal.html', './erp.html', './grafic.html', './deviz.html',
   './manifest.webmanifest', './manifest-mobil.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png'
 ];
 

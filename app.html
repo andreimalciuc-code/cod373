@@ -513,7 +513,7 @@ const MODULES = {
       {key:'notes',label:'Note',type:'textarea'} ] },
 
   devize:{ title:'Devize', sub:'Estimări și oferte de preț.', icon:'📋', group:'Finanțe', table:'estimates',
-    newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, orderBy:{col:'created_at',asc:false},
+    newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', orderBy:{col:'created_at',asc:false},
     select:'id,number,status,subtotal,vat_total,total,valid_until,clients!client_id(name),sites!site_id(name)',
     columns:[
       {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'},
@@ -1546,18 +1546,7 @@ async function previzPDF(id){
     +'</body></html>';
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(html); w.document.close();
 }
-async function previzToDeviz(id){
-  toast('⏳ Se creează devizul…');
-  const s=(await sb.from('site_surveys').select('id,name,client_id,area_m2').eq('id',id).single()).data; if(!s){ toast('Eroare.'); return; }
-  const meas=((await sb.from('survey_measurements').select('*').eq('survey_id',id)).data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
-  const num='OF-'+new Date().toISOString().slice(2,10).replace(/-/g,'')+'-'+Math.floor(Math.random()*900+100);
-  const ins=await sb.from('estimates').insert({tenant_id:state.tenant,number:num,client_id:s.client_id||null,status:'draft'}).select('id').single();
-  if(ins.error){ toast('Eroare: '+esc(ins.error.message)); return; }
-  const eid=ins.data.id;
-  const items=(meas.length?meas:[{label:s.name,qty:s.area_m2||1,unit:'m2'}]).map(m=>({tenant_id:state.tenant,estimate_id:eid,name:m.label,qty:(+m.qty||1),unit:m.unit||'m2',unit_price:0,vat_rate:20}));
-  await sb.from('estimate_items').insert(items);
-  toast('✅ Deviz creat din fișă — completează prețurile.'); go('devize'); setTimeout(()=>editRecord('devize',eid),400);
-}
+function previzToDeviz(id){ window.open('deviz.html?survey='+id,'_blank'); toast('Se deschide oferta cu volumele din fișă…'); }
 async function previzToSite(id){
   const s=(await sb.from('site_surveys').select('*').eq('id',id).single()).data; if(!s){ toast('Eroare.'); return; }
   const budget=(s.answers&&s.answers.buget_client)?+s.answers.buget_client:null;
@@ -1629,7 +1618,9 @@ async function renderModule(key){
   let bar='<div class="seg">'
     +'<input id="list-search" placeholder="'+TR('cauta')+'" oninput="onListSearch(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none;min-width:200px"/>';
   if(statusField){ bar+='<select id="list-status" onchange="onListStatus(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:#fff"><option value="">'+TR('toate')+'</option>'+statusField.options.map(o=>'<option value="'+o.value+'">'+esc(LANG==='ru'&&STATUS_RU[o.value]?STATUS_RU[o.value]:o.label)+'</option>').join('')+'</select>'; }
-  bar+=(m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>':'<button class="btn-primary" style="margin-left:auto" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>')+'</div>';
+  bar+=(m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
+    :m.pageEditor?'<button class="btn-primary" style="margin-left:auto" onclick="window.open(\''+m.pageEditor+'?new=1\',\'_blank\')">📋 '+esc(m.newLabel)+' (filă nouă)</button><button class="btn-ghost" onclick="openForm(\''+key+'\')">＋ rapid</button>'
+    :'<button class="btn-primary" style="margin-left:auto" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>')+'</div>';
   $('content').innerHTML=bar+'<div class="panel"><div class="panel-head"><h3>'+esc(m.title)+'</h3><span id="list-count" style="font-size:.8rem;color:var(--muted)"></span></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
   // sortarea o facem în client (robust față de hopurile Supabase pe ordonarea după coloane temporale)
   let sel=m.select;
@@ -1665,6 +1656,7 @@ function renderList(){
       +(m.teamable?'<button class="iconbtn" title="Acces / echipă" onclick="siteTeam(\''+r.id+'\')">👥</button>':'')
       +(m.portalable?'<button class="iconbtn" title="Link portal client" onclick="genPortal(\''+r.id+'\')">🔗</button>':'')
       +(m.toSite?'<button class="iconbtn" title="Creează șantier din ofertă" onclick="estimateToSite(\''+r.id+'\')">🏗️</button>':'')
+      +(m.pageEditor?'<button class="iconbtn" title="Deschide / editează oferta (filă nouă)" onclick="window.open(\''+m.pageEditor+'?id=\'+\''+r.id+'\',\'_blank\')">📋</button>':'')
       +(m.convertible?'<button class="iconbtn" title="Creează factură din deviz" onclick="estimateToInvoice(\''+r.id+'\')">🧾</button>':'')
       +(m.efactura?'<button class="iconbtn" title="e-Factura (SFS) — generează XML" onclick="genEfactura(\''+r.id+'\')">🏛️</button>':'')
       +(m.printable?'<button class="iconbtn" title="Tipărește / PDF" onclick="printDoc(\''+key+'\',\''+r.id+'\')">🖨</button>':'')
