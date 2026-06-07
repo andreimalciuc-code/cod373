@@ -31,6 +31,18 @@
   .dot.done{background:var(--green-soft);color:var(--green)}.dot.active{background:var(--blue-soft);color:var(--primary)}.dot.plan{background:#eef0f5;color:var(--muted)}.dot.delayed{background:var(--amber-soft);color:#92400e}
   .stage .g{flex:1}.stage .t{font-weight:600}.stage .s{font-size:.8rem;color:var(--muted)}
   .stage .pc{font-weight:700;color:var(--primary)}
+  .tlrow{display:grid;grid-template-columns:128px 1fr 42px;gap:.6rem;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--line)}
+  .tlrow:last-child{border-bottom:none}
+  .tlname{font-weight:600;font-size:.85rem;line-height:1.25}.tlname small{display:block;color:var(--muted);font-weight:400;font-size:.71rem;margin-top:.1rem}
+  .track{position:relative;height:20px;background:#f1f4fa;border-radius:6px}
+  .bar{position:absolute;top:0;height:100%;border-radius:6px;min-width:5px;overflow:hidden}
+  .bar.done{background:rgba(22,179,100,.3)}.bar.active{background:rgba(47,107,255,.3)}.bar.plan{background:rgba(148,163,184,.35)}.bar.delayed{background:rgba(239,68,68,.3)}
+  .bar .prog{position:absolute;left:0;top:0;height:100%}
+  .bar.done .prog{background:var(--green)}.bar.active .prog{background:var(--primary)}.bar.plan .prog{background:#94a3b8}.bar.delayed .prog{background:#ef4444}
+  .ms{position:absolute;top:50%;width:13px;height:13px;transform:translate(-50%,-50%) rotate(45deg);background:var(--ink);border:2px solid #fff;border-radius:2px}
+  .tlpc{font-weight:700;font-size:.8rem;text-align:right;color:var(--muted)}
+  .lgnd{margin-top:.7rem;display:flex;gap:.9rem;flex-wrap:wrap;font-size:.72rem;color:var(--muted);align-items:center}
+  .lgnd i{width:11px;height:11px;border-radius:3px;display:inline-block;margin-right:.25rem;vertical-align:middle}
   .kv{display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line);font-size:.92rem}
   .kv:last-child{border-bottom:none}.kv .k{color:var(--muted)}
   .center{text-align:center;padding:4rem 1.5rem;color:var(--muted)}
@@ -66,14 +78,34 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
     center('🔒',m); return;
   }
   const s=data.site, stages=data.stages||[];
+  const fmtd=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0].slice(2)):d; };
   let stagesHtml='';
   if(stages.length){
-    stagesHtml='<div class="card"><h3>Etapele lucrării</h3>'+stages.map(st=>{
-      const cls=STG[st.status]||'plan'; const ic=st.status==='done'?'✓':st.status==='active'?'●':st.status==='delayed'?'!':'○';
-      return '<div class="stage"><div class="dot '+cls+'">'+ic+'</div><div class="g"><div class="t">'+esc(st.name)+'</div>'
-        +'<div class="s">'+(st.start_date?esc(st.start_date):'')+(st.end_date?(' → '+esc(st.end_date)):'')+'</div></div>'
-        +'<div class="pc">'+(st.progress||0)+'%</div></div>';
-    }).join('')+'</div>';
+    const dated=stages.filter(st=>st.start_date&&st.end_date);
+    let body;
+    if(dated.length){
+      const min=Math.min(...dated.map(st=>+new Date(st.start_date)));
+      const max=Math.max(...dated.map(st=>+new Date(st.end_date)));
+      const span=Math.max(86400000,max-min);
+      body='<div class="tl">'+stages.map(st=>{
+        const cls=STG[st.status]||'plan'; let bar='';
+        if(st.start_date&&st.end_date){
+          const l=(+new Date(st.start_date)-min)/span*100;
+          if(st.is_milestone){ bar='<span class="ms" style="left:'+l+'%" title="Jalon"></span>'; }
+          else { const w=Math.max(2,((+new Date(st.end_date)-+new Date(st.start_date))/span)*100);
+            bar='<div class="bar '+cls+'" style="left:'+l+'%;width:'+w+'%"><div class="prog" style="width:'+(st.progress||0)+'%"></div></div>'; }
+        }
+        return '<div class="tlrow"><div class="tlname">'+(st.is_milestone?'◆ ':'')+esc(st.name)
+          +'<small>'+fmtd(st.start_date)+(st.is_milestone?'':(st.end_date?(' → '+fmtd(st.end_date)):''))+'</small></div>'
+          +'<div class="track">'+bar+'</div>'
+          +'<div class="tlpc">'+(st.is_milestone?'◆':((st.progress||0)+'%'))+'</div></div>';
+      }).join('')+'</div>'
+      +'<div class="lgnd"><span><i style="background:var(--green)"></i>Finalizat</span><span><i style="background:var(--primary)"></i>În lucru</span><span><i style="background:#94a3b8"></i>Planificat</span><span><i style="background:#ef4444"></i>Întârziat</span><span>◆ Jalon</span></div>';
+    } else {
+      body=stages.map(st=>{ const cls=STG[st.status]||'plan'; const ic=st.status==='done'?'✓':st.status==='active'?'●':st.status==='delayed'?'!':'○';
+        return '<div class="stage"><div class="dot '+cls+'">'+ic+'</div><div class="g"><div class="t">'+esc(st.name)+'</div></div><div class="pc">'+(st.progress||0)+'%</div></div>'; }).join('');
+    }
+    stagesHtml='<div class="card"><h3>Graficul lucrărilor</h3>'+body+'</div>';
   }
   let costHtml='';
   if(data.show_costs && s.budget!=null){
