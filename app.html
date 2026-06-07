@@ -420,9 +420,9 @@ const MODULES = {
 
   servicii:{ title:'Servicii', sub:'Manoperă și lucrări.', icon:'🧰', group:'Catalog', table:'services',
     newLabel:'Serviciu nou', orderBy:{col:'name',asc:true},
-    select:'id,name,unit,price,vat_rate',
+    select:'id,name,unit,price,vat_rate,description,photo_url',
     columns:[
-      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
+      {label:'Denumire',get:r=>(r.photo_url?'<span onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="cursor:pointer" title="vezi poza">🖼️ </span>':'')+'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Tarif',get:r=>money(r.price)},
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
@@ -430,7 +430,9 @@ const MODULES = {
       {key:'name',label:'Denumire',type:'text',required:true},
       {key:'unit',label:'Unitate de măsură',type:'text',default:'m2'},
       {key:'price',label:'Tarif standard (MDL)',type:'number'},
-      {key:'vat_rate',label:'TVA (%)',type:'number',default:20} ] },
+      {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
+      {key:'description',label:'Descriere (compactă)',type:'textarea',hint:'Ce include serviciul, condiții, observații. Apare în nomenclator și pe oferte.'},
+      {key:'photo_url',label:'Poză serviciu',type:'photo',hint:'Fotografie ilustrativă (exemplu de lucrare). Se încarcă în Documente.'} ] },
 
   instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule.', icon:'🛠️', group:'Catalog', table:'tools',
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
@@ -1698,7 +1700,7 @@ async function openForm(key,row){
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
-  if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Adaugă din norme</button>':'')+'</div>'; }
+  if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Din norme</button><button type="button" class="addline" style="margin-left:1rem" onclick="openServicePicker()">🧰 Din servicii</button>':'')+'</div>'; }
   if(m.bomFromNorms){ formCtx.bom=true; body+='<div id="form-bom"></div>'; await ensureNorms(); await ensureNormMaterials(); }
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">'
     +'<div class="modal-head"><h3>'+(row?'Editează':esc(m.newLabel))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
@@ -1732,6 +1734,24 @@ function renderNormPicker(q){
 }
 function addNormLine(i){ const n=(window._npFiltered||[])[i]; if(!n)return; formCtx.lines.push({name:n.name,qty:1,unit:n.unit||'buc',unit_price:+n.unit_price||0,vat_rate:20,norm_code:n.code}); renderLines(); toast('Adăugat: '+esc(n.name)); }
 function closeNormPicker(){ $('picker-mount').innerHTML=''; }
+
+/* selector de SERVICII pentru deviz */
+async function ensureServices(){ if(!window._services){ const { data }=await sb.from('services').select('id,name,unit,price,vat_rate,description').eq('active',true); window._services=data||[]; } return window._services; }
+async function openServicePicker(){
+  await ensureServices();
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:60" onclick="if(event.target===this)closeNormPicker()"><div class="modal" style="max-width:560px">'
+    +'<div class="modal-head"><h3>🧰 Adaugă din servicii</h3><button class="x" onclick="closeNormPicker()">×</button></div>'
+    +'<div class="modal-body"><input id="sp-q" placeholder="'+TR('cauta')+'" oninput="renderServicePicker(this.value)" style="width:100%;padding:.6rem .8rem;border:1px solid var(--line);border-radius:9px;margin-bottom:.8rem;outline:none"/><div id="sp-list"></div>'
+    +((window._services&&window._services.length)?'':'<div style="color:var(--muted);font-size:.85rem">Niciun serviciu în catalog. Adaugă-le la modulul <b>Servicii</b>.</div>')+'</div>'
+    +'<div class="modal-foot"><button class="btn-primary" onclick="closeNormPicker()">Gata</button></div></div></div>';
+  renderServicePicker('');
+}
+function renderServicePicker(q){ q=(q||'').toLowerCase();
+  const list=(window._services||[]).filter(s=>!q||((s.name||'')+' '+(s.unit||'')).toLowerCase().includes(q));
+  window._spFiltered=list;
+  $('sp-list').innerHTML='<div class="tbl-wrap"><table class="tbl"><tbody>'+list.map((s,i)=>'<tr><td class="tname">'+esc(s.name)+'<div style="color:var(--muted);font-size:.78rem">'+esc(s.unit||'')+' · '+money(s.price)+'</div></td><td style="text-align:right"><button class="btn-ghost" onclick="addServiceLine('+i+')">＋</button></td></tr>').join('')+'</tbody></table></div>';
+}
+function addServiceLine(i){ const s=(window._spFiltered||[])[i]; if(!s) return; formCtx.lines.push({name:s.name,qty:1,unit:s.unit||'buc',unit_price:+s.price||0,vat_rate:+s.vat_rate||20}); renderLines(); toast('Adăugat: '+esc(s.name)); }
 
 /* ════════════════════════════════════════════════════════════════════
    LOT 3 — Șantiere: wizard cu grafic auto, executanți, ofertă→șantier, marjă live
@@ -1799,7 +1819,7 @@ async function openSiteWizard(prefill){
     +'<div class="row-2"><div class="field"><label>Adresă</label><input id="wz-addr" value="'+esc(p.address||'')+'"/></div>'
     +'<div class="field"><label>Început lucrări</label><input id="wz-start" type="date" value="'+esc(p.start_date||_iso(new Date()))+'"/></div></div>'
     +'<div class="field"><label>Responsabili (Ctrl/Cmd + clic pentru mai mulți)</label><select id="wz-resp" multiple size="3" style="height:auto">'+(window._execList.filter(x=>x.kind==='angajat').map(x=>'<option value="'+x.id+'">'+esc(x.name)+(x.specialty?' · '+esc(x.specialty):'')+'</option>').join(''))+'</select></div>'
-    +'<div class="field"><label style="display:flex;align-items:center;justify-content:space-between">Lucrări → grafic automat <button type="button" class="addline" onclick="openWorkPicker()">📐 Adaugă lucrări din norme</button></label><div id="wz-works"></div></div>'
+    +'<div class="field"><label style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.3rem">Lucrări → grafic automat <span><button type="button" class="addline" onclick="openWorkPicker()">📐 Din norme</button> <button type="button" class="addline" onclick="openWorkServicePicker()">🧰 Din servicii</button></span></label><div id="wz-works"></div></div>'
     +'<div id="wz-bom"></div>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px">'
     +'<div class="modal-head"><h3>🏗️ Șantier nou cu grafic</h3><button class="x" onclick="closeModal()">×</button></div>'
@@ -1853,6 +1873,23 @@ function addWork(i){ const n=(window._wpFiltered||[])[i]; if(!n) return; const a
   wizCtx.works.push({ name:n.name, qty:a||1, unit:n.unit||'m2', unit_price:+n.unit_price||0, daily_output:+n.daily_output||15, norm_id:n.id, specialty:n.category||'' });
   renderWizWorks(); toast('Adăugat: '+esc(n.name)); }
 function closeWorkPicker(){ $('picker-mount').innerHTML=''; }
+async function openWorkServicePicker(){
+  await ensureServices();
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:60" onclick="if(event.target===this)closeWorkPicker()"><div class="modal" style="max-width:560px">'
+    +'<div class="modal-head"><h3>🧰 Adaugă din servicii</h3><button class="x" onclick="closeWorkPicker()">×</button></div>'
+    +'<div class="modal-body"><input id="spw-q" placeholder="'+TR('cauta')+'" oninput="renderWorkServicePicker(this.value)" style="width:100%;padding:.6rem .8rem;border:1px solid var(--line);border-radius:9px;margin-bottom:.8rem;outline:none"/><div id="spw-list"></div>'
+    +((window._services&&window._services.length)?'':'<div style="color:var(--muted);font-size:.85rem">Niciun serviciu în catalog. Adaugă-le la modulul <b>Servicii</b>.</div>')+'</div>'
+    +'<div class="modal-foot"><button class="btn-primary" onclick="closeWorkPicker()">Gata</button></div></div></div>';
+  renderWorkServicePicker('');
+}
+function renderWorkServicePicker(q){ q=(q||'').toLowerCase();
+  const list=(window._services||[]).filter(s=>!q||((s.name||'')+' '+(s.unit||'')).toLowerCase().includes(q));
+  window._spwFiltered=list;
+  $('spw-list').innerHTML='<div class="tbl-wrap"><table class="tbl"><tbody>'+list.map((s,i)=>'<tr><td class="tname">'+esc(s.name)+'<div style="color:var(--muted);font-size:.78rem">'+esc(s.unit||'')+' · '+money(s.price)+'</div></td><td style="text-align:right"><button class="btn-ghost" onclick="addWorkService('+i+')">＋</button></td></tr>').join('')+'</tbody></table></div>';
+}
+function addWorkService(i){ const s=(window._spwFiltered||[])[i]; if(!s) return; const a=+( $('wz-area')&&$('wz-area').value)||0;
+  wizCtx.works.push({ name:s.name, qty:a||1, unit:s.unit||'m2', unit_price:+s.price||0, daily_output:15, norm_id:null, specialty:'' });
+  renderWizWorks(); toast('Adăugat: '+esc(s.name)); }
 
 async function genStages(siteId, startStr, works){
   let cur = startStr? new Date(startStr): new Date();

@@ -142,7 +142,7 @@ async function pickSite(){
   $('root').innerHTML='<div class="center">Alege un șantier din colțul de sus ↗</div>';
 }
 async function loadAll(){
-  const [siteR, stagesR, ordR, subR, empR, subcR, normR, nmR] = await Promise.all([
+  const [siteR, stagesR, ordR, subR, empR, subcR, normR, nmR, svcR] = await Promise.all([
     sb.from('sites').select('id,name,code,budget,work_type,area_m2,start_date,deadline,status').eq('id',STATE.siteId).single(),
     sb.from('site_stages').select('id,name,position,status,progress,start_date,end_date,qty,unit,norm_id,executor_kind,executor_id,executor_name,specialty,est_cost,description,photo_urls,depends_on,is_milestone,baseline_start,baseline_end').eq('site_id',STATE.siteId),
     sb.from('material_orders').select('total,status').eq('site_id',STATE.siteId),
@@ -150,14 +150,15 @@ async function loadAll(){
     sb.from('employees').select('id,full_name,specialty').eq('active',true),
     sb.from('subcontractors').select('id,name,specialties'),
     sb.from('norms').select('id,code,name,unit,category,unit_price,daily_output'),
-    sb.from('norm_materials').select('norm_code,material_name,unit,qty_per_unit,kind')
+    sb.from('norm_materials').select('norm_code,material_name,unit,qty_per_unit,kind'),
+    sb.from('services').select('id,name,unit,price').eq('active',true)
   ]);
   if(siteR.error){ $('root').innerHTML='<div class="center">Eroare: '+esc(siteR.error.message)+'</div>'; return; }
   STATE.site=siteR.data;
   STATE.stages=(stagesR.data||[]).slice().sort((a,b)=>(a.position||0)-(b.position||0));
   STATE.execs=[].concat((empR.data||[]).map(x=>({kind:'angajat',id:x.id,name:x.full_name,specialty:x.specialty||''})),
                         (subcR.data||[]).map(x=>({kind:'subcontractant',id:x.id,name:x.name,specialty:x.specialties||''})));
-  STATE.norms=normR.data||[]; STATE.normMat={}; (nmR.data||[]).forEach(x=>{ (STATE.normMat[x.norm_code]=STATE.normMat[x.norm_code]||[]).push(x); });
+  STATE.norms=normR.data||[]; STATE.services=svcR.data||[]; STATE.normMat={}; (nmR.data||[]).forEach(x=>{ (STATE.normMat[x.norm_code]=STATE.normMat[x.norm_code]||[]).push(x); });
   STATE._cost = ((ordR.data||[]).filter(o=>o.status!=='cancelled').reduce((t,o)=>t+(+o.total||0),0))
               + ((subR.data||[]).filter(o=>o.status!=='cancelled').reduce((t,o)=>t+(+o.amount||0),0));
   render();
@@ -421,9 +422,10 @@ function renderBOM(){
 /* ---- editare / adăugare etapă ---- */
 function openStage(id, asMilestone){
   const st = id? STATE.stages.find(x=>String(x.id)===String(id)) : { is_milestone:!!asMilestone };
-  const isNew=!id;
+  const isNew=!id; window._svcSel=null;
   const depOpts=STATE.stages.filter(x=>String(x.id)!==String(st.id)).map(x=>'<option value="'+x.id+'" '+((st.depends_on||[]).map(String).includes(String(x.id))?'selected':'')+'>'+(x.is_milestone?'◆ ':'')+esc(x.name)+'</option>').join('');
   const normOpts='<option value="">— lucrare liberă —</option>'+STATE.norms.map(n=>'<option value="'+n.id+'" '+(st.norm_id===n.id?'selected':'')+'>'+esc(n.name)+' ('+esc(n.unit)+')</option>').join('');
+  const svcOpts='<option value="">— alege serviciu —</option>'+(STATE.services||[]).map((s,i)=>'<option value="'+i+'">'+esc(s.name)+' ('+esc(s.unit||'')+')</option>').join('');
   const exOpts='<option value="">— neatribuit —</option>'+STATE.execs.map((x,i)=>'<option value="'+i+'" '+(st.executor_id===x.id?'selected':'')+'>'+(x.kind==='angajat'?'👷':'🏢')+' '+esc(x.name)+(x.specialty?' · '+esc(x.specialty):'')+'</option>').join('');
   const statusOpts=Object.keys(STATUS).map(k=>'<option value="'+k+'" '+((st.status||'plan')===k?'selected':'')+'>'+STATUS[k]+'</option>').join('');
   const photos=(st.photo_urls||[]).map((p,i)=>'<a onclick="openPhoto(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary);font-size:.78rem;margin-right:.5rem">🖼️ poza '+(i+1)+'</a>').join('');
@@ -431,7 +433,8 @@ function openStage(id, asMilestone){
     '<div class="overlay" id="ov" onclick="if(event.target===this)closeOv()"><div class="modal">'
     +'<div class="modal-h"><h3>'+(isNew?'＋ Etapă nouă':'📝 Editează etapa')+'</h3><button class="x" onclick="closeOv()">×</button></div>'
     +'<div class="modal-b"><div id="ov-msg" style="color:var(--red);font-size:.82rem"></div>'
-    +'<div class="field"><label>Din normă</label><select id="e-norm" onchange="pickNorm(this.value)">'+normOpts+'</select></div>'
+    +'<div class="row2"><div class="field"><label>Din normă</label><select id="e-norm" onchange="pickNorm(this.value)">'+normOpts+'</select></div>'
+    +'<div class="field"><label>Din serviciu</label><select id="e-svc" onchange="pickService(this.value)">'+svcOpts+'</select></div></div>'
     +'<div class="field"><label>Denumire *</label><input id="e-name" value="'+esc(st.name||'')+'"/></div>'
     +'<div class="row2"><div class="field"><label>Cantitate</label><input id="e-qty" type="number" step="any" value="'+esc(st.qty!=null?st.qty:'')+'"/></div><div class="field"><label>UM</label><input id="e-unit" value="'+esc(st.unit||'m2')+'"/></div></div>'
     +'<div class="row2"><div class="field"><label>Început</label><input id="e-start" type="date" value="'+esc(st.start_date||'')+'"/></div><div class="field"><label>Sfârșit</label><input id="e-end" type="date" value="'+esc(st.end_date||'')+'"/></div></div>'
@@ -449,7 +452,8 @@ function openStage(id, asMilestone){
   if(!STATE.canEdit){ const ov=$('ov'); ov.querySelectorAll('input,select,textarea').forEach(el=>el.disabled=true); const f=ov.querySelector('.modal-f'); if(f) f.innerHTML='<span></span><button class="btn" onclick="closeOv()">Închide</button>'; const h=ov.querySelector('.modal-h h3'); if(h) h.textContent='👁️ '+(st.name||'Detalii etapă'); }
 }
 function closeOv(){ const o=$('ov'); if(o) o.remove(); }
-function pickNorm(id){ const n=STATE.norms.find(x=>x.id===id); if(!n) return; if(!$('e-name').value) $('e-name').value=n.name; $('e-unit').value=n.unit||'m2'; }
+function pickNorm(id){ const n=STATE.norms.find(x=>x.id===id); if(!n) return; window._svcSel=null; if($('e-svc')) $('e-svc').value=''; if(!$('e-name').value) $('e-name').value=n.name; $('e-unit').value=n.unit||'m2'; }
+function pickService(i){ const s=(STATE.services||[])[+i]; if(!s) return; window._svcSel=s; if($('e-norm')) $('e-norm').value=''; if(!$('e-name').value) $('e-name').value=s.name; $('e-unit').value=s.unit||'m2'; }
 async function openPhoto(enc){ const path=decodeURIComponent(enc); const { data,error }=await sb.storage.from('docs').createSignedUrl(path,120); if(error){ toast('Eroare poză'); return; } window.open(data.signedUrl,'_blank'); }
 async function uploadPhotos(input){ const out=[]; const files=(input&&input.files)?[...input.files]:[]; for(const f of files){ const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=STATE.site.id+'/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(up.error) throw up.error; out.push(path); } return out; }
 async function saveStage(id){
@@ -470,6 +474,7 @@ async function saveStage(id){
     photo_urls:(existing.concat(added)).length?existing.concat(added):null,
     depends_on:deps.length?deps:null, is_milestone:isMs };
   if(n && qty!=null) rec.est_cost=qty*(+n.unit_price||0);
+  else if(window._svcSel && qty!=null) rec.est_cost=qty*(+window._svcSel.price||0);
   let res;
   if(id){ res=await sb.from('site_stages').update(rec).eq('id',id); }
   else { rec.tenant_id=(await sb.from('sites').select('tenant_id').eq('id',STATE.site.id).single()).data.tenant_id; rec.site_id=STATE.site.id; rec.position=STATE.stages.length+1; res=await sb.from('site_stages').insert(rec); }
