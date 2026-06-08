@@ -1526,6 +1526,7 @@ const QKEYS=[
   {key:'riscuri',     label:'Riscuri / observații importante', type:'textarea'}
 ];
 let previzCtx={ id:null, photos:[], meas:[] };
+let previzList=[], previzClients={};
 
 async function renderPreviz(){
   $('content').innerHTML='<div class="seg"><button class="btn-primary" style="margin-left:auto" onclick="openPrevizForm()">📋 Previzualizare nouă</button></div>'
@@ -1535,15 +1536,62 @@ async function renderPreviz(){
   const rows=sortRows(data||[],'created_at',false);
   if(!rows.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📋</div><div>Nicio fișă de vizită încă.</div><div style="margin-top:1rem"><button class="btn-primary" onclick="openPrevizForm()">📋 Creează prima fișă</button></div></div>'; return; }
   const cl=await loadRefOptions('clients'); const cm={}; cl.forEach(o=>cm[o.value]=o.label);
-  const body=rows.map(r=>'<tr><td class="tname">'+((r.photo_urls&&r.photo_urls.length)?('🖼️ '):'')+esc(r.name)+(r.area_m2?' <small style="color:var(--muted)">· '+r.area_m2+' m²</small>':'')+'</td>'
+  previzList=rows; previzClients=cm; // cache pentru meniul de opțiuni
+  const body=rows.map(r=>'<tr onclick="previzActions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+((r.photo_urls&&r.photo_urls.length)?('🖼️ '):'')+esc(r.name)+(r.area_m2?' <small style="color:var(--muted)">· '+r.area_m2+' m²</small>':'')+'</td>'
     +'<td>'+esc(cm[r.client_id]||'—')+'</td><td>'+dt(r.visit_date)+'</td><td>'+esc(r.work_type==='reparatie'?'reparație':(r.work_type==='constructie'?'construcție':'—'))+'</td><td>'+pill(r.status)+'</td>'
-    +'<td><div class="rowact">'
-    +'<button class="iconbtn" title="PDF / Tipărește" onclick="previzPDF(\''+r.id+'\')">🖨</button>'
-    +'<button class="iconbtn" title="Creează deviz din fișă (extrage volumele)" onclick="previzToDeviz(\''+r.id+'\')">🧾</button>'
-    +'<button class="iconbtn" title="Creează șantier din fișă" onclick="previzToSite(\''+r.id+'\')">🏗️</button>'
-    +'<button class="iconbtn" title="Editează" onclick="editPreviz(\''+r.id+'\')">✏️</button>'
-    +'<button class="iconbtn danger" title="Șterge" onclick="delPreviz(\''+r.id+'\')">🗑</button></div></td></tr>').join('');
-  $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fișă</th><th>Client</th><th>Data vizitei</th><th>Tip</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+    +'<td style="text-align:right"><button class="iconbtn" title="Opțiuni" onclick="event.stopPropagation();previzActions(\''+r.id+'\')">⋯ opțiuni</button></td></tr>').join('');
+  $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem .2rem;font-size:.8rem;color:var(--muted)">👉 Apasă pe o fișă pentru opțiuni (previzualizare, PDF, deviz, editare…)</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fișă</th><th>Client</th><th>Data vizitei</th><th>Tip</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+/* meniul de opțiuni pentru o fișă (apare la apăsarea pe rând) */
+function previzActions(id){
+  const r=(previzList||[]).find(x=>x.id===id)||{}; const cName=previzClients[r.client_id]||'';
+  const canU=canDo('previzualizare','u'), canD=canDo('previzualizare','d');
+  const sub=[cName, dt(r.visit_date), (r.area_m2?r.area_m2+' m²':'')].filter(Boolean).join(' · ');
+  const B=(icon,label,onclick,danger)=>'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.85rem 1rem;margin:.25rem 0;font-size:.95rem'+(danger?';color:var(--red,#dc2626)':'')+'" onclick="closeModal();'+onclick+'"><span style="font-size:1.15rem">'+icon+'</span> '+label+'</button>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">'
+    +'<div class="modal-head"><h3>'+esc(r.name||'Fișă')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'+(sub?'<p style="color:var(--muted);font-size:.85rem;margin-top:0">'+esc(sub)+'</p>':'')
+    +B('👁','Previzualizare (vezi fișa)','previzView(\''+id+'\')')
+    +B('🖨','PDF / Tipărește','previzPDF(\''+id+'\')')
+    +B('🧾','Creează deviz din fișă','previzToDeviz(\''+id+'\')')
+    +B('🏗️','Creează șantier din fișă','previzToSite(\''+id+'\')')
+    +(canU?B('✏️','Editează fișa','editPreviz(\''+id+'\')'):'')
+    +(canD?B('🗑','Șterge fișa','delPreviz(\''+id+'\')',true):'')
+    +'</div></div></div>';
+}
+/* previzualizare read-only a fișei, direct în aplicație */
+async function previzView(id){
+  $('modal-mount').innerHTML='<div class="modal-overlay"><div class="modal" style="max-width:640px"><div class="modal-body"><div class="loading">Se încarcă…</div></div></div></div>';
+  const s=(await sb.from('site_surveys').select('*').eq('id',id).single()).data;
+  if(!s){ toast('Eroare la încărcare.'); closeModal(); return; }
+  const meas=((await sb.from('survey_measurements').select('*').eq('survey_id',id)).data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
+  let clientName='—'; if(s.client_id){ const c=await sb.from('clients').select('name').eq('id',s.client_id).single(); clientName=(c.data&&c.data.name)||'—'; }
+  let imgs=[]; if(s.photo_urls&&s.photo_urls.length){ const su=await sb.storage.from('docs').createSignedUrls(s.photo_urls,600); imgs=(su.data||[]).map(x=>x.signedUrl).filter(Boolean); }
+  const wt=s.work_type==='reparatie'?'Reparație':(s.work_type==='constructie'?'Construcție':'—');
+  const rowKV=(k,v)=>'<div style="display:flex;gap:.6rem;padding:.35rem 0;border-bottom:1px solid var(--line);font-size:.9rem"><div style="color:var(--muted);min-width:130px">'+esc(k)+'</div><div style="font-weight:600">'+v+'</div></div>';
+  const qRows=QKEYS.filter(q=>s.answers&&s.answers[q.key]!=null&&s.answers[q.key]!=='').map(q=>rowKV(q.label, esc(s.answers[q.key]))).join('');
+  const mRows=meas.length?('<table class="tbl" style="margin-top:.4rem"><thead><tr><th>Denumire</th><th style="text-align:right">Cant.</th><th>Notă</th></tr></thead><tbody>'
+    +meas.map(m=>'<tr><td>'+esc(m.label)+'</td><td style="text-align:right"><b>'+esc(m.qty!=null?m.qty:'')+'</b> '+esc(m.unit||'')+'</td><td style="color:var(--muted)">'+esc(m.note||'')+'</td></tr>').join('')+'</tbody></table>'):'';
+  const H=t=>'<div style="font-weight:700;margin:1rem 0 .3rem">'+t+'</div>';
+  const canU=canDo('previzualizare','u');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px">'
+    +'<div class="modal-head"><h3>👁 '+esc(s.name)+' '+pill(s.status)+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'
+    +rowKV('Client',esc(clientName))
+    +rowKV('Adresă',esc(s.address||'—'))
+    +rowKV('Data vizitei',esc(s.visit_date||'—'))
+    +rowKV('Tip lucrare',wt+(s.area_m2?' · '+s.area_m2+' m²':''))
+    +(s.surveyor_name?rowKV('Responsabil',esc(s.surveyor_name)):'')
+    +(qRows?H('❓ Întrebări cheie')+qRows:'')
+    +(mRows?H('📐 Volume / măsurători')+mRows:'')
+    +(s.notes?H('💬 Comentarii')+'<div style="font-size:.9rem;white-space:pre-wrap">'+esc(s.notes)+'</div>':'')
+    +(imgs.length?H('📷 Poze ('+imgs.length+')')+'<div style="display:flex;flex-wrap:wrap;gap:.5rem">'+imgs.map(u=>'<a href="'+u+'" target="_blank" rel="noopener"><img src="'+u+'" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>').join('')+'</div>':'')
+    +'</div>'
+    +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">Închide</button>'
+    +'<button class="btn-ghost" onclick="previzPDF(\''+id+'\')">🖨 PDF</button>'
+    +(canU?'<button class="btn-primary" onclick="closeModal();editPreviz(\''+id+'\')">✏️ Editează</button>':'')
+    +'</div></div></div>';
 }
 async function editPreviz(id){
   const r=await sb.from('site_surveys').select('*').eq('id',id).single();
