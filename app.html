@@ -872,12 +872,27 @@ const FINANCE_ROLES=['owner','admin','accountant','manager'];
 const ADMIN_KEYS=['utilizatori','setari'];
 const ADMIN_ROLES=['owner','admin'];
 const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Muncitor',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
+/* Permisiuni granulare. Codificare in state.perms (text[]):
+   - null / gol            -> fara restrictie suplimentara (decide rolul)
+   - "santiere"            -> acces complet la modul (vezi + adaugi + editezi + stergi)
+   - "santiere:v/c/u/d"    -> doar anumite actiuni (v=vezi, c=adaugi, u=editezi, d=stergi)
+   Owner/Admin au mereu control total, indiferent de perms. */
+function moduleVisible(key){
+  const p=state.perms; if(!p||!p.length) return true;
+  if(ADMIN_ROLES.includes(state.role)) return true;
+  if(p.includes(key)) return true;
+  return p.some(t=>t.indexOf(key+':')===0);
+}
+function canDo(key, act){ // act: 'c' | 'u' | 'd'
+  const p=state.perms; if(!p||!p.length) return true;
+  if(ADMIN_ROLES.includes(state.role)) return true;
+  if(p.includes(key)) return true;            // cheie simpla = acces complet
+  return p.includes(key+':'+act);
+}
 function canSee(key){
   if(ADMIN_KEYS.includes(key)){ if(!ADMIN_ROLES.includes(state.role)) return false; }
   else if(FINANCE_KEYS.includes(key)){ if(!FINANCE_ROLES.includes(state.role)) return false; }
-  // permisiuni granulare (alese la invitatie): daca exista o lista, modulul trebuie sa fie in ea.
-  // owner/admin nu sunt restrictionati (au control total).
-  if(state.perms && state.perms.length && !ADMIN_ROLES.includes(state.role) && !state.perms.includes(key)) return false;
+  if(!moduleVisible(key)) return false;
   return true;
 }
 
@@ -1344,33 +1359,22 @@ async function renderUtilizatori(){
   renderInvites();
 }
 async function editMemberPerms(uid, role, email){
-  // incarc permisiunile curente (daca exista); fallback la valorile implicite ale rolului
+  // incarc permisiunile curente (daca exista); null => fara restrictie (implicit dupa rol)
   let cur=null;
   try{ const { data }=await sb.from('memberships').select('perms').eq('tenant_id',state.tenant).eq('user_id',uid).maybeSingle(); cur=data?data.perms:null; }catch(e){}
-  const checklist=(function(){
-    let html='';
-    GROUPS.forEach(g=>{ if(g==='Administrare') return;
-      const keys=permKeys().filter(k=>MODULES[k].group===g); if(!keys.length) return;
-      html+='<div style="margin:.5rem 0 .2rem;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase">'+esc(g)+'</div>';
-      keys.forEach(k=>{ const m=MODULES[k]; const on=cur?cur.includes(k):roleCanSeeKey(role,k);
-        html+='<label style="display:flex;align-items:center;gap:.5rem;padding:.32rem .2rem;font-size:.88rem;cursor:pointer"><input type="checkbox" class="perm-cb" value="'+k+'" '+(on?'checked':'')+'/><span>'+m.icon+' '+esc(m.title)+'</span></label>';
-      });
-    });
-    return html;
-  })();
   const adminNote=ADMIN_ROLES.includes(role)?'<p style="font-size:.82rem;color:var(--muted)">⚠️ '+esc(ROLE_LABELS[role]||role)+' are oricum acces complet — permisiunile se aplică doar de la rolul de Responsabil în jos.</p>':'';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px">'
     +'<div class="modal-head"><h3>🔐 Permisiuni</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div id="perm-msg"></div>'
     +'<p style="color:var(--muted);font-size:.85rem">'+esc(email)+' — '+esc(ROLE_LABELS[role]||role)+'</p>'+adminNote
-    +'<div style="margin:.1rem 0 .4rem;display:flex;gap:.6rem"><button type="button" style="background:none;border:none;color:var(--brand,#2563eb);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(true)">Bifează tot</button><button type="button" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(false)">Debifează tot</button></div>'
-    +'<div style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem">'+checklist+'</div>'
+    +'<p style="font-size:.8rem;color:var(--muted)">Bifează modulul ca să-l vadă, apoi alege ce poate face. Debifează cele 3 acțiuni pentru „doar vizualizare".</p>'
+    +'<div style="margin:.1rem 0 .3rem;display:flex;gap:.6rem"><button type="button" style="background:none;border:none;color:var(--brand,#2563eb);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(true)">Bifează tot</button><button type="button" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(false)">Debifează tot</button></div>'
+    +permLegend()
+    +'<div style="max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem">'+permChecklistHtml(role,cur)+'</div>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="perm-save" onclick="saveMemberPerms(\''+uid+'\')">Salvează permisiunile</button></div></div></div>';
 }
 async function saveMemberPerms(uid){
-  const cbs=[...document.querySelectorAll('.perm-cb')];
-  const checked=cbs.filter(c=>c.checked).map(c=>c.value);
-  const perms=(cbs.length && checked.length===cbs.length)?null:checked;
+  const perms=collectPerms();
   $('perm-save').disabled=true;
   const { error }=await sb.rpc('set_member_perms',{ p_user:uid, p_perms:perms });
   $('perm-save').disabled=false;
@@ -1404,23 +1408,47 @@ async function inviteEntity(type, id){
 function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && !ADMIN_KEYS.includes(k)); }
 /* daca rolul ar vedea modulul (oglindeste canSee fara stratul perms) */
 function roleCanSeeKey(role,key){ if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(role); if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(role); return true; }
-/* construieste lista de bifare grupata pe sectiuni; bifate implicit = ce permite rolul */
-function permChecklistHtml(role){
+/* actiuni granulare in cadrul unui modul: c=adauga, u=editeaza, d=sterge (v=vede = bifa principala) */
+const PERM_ACTS=[['c','＋','Adăugare'],['u','✏️','Editare'],['d','🗑','Ștergere']];
+/* starea {v,c,u,d} a unui modul, pornind de la permisiunile curente (null => implicit dupa rol) */
+function permModState(key, cur, role){
+  if(cur===null||cur===undefined){ const v=roleCanSeeKey(role,key); return {v:v,c:v,u:v,d:v}; }
+  if(cur.includes(key)) return {v:true,c:true,u:true,d:true};
+  const has=a=>cur.includes(key+':'+a);
+  const v=has('v')||has('c')||has('u')||has('d');
+  return {v:v,c:has('c'),u:has('u'),d:has('d')};
+}
+function permLegend(){ return '<div style="font-size:.74rem;color:var(--muted);margin:.1rem 0 .4rem;display:flex;justify-content:flex-end;gap:.7rem"><span>＋ adaugă</span><span>✏️ editează</span><span>🗑 șterge</span></div>'; }
+/* construieste lista grupata: per modul = bifa „vede" + 3 actiuni (adauga/editeaza/sterge) */
+function permChecklistHtml(role, cur){
+  if(cur===undefined) cur=null;
   let html='';
   GROUPS.forEach(g=>{ if(g==='Administrare') return;
     const keys=permKeys().filter(k=>MODULES[k].group===g);
     if(!keys.length) return;
-    html+='<div style="margin:.5rem 0 .2rem;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase">'+esc(g)+'</div>';
-    keys.forEach(k=>{ const m=MODULES[k]; const on=roleCanSeeKey(role,k);
-      html+='<label style="display:flex;align-items:center;gap:.5rem;padding:.32rem .2rem;font-size:.88rem;cursor:pointer">'
-        +'<input type="checkbox" class="perm-cb" value="'+k+'" '+(on?'checked':'')+'/>'
-        +'<span>'+m.icon+' '+esc(m.title)+'</span></label>';
+    html+='<div style="margin:.6rem 0 .2rem;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase">'+esc(g)+'</div>';
+    keys.forEach(k=>{ const m=MODULES[k]; const st=permModState(k,cur,role);
+      const acts=PERM_ACTS.map(a=>'<label title="'+a[2]+'" style="display:inline-flex;align-items:center;gap:.15rem;cursor:pointer"><input type="checkbox" class="perm-a" data-k="'+k+'" data-a="'+a[0]+'" '+(st[a[0]]?'checked':'')+' '+(st.v?'':'disabled')+'/>'+a[1]+'</label>').join('');
+      html+='<div style="display:flex;align-items:center;gap:.5rem;padding:.3rem .1rem;font-size:.86rem;border-top:1px solid var(--line)">'
+        +'<label style="display:flex;align-items:center;gap:.45rem;flex:1;min-width:0;cursor:pointer"><input type="checkbox" class="perm-v" value="'+k+'" '+(st.v?'checked':'')+' onchange="permToggleMod(this)"/><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.icon+' '+esc(m.title)+'</span></label>'
+        +'<span style="display:flex;gap:.6rem;flex:none">'+acts+'</span></div>';
     });
   });
   return html;
 }
+function permToggleMod(cb){ const k=cb.value, on=cb.checked; document.querySelectorAll('.perm-a[data-k="'+k+'"]').forEach(a=>{ a.disabled=!on; a.checked=on; }); }
 function refreshPermChecklist(){ const r=$('inv-role').value, box=$('inv-perms'); if(box) box.innerHTML=permChecklistHtml(r); }
-function permSetAll(v){ document.querySelectorAll('.perm-cb').forEach(c=>{ c.checked=v; }); }
+function permSetAll(v){ document.querySelectorAll('.perm-v').forEach(c=>{ c.checked=v; }); document.querySelectorAll('.perm-a').forEach(a=>{ a.disabled=!v; a.checked=v; }); }
+/* aduna permisiunile bifate; null daca tot e bifat complet (= fara restrictie, decide rolul) */
+function collectPerms(){
+  const out=[]; const allKeys=permKeys();
+  allKeys.forEach(k=>{ const v=document.querySelector('.perm-v[value="'+k+'"]'); if(!v||!v.checked) return;
+    const acts=['c','u','d'].filter(a=>{ const cb=document.querySelector('.perm-a[data-k="'+k+'"][data-a="'+a+'"]'); return cb&&cb.checked; });
+    if(acts.length===3) out.push(k); else { out.push(k+':v'); acts.forEach(a=>out.push(k+':'+a)); }
+  });
+  if(out.length===allKeys.length && allKeys.every(k=>out.includes(k))) return null;
+  return out;
+}
 function openInviteForm(entityType, entityId, defaultRole, entityName){
   const dr=defaultRole||'worker';
   const roleOpts=Object.keys(ROLE_LABELS).filter(r=>r!=='owner').map(r=>'<option value="'+r+'" '+(r===dr?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
@@ -1430,18 +1458,16 @@ function openInviteForm(entityType, entityId, defaultRole, entityName){
     +(entityName?'<p style="color:var(--muted);font-size:.85rem">Acces pentru: <b>'+esc(entityName)+'</b></p>':'')
     +'<div class="field"><label>Rol <span class="hint-i" title="Ce poate vedea/face persoana. Muncitor/Șofer = aplicația de teren. Client = doar proiectele sale. Contabil = finanțe. Administrator = tot, fără ștergerea firmei.">ⓘ</span></label><select id="inv-role" onchange="refreshPermChecklist()">'+roleOpts+'</select></div>'
     +'<div class="field"><label>Email (opțional) <span class="hint-i" title="Doar pentru evidență — linkul funcționează oricum. Trimite-i linkul prin WhatsApp/email.">ⓘ</span></label><input id="inv-email" type="email" placeholder="persoana@email.md"/></div>'
-    +'<div class="field"><label style="display:flex;align-items:center;justify-content:space-between">Permisiuni — module accesibile <span class="hint-i" title="Bifate implicit cele potrivite rolului. Debifează ce nu vrei să vadă persoana. Proprietarul și administratorul au mereu acces complet, indiferent de bife.">ⓘ</span></label>'
-    +'<div style="margin:.1rem 0 .4rem;display:flex;gap:.6rem"><button type="button" class="btn-link" style="background:none;border:none;color:var(--brand,#2563eb);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(true)">Bifează tot</button><button type="button" class="btn-link" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(false)">Debifează tot</button></div>'
-    +'<div id="inv-perms" style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem">'+permChecklistHtml(dr)+'</div></div>'
+    +'<div class="field"><label style="display:flex;align-items:center;justify-content:space-between">Permisiuni — module și acțiuni <span class="hint-i" title="Bifează modulul ca să-l vadă persoana, apoi alege ce poate face: ＋ adăugare, ✏️ editare, 🗑 ștergere. Poți da doar vizualizare (debifezi cele 3 acțiuni). Proprietarul și administratorul au mereu acces complet.">ⓘ</span></label>'
+    +'<div style="margin:.1rem 0 .3rem;display:flex;gap:.6rem"><button type="button" class="btn-link" style="background:none;border:none;color:var(--brand,#2563eb);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(true)">Bifează tot</button><button type="button" class="btn-link" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(false)">Debifează tot</button></div>'
+    +permLegend()
+    +'<div id="inv-perms" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem">'+permChecklistHtml(dr)+'</div></div>'
     +'<p style="font-size:.82rem;color:var(--muted)">Generezi un link unic. Persoana îl deschide, își creează cont cu parola ei, iar tu primești notificare la înregistrare. Nu trebuie să stochezi nicio parolă.</p>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="inv-gen" onclick="genInvite(\''+(entityType||'')+'\',\''+(entityId||'')+'\')">Generează linkul</button></div></div></div>';
 }
 async function genInvite(entityType, entityId){
   const role=$('inv-role').value, email=($('inv-email').value||'').trim()||null;
-  // permisiuni alese: daca toate sunt bifate -> null (acces complet pentru rol); altfel doar cele bifate
-  const cbs=[...document.querySelectorAll('.perm-cb')];
-  const checked=cbs.filter(c=>c.checked).map(c=>c.value);
-  const perms=(cbs.length && checked.length===cbs.length)?null:checked;
+  const perms=collectPerms(); // null = acces complet pentru rol; altfel module/actiuni alese
   $('inv-gen').disabled=true;
   const { data, error }=await sb.rpc('create_invite',{ p_role:role, p_email:email, p_entity_type:entityType||null, p_entity_id:entityId||null, p_note:null, p_perms:perms });
   $('inv-gen').disabled=false;
@@ -1691,7 +1717,9 @@ async function renderModule(key){
   let bar='<div class="seg">'
     +'<input id="list-search" placeholder="'+TR('cauta')+'" oninput="onListSearch(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none;min-width:200px"/>';
   if(statusField){ bar+='<select id="list-status" onchange="onListStatus(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:#fff"><option value="">'+TR('toate')+'</option>'+statusField.options.map(o=>'<option value="'+o.value+'">'+esc(LANG==='ru'&&STATUS_RU[o.value]?STATUS_RU[o.value]:o.label)+'</option>').join('')+'</select>'; }
-  bar+=(m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
+  const canAdd=canDo(key,'c');
+  bar+=(!canAdd?'<span style="margin-left:auto"></span>'
+    :m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
     :m.pageEditor?'<button class="btn-primary" style="margin-left:auto" onclick="window.open(\''+m.pageEditor+'?new=1\',\'_blank\')">📋 '+esc(m.newLabel)+' (filă nouă)</button><button class="btn-ghost" onclick="openForm(\''+key+'\')">＋ rapid</button>'
     :'<button class="btn-primary" style="margin-left:auto" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>')+'</div>';
   $('content').innerHTML=bar+'<div class="panel"><div class="panel-head"><h3>'+esc(m.title)+'</h3><span id="list-count" style="font-size:.8rem;color:var(--muted)"></span></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
@@ -1711,7 +1739,7 @@ function renderList(){
   const { key,m,rows,q,status,statusField }=listState;
   if(!rows.length){
     $('mod-body').innerHTML='<div class="empty"><div class="ei">'+m.icon+'</div><div>'+TR('nimic')+'</div>'
-      +'<div style="margin-top:1rem"><button class="btn-primary" onclick="openForm(\''+key+'\')">＋ '+esc(m.newLabel)+'</button></div></div>';
+      +(canDo(key,'c')?'<div style="margin-top:1rem"><button class="btn-primary" onclick="openForm(\''+key+'\')">＋ '+esc(m.newLabel)+'</button></div>':'')+'</div>';
     if($('list-count')) $('list-count').textContent=''; return;
   }
   let data=rows;
@@ -1733,8 +1761,8 @@ function renderList(){
       +(m.convertible?'<button class="iconbtn" title="Creează factură din deviz" onclick="estimateToInvoice(\''+r.id+'\')">🧾</button>':'')
       +(m.efactura?'<button class="iconbtn" title="e-Factura (SFS) — generează XML" onclick="genEfactura(\''+r.id+'\')">🏛️</button>':'')
       +(m.printable?'<button class="iconbtn" title="Tipărește / PDF" onclick="printDoc(\''+key+'\',\''+r.id+'\')">🖨</button>':'')
-      +'<button class="iconbtn" title="Editează" onclick="editRecord(\''+key+'\',\''+r.id+'\')">✏️</button>'
-      +'<button class="iconbtn danger" title="Șterge" onclick="delRecord(\''+key+'\',\''+r.id+'\')">🗑</button></div></td></tr>').join('');
+      +(canDo(key,'u')?'<button class="iconbtn" title="Editează" onclick="editRecord(\''+key+'\',\''+r.id+'\')">✏️</button>':'')
+      +(canDo(key,'d')?'<button class="iconbtn danger" title="Șterge" onclick="delRecord(\''+key+'\',\''+r.id+'\')">🗑</button>':'')+'</div></td></tr>').join('');
   $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
 }
 
@@ -1787,6 +1815,7 @@ async function saveQc(){
 }
 
 async function openForm(key,row){
+  if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
   // preload ref options
   const refFields=m.fields.filter(f=>f.type==='ref');
@@ -2229,12 +2258,14 @@ async function saveRecord(){
 }
 
 async function editRecord(key,id){
+  if(!canDo(key,'u')){ toast('🔒 Nu ai dreptul să editezi aici.'); return; }
   const m=MODULES[key];
   const { data, error } = await sb.from(m.table).select('*').eq('id',id).single();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   openForm(key,data);
 }
 async function delRecord(key,id){
+  if(!canDo(key,'d')){ toast('🔒 Nu ai dreptul să ștergi aici.'); return; }
   if(!confirm('Sigur ștergi această înregistrare?')) return;
   const m=MODULES[key];
   const { error } = await sb.from(m.table).delete().eq('id',id);
