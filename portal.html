@@ -63,7 +63,8 @@ const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function money(n){return n==null?'':Number(n).toLocaleString('ro-RO')+' MDL';}
+const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
+function money(n){return n==null?'':Number(n).toLocaleString('ro-RO')+' '+(CURSYM[CUR]||CUR);}
 const SL={planned:['Planificat'],active:['În execuție'],paused:['În pauză'],done:['Finalizat'],cancelled:['Anulat']};
 const STG={plan:'plan',active:'active',done:'done',delayed:'delayed'};
 function center(ic,msg){document.getElementById('content').innerHTML='<div class="center"><div class="ei">'+ic+'</div>'+esc(msg)+'</div>';}
@@ -78,6 +79,7 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
     center('🔒',m); return;
   }
   const s=data.site, stages=data.stages||[];
+  CUR=(data.currency||'MDL').toUpperCase();
   const fmtd=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0].slice(2)):d; };
   let stagesHtml='';
   if(stages.length){

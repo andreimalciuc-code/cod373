@@ -245,7 +245,11 @@ function $(id){ return document.getElementById(id); }
 function showMsg(el,t,type='err'){ $(el).innerHTML = t ? '<div class="msg '+type+'">'+esc(t)+'</div>' : ''; }
 function toast(m){ const t=$('toast'); $('toast-msg').innerHTML=m; t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),4000); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function money(n){ return n==null||n===''?'—':Number(n).toLocaleString('ro-RO',{minimumFractionDigits:0,maximumFractionDigits:2})+' MDL'; }
+const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'};
+const COUNTRY_PRESETS={ MD:{label:'🇲🇩 Moldova',currency:'MDL',vat:20}, DE:{label:'🇩🇪 Germania',currency:'EUR',vat:19}, RO:{label:'🇷🇴 România',currency:'RON',vat:19}, AT:{label:'🇦🇹 Austria',currency:'EUR',vat:20}, FR:{label:'🇫🇷 Franța',currency:'EUR',vat:20}, IT:{label:'🇮🇹 Italia',currency:'EUR',vat:22}, UA:{label:'🇺🇦 Ucraina',currency:'UAH',vat:20}, GB:{label:'🇬🇧 Marea Britanie',currency:'GBP',vat:20} };
+function applyCountryPreset(c){ const p=COUNTRY_PRESETS[c]; if(!p)return; if($('set-cur'))$('set-cur').value=p.currency; if($('set-vat'))$('set-vat').value=p.vat; }
+let CUR='MDL'; function curUnit(){ return CURSYM[CUR]||CUR; }
+function money(n){ return n==null||n===''?'—':Number(n).toLocaleString('ro-RO',{minimumFractionDigits:0,maximumFractionDigits:2})+' '+curUnit(); }
 function dt(d){ return d?esc(d):'—'; }
 function sortRows(rows,col,asc){ return rows.slice().sort((a,b)=>{ let x=a[col],y=b[col]; if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1; if(x<y)return asc?-1:1; if(x>y)return asc?1:-1; return 0; }); }
 function showScreen(n){ ['login','signup','onboard'].forEach(s=>$('screen-'+s).classList.toggle('hidden',s!==n)); }
@@ -896,9 +900,10 @@ async function boot(){
   state.session = session;
   const tok=getInviteToken();
   if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK') toast('✅ Acces activat la firmă.'); if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
-  const { data:mem } = await sb.from('memberships').select('tenant_id, role, tenants(name,idno,vat_rate,vat_payer,currency,address,phone,logo_url)').eq('active',true).limit(1).maybeSingle();
+  const { data:mem } = await sb.from('memberships').select('tenant_id, role, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.firm = mem.tenants||{name:'Firma'};
+  CUR = (state.firm.currency||'MDL').toUpperCase();
   // personele de teren (muncitor/sofer/subcontractant/client) folosesc aplicatia mobila
   if(['client','subcontractor','worker','driver'].includes(state.role)){ location.replace('mobil.html'); return; }
   const coName = mem.tenants ? mem.tenants.name : 'Firma';
@@ -1236,6 +1241,8 @@ async function renderSetari(){
     +'<div class="row-2"><div class="field"><label>IDNO / Cod fiscal</label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
     +'<div class="field"><label>Telefon</label><input id="set-phone" value="'+esc(f.phone||'')+'"/></div></div>'
     +'<div class="field"><label>Adresă</label><input id="set-addr" value="'+esc(f.address||'')+'"/></div>'
+    +'<div class="field"><label>Țară / piață <span class="hint-i" title="Setează automat moneda și TVA-ul implicit pentru documentele firmei. Independent de limba interfeței.">ⓘ</span></label>'
+      +'<select id="set-country" onchange="applyCountryPreset(this.value)">'+Object.keys(COUNTRY_PRESETS).map(c=>'<option value="'+c+'" '+((f.country||'MD')===c?'selected':'')+'>'+COUNTRY_PRESETS[c].label+'</option>').join('')+'</select></div>'
     +'<div class="row-2"><div class="field"><label>Cotă TVA (%)</label><input id="set-vat" type="number" value="'+esc(f.vat_rate!=null?f.vat_rate:20)+'"/></div>'
     +'<div class="field"><label>Monedă</label><input id="set-cur" value="'+esc(f.currency||'MDL')+'"/></div></div>'
     +'<div class="field"><div class="chk"><input type="checkbox" id="set-vatp" '+((f.vat_payer!==false)?'checked':'')+'/> <span>Plătitor de TVA</span></div></div>'
@@ -1299,12 +1306,12 @@ async function deleteFirm(){
 async function saveSetari(){
   const name=$('set-name').value.trim(); if(!name){ showMsg('set-msg','Denumirea e obligatorie.'); return; }
   const patch={ name, idno:$('set-idno').value.trim()||null, phone:$('set-phone').value.trim()||null, address:$('set-addr').value.trim()||null,
-    vat_rate:Number($('set-vat').value)||20, currency:($('set-cur').value||'MDL').toUpperCase().slice(0,3), vat_payer:$('set-vatp').checked };
+    vat_rate:Number($('set-vat').value)||20, currency:($('set-cur').value||'MDL').toUpperCase().slice(0,3), country:($('set-country')?$('set-country').value:null), vat_payer:$('set-vatp').checked };
   const { error }=await sb.from('tenants').update(patch).eq('id',state.tenant);
   if(error){ showMsg('set-msg', error.message); return; }
-  state.firm={ ...state.firm, ...patch };
+  state.firm={ ...state.firm, ...patch }; CUR=(patch.currency||'MDL').toUpperCase();
   $('co-name').textContent=name; $('co-avatar').textContent=(name.trim()[0]||'F').toUpperCase();
-  toast('✅ Setări salvate.');
+  toast('✅ Setări salvate.'); if($('content')&&document.querySelector('.nav-item.active')){ /* re-render current view to refresh currency */ const a=document.querySelector('.nav-item.active'); go(a?a.dataset.view:'dashboard'); }
 }
 
 /* ════ UTILIZATORI & ROLURI ════ */

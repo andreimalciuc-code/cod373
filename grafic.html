@@ -108,7 +108,8 @@ const SUPABASE_KEY = 'sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const money = n => (n==null||n==='')?'—':new Intl.NumberFormat('ro-RO',{maximumFractionDigits:0}).format(+n)+' MDL';
+const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
+const money = n => (n==null||n==='')?'—':new Intl.NumberFormat('ro-RO',{maximumFractionDigits:0}).format(+n)+' '+(CURSYM[CUR]||CUR);
 const dt = d => d? new Date(d).toLocaleDateString('ro-RO',{day:'2-digit',month:'short',year:'numeric'}) : '—';
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
 function param(k){ return new URLSearchParams(location.search).get(k); }
@@ -127,8 +128,9 @@ const FIN_ROLES=['owner','admin','manager','accountant'];
 async function boot(){
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ $('root').innerHTML='<div class="center">🔒 Trebuie să fii autentificat.<br><br><a class="btn primary" href="app.html">Deschide aplicația și loghează-te</a><br><br><small>Apoi redeschide acest link.</small></div>'; return; }
-  const mem = await sb.from('memberships').select('role').eq('active',true).limit(1).maybeSingle();
+  const mem = await sb.from('memberships').select('role, tenants(currency)').eq('active',true).limit(1).maybeSingle();
   STATE.role = mem.data ? mem.data.role : null;
+  CUR = ((mem.data&&mem.data.tenants&&mem.data.tenants.currency)||'MDL').toUpperCase();
   STATE.canEdit = ['owner','admin','manager'].includes(STATE.role);
   STATE.siteId = param('site');
   if(!STATE.siteId){ await pickSite(); return; }

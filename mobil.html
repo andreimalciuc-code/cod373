@@ -149,7 +149,8 @@ let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function money(n){return n==null||n===''?'—':Number(n).toLocaleString('ro-RO')+' MDL';}
+const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
+function money(n){return n==null||n===''?'—':Number(n).toLocaleString('ro-RO')+' '+(CURSYM[CUR]||CUR);}
 function toast(m){const t=$('toast');t.innerHTML=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),3500);}
 function lmsg(t,k='err'){$('lmsg').innerHTML=t?'<div class="msg '+k+'">'+esc(t)+'</div>':'';}
 function today(){return new Date().toISOString().slice(0,10);}
@@ -184,7 +185,7 @@ async function boot(){
   const {data:{session}}=await sb.auth.getSession();
   if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
   S.session=session;
-  const {data:mem}=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url)').eq('active',true).limit(1).maybeSingle();
+  const {data:mem}=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url,currency)').eq('active',true).limit(1).maybeSingle();
   if(!mem){lmsg('Contul tău nu e legat de nicio firmă. Cere administratorului să te adauge.','err');await sb.auth.signOut();$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
   S.tenant=mem.tenant_id; S.memberRole=mem.role;
   const email=session.user.email||'';
@@ -193,6 +194,7 @@ async function boot(){
   $('av').textContent=((S.uname||email)[0]||'U').toUpperCase();
   $('who-n').textContent=S.uname||email;
   $('who-r').textContent=(mem.tenants?mem.tenants.name:'Firma');
+  CUR=((mem.tenants&&mem.tenants.currency)||'MDL').toUpperCase();
   const _lp=mem.tenants&&mem.tenants.logo_url; if(_lp){ try{ const {data:lu}=await sb.storage.from('docs').createSignedUrl(_lp,86400); if(lu&&lu.signedUrl){ const im=$('firm-logo'); im.src=lu.signedUrl; im.style.display=''; } }catch(e){} }
   // default role: workers/drivers locked to their role; owner/admin/manager can switch
   if(['worker','driver','client'].includes(mem.role)){ S.role=mem.role; $('roles').classList.add('hidden'); }
