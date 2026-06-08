@@ -1591,7 +1591,7 @@ async function savePreviz(){
     const ms=previzCtx.meas.filter(m=>(m.label||'').trim()).map((m,i)=>({tenant_id:state.tenant,survey_id:sid,label:m.label,qty:(+m.qty||null),unit:m.unit||'m2',note:m.note||null,position:i+1}));
     if(ms.length){ const im=await sb.from('survey_measurements').insert(ms); if(im.error) throw im.error; }
     closeModal(); toast('✅ Fișă salvată.'); renderPreviz();
-  }catch(e){ showMsg('pv-msg','Eroare: '+esc(e.message||e)); if(btn){ btn.disabled=false; btn.textContent=TR('salveaza'); } }
+  }catch(e){ showMsg('pv-msg', isNetErr(e)?netMsg():('Eroare: '+esc(e.message||e))); if(btn){ btn.disabled=false; btn.textContent=TR('salveaza'); } }
 }
 async function previzPDF(id){
   toast('⏳ Se pregătește…');
@@ -1770,12 +1770,17 @@ function quickCreate(refKey, cb){
   setTimeout(()=>{ const f=document.querySelector('#qc-'+q.fields[0].k); if(f) f.focus(); },50);
 }
 function closeQc(){ $('picker-mount').innerHTML=''; }
+/* detecteaza o eroare de retea (conexiune intrerupta), nu o eroare a bazei de date */
+function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
+function netMsg(){ return navigator.onLine ? '📡 Conexiune întreruptă. Verifică internetul și apasă din nou.' : '📴 Ești offline. Reconectează-te la internet și încearcă din nou.'; }
+/* reincearca automat o scriere de cateva ori cand reteaua pica (util pe 4G/teren) */
+async function sbRetry(fn, tries){ tries=tries||3; let last; for(let i=0;i<tries;i++){ try{ const r=await fn(); if(r&&r.error){ if(isNetErr(r.error)&&i<tries-1){ last=r; await new Promise(s=>setTimeout(s,600*(i+1))); continue; } return r; } return r; }catch(e){ last={error:e}; if(isNetErr(e)&&i<tries-1){ await new Promise(s=>setTimeout(s,600*(i+1))); continue; } return last; } } return last; }
 async function saveQc(){
   const q=QUICK[window._qcKey]; const rec={tenant_id:state.tenant};
   for(const f of q.fields){ const v=($('qc-'+f.k).value||'').trim(); if(f.req&&!v){ showMsg('qc-msg','Completează „'+f.l+'".'); return; } if(v) rec[f.k]=v; }
   const btn=$('qc-save'); if(btn){ btn.disabled=true; btn.textContent='Se creează…'; }
-  const ins=await sb.from(q.table).insert(rec).select('id,'+q.label).single();
-  if(ins.error){ showMsg('qc-msg','Eroare: '+esc(ins.error.message)); if(btn){ btn.disabled=false; btn.textContent='Creează'; } return; }
+  const ins=await sbRetry(()=>sb.from(q.table).insert(rec).select('id,'+q.label).single());
+  if(ins.error){ showMsg('qc-msg', isNetErr(ins.error)?netMsg():('Eroare: '+esc(ins.error.message))); if(btn){ btn.disabled=false; btn.textContent='Creează'; } return; }
   const id=ins.data.id, label=ins.data[q.label]||'(nou)';
   closeQc(); toast('✅ Creat: '+esc(label));
   if(typeof window._qcCb==='function') window._qcCb(id,label);
@@ -2220,7 +2225,7 @@ async function saveRecord(){
       if(error) throw error;
     }
     closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
-  }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', e.message||'Eroare la salvare.'); }
+  }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', isNetErr(e)?netMsg():(e.message||'Eroare la salvare.')); }
 }
 
 async function editRecord(key,id){
