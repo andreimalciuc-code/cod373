@@ -92,7 +92,7 @@ async function boot(){
   render();
 }
 function genNumber(){ const d=new Date(); return d.getFullYear()+'-'+String(Math.floor(Math.random()*900+100)); }
-function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20) }; }
+function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), description:'', photo_url:null }; }
 
 async function loadCatalog(){
   const [cl, svc, nrm, mat]=await Promise.all([
@@ -114,7 +114,7 @@ async function loadInvoice(id){
   S.id=id; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'' };
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
-  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate }));
+  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, description:x.description||'', photo_url:x.photo_url||null }));
   if(!S.lines.length) S.lines=[blankLine()];
 }
 async function fromEstimate(eid){
@@ -122,7 +122,7 @@ async function fromEstimate(eid){
   if(e.data&&e.data.client_id) S.inv.client_id=e.data.client_id;
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',eid);
   const items=(it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
-  if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate }));
+  if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, description:x.description||'', photo_url:x.photo_url||null }));
   S._fromEstimate=eid;
 }
 
@@ -140,7 +140,7 @@ function render(){
       +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.inv.issue_date||'')+'" oninput="S.inv.issue_date=this.value"/></div>'
       +'<div class="field"><label>Scadență</label><input type="date" id="f-due" value="'+esc(S.inv.due_date||'')+'" oninput="S.inv.due_date=this.value"/></div></div>'
     +'</div>'
-    +'<div class="panel"><h3>Linii factură <span class="sub" style="font-weight:400">— tastează ca să cauți serviciu/normă/material</span></h3>'
+    +'<div class="panel"><h3>Linii factură <span class="sub" style="font-weight:400">— tastează ca să cauți (sau „＋ Adaugă nou" dacă lipsește) · apasă 📝 pe o linie pentru descriere și poză</span></h3>'
       +'<table class="lines"><thead><tr><th style="width:18px"></th><th>Descriere</th><th style="width:72px">Cant.</th><th style="width:64px">UM</th><th style="width:96px">Preț</th><th style="width:64px">TVA%</th><th style="width:104px;text-align:right">Total</th><th style="width:24px"></th></tr></thead><tbody id="lines-body"></tbody></table>'
       +'<button class="addline" onclick="addLine()">＋ adaugă linie</button>'
     +'</div></div>'
@@ -163,9 +163,40 @@ function renderLines(){
       +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
       +'<td><input id="vt-'+i+'" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>'
       +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="Scrie aici suma finală pe poziție → prețul unitar se recalculează invers"/></td>'
-      +'<td><button class="delx" onclick="delLine('+i+')">×</button></td></tr>';
+      +'<td style="white-space:nowrap"><button class="delx" onclick="lineDetails('+i+')" title="Descriere și poză" style="'+((l.description||l.photo_url)?'color:#2f6bff':'')+'">'+((l.description||l.photo_url)?'📝':'＋')+'</button>'
+      +'<button class="delx" onclick="delLine('+i+')" title="Șterge linia">×</button></td></tr>';
   }).join('');
   Sortable.create(b,{ handle:'.grip', animation:150, onEnd:e=>{ const m=S.lines.splice(e.oldIndex,1)[0]; S.lines.splice(e.newIndex,0,m); render(); } });
+}
+/* descriere + poza per pozitie */
+async function lineDetails(i){
+  const l=S.lines[i]; let thumb='';
+  if(l.photo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(l.photo_url,600); if(data&&data.signedUrl) thumb='<img src="'+data.signedUrl+'" style="max-width:100%;max-height:170px;border-radius:8px;border:1px solid var(--line);margin:.4rem 0;display:block">'; }catch(e){} }
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>📝 Detalii poziție</h3>'
+    +'<div style="font-weight:600;margin-bottom:.5rem">'+esc(l.name||'(fără denumire)')+'</div>'
+    +'<div class="field"><label>Descriere (apare pe factură, sub denumire)</label><textarea id="ld-desc" rows="3">'+esc(l.description||'')+'</textarea></div>'
+    +'<div class="field"><label>Poză (opțional)</label>'+thumb
+    +(l.photo_url?'<button class="btn" onclick="lineRemovePhoto('+i+')" style="margin-bottom:.4rem">🗑 Șterge poza</button><br>':'')
+    +'<input id="ld-photo" type="file" accept="image/*"/></div>'
+    +'<div id="ld-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="ld-save" onclick="saveLineDetails('+i+')">Salvează</button></div></div></div>';
+  setTimeout(()=>$('ld-desc')&&$('ld-desc').focus(),50);
+}
+function lineRemovePhoto(i){ S.lines[i].photo_url=null; lineDetails(i); }
+async function saveLineDetails(i){
+  const l=S.lines[i]; l.description=($('ld-desc').value||'').trim()||'';
+  const f=$('ld-photo');
+  if(f && f.files && f.files[0]){
+    const btn=$('ld-save'); if(btn) btn.disabled=true; $('ld-msg').textContent='Se încarcă poza…';
+    try{
+      const file=f.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path=S.tenant+'/lines/'+Date.now()+'_'+safe;
+      const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
+      if(up.error) throw up.error;
+      l.photo_url=path;
+    }catch(e){ if($('ld-save'))$('ld-save').disabled=false; $('ld-msg').textContent='Eroare: '+(e.message||e); return; }
+  }
+  closeM(); toast('✅ Detalii salvate.'); renderLines();
 }
 function renderSummary(){ const t=totals();
   $('sum').innerHTML='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.sub)+'</b></div><div class="totrow"><span class="sub">TVA</span><b>'+money(t.vat)+'</b></div><div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
@@ -231,7 +262,7 @@ async function save(thenPdf){
     if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('invoices').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
     await sb.from('invoice_items').delete().eq('invoice_id',S.id);
-    const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,position:i+1}));
+    const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('invoice_items').insert(items); if(im.error) throw im.error;
     $('btn-save').disabled=false; toast('✅ Factură salvată.'); if(thenPdf) pdf();
   }catch(e){ $('btn-save').disabled=false; toast('Eroare: '+(e.message||e)); }
@@ -247,8 +278,12 @@ async function markPaid(){
 async function pdf(){
   const t=totals(); const cl=S.clients.find(c=>c.id===S.inv.client_id)||{};
   let logo=''; if(S.firm.logo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(S.firm.logo_url,600); if(data&&data.signedUrl) logo='<img src="'+data.signedUrl+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }catch(e){} }
+  const lphotos={}; const ppaths=S.lines.filter(l=>l.photo_url).map(l=>l.photo_url);
+  if(ppaths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(ppaths,600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) lphotos[ppaths[idx]]=x.signedUrl; }); }catch(e){} }
   const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0); const lv=lt*(+l.vat_rate||0)/100;
-    return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td><td class="r">'+num2(l.vat_rate)+'%</td><td class="r">'+money(lt+lv)+'</td></tr>'; }).join('');
+    const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'')
+      +(l.photo_url&&lphotos[l.photo_url]?'<img src="'+lphotos[l.photo_url]+'" style="max-height:90px;max-width:160px;border-radius:6px;border:1px solid #e5e9f2;margin-top:5px;object-fit:cover">':'');
+    return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td><td class="r">'+num2(l.vat_rate)+'%</td><td class="r">'+money(lt+lv)+'</td></tr>'; }).join('');
   const f=S.firm;
   const doc='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Factură '+esc(S.inv.number||'')+'</title><style>'
     +'body{font-family:Arial,sans-serif;color:#0f1c33;padding:32px;max-width:800px;margin:0 auto;font-size:13px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2f6bff;padding-bottom:16px;margin-bottom:20px}.ti{font-size:22px;font-weight:800;color:#2f6bff}.muted{color:#6b7793}.box{display:flex;gap:24px;margin:0 0 20px}.box>div{flex:1;background:#f4f6fb;border-radius:10px;padding:12px 14px}.box h4{font-size:11px;text-transform:uppercase;color:#6b7793;margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px 10px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}.tot{margin-top:16px;margin-left:auto;width:280px}.tot div{display:flex;justify-content:space-between;padding:5px 0}.tot .g{font-size:17px;font-weight:800;border-top:2px solid #0f1c33;margin-top:6px;padding-top:8px}.ft{margin-top:30px;color:#6b7793;font-size:11px;border-top:1px solid #e5e9f2;padding-top:12px}@media print{.noprint{display:none}}'
