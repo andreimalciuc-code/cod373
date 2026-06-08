@@ -148,7 +148,7 @@ function render(){
       +'<div class="field"><label>Scadență</label><input type="date" id="f-due" value="'+esc(S.inv.due_date||'')+'" oninput="S.inv.due_date=this.value"/></div></div>'
     +'</div>'
     +'<div class="panel"><h3>Linii factură <span class="sub" style="font-weight:400">— tastează ca să cauți (sau „＋ Adaugă nou" dacă lipsește) · apasă 📝 pe o linie pentru descriere și poză</span></h3>'
-      +'<table class="lines"><thead><tr><th style="width:18px"></th><th>Descriere</th><th style="width:72px">Cant.</th><th style="width:64px">UM</th><th style="width:96px">Preț</th><th style="width:64px">TVA%</th><th style="width:104px;text-align:right">Total</th><th style="width:24px"></th></tr></thead><tbody id="lines-body"></tbody></table>'
+      +'<table class="lines"><thead><tr><th style="width:18px"></th><th style="width:52px;text-align:center">Poză</th><th>Descriere</th><th style="width:72px">Cant.</th><th style="width:64px">UM</th><th style="width:96px">Preț</th><th style="width:64px">TVA%</th><th style="width:104px;text-align:right">Total</th><th style="width:24px"></th></tr></thead><tbody id="lines-body"></tbody></table>'
       +'<button class="addline" onclick="addLine()">＋ adaugă linie</button>'
     +'</div></div>'
     +'<div class="right"><div class="panel"><h3>Sumar</h3><div id="sum"></div>'
@@ -163,12 +163,15 @@ function render(){
 function renderLines(){
   const b=$('lines-body');
   b.innerHTML=S.lines.map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0)*(1+(+l.vat_rate||0)/100);
+    const thumb=l.photo_url
+      ? (S.lineThumbs[l.photo_url]
+          ? '<img onclick="lineDetails('+i+')" src="'+S.lineThumbs[l.photo_url]+'" title="Apasă pentru a edita descrierea/poza" style="width:42px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:pointer;vertical-align:middle">'
+          : '<span onclick="lineDetails('+i+')" style="display:inline-flex;width:42px;height:42px;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:6px;cursor:pointer">📷</span>')
+      : '<button class="delx" onclick="lineDetails('+i+')" title="Adaugă poză / descriere" style="opacity:.4;font-size:1.05rem">📷</button>';
     return '<tr data-i="'+i+'"><td class="grip">≡</td>'
+      +'<td style="text-align:center;vertical-align:middle">'+thumb+'</td>'
       +'<td><div class="ta-wrap"><input value="'+esc(l.name)+'" placeholder="Caută sau scrie…" oninput="lineSearch('+i+',this.value)" onfocus="lineSearch('+i+',this.value)" onblur="hideDD('+i+')" autocomplete="off"/><div class="dd" id="dd-'+i+'" style="display:none"></div></div>'
-      +((l.description||l.photo_url)?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita descrierea/poza" style="cursor:pointer;margin-top:5px;display:flex;gap:8px;align-items:flex-start">'
-        +(l.photo_url?(S.lineThumbs[l.photo_url]?'<img src="'+S.lineThumbs[l.photo_url]+'" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:none">':'<span style="width:46px;height:46px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:6px;flex:none">📷</span>'):'')
-        +(l.description?'<div style="font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
-      +'</div>':'')
+      +(l.description?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita" style="cursor:pointer;margin-top:5px;font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
       +'</td>'
       +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
       +'<td><input value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
