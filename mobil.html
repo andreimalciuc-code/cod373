@@ -557,7 +557,7 @@ async function sheetDefect(){
     +'<div class="fld"><label>Titlu</label><input id="d-title" placeholder="ex: fisură în perete"/></div>'
     +'<div class="fld"><label>Șantier</label><select id="d-site"><option value="">— fără —</option>'+so+'</select></div>'
     +'<div class="fld"><label>Prioritate</label><select id="d-prio"><option value="low">Joasă</option><option value="normal" selected>Normală</option><option value="high">Înaltă</option></select></div>'
-    +'<div class="fld"><label>Poză (opțional)</label><input id="d-photo" type="file" accept="image/*" capture="environment"/></div>'
+    +'<div class="fld"><label>Poză (opțional)</label><input id="d-photo" type="file" accept="image/*"/></div>'
     +'<button class="btn" id="d-save" onclick="saveDefect()">Trimite</button>');
 }
 async function saveDefect(){
@@ -626,7 +626,7 @@ async function scrPoze(){
   const isClient=S.role==='client';
   $('screen').innerHTML='<div class="scr-title">Poze de pe șantier</div>'
     +'<div class="card"><div class="fld" style="margin:0"><label>Șantier</label><select id="ph-site" onchange="loadPhotos()"><option value="">— alege —</option></select></div></div>'
-    +(isClient?'':'<label class="btn" style="cursor:pointer"><input id="ph-file" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadSitePhoto()"/>📷 Adaugă poză de la etapă</label>')
+    +(isClient?'':'<label class="btn" style="cursor:pointer"><input id="ph-file" type="file" accept="image/*" style="display:none" onchange="uploadSitePhoto()"/>📷 Adaugă poză de la etapă</label>')
     +'<div id="photo-grid" style="margin-top:1rem"></div>';
   let {data:sites}=await sb.from('sites').select('id,name');
   sites=sites||[];

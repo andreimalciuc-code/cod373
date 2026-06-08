@@ -1574,7 +1574,7 @@ async function openPrevizForm(row, meas){
     +'<div class="field"><label>Responsabil vizită</label><input id="pv-surv" value="'+esc((row&&row.surveyor_name)|| (state.session&&state.session.user&&state.session.user.email)||'')+'"/></div>'
     +'<div style="font-weight:700;margin:1rem 0 .4rem">❓ Întrebări cheie</div>'+qHtml
     +'<div style="font-weight:700;margin:1rem 0 .4rem">📐 Volume / măsurători <span class="hint-i" title="Le poți extrage automat în deviz. Ex: Suprafață pereți 120 m², Săpătură 40 m³.">ⓘ</span></div><div id="pv-meas"></div><button type="button" class="addline" onclick="addPvMeas()">＋ adaugă măsurătoare</button>'
-    +'<div style="font-weight:700;margin:1rem 0 .4rem">📷 Poze cu starea actuală</div><div id="pv-photos"></div><input id="pv-files" type="file" accept="image/*" capture="environment" multiple/>'
+    +'<div style="font-weight:700;margin:1rem 0 .4rem">📷 Poze cu starea actuală</div><div id="pv-photos"></div><input id="pv-files" type="file" accept="image/*" multiple/>'
     +'<div class="field" style="margin-top:1rem"><label>Alte comentarii</label><textarea id="pv-notes" rows="2">'+esc(row?row.notes:'')+'</textarea></div>'
     +'<div class="field"><label>Stare fișă</label><select id="pv-status"><option value="draft" '+((row&&row.status)!=='done'?'selected':'')+'>Ciornă</option><option value="done" '+((row&&row.status)==='done'?'selected':'')+'>Finalizată</option></select></div>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px">'
@@ -1829,7 +1829,7 @@ async function openForm(key,row){
     else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="f-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
     else if(f.type==='select'){ body+='<select id="f-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
-    else if(f.type==='photo'){ body+='<input id="f-'+f.key+'" type="file" accept="image/*" capture="environment"/>'+(v?' <a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="font-size:.8rem;color:var(--primary);cursor:pointer">vezi poza curentă</a>':''); }
+    else if(f.type==='photo'){ body+='<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?' <a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="font-size:.8rem;color:var(--primary);cursor:pointer">vezi poza curentă</a>':''); }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
@@ -2132,7 +2132,7 @@ async function addStagePrompt(siteId,pos){
     +'<div class="row-2"><div class="field"><label>Început</label><input id="as-start" type="date" value="'+_iso(new Date())+'"/></div><div class="field"><label>Sfârșit</label><input id="as-end" type="date"/></div></div>'
     +'<div class="field"><label>Executant</label><select id="as-exec">'+exOpts+'</select></div>'
     +'<div class="field"><label>Descriere (argumentată, compactă) <span class="hint-i" title="Pe scurt: ce se execută, cum, de ce. 1-3 fraze. Apare în graficul șantierului.">ⓘ</span></label><textarea id="as-desc" rows="2" placeholder="Ex: Tencuială mecanizată var-ciment, grosime 1.5 cm, pe plasă în zonele de rost."></textarea></div>'
-    +'<div class="field"><label>Poze (poți alege mai multe)</label><input id="as-photos" type="file" accept="image/*" capture="environment" multiple/></div>'
+    +'<div class="field"><label>Poze (poți alege mai multe)</label><input id="as-photos" type="file" accept="image/*" multiple/></div>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeWorkPicker()">'+TR('anuleaza')+'</button><button class="btn-primary" id="as-save" onclick="saveStageManual()">Adaugă</button></div></div></div>';
 }
 async function uploadPhotos(input){
@@ -2167,7 +2167,7 @@ async function openStageEdit(stageId, siteId){
     +'<div class="modal-body"><div id="se-msg"></div>'
     +'<div class="field"><label>Descriere (argumentată, compactă)</label><textarea id="se-desc" rows="3">'+esc(st.description||'')+'</textarea></div>'
     +'<div class="field"><label>Poze existente</label><div>'+thumbs+'</div></div>'
-    +'<div class="field"><label>Adaugă poze</label><input id="se-photos" type="file" accept="image/*" capture="environment" multiple/></div>'
+    +'<div class="field"><label>Adaugă poze</label><input id="se-photos" type="file" accept="image/*" multiple/></div>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeWorkPicker()">'+TR('anuleaza')+'</button><button class="btn-primary" id="se-save" onclick="saveStageEdit(\''+stageId+'\',\''+siteId+'\')">Salvează</button></div></div></div>';
 }
 async function saveStageEdit(stageId, siteId){

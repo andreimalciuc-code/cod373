@@ -447,7 +447,7 @@ function openStage(id, asMilestone){
     +'<div class="field"><label style="display:flex;align-items:center;gap:.4rem;font-weight:400"><input type="checkbox" id="e-ms" '+(st.is_milestone?'checked':'')+' style="width:auto"/> Este jalon (punct de control, fără durată)</label></div>'
     +'<div class="field"><label>Descriere (argumentată, compactă)</label><textarea id="e-desc" rows="2">'+esc(st.description||'')+'</textarea></div>'
     +(photos?'<div class="field"><label>Poze</label><div>'+photos+'</div></div>':'')
-    +'<div class="field"><label>Adaugă poze</label><input id="e-photos" type="file" accept="image/*" capture="environment" multiple/></div>'
+    +'<div class="field"><label>Adaugă poze</label><input id="e-photos" type="file" accept="image/*" multiple/></div>'
     +'</div><div class="modal-f">'
     +(isNew?'<span></span>':'<button class="btn" style="color:var(--red);border-color:var(--red)" onclick="delStage(\''+st.id+'\')">🗑 Șterge</button>')
     +'<div style="display:flex;gap:.5rem"><button class="btn" onclick="closeOv()">Anulează</button><button class="btn primary" id="e-save" onclick="saveStage('+(isNew?'null':'\''+st.id+'\'')+')">Salvează</button></div>'
