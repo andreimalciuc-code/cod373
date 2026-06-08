@@ -872,7 +872,14 @@ const FINANCE_ROLES=['owner','admin','accountant','manager'];
 const ADMIN_KEYS=['utilizatori','setari'];
 const ADMIN_ROLES=['owner','admin'];
 const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Muncitor',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
-function canSee(key){ if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(state.role); if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(state.role); return true; }
+function canSee(key){
+  if(ADMIN_KEYS.includes(key)){ if(!ADMIN_ROLES.includes(state.role)) return false; }
+  else if(FINANCE_KEYS.includes(key)){ if(!FINANCE_ROLES.includes(state.role)) return false; }
+  // permisiuni granulare (alese la invitatie): daca exista o lista, modulul trebuie sa fie in ea.
+  // owner/admin nu sunt restrictionati (au control total).
+  if(state.perms && state.perms.length && !ADMIN_ROLES.includes(state.role) && !state.perms.includes(key)) return false;
+  return true;
+}
 
 /* ════ LOGO FIRMĂ ════ */
 async function firmLogoUrl(secs){ const p=state.firm&&state.firm.logo_url; if(!p) return ''; try{ const { data }=await sb.storage.from('docs').createSignedUrl(p, secs||3600); return (data&&data.signedUrl)||''; }catch(e){ return ''; } }
@@ -900,9 +907,9 @@ async function boot(){
   state.session = session;
   const tok=getInviteToken();
   if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK') toast('✅ Acces activat la firmă.'); if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
-  const { data:mem } = await sb.from('memberships').select('tenant_id, role, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url)').eq('active',true).limit(1).maybeSingle();
+  const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
-  state.tenant = mem.tenant_id; state.role = mem.role; state.firm = mem.tenants||{name:'Firma'};
+  state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
   CUR = (state.firm.currency||'MDL').toUpperCase();
   // personele de teren (muncitor/sofer/subcontractant/client) folosesc aplicatia mobila
   if(['client','subcontractor','worker','driver'].includes(state.role)){ location.replace('mobil.html'); return; }
@@ -1328,10 +1335,47 @@ async function renderUtilizatori(){
       return '<tr><td class="tname">'+esc(u.email)+(self?' <small style="color:var(--muted)">(tu)</small>':'')+'</td>'
       +'<td><select '+(self?'disabled':'')+' onchange="changeRole(\''+u.user_id+'\',this.value)">'+roleOpts(u.role)+'</select></td>'
       +'<td>'+(u.active?'<span class="pill active">Activ</span>':'<span class="pill cancelled">Inactiv</span>')+'</td>'
-      +'<td>'+(self?'':'<button class="iconbtn" title="'+(u.active?'Dezactivează':'Activează')+'" onclick="toggleMember(\''+u.user_id+'\','+(u.active?'false':'true')+')">'+(u.active?'🚫':'✅')+'</button>')+'</td></tr>'; }).join('');
+      +'<td><div class="rowact">'
+      +(self?'':'<button class="iconbtn" title="Permisiuni (module accesibile)" onclick="editMemberPerms(\''+u.user_id+'\',\''+u.role+'\',\''+esc(u.email).replace(/\x27/g,"")+'\')">🔐</button>')
+      +(self?'':'<button class="iconbtn" title="'+(u.active?'Dezactivează':'Activează')+'" onclick="toggleMember(\''+u.user_id+'\','+(u.active?'false':'true')+')">'+(u.active?'🚫':'✅')+'</button>')
+      +'</div></td></tr>'; }).join('');
     $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Rol</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
   }
   renderInvites();
+}
+async function editMemberPerms(uid, role, email){
+  // incarc permisiunile curente (daca exista); fallback la valorile implicite ale rolului
+  let cur=null;
+  try{ const { data }=await sb.from('memberships').select('perms').eq('tenant_id',state.tenant).eq('user_id',uid).maybeSingle(); cur=data?data.perms:null; }catch(e){}
+  const checklist=(function(){
+    let html='';
+    GROUPS.forEach(g=>{ if(g==='Administrare') return;
+      const keys=permKeys().filter(k=>MODULES[k].group===g); if(!keys.length) return;
+      html+='<div style="margin:.5rem 0 .2rem;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase">'+esc(g)+'</div>';
+      keys.forEach(k=>{ const m=MODULES[k]; const on=cur?cur.includes(k):roleCanSeeKey(role,k);
+        html+='<label style="display:flex;align-items:center;gap:.5rem;padding:.32rem .2rem;font-size:.88rem;cursor:pointer"><input type="checkbox" class="perm-cb" value="'+k+'" '+(on?'checked':'')+'/><span>'+m.icon+' '+esc(m.title)+'</span></label>';
+      });
+    });
+    return html;
+  })();
+  const adminNote=ADMIN_ROLES.includes(role)?'<p style="font-size:.82rem;color:var(--muted)">⚠️ '+esc(ROLE_LABELS[role]||role)+' are oricum acces complet — permisiunile se aplică doar de la rolul de Responsabil în jos.</p>':'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px">'
+    +'<div class="modal-head"><h3>🔐 Permisiuni</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="perm-msg"></div>'
+    +'<p style="color:var(--muted);font-size:.85rem">'+esc(email)+' — '+esc(ROLE_LABELS[role]||role)+'</p>'+adminNote
+    +'<div style="margin:.1rem 0 .4rem;display:flex;gap:.6rem"><button type="button" style="background:none;border:none;color:var(--brand,#2563eb);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(true)">Bifează tot</button><button type="button" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(false)">Debifează tot</button></div>'
+    +'<div style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem">'+checklist+'</div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="perm-save" onclick="saveMemberPerms(\''+uid+'\')">Salvează permisiunile</button></div></div></div>';
+}
+async function saveMemberPerms(uid){
+  const cbs=[...document.querySelectorAll('.perm-cb')];
+  const checked=cbs.filter(c=>c.checked).map(c=>c.value);
+  const perms=(cbs.length && checked.length===cbs.length)?null:checked;
+  $('perm-save').disabled=true;
+  const { error }=await sb.rpc('set_member_perms',{ p_user:uid, p_perms:perms });
+  $('perm-save').disabled=false;
+  if(error){ showMsg('perm-msg','Eroare: '+esc(error.message)); return; }
+  toast('✅ Permisiuni actualizate.'); closeModal();
 }
 async function renderInvites(){
   const { data, error }=await sb.rpc('list_invites');
@@ -1356,21 +1400,50 @@ async function inviteEntity(type, id){
     const { data }=await sb.from(tbl).select(col).eq('id',id).single(); name=data?data[col]:''; }catch(e){}
   openInviteForm(type, id, def, name);
 }
+/* modulele care pot fi acordate prin permisiuni (excludem Administrarea — controlata strict prin rol) */
+function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && !ADMIN_KEYS.includes(k)); }
+/* daca rolul ar vedea modulul (oglindeste canSee fara stratul perms) */
+function roleCanSeeKey(role,key){ if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(role); if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(role); return true; }
+/* construieste lista de bifare grupata pe sectiuni; bifate implicit = ce permite rolul */
+function permChecklistHtml(role){
+  let html='';
+  GROUPS.forEach(g=>{ if(g==='Administrare') return;
+    const keys=permKeys().filter(k=>MODULES[k].group===g);
+    if(!keys.length) return;
+    html+='<div style="margin:.5rem 0 .2rem;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase">'+esc(g)+'</div>';
+    keys.forEach(k=>{ const m=MODULES[k]; const on=roleCanSeeKey(role,k);
+      html+='<label style="display:flex;align-items:center;gap:.5rem;padding:.32rem .2rem;font-size:.88rem;cursor:pointer">'
+        +'<input type="checkbox" class="perm-cb" value="'+k+'" '+(on?'checked':'')+'/>'
+        +'<span>'+m.icon+' '+esc(m.title)+'</span></label>';
+    });
+  });
+  return html;
+}
+function refreshPermChecklist(){ const r=$('inv-role').value, box=$('inv-perms'); if(box) box.innerHTML=permChecklistHtml(r); }
+function permSetAll(v){ document.querySelectorAll('.perm-cb').forEach(c=>{ c.checked=v; }); }
 function openInviteForm(entityType, entityId, defaultRole, entityName){
-  const roleOpts=Object.keys(ROLE_LABELS).filter(r=>r!=='owner').map(r=>'<option value="'+r+'" '+(r===(defaultRole||'worker')?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
+  const dr=defaultRole||'worker';
+  const roleOpts=Object.keys(ROLE_LABELS).filter(r=>r!=='owner').map(r=>'<option value="'+r+'" '+(r===dr?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px">'
     +'<div class="modal-head"><h3>🔗 Invită prin link</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div id="inv-msg"></div>'
     +(entityName?'<p style="color:var(--muted);font-size:.85rem">Acces pentru: <b>'+esc(entityName)+'</b></p>':'')
-    +'<div class="field"><label>Rol <span class="hint-i" title="Ce poate vedea/face persoana. Muncitor/Șofer = aplicația de teren. Client = doar proiectele sale. Contabil = finanțe. Administrator = tot, fără ștergerea firmei.">ⓘ</span></label><select id="inv-role">'+roleOpts+'</select></div>'
+    +'<div class="field"><label>Rol <span class="hint-i" title="Ce poate vedea/face persoana. Muncitor/Șofer = aplicația de teren. Client = doar proiectele sale. Contabil = finanțe. Administrator = tot, fără ștergerea firmei.">ⓘ</span></label><select id="inv-role" onchange="refreshPermChecklist()">'+roleOpts+'</select></div>'
     +'<div class="field"><label>Email (opțional) <span class="hint-i" title="Doar pentru evidență — linkul funcționează oricum. Trimite-i linkul prin WhatsApp/email.">ⓘ</span></label><input id="inv-email" type="email" placeholder="persoana@email.md"/></div>'
+    +'<div class="field"><label style="display:flex;align-items:center;justify-content:space-between">Permisiuni — module accesibile <span class="hint-i" title="Bifate implicit cele potrivite rolului. Debifează ce nu vrei să vadă persoana. Proprietarul și administratorul au mereu acces complet, indiferent de bife.">ⓘ</span></label>'
+    +'<div style="margin:.1rem 0 .4rem;display:flex;gap:.6rem"><button type="button" class="btn-link" style="background:none;border:none;color:var(--brand,#2563eb);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(true)">Bifează tot</button><button type="button" class="btn-link" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(false)">Debifează tot</button></div>'
+    +'<div id="inv-perms" style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem">'+permChecklistHtml(dr)+'</div></div>'
     +'<p style="font-size:.82rem;color:var(--muted)">Generezi un link unic. Persoana îl deschide, își creează cont cu parola ei, iar tu primești notificare la înregistrare. Nu trebuie să stochezi nicio parolă.</p>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="inv-gen" onclick="genInvite(\''+(entityType||'')+'\',\''+(entityId||'')+'\')">Generează linkul</button></div></div></div>';
 }
 async function genInvite(entityType, entityId){
   const role=$('inv-role').value, email=($('inv-email').value||'').trim()||null;
+  // permisiuni alese: daca toate sunt bifate -> null (acces complet pentru rol); altfel doar cele bifate
+  const cbs=[...document.querySelectorAll('.perm-cb')];
+  const checked=cbs.filter(c=>c.checked).map(c=>c.value);
+  const perms=(cbs.length && checked.length===cbs.length)?null:checked;
   $('inv-gen').disabled=true;
-  const { data, error }=await sb.rpc('create_invite',{ p_role:role, p_email:email, p_entity_type:entityType||null, p_entity_id:entityId||null, p_note:null });
+  const { data, error }=await sb.rpc('create_invite',{ p_role:role, p_email:email, p_entity_type:entityType||null, p_entity_id:entityId||null, p_note:null, p_perms:perms });
   $('inv-gen').disabled=false;
   if(error){ showMsg('inv-msg','Eroare: '+esc(error.message)); return; }
   const link=inviteLink(data);
