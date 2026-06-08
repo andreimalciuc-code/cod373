@@ -81,7 +81,7 @@ function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/
 const STATUS={draft:'Ciornă',sent:'Trimisă',accepted:'Acceptată',rejected:'Respinsă'};
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:''},
-        lines:[], clients:[], catalog:[], normMat:{}, _activeDD:null };
+        lines:[], clients:[], catalog:[], normMat:{}, _activeDD:null, lineThumbs:{} };
 
 async function boot(){
   const { data:{ session } }=await sb.auth.getSession();
@@ -96,6 +96,14 @@ async function boot(){
   // din fisa de previzualizare
   if(param('survey')) await fromSurvey(param('survey'));
   render();
+  signLineThumbs();
+}
+/* semneaza pozele liniilor pentru previzualizare in editor (cache), apoi re-randeaza liniile */
+async function signLineThumbs(){
+  const paths=S.lines.filter(l=>l.photo_url && !S.lineThumbs[l.photo_url]).map(l=>l.photo_url);
+  if(!paths.length){ return; }
+  try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) S.lineThumbs[paths[idx]]=x.signedUrl; }); }catch(e){}
+  renderLines();
 }
 function genNumber(){ return 'OF-'+new Date().toISOString().slice(2,10).replace(/-/g,'')+'-'+Math.floor(Math.random()*900+100); }
 function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), kind:'service', norm_code:null, description:'', photo_url:null }; }
@@ -169,7 +177,12 @@ function renderLines(){
   const b=$('lines-body');
   b.innerHTML=S.lines.map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0)*(1+(+l.vat_rate||0)/100);
     return '<tr data-i="'+i+'"><td class="grip">≡</td>'
-      +'<td><div class="ta-wrap"><input value="'+esc(l.name)+'" placeholder="Caută sau scrie…" oninput="lineSearch('+i+',this.value)" onfocus="lineSearch('+i+',this.value)" onblur="hideDD('+i+')" autocomplete="off"/><div class="dd" id="dd-'+i+'" style="display:none"></div></div></td>'
+      +'<td><div class="ta-wrap"><input value="'+esc(l.name)+'" placeholder="Caută sau scrie…" oninput="lineSearch('+i+',this.value)" onfocus="lineSearch('+i+',this.value)" onblur="hideDD('+i+')" autocomplete="off"/><div class="dd" id="dd-'+i+'" style="display:none"></div></div>'
+      +((l.description||l.photo_url)?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita descrierea/poza" style="cursor:pointer;margin-top:5px;display:flex;gap:8px;align-items:flex-start">'
+        +(l.photo_url?(S.lineThumbs[l.photo_url]?'<img src="'+S.lineThumbs[l.photo_url]+'" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:none">':'<span style="width:46px;height:46px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:6px;flex:none">📷</span>'):'')
+        +(l.description?'<div style="font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
+      +'</div>':'')
+      +'</td>'
       +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
       +'<td><input value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
       +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
@@ -221,7 +234,7 @@ async function saveLineDetails(i){
       l.photo_url=path;
     }catch(e){ if($('ld-save'))$('ld-save').disabled=false; $('ld-msg').textContent='Eroare: '+(e.message||e); return; }
   }
-  closeM(); toast('✅ Detalii salvate.'); renderLines();
+  closeM(); toast('✅ Detalii salvate.'); renderLines(); signLineThumbs();
 }
 
 /* ---- AUTOCOMPLETE ---- */
