@@ -167,7 +167,7 @@ async function doLogin(){
   if(error){lmsg(error.message);return;}
   await boot();
 }
-async function doLogout(){await sb.auth.signOut();location.reload();}
+async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;await sb.auth.signOut();location.reload();}
 function mBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 async function mForgot(){ const email=($('l-email').value||'').trim(); if(!email){ lmsg('Scrie întâi emailul.'); return; } lmsg('Se trimite…','ok');
   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:mBase()+'mobil.html'}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de resetare a parolei. Deschide emailul.','ok'); }
@@ -291,6 +291,7 @@ async function payInvoiceSheet(id,number,total){
     +'<p style="font-size:.78rem;color:var(--muted);margin-top:.8rem">Demo: plata online cu cardul prin MAIB/Paynet se activează la lansare. Apăsarea confirmă plata în sistem.</p>');
 }
 async function doPay(id){
+  const m='Confirmi plata acestei facturi?'; if(!confirm(window.C373t?C373t(m):m)) return;
   $('pay-btn').disabled=true; $('pay-btn').textContent='Se procesează…';
   const {data,error}=await sb.rpc('pay_invoice',{p_invoice:id});
   if(error){ $('pay-msg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>'; $('pay-btn').disabled=false; $('pay-btn').textContent='💳 Plătește online (card)'; return; }

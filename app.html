@@ -299,7 +299,7 @@ async function doLogin(){
   if(error){ showMsg('login-msg',error.message); return; }
   await boot();
 }
-async function doLogout(){ await sb.auth.signOut(); location.reload(); }
+async function doLogout(){ const m='Sigur vrei să ieși din cont?'; if(!confirm(window.C373t?C373t(m):m)) return; await sb.auth.signOut(); location.reload(); }
 function appBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 async function doForgotPassword(){
   const email=($('login-email').value||'').trim();

@@ -401,6 +401,7 @@ async function saveDates(id,start,end){ if(!STATE.canEdit){ renderGantt(); toast
 async function saveProgress(id,p){ if(!STATE.canEdit){ renderGantt(); return; } p=Math.max(0,Math.min(100,p)); const st=STATE.stages.find(x=>String(x.id)===String(id)); if(st){ st.progress=p; if(p>=100&&st.status!=='done'){st.status='done'; await sb.from('site_stages').update({progress:p,status:'done'}).eq('id',id); renderGantt(); } else await sb.from('site_stages').update({progress:p}).eq('id',id); } renderList(); }
 async function autoChain(){
   if(!STATE.canEdit){ toast('👁️ Doar vizualizare'); return; }
+  const m='Recalculez toate datele etapelor din durate? Datele manuale vor fi suprascrise.'; if(!confirm(window.C373t?C373t(m):m)) return;
   let cur = STATE.site.start_date ? new Date(STATE.site.start_date) : new Date();
   for(const st of STATE.stages){ const d=durationDays(st); const s=new Date(cur); const e=addDays(s,d-1); cur=addDays(e,1);
     st.start_date=iso(s); st.end_date=iso(e); await sb.from('site_stages').update({start_date:st.start_date,end_date:st.end_date}).eq('id',st.id); }

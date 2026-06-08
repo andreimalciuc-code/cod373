@@ -644,6 +644,9 @@
     'Suma TOTALĂ a contractului cu clientul, în lei (MDL), fără separatori. Ex: scrie 4200000 pentru 4,2 milioane. Față de aceasta se calculează marja live (buget − cheltuieli).':{ru:'ОБЩАЯ сумма договора (MDL), без разделителей. Напр.: 4200000. От неё считается маржа (бюджет − расходы).',de:'GESAMTbetrag des Vertrags (MDL), ohne Trenner. z.B. 4200000. Daraus wird die Marge berechnet.',en:'TOTAL contract amount (MDL), no separators. E.g. 4200000. Live margin is calculated from it.'},
     'Suprafața totală a lucrării în metri pătrați. Pe baza ei se estimează automat durata fiecărei lucrări din grafic (m²/zi pe echipă).':{ru:'Общая площадь работ в m². По ней оценивается длительность работ (m²/день на бригаду).',de:'Gesamtfläche in m². Daraus wird die Dauer je Arbeit geschätzt (m²/Tag pro Team).',en:'Total work area in m². Used to auto-estimate each work\'s duration (m²/day per team).'},
     'Tipul de lucrări pe care le face. Ex: electricitate, acoperiș, instalații sanitare. Folosit ca să-l poți selecta la graficul lucrării corespunzătoare.':{ru:'Виды его работ. Напр.: электрика, кровля, сантехника. Для выбора в графике.',de:'Welche Arbeiten er ausführt. z.B. Elektrik, Dach, Sanitär. Zur Auswahl im Plan.',en:'Types of work they do. E.g. electrical, roofing, plumbing. Used to assign in the schedule.'},
+    'Sigur vrei să ieși din cont?':{ru:'Точно выйти из аккаунта?',de:'Wirklich abmelden?',en:'Sign out of your account?'},
+    'Confirmi plata acestei facturi?':{ru:'Подтвердить оплату этого счёта?',de:'Zahlung dieser Rechnung bestätigen?',en:'Confirm payment of this invoice?'},
+    'Recalculez toate datele etapelor din durate? Datele manuale vor fi suprascrise.':{ru:'Пересчитать все даты этапов по длительностям? Ручные даты будут перезаписаны.',de:'Alle Phasentermine aus Dauern neu berechnen? Manuelle Termine werden überschrieben.',en:'Recalculate all stage dates from durations? Manual dates will be overwritten.'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }
@@ -676,6 +679,7 @@
 
   function setLang(l){ if(!LANGS[l]) return; localStorage.setItem('c373_lang',l); location.reload(); }
   window.C373setLang=setLang; window.C373lang=function(){ return LANG; };
+  window.C373t=function(s){ if(LANG==='ro'||!s) return s; var r=look(s); return r?r.v:s; };
 
   function injectSwitcher(){
     if(document.getElementById('c373-lang')) return;
