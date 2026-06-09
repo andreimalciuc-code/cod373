@@ -160,6 +160,7 @@ function render(){
     +'<div class="panel"><h3>Linii ofertă <span class="sub" style="font-weight:400">— tastează ca să cauți (sau „＋ Adaugă nou" dacă lipsește) · apasă 📝 pe o linie pentru descriere și poză</span></h3>'
       +'<table class="lines"><thead><tr><th style="width:18px"></th><th style="width:52px;text-align:center">Poză</th><th>Descriere</th><th style="width:72px">Cant.</th><th style="width:64px">UM</th><th style="width:96px">Preț</th><th style="width:64px">TVA%</th><th style="width:104px;text-align:right">Total</th><th style="width:24px"></th></tr></thead><tbody id="lines-body"></tbody></table>'
       +'<button class="addline" onclick="addLine()">＋ adaugă linie</button>'
+      +'<button class="addline" onclick="aiOffer()" style="margin-left:.4rem">🧠 generează din descriere (AI)</button>'
     +'</div>'
     +'<div class="panel"><h3>Note / condiții</h3><textarea id="f-notes" rows="3" placeholder="Ex: Prețurile sunt orientative, valabile 30 de zile. Termen de execuție convenit la semnare." oninput="S.est.notes=this.value">'+esc(S.est.notes||'')+'</textarea></div>'
     +'</div>'
@@ -211,6 +212,38 @@ function lineSetTotal(i,v){ const l=S.lines[i]; const q=+l.qty||0; const vr=+l.v
   if(q>0){ l.unit_price=Math.round((tot/(q*(1+vr/100)))*100)/100; const up=$('up-'+i); if(up) up.value=l.unit_price; }
   renderSummary(); }
 function addLine(){ S.lines.push(blankLine()); renderLines(); }
+/* ---- AI: generează liniile devizului din descriere ---- */
+function aiOffer(){
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:520px"><h3>🧠 Generează din descriere</h3>'
+    +'<div style="font-size:.84rem;color:var(--muted);margin-bottom:.4rem">Descrie lucrarea în câteva cuvinte — AI propune liniile devizului (le poți edita după).</div>'
+    +'<textarea id="ai-input" rows="4" placeholder="Ex: Renovare baie 6 m² — hidroizolație, gresie și faianță, instalație sanitară, tavan rigips."></textarea>'
+    +'<div id="ai-msg" style="color:var(--red);font-size:.82rem;margin-top:.3rem"></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="ai-go" onclick="aiOfferRun()">Generează</button></div>'
+    +'<div style="font-size:.72rem;color:var(--muted);margin-top:.5rem">Necesită cheia AI configurată de administrator (Setări).</div></div></div>';
+  setTimeout(()=>{ const t=$('ai-input'); if(t) t.focus(); },60);
+}
+async function aiOfferRun(){
+  const input=($('ai-input').value||'').trim(); if(!input){ $('ai-msg').textContent='Scrie o descriere.'; return; }
+  const btn=$('ai-go'); if(btn){ btn.disabled=true; btn.textContent='Se generează…'; }
+  try{
+    const lang=(window.C373lang||'ro');
+    const cur=(S.firm&&S.firm.currency)||'MDL';
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'offer', input, lang, currency:cur } });
+    if(error) throw new Error(error.message||'Eroare apel AI');
+    if(data && data.error) throw new Error(data.error);
+    let txt=(data&&data.text)||''; const m=txt.match(/\{[\s\S]*\}/); if(m) txt=m[0];
+    const parsed=JSON.parse(txt); const lines=(parsed.lines||parsed||[]);
+    if(!Array.isArray(lines)||!lines.length) throw new Error('Niciun rezultat. Reformulează descrierea.');
+    const vr=(S.firm.vat_rate!=null?S.firm.vat_rate:20);
+    const added=lines.slice(0,25).map(x=>({ name:(x.name||'').toString().slice(0,200), qty:+x.qty||1, unit:(x.unit||'buc').toString().slice(0,12), unit_price:+x.price||+x.unit_price||0, vat_rate:vr, kind:'service', norm_code:null, description:'', photo_url:null }));
+    if(S.lines.length===1 && !S.lines[0].name) S.lines=added; else S.lines=S.lines.concat(added);
+    closeM(); toast('✅ '+added.length+' linii generate. Verifică prețurile.'); renderLines(); renderSummary(); renderBOM();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Generează'; }
+    let msg=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(msg)) msg='AI nu este încă configurat. Administratorul trebuie să publice funcția „ai" și să adauge cheia API în Supabase (vezi instrucțiunile).';
+    $('ai-msg').textContent=msg;
+  }
+}
 function delLine(i){ S.lines.splice(i,1); if(!S.lines.length) S.lines=[blankLine()]; renderLines(); renderSummary(); renderBOM(); }
 /* descriere + poza per pozitie */
 async function lineDetails(i){
