@@ -1034,7 +1034,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v38';
+const APP_VERSION='cod373-v40';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1267,6 +1267,37 @@ async function empSSMAdd(empId, empName){
   toast('✅ Adăugat.'); empSSM(empId, empName);
 }
 async function empSSMDel(id, empId, empName){ if(!confirm('Ștergi această înregistrare SSM?')) return; const { error }=await sb.from('ssm_records').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empSSM(empId, empName); }
+/* ── Concedii / absențe angajat (submodul) ── */
+const LEAVE_KIND={concediu:'Concediu',medical:'Medical',nemotivat:'Nemotivat',invoire:'Învoire',altul:'Altul'};
+function daysBetween(a,b){ if(!a||!b) return ''; const d=Math.round((new Date(b)-new Date(a))/86400000)+1; return d>0?d:''; }
+async function empLeave(empId, empName){
+  const canU=canDo('angajati','u'), canD=canDo('angajati','d');
+  const r0=await sb.from('employee_leaves').select('id,kind,start_date,end_date,days,note').eq('employee_id',empId).order('start_date',{ascending:false});
+  const list=r0.data||[];
+  const rows=list.length?list.map(r=>'<tr><td>'+esc(LEAVE_KIND[r.kind]||r.kind)+'</td><td>'+dt(r.start_date)+'</td><td>'+dt(r.end_date)+'</td><td>'+esc(r.days!=null?r.days:(daysBetween(r.start_date,r.end_date)||'—'))+'</td><td class="tname">'+esc(r.note||'')+'</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="empLeaveDel(\''+r.id+'\',\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">🗑</button>':'')+'</td></tr>').join(''):'<tr><td colspan="6" style="color:var(--muted);padding:1rem">Nicio absență înregistrată.</td></tr>';
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Adaugă absență</div>'
+    +'<div class="row-2"><div class="field"><label>Tip</label><select id="lv-kind"><option value="concediu" selected>Concediu</option><option value="medical">Medical</option><option value="nemotivat">Nemotivat</option><option value="invoire">Învoire</option><option value="altul">Altul</option></select></div>'
+    +'<div class="field"><label>Zile (auto)</label><input id="lv-days" type="number" step="0.5" placeholder="auto din interval"/></div></div>'
+    +'<div class="row-2"><div class="field"><label>De la</label><input id="lv-start" type="date"/></div><div class="field"><label>Până la</label><input id="lv-end" type="date"/></div></div>'
+    +'<div class="field"><label>Notă</label><input id="lv-note"/></div>'
+    +'<button class="btn-primary" id="lv-add" onclick="empLeaveAdd(\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">Adaugă</button></div>'):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:680px">'
+    +'<div class="modal-head"><h3>🏖️ Concedii / absențe — '+esc(empName||'angajat')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="lv-msg"></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tip</th><th>De la</th><th>Până la</th><th>Zile</th><th>Notă</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +addForm+'</div></div></div>';
+}
+async function empLeaveAdd(empId, empName){
+  const start=$('lv-start').value||null, end=$('lv-end').value||null;
+  if(!start){ showMsg('lv-msg','Alege data de început.'); return; }
+  const days=$('lv-days').value!==''?+$('lv-days').value:(daysBetween(start,end)||null);
+  const rec={tenant_id:state.tenant, employee_id:empId, kind:$('lv-kind').value, start_date:start, end_date:end, days, note:($('lv-note').value||'').trim()||null};
+  const btn=$('lv-add'); if(btn) btn.disabled=true;
+  const r=await sbRetry(()=>sb.from('employee_leaves').insert(rec));
+  if(r.error){ if(btn) btn.disabled=false; showMsg('lv-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  toast('✅ Absență adăugată.'); empLeave(empId, empName);
+}
+async function empLeaveDel(id, empId, empName){ if(!confirm('Ștergi această absență?')) return; const { error }=await sb.from('employee_leaves').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empLeave(empId, empName); }
 
 /* ════ SUBMODULE ȘANTIER (jurnal, etape, stoc, situații, RFI, modificări, recenzii) ════ */
 const SITE_SUBS=['jurnal','etape','stoc','situatii','rfi','modificari','recenzii'];
@@ -2279,7 +2310,7 @@ function rowActions(key,m,r){
   if(m.scheduler){ a.push({i:'📅',l:'Grafic lucrări (filă nouă)',f:"window.open('grafic.html?site="+id+"','_blank')"}); a.push({i:'📊',l:'Rezumat rapid (marjă & etape)',f:"openSiteDetail('"+id+"')"}); }
   if(m.teamable) a.push({i:'👥',l:'Acces / echipă',f:"siteTeam('"+id+"')"});
   if(m.portalable) a.push({i:'🔗',l:'Link portal client',f:"genPortal('"+id+"')"});
-  if(m.subEquip){ a.push({i:'🦺',l:'Echipamentul angajatului',f:"empEquip('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'⏱️',l:'Pontajul angajatului',f:"empPontaj('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🛡️',l:'SSM / Securitate angajat',f:"empSSM('"+id+"','"+jsArg(r.full_name)+"')"}); }
+  if(m.subEquip){ a.push({i:'🦺',l:'Echipamentul angajatului',f:"empEquip('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'⏱️',l:'Pontajul angajatului',f:"empPontaj('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🛡️',l:'SSM / Securitate angajat',f:"empSSM('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🏖️',l:'Concedii / absențe',f:"empLeave('"+id+"','"+jsArg(r.full_name)+"')"}); }
   if(m.acceptReject&&canDo(key,'u')){ if(r.status!=='accepted') a.push({i:'✅',l:'Marchează oferta acceptată',f:"estimateStatus('"+id+"','accepted')"}); if(r.status!=='rejected') a.push({i:'✖️',l:'Marchează oferta respinsă',f:"estimateStatus('"+id+"','rejected')",d:true}); }
   if(m.toSite) a.push({i:'🏗️',l:'Creează șantier din ofertă',f:"estimateToSite('"+id+"')"});
   if(m.pageEditor) a.push({i:'📋',l:'Deschide / editează (filă nouă)',f:"window.open('"+m.pageEditor+"?id="+id+"','_blank')"});

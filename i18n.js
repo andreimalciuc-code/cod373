@@ -13,6 +13,18 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Concedii / absențe':{ru:'Отпуска / отсутствия',de:'Urlaub / Abwesenheiten',en:'Leaves / absences'},
+    'Adaugă absență':{ru:'Добавить отсутствие',de:'Abwesenheit hinzufügen',en:'Add absence'},
+    'Nicio absență înregistrată.':{ru:'Нет отсутствий.',de:'Keine Abwesenheiten erfasst.',en:'No absences recorded.'},
+    'Absență adăugată.':{ru:'Отсутствие добавлено.',de:'Abwesenheit hinzugefügt.',en:'Absence added.'},
+    'Zile (auto)':{ru:'Дни (авто)',de:'Tage (auto)',en:'Days (auto)'},
+    'De la':{ru:'С',de:'Von',en:'From'},
+    'Până la':{ru:'По',de:'Bis',en:'To'},
+    'Concediu':{ru:'Отпуск',de:'Urlaub',en:'Vacation'},
+    'Medical':{ru:'Больничный',de:'Krankheit',en:'Sick'},
+    'Nemotivat':{ru:'Без причины',de:'Unentschuldigt',en:'Unexcused'},
+    'Învoire':{ru:'Отгул',de:'Freistellung',en:'Time off'},
+    'Alege data de început.':{ru:'Выберите дату начала.',de:'Startdatum wählen.',en:'Choose the start date.'},
     'CONFIRMARE DE COMANDĂ':{ru:'ПОДТВЕРЖДЕНИЕ ЗАКАЗА',de:'AUFTRAGSBESTÄTIGUNG',en:'ORDER CONFIRMATION'},
     'BON DE LIVRARE':{ru:'НАКЛАДНАЯ',de:'LIEFERSCHEIN',en:'DELIVERY NOTE'},
     'Confirmare de comandă (PDF)':{ru:'Подтверждение заказа (PDF)',de:'Auftragsbestätigung (PDF)',en:'Order confirmation (PDF)'},
