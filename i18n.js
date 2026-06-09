@@ -2,11 +2,33 @@
    Traduce noduri de text + atribute (placeholder/title/value buton) și
    urmărește DOM-ul pentru conținut dinamic. Textele netraduse rămân în RO. */
 (function(){
-  var LANG = localStorage.getItem('c373_lang') || 'ro';
   var LANGS = { ro:'RO', ru:'RU', de:'DE', en:'EN' };
+  // limba: alegerea salvata a utilizatorului are prioritate; altfel o detectam din browser.
+  function detectLang(){
+    try{ var list=(navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||'ro']);
+      for(var i=0;i<list.length;i++){ var c=(list[i]||'').slice(0,2).toLowerCase(); if(LANGS[c]) return c; } }catch(e){}
+    return 'ro';
+  }
+  var LANG = localStorage.getItem('c373_lang') || detectLang();
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'ERP pentru construcții · Republica Moldova':{ru:'ERP для строительства · Республика Молдова',de:'Bau-ERP · Republik Moldau',en:'Construction ERP · Republic of Moldova'},
+    'Gestionează toată firma de construcții':{ru:'Управляй всей строительной фирмой',de:'Verwalten Sie Ihr ganzes Bauunternehmen',en:'Manage your whole construction company'},
+    'dintr-un singur loc':{ru:'из одного места',de:'an einem Ort',en:'from one place'},
+    'Șantiere, devize și facturi, echipă, instrumente și aplicație de teren — totul legat între ele, în limba ta.':{ru:'Объекты, сметы и счета, команда, инструмент и полевое приложение — всё связано, на вашем языке.',de:'Baustellen, Angebote und Rechnungen, Team, Werkzeuge und Feld-App — alles verbunden, in Ihrer Sprache.',en:'Sites, estimates and invoices, team, tools and a field app — all connected, in your language.'},
+    'Șantiere, grafice și progres în timp real':{ru:'Объекты, графики и прогресс в реальном времени',de:'Baustellen, Pläne und Fortschritt in Echtzeit',en:'Sites, schedules and progress in real time'},
+    'Devize și facturi cu e-Factura și PDF':{ru:'Сметы и счета с e-Factura и PDF',de:'Angebote und Rechnungen mit e-Factura und PDF',en:'Estimates and invoices with e-Invoice and PDF'},
+    'Custodia sculelor prin scanare QR':{ru:'Учёт инструмента через QR-сканирование',de:'Werkzeugverwaltung per QR-Scan',en:'Tool custody via QR scanning'},
+    'Echipă, pontaj, salarii și roluri':{ru:'Команда, табель, зарплаты и роли',de:'Team, Zeiterfassung, Löhne und Rollen',en:'Team, timesheets, payroll and roles'},
+    'Aplicație de teren pentru muncitori și șoferi':{ru:'Полевое приложение для рабочих и водителей',de:'Feld-App für Arbeiter und Fahrer',en:'Field app for workers and drivers'},
+    'Disponibil în română, rusă, germană și engleză':{ru:'Доступно на румынском, русском, немецком и английском',de:'Verfügbar in Rumänisch, Russisch, Deutsch und Englisch',en:'Available in Romanian, Russian, German and English'},
+    'Date securizate în UE (Frankfurt)':{ru:'Данные защищены в ЕС (Франкфурт)',de:'Daten sicher in der EU (Frankfurt)',en:'Data secured in the EU (Frankfurt)'},
+    'Conform GDPR':{ru:'Соответствует GDPR',de:'DSGVO-konform',en:'GDPR compliant'},
+    '— platformă online':{ru:'— онлайн-платформа',de:'— Online-Plattform',en:'— online platform'},
+    'Spune-ne despre firma ta':{ru:'Расскажите о вашей фирме',de:'Erzählen Sie uns von Ihrer Firma',en:'Tell us about your company'},
+    'IDNO / Cod fiscal':{ru:'IDNO / Налоговый код',de:'IDNO / Steuernummer',en:'IDNO / Tax code'},
+    'Sunt de acord cu':{ru:'Я согласен с',de:'Ich stimme zu',en:'I agree to the'},
     'Scule':{ru:'Инструмент',de:'Werkzeuge',en:'Tools'},
     'Scule & instrumente':{ru:'Инструмент и оборудование',de:'Werkzeuge & Geräte',en:'Tools & equipment'},
     'Scanează scula':{ru:'Сканировать инструмент',de:'Werkzeug scannen',en:'Scan the tool'},
@@ -1132,6 +1154,7 @@
     if(node.nodeType===3){ tNode(node); return; }
     if(node.nodeType!==1) return;
     var tag=node.tagName; if(tag==='SCRIPT'||tag==='STYLE'||tag==='TEXTAREA') return;
+    if(node.getAttribute&&(node.getAttribute('translate')==='no'||(node.className&&(''+node.className).indexOf('noi18n')>=0))) return; // nume de brand etc.
     tEl(node);
     for(var c=node.firstChild;c;c=c.nextSibling) walk(c);
   }

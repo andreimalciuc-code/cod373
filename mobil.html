@@ -104,7 +104,7 @@
 
   <!-- LOGIN -->
   <div id="login" class="login">
-    <div class="logo"><div class="lg">C373</div><div class="nm">Cod<span>373</span></div></div>
+    <div class="logo"><div class="lg">C373</div><div class="nm noi18n">Cod<span>373</span></div></div>
     <div class="card">
       <div id="cfg-warn" class="cfg-warn hidden"></div>
       <h2>Aplicația de teren</h2>
@@ -757,7 +757,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v26', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v27', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;

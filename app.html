@@ -24,8 +24,25 @@
   .hidden{display:none!important}
 
   /* AUTH / ONBOARDING */
-  .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:linear-gradient(135deg,#0f1c33,#1a2b4a)}
-  .gate-card{background:#fff;border-radius:18px;padding:2.2rem;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+  .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(1200px 600px at 15% -10%,#22386a 0%,transparent 55%),radial-gradient(1000px 500px at 110% 110%,#1c4d99 0%,transparent 50%),linear-gradient(135deg,#0c1730,#13243f)}
+  .gate-wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:3.2rem;max-width:1060px;width:100%;align-items:center}
+  .gate-hero{color:#eaf0fb}
+  .gate-hero .badge{display:inline-flex;align-items:center;gap:.45rem;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#cfe0ff;padding:.32rem .7rem;border-radius:999px;font-size:.72rem;font-weight:600;margin-bottom:1.1rem}
+  .gate-hero h1{font-size:2.35rem;line-height:1.12;margin:0 0 .8rem;font-weight:800;letter-spacing:-.02em;color:#fff}
+  .gate-hero h1 span{background:linear-gradient(90deg,#5b8dff,#7ee0ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .gate-hero .lead{font-size:1.02rem;color:#aebbd6;max-width:30rem;margin:0 0 1.6rem;line-height:1.55}
+  .gate-feats{display:grid;grid-template-columns:1fr 1fr;gap:.85rem 1.1rem;margin-bottom:1.6rem}
+  .gate-feat{display:flex;gap:.6rem;align-items:flex-start;font-size:.88rem;color:#d6dff0}
+  .gate-feat .ic{width:30px;height:30px;border-radius:8px;background:rgba(91,141,255,.16);display:flex;align-items:center;justify-content:center;font-size:.95rem;flex:none}
+  .gate-trust{display:flex;flex-wrap:wrap;gap:.5rem 1.2rem;font-size:.78rem;color:#8ea0c4;border-top:1px solid rgba(255,255,255,.1);padding-top:1.1rem}
+  .gate-trust b{color:#cfe0ff;font-weight:600}
+  .gate-card{background:#fff;border-radius:18px;padding:2.2rem;width:100%;max-width:430px;box-shadow:0 30px 70px rgba(0,0,0,.4);justify-self:center}
+  @media(max-width:880px){
+    .gate-wrap{grid-template-columns:1fr;gap:1.6rem;max-width:440px}
+    .gate-hero{text-align:center}
+    .gate-hero h1{font-size:1.7rem}.gate-hero .lead{margin-left:auto;margin-right:auto;font-size:.92rem}
+    .gate-feats,.gate-trust{display:none}
+  }
   .gate-logo{display:flex;align-items:center;gap:.6rem;margin-bottom:1.6rem}
   .gate-logo .lg{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.72rem}
   .gate-logo .nm{font-weight:800;font-size:1.2rem}.gate-logo .nm span{color:var(--accent)}
@@ -155,8 +172,24 @@
 
 <!-- ══ AUTH GATE ══ -->
 <div id="gate" class="gate">
+ <div class="gate-wrap">
+  <div class="gate-hero">
+    <div class="gate-logo" style="margin-bottom:1.1rem"><div class="lg">C373</div><div class="nm noi18n" style="color:#fff">Cod<span>373</span></div></div>
+    <div class="badge">🏗️ ERP pentru construcții · Republica Moldova</div>
+    <h1>Gestionează toată firma de construcții <span>dintr-un singur loc</span></h1>
+    <p class="lead">Șantiere, devize și facturi, echipă, instrumente și aplicație de teren — totul legat între ele, în limba ta.</p>
+    <div class="gate-feats">
+      <div class="gate-feat"><div class="ic">🏗️</div><div>Șantiere, grafice și progres în timp real</div></div>
+      <div class="gate-feat"><div class="ic">🧾</div><div>Devize și facturi cu e-Factura și PDF</div></div>
+      <div class="gate-feat"><div class="ic">🔧</div><div>Custodia sculelor prin scanare QR</div></div>
+      <div class="gate-feat"><div class="ic">👷</div><div>Echipă, pontaj, salarii și roluri</div></div>
+      <div class="gate-feat"><div class="ic">📱</div><div>Aplicație de teren pentru muncitori și șoferi</div></div>
+      <div class="gate-feat"><div class="ic">🌍</div><div>Disponibil în română, rusă, germană și engleză</div></div>
+    </div>
+    <div class="gate-trust"><span>🔒 Date securizate în UE (Frankfurt)</span><span>✅ Conform GDPR</span><span><b>Cod373</b> — platformă online</span></div>
+  </div>
   <div class="gate-card">
-    <div class="gate-logo"><div class="lg">C373</div><div class="nm">Cod<span>373</span></div></div>
+    <div class="gate-logo"><div class="lg">C373</div><div class="nm noi18n">Cod<span>373</span></div></div>
     <div id="cfg-warn" class="cfg-warn hidden"></div>
 
     <div id="screen-login">
@@ -196,13 +229,14 @@
       <p class="alt"><a onclick="doLogout()">Ieși din cont</a></p>
     </div>
   </div>
+ </div>
 </div>
 
 <!-- ══ APP SHELL ══ -->
 <div id="app" class="app hidden">
   <div class="overlay-nav" id="overlay-nav" onclick="closeNav()"></div>
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="brand-logo">C373</div><div class="brand-name">Cod<span>373</span></div></div>
+    <div class="brand"><div class="brand-logo">C373</div><div class="brand-name noi18n">Cod<span>373</span></div></div>
     <div class="company-switch">
       <div class="company-avatar" id="co-avatar">D</div>
       <img id="co-logo" alt="" style="display:none;width:40px;height:40px;object-fit:contain;border-radius:8px;background:#fff;padding:2px"/>
@@ -984,7 +1018,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v26';
+const APP_VERSION='cod373-v27';
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
 async function openSupport(){
