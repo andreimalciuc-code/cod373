@@ -1032,7 +1032,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v35';
+const APP_VERSION='cod373-v36';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1900,7 +1900,14 @@ async function renderPreviz(){
   previzList=rows; previzClients=cm; // cache pentru meniul de opțiuni
   const body=rows.map(r=>'<tr onclick="previzActions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+((r.photo_urls&&r.photo_urls.length)?('🖼️ '):'')+esc(r.name)+(r.area_m2?' <small style="color:var(--muted)">· '+r.area_m2+' m²</small>':'')+'</td>'
     +'<td>'+esc(cm[r.client_id]||'—')+'</td><td>'+dt(r.visit_date)+'</td><td>'+esc(r.work_type==='reparatie'?'reparație':(r.work_type==='constructie'?'construcție':'—'))+'</td><td>'+pill(r.status)+'</td>'
-    +'<td style="text-align:right"><button class="iconbtn" title="Opțiuni" onclick="event.stopPropagation();previzActions(\''+r.id+'\')">⋯ opțiuni</button></td></tr>').join('');
+    +'<td><div class="rowact">'
+    +'<button class="iconbtn" title="Previzualizare (vezi fișa)" onclick="event.stopPropagation();previzView(\''+r.id+'\')">👁</button>'
+    +'<button class="iconbtn" title="PDF / Tipărește" onclick="event.stopPropagation();previzPDF(\''+r.id+'\')">🖨</button>'
+    +'<button class="iconbtn" title="Creează deviz din fișă" onclick="event.stopPropagation();previzToDeviz(\''+r.id+'\')">🧾</button>'
+    +'<button class="iconbtn" title="Creează șantier din fișă" onclick="event.stopPropagation();previzToSite(\''+r.id+'\')">🏗️</button>'
+    +(canDo('previzualizare','u')?'<button class="iconbtn" title="Editează fișa" onclick="event.stopPropagation();editPreviz(\''+r.id+'\')">✏️</button>':'')
+    +(canDo('previzualizare','d')?'<button class="iconbtn danger" title="Șterge fișa" onclick="event.stopPropagation();delPreviz(\''+r.id+'\')">🗑</button>':'')
+    +'</div></td></tr>').join('');
   $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem .2rem;font-size:.8rem;color:var(--muted)">👉 Apasă pe o fișă pentru opțiuni (previzualizare, PDF, deviz, editare…)</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fișă</th><th>Client</th><th>Data vizitei</th><th>Tip</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
@@ -2159,25 +2166,39 @@ function renderList(){
   if(!data.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">🔍</div><div>'+TR('nrez')+'</div></div>'; return; }
   const cols=m.columns.filter(c=>!c.secure||FINANCE_ROLES.includes(state.role));
   const head='<tr>'+cols.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th></th></tr>';
-  const body=data.map(r=>'<tr>'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
-      +'<td><div class="rowact">'
-      +(m.invitable&&ADMIN_ROLES.includes(state.role)?'<button class="iconbtn" title="Dă acces (invitație prin link)" onclick="inviteEntity(\''+m.invitable+'\',\''+r.id+'\')">🔑</button>':'')
-      +(m.siteHub?'<button class="iconbtn" title="Detalii șantier (jurnal, etape, stoc, situații, RFI…)" onclick="siteHub(\''+r.id+'\',\''+esc(r.name||'').replace(/\x27/g,"")+'\')">📂</button>':'')
-      +(m.scheduler?'<button class="iconbtn" title="Grafic lucrări (filă nouă) — interactiv, cu reordonare prin glisare" onclick="window.open(\'grafic.html?site=\'+\''+r.id+'\',\'_blank\')">📅</button>':'')
-      +(m.scheduler?'<button class="iconbtn" title="Rezumat rapid (marjă & etape)" onclick="openSiteDetail(\''+r.id+'\')">📊</button>':'')
-      +(m.teamable?'<button class="iconbtn" title="Acces / echipă" onclick="siteTeam(\''+r.id+'\')">👥</button>':'')
-      +(m.portalable?'<button class="iconbtn" title="Link portal client" onclick="genPortal(\''+r.id+'\')">🔗</button>':'')
-      +(m.subEquip?'<button class="iconbtn" title="Echipamentul angajatului" onclick="empEquip(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">🦺</button><button class="iconbtn" title="Pontajul angajatului" onclick="empPontaj(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">⏱️</button><button class="iconbtn" title="SSM / Securitate angajat" onclick="empSSM(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">🛡️</button>':'')
-      +(m.acceptReject&&canDo(key,'u')?(r.status!=='accepted'?'<button class="iconbtn" title="Marchează oferta acceptată" onclick="estimateStatus(\''+r.id+'\',\'accepted\')" style="color:#16a34a">✅</button>':'')+(r.status!=='rejected'?'<button class="iconbtn" title="Marchează oferta respinsă" onclick="estimateStatus(\''+r.id+'\',\'rejected\')" style="color:#dc2626">✖️</button>':''):'')
-      +(m.toSite?'<button class="iconbtn" title="Creează șantier din ofertă" onclick="estimateToSite(\''+r.id+'\')">🏗️</button>':'')
-      +(m.pageEditor?'<button class="iconbtn" title="Deschide / editează oferta (filă nouă)" onclick="window.open(\''+m.pageEditor+'?id=\'+\''+r.id+'\',\'_blank\')">📋</button>':'')
-      +(m.convertible?'<button class="iconbtn" title="Creează factură din deviz" onclick="estimateToInvoice(\''+r.id+'\')">🧾</button>':'')
-      +(m.efactura?'<button class="iconbtn" title="e-Factura (SFS) — generează XML" onclick="genEfactura(\''+r.id+'\')">🏛️</button>':'')
-      +(m.printable?'<button class="iconbtn" title="Tipărește / PDF" onclick="printDoc(\''+key+'\',\''+r.id+'\')">🖨</button>':'')
-      +(m.toolActions?'<button class="iconbtn" title="Istoric mișcări" onclick="toolHistory(\''+r.id+'\')">🕘</button><button class="iconbtn" title="Etichetă QR (de lipit pe sculă)" onclick="toolQR(\''+r.id+'\',\''+esc(r.name).replace(/\x27/g,"")+'\',\''+esc(r.code||'')+'\')">🏷️</button>':'')
-      +(canDo(key,'u')?'<button class="iconbtn" title="Editează" onclick="editRecord(\''+key+'\',\''+r.id+'\')">✏️</button>':'')
-      +(canDo(key,'d')?'<button class="iconbtn danger" title="Șterge" onclick="delRecord(\''+key+'\',\''+r.id+'\')">🗑</button>':'')+'</div></td></tr>').join('');
-  $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+  const body=data.map(r=>{ const acts=rowActions(key,m,r);
+    return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
+      +'<td><div class="rowact">'+acts.map(a=>'<button class="iconbtn'+(a.d?' danger':'')+'" title="'+esc(a.l)+'" onclick="event.stopPropagation();'+a.f+'">'+a.i+'</button>').join('')+'</div></td></tr>';
+  }).join('');
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un rând pentru toate opțiunile.</div><div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+/* acțiunile unui rând — sursă comună pentru butoanele inline ȘI panoul de opțiuni */
+function jsArg(s){ return esc(s||'').replace(/\x27/g,''); }
+function rowActions(key,m,r){
+  const a=[], id=r.id;
+  if(m.invitable&&ADMIN_ROLES.includes(state.role)) a.push({i:'🔑',l:'Dă acces (invitație prin link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
+  if(m.siteHub) a.push({i:'📂',l:'Detalii șantier (jurnal, etape, stoc, situații, RFI…)',f:"siteHub('"+id+"','"+jsArg(r.name)+"')"});
+  if(m.scheduler){ a.push({i:'📅',l:'Grafic lucrări (filă nouă)',f:"window.open('grafic.html?site="+id+"','_blank')"}); a.push({i:'📊',l:'Rezumat rapid (marjă & etape)',f:"openSiteDetail('"+id+"')"}); }
+  if(m.teamable) a.push({i:'👥',l:'Acces / echipă',f:"siteTeam('"+id+"')"});
+  if(m.portalable) a.push({i:'🔗',l:'Link portal client',f:"genPortal('"+id+"')"});
+  if(m.subEquip){ a.push({i:'🦺',l:'Echipamentul angajatului',f:"empEquip('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'⏱️',l:'Pontajul angajatului',f:"empPontaj('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🛡️',l:'SSM / Securitate angajat',f:"empSSM('"+id+"','"+jsArg(r.full_name)+"')"}); }
+  if(m.acceptReject&&canDo(key,'u')){ if(r.status!=='accepted') a.push({i:'✅',l:'Marchează oferta acceptată',f:"estimateStatus('"+id+"','accepted')"}); if(r.status!=='rejected') a.push({i:'✖️',l:'Marchează oferta respinsă',f:"estimateStatus('"+id+"','rejected')",d:true}); }
+  if(m.toSite) a.push({i:'🏗️',l:'Creează șantier din ofertă',f:"estimateToSite('"+id+"')"});
+  if(m.pageEditor) a.push({i:'📋',l:'Deschide / editează (filă nouă)',f:"window.open('"+m.pageEditor+"?id="+id+"','_blank')"});
+  if(m.convertible) a.push({i:'🧾',l:'Creează factură din deviz',f:"estimateToInvoice('"+id+"')"});
+  if(m.efactura) a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"});
+  if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:"printDoc('"+key+"','"+id+"')"});
+  if(m.toolActions){ a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
+  if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
+  if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
+  return a;
+}
+function rowOptions(key,id){
+  const r=(listState.rows||[]).find(x=>x.id===id), m=listState.m; if(!r||!m) return;
+  const acts=rowActions(key,m,r); if(!acts.length) return;
+  const name=esc(r.name||r.full_name||r.number||r.title||r.item||r.label||'Opțiuni');
+  const B=acts.map(a=>'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0'+(a.d?';color:var(--red,#dc2626)':'')+'" onclick="closeModal();'+a.f+'"><span style="font-size:1.1rem">'+a.i+'</span> '+esc(a.l)+'</button>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px"><div class="modal-head"><h3>'+name+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+B+'</div></div></div>';
 }
 
 /* ════ FORM (create + edit) ════ */

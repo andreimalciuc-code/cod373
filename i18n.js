@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Apasă pe un rând pentru toate opțiunile.':{ru:'Нажмите на строку для всех опций.',de:'Auf eine Zeile tippen für alle Optionen.',en:'Tap a row for all options.'},
     'Tot ce ține de acest șantier:':{ru:'Всё, что относится к этому объекту:',de:'Alles zu dieser Baustelle:',en:'Everything related to this site:'},
     'Înapoi la șantier':{ru:'Назад к объекту',de:'Zurück zur Baustelle',en:'Back to site'},
     'Pontajul angajatului':{ru:'Табель сотрудника',de:'Zeiterfassung des Mitarbeiters',en:'Employee timesheet'},
