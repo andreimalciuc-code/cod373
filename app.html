@@ -429,6 +429,7 @@ const MODULES = {
 
   previzualizare:{ title:'Previzualizare șantier', sub:'Fișă de vizită pe teren — poze, întrebări, măsurători → PDF și deviz.', icon:'📋', group:'Operațional', custom:true },
   emailuri:{ title:'Mesaje clienți', sub:'Trimite emailuri clienților și primește răspunsurile aici.', icon:'📨', group:'Operațional', custom:true },
+  plantafel:{ title:'Planificare echipe', sub:'Cine, pe ce șantier, în ce zi — pe săptămână.', icon:'🗓️', group:'Operațional', custom:true },
   postcalc:{ title:'Postcalculație (marjă)', sub:'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.', icon:'📈', group:'Rapoarte', custom:true },
   restante:{ title:'Restanțe & remindere', sub:'Facturi neîncasate scadente — trimite remindere.', icon:'⏰', group:'Rapoarte', custom:true },
   reconciliere:{ title:'Reconciliere plăți', sub:'Importă extrasul bancar și potrivește încasările cu facturile.', icon:'🏦', group:'Rapoarte', custom:true },
@@ -974,7 +975,7 @@ async function boot(){
   state.session = session;
   const tok=getInviteToken();
   if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK') toast('✅ Acces activat la firmă.'); if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
-  const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url)').eq('active',true).limit(1).maybeSingle();
+  const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
   CUR = (state.firm.currency||'MDL').toUpperCase();
@@ -1010,7 +1011,7 @@ function go(key){
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, reconciliere:renderReconciliere}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, reconciliere:renderReconciliere, plantafel:renderPlantafel}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1035,7 +1036,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v42';
+const APP_VERSION='cod373-v43';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1502,6 +1503,58 @@ async function reconConfirm(idx){
   reconRender((window._reconTx||[]).filter((_,i)=>i!==idx));
 }
 
+/* ════ PLANTAFEL — planificare echipe pe săptămână ════ */
+let _planMon=null;
+function mondayOf(d){ d=new Date(d); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
+function isoD(d){ return new Date(d).toISOString().slice(0,10); }
+async function renderPlantafel(){
+  if(!_planMon) _planMon=mondayOf(new Date());
+  const start=new Date(_planMon); const dates=[]; for(let i=0;i<7;i++){ const d=new Date(start); d.setDate(start.getDate()+i); dates.push(isoD(d)); }
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="planNav(-7)">← Săpt. anterioară</button><b style="margin:0 .6rem">'+dates[0]+' — '+dates[6]+'</b><button class="btn-ghost" onclick="planNav(7)">Săpt. următoare →</button><button class="btn-ghost" onclick="planNav(0)" style="margin-left:auto">Azi</button></div>'
+    +'<div class="panel"><div class="panel-head"><h3>🗓️ Planificare echipe</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  const [empR,siteR,planR]=await Promise.all([
+    sb.from('employees').select('id,full_name,active'),
+    sb.from('sites').select('id,name,status'),
+    sb.from('crew_plan').select('employee_id,site_id,plan_date').gte('plan_date',dates[0]).lte('plan_date',dates[6])
+  ]);
+  const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
+  const sites=(siteR.data||[]).filter(s=>s.status!=='done'&&s.status!=='cancelled');
+  const plan={}; (planR.data||[]).forEach(p=>{ plan[p.employee_id+'|'+p.plan_date]=p.site_id; });
+  const dn=['Lun','Mar','Mie','Joi','Vin','Sâm','Dum'];
+  const opt=sel=>'<option value="">—</option>'+sites.map(s=>'<option value="'+s.id+'" '+(sel===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join('');
+  const head='<tr><th>Angajat</th>'+dates.map((d,i)=>'<th style="font-size:.72rem;text-align:center">'+dn[i]+'<br>'+d.slice(8,10)+'.'+d.slice(5,7)+'</th>').join('')+'</tr>';
+  const body=emps.length?emps.map(e=>'<tr><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+'</td>'+dates.map(d=>'<td><select style="min-width:96px;font-size:.78rem;padding:.3rem" onchange="planSet(\''+e.id+'\',\''+d+'\',this.value)">'+opt(plan[e.id+'|'+d]||'')+'</select></td>').join('')+'</tr>').join(''):'<tr><td colspan="8" style="color:var(--muted);padding:1rem">Niciun angajat activ.</td></tr>';
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">Alege șantierul pentru fiecare zi — se salvează automat.</div><div class="tbl-wrap"><table class="tbl">'+head+'<tbody>'+body+'</tbody></table></div>';
+}
+function planNav(delta){ if(delta===0) _planMon=mondayOf(new Date()); else { _planMon=new Date(_planMon); _planMon.setDate(_planMon.getDate()+delta); } renderPlantafel(); }
+async function planSet(empId,date,siteId){
+  await sb.from('crew_plan').delete().eq('employee_id',empId).eq('plan_date',date);
+  if(siteId){ const r=await sbRetry(()=>sb.from('crew_plan').insert({tenant_id:state.tenant,employee_id:empId,site_id:siteId,plan_date:date})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
+  toast('✅ Planificare salvată.');
+}
+
+/* ════ AUTOMATIZĂRI PE REGULI ════ */
+function automationsCfg(){ return (state.firm&&state.firm.automations)||{}; }
+async function saveAutomations(){
+  const au={ acc_site:$('au-site').checked, acc_invoice:$('au-inv').checked, acc_invoice_pct:+($('au-pct').value||30) };
+  const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant));
+  if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  state.firm.automations=au; toast('✅ Automatizări salvate.');
+}
+async function runAutomations(estId){
+  const au=automationsCfg(); if(!au.acc_site && !au.acc_invoice) return;
+  try{
+    const e=(await sb.from('estimates').select('client_id,total,number,site_id').eq('id',estId).single()).data; if(!e) return;
+    let siteId=e.site_id, msg=[];
+    if(au.acc_site && !siteId){ const s=await sb.from('sites').insert({tenant_id:state.tenant,name:'Șantier '+(e.number||''),client_id:e.client_id||null,budget:e.total||0,status:'planned'}).select('id').single(); if(!s.error){ siteId=s.data.id; await sb.from('estimates').update({site_id:siteId}).eq('id',estId); msg.push('șantier creat'); } }
+    if(au.acc_invoice){ const pct=+au.acc_invoice_pct||30; const amt=Math.round((+e.total||0)*pct/100*100)/100;
+      const inv=await sb.from('invoices').insert({tenant_id:state.tenant,client_id:e.client_id||null,site_id:siteId||null,estimate_id:estId,number:'AVANS-'+(e.number||''),status:'draft',issue_date:new Date().toISOString().slice(0,10),subtotal:amt,vat_total:0,total:amt}).select('id').single();
+      if(!inv.error){ await sb.from('invoice_items').insert({tenant_id:state.tenant,invoice_id:inv.data.id,name:'Avans '+pct+'% — ofertă '+(e.number||''),qty:1,unit:'buc',unit_price:amt,vat_rate:0,position:1}); msg.push('factură de avans '+pct+'%'); }
+    }
+    if(msg.length) toast('🤖 Automat: '+msg.join(' + ')+'.');
+  }catch(e){}
+}
+
 /* ════ DASHBOARD ════ */
 function kpiCard(label,val,view,accent){ return '<div class="kpi"'+(view?' onclick="go(\''+view+'\')" style="cursor:pointer"':'')+'><div class="kt">'+esc(label)+'</div><div class="kv"'+(accent?' style="color:'+accent+'"':'')+'>'+val+'</div></div>'; }
 async function renderDashboard(){
@@ -1772,7 +1825,7 @@ async function renderHarta(){
 
 /* ════ SETĂRI FIRMĂ ════ */
 async function renderSetari(){
-  const f=state.firm||{};
+  const f=state.firm||{}; const au=(f.automations)||{};
   $('content').innerHTML='<div class="panel" style="max-width:660px"><div class="panel-head"><h3>Setări firmă</h3></div><div class="modal-body">'
     +'<div id="set-msg"></div>'
     +'<div class="field"><label>Logo firmă <span class="hint-i" title="Apare în antetul aplicației și pe toate documentele (facturi, devize, fișe). Recomandat: PNG/JPG, fundal alb sau transparent.">ⓘ</span></label>'
@@ -1799,6 +1852,13 @@ async function renderSetari(){
     +'<button class="btn-ghost" onclick="exportDATEV()">🇩🇪 Export DATEV (facturi)</button>'
     +'<button class="btn-ghost" onclick="importCatalog()">📦 Import catalog materiale (Datanorm/CSV)</button>'
     +(state.role==='owner'?'<button class="btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="deleteFirm()">🗑 Șterge definitiv firma și datele</button>':'')
+    +'</div></div>'
+    +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🤖 Automatizări</h3></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Reguli care rulează singure la acceptarea unei oferte.</p>'
+    +'<div class="field"><div class="chk"><input type="checkbox" id="au-site" '+(au.acc_site?'checked':'')+'/> <span>La acceptarea ofertei → <b>creează automat șantierul</b> (dacă nu există)</span></div></div>'
+    +'<div class="field"><div class="chk"><input type="checkbox" id="au-inv" '+(au.acc_invoice?'checked':'')+'/> <span>La acceptarea ofertei → <b>creează o factură de avans</b></span></div></div>'
+    +'<div class="field" style="max-width:160px"><label>Avans (%)</label><input id="au-pct" type="number" value="'+(au.acc_invoice_pct!=null?au.acc_invoice_pct:30)+'"/></div>'
+    +'<button class="btn-primary" onclick="saveAutomations()">Salvează automatizările</button>'
     +'</div></div></div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
   geoScan($('content'));
@@ -2934,7 +2994,9 @@ async function estimateStatus(estId,status){
   if(!confirm('Marchezi oferta ca '+lbl+'?')) return;
   const r=await sbRetry(()=>sb.from('estimates').update({status}).eq('id',estId));
   if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
-  toast(status==='accepted'?'✅ Ofertă acceptată.':'✖️ Ofertă respinsă.'); renderModule('devize');
+  toast(status==='accepted'?'✅ Ofertă acceptată.':'✖️ Ofertă respinsă.');
+  if(status==='accepted') await runAutomations(estId);
+  renderModule('devize');
 }
 
 /* ════ helper descărcare ════ */

@@ -13,6 +13,14 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Planificare echipe':{ru:'Планирование бригад',de:'Teamplanung',en:'Crew planning'},
+    'Cine, pe ce șantier, în ce zi — pe săptămână.':{ru:'Кто, на каком объекте, в какой день — на неделю.',de:'Wer, auf welcher Baustelle, an welchem Tag — pro Woche.',en:'Who, on which site, on which day — per week.'},
+    'Săpt. anterioară':{ru:'Пред. неделя',de:'Vorwoche',en:'Prev. week'},
+    'Săpt. următoare':{ru:'След. неделя',de:'Nächste Woche',en:'Next week'},
+    'Azi':{ru:'Сегодня',de:'Heute',en:'Today'},
+    'Automatizări':{ru:'Автоматизация',de:'Automatisierungen',en:'Automations'},
+    'Salvează automatizările':{ru:'Сохранить автоматизацию',de:'Automatisierungen speichern',en:'Save automations'},
+    'Avans (%)':{ru:'Аванс (%)',de:'Anzahlung (%)',en:'Advance (%)'},
     'Export DATEV (facturi)':{ru:'Экспорт DATEV (счета)',de:'DATEV-Export (Rechnungen)',en:'DATEV export (invoices)'},
     'Import catalog materiale (Datanorm/CSV)':{ru:'Импорт каталога материалов (Datanorm/CSV)',de:'Materialkatalog importieren (Datanorm/CSV)',en:'Import material catalog (Datanorm/CSV)'},
     'Import catalog materiale':{ru:'Импорт каталога материалов',de:'Materialkatalog importieren',en:'Import material catalog'},
