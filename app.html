@@ -43,6 +43,10 @@
     .gate-hero h1{font-size:1.7rem}.gate-hero .lead{margin-left:auto;margin-right:auto;font-size:.92rem}
     .gate-feats,.gate-trust{display:none}
   }
+  .gate-langs{display:flex;gap:.3rem;justify-content:flex-end;margin:-.6rem -.4rem .7rem 0}
+  .gate-langs button{border:1px solid var(--line);background:#fff;color:var(--muted);font-weight:700;font-size:.72rem;padding:.28rem .55rem;border-radius:8px;cursor:pointer;transition:all .12s}
+  .gate-langs button:hover{border-color:var(--primary);color:var(--primary)}
+  .gate-langs button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
   .gate-logo{display:flex;align-items:center;gap:.6rem;margin-bottom:1.6rem}
   .gate-logo .lg{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.72rem}
   .gate-logo .nm{font-weight:800;font-size:1.2rem}.gate-logo .nm span{color:var(--accent)}
@@ -189,6 +193,12 @@
     <div class="gate-trust"><span>🔒 Date securizate în UE (Frankfurt)</span><span>✅ Conform GDPR</span><span><b>Cod373</b> — platformă online</span></div>
   </div>
   <div class="gate-card">
+    <div class="gate-langs noi18n" id="gate-langs" translate="no">
+      <button data-glang="ro" onclick="C373setLang('ro')">RO</button>
+      <button data-glang="ru" onclick="C373setLang('ru')">RU</button>
+      <button data-glang="de" onclick="C373setLang('de')">DE</button>
+      <button data-glang="en" onclick="C373setLang('en')">EN</button>
+    </div>
     <div class="gate-logo"><div class="lg">C373</div><div class="nm noi18n">Cod<span>373</span></div></div>
     <div id="cfg-warn" class="cfg-warn hidden"></div>
 
@@ -1018,7 +1028,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v27';
+const APP_VERSION='cod373-v28';
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
 async function openSupport(){
@@ -2582,5 +2592,8 @@ async function printDoc(key,id){
 })();
 </script>
 <script src="i18n.js"></script>
+<script>/* marcheaza limba activa in selectorul de pe pagina de start */
+(function(){ try{ var l=(window.C373lang&&C373lang())||localStorage.getItem('c373_lang')||'ro';
+  document.querySelectorAll('#gate-langs [data-glang]').forEach(function(b){ b.classList.toggle('on', b.dataset.glang===l); }); }catch(e){} })();</script>
 </body>
 </html>
