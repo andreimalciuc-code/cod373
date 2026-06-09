@@ -1035,7 +1035,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v41';
+const APP_VERSION='cod373-v42';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1796,6 +1796,8 @@ async function renderSetari(){
     +'<button class="btn-ghost" onclick="window.open(\'privacy.html\',\'_blank\')">📄 Politica de confidențialitate</button>'
     +'<button class="btn-ghost" onclick="exportData()">⬇ Exportă datele firmei (JSON)</button>'
     +'<button class="btn-ghost" onclick="exportContabil()">📊 Export contabil facturi (CSV/1C)</button>'
+    +'<button class="btn-ghost" onclick="exportDATEV()">🇩🇪 Export DATEV (facturi)</button>'
+    +'<button class="btn-ghost" onclick="importCatalog()">📦 Import catalog materiale (Datanorm/CSV)</button>'
     +(state.role==='owner'?'<button class="btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="deleteFirm()">🗑 Șterge definitiv firma și datele</button>':'')
     +'</div></div></div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
@@ -2365,6 +2367,7 @@ function rowActions(key,m,r){
   if(m.pageEditor) a.push({i:'📋',l:'Deschide / editează (filă nouă)',f:"window.open('"+m.pageEditor+"?id="+id+"','_blank')"});
   if(m.convertible) a.push({i:'🧾',l:'Creează factură din deviz',f:"estimateToInvoice('"+id+"')"});
   if(m.efactura) a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"});
+  if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:"printDoc('"+key+"','"+id+"')"});
   if(m.toolActions){ a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
@@ -2972,6 +2975,88 @@ async function exportContabil(){
   const csv='﻿'+[head].concat(rows).map(r=>r.map(c=>{ c=(c==null?'':String(c)); return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c; }).join(';')).join('\n');
   download(csv,'facturi-contabilitate-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8');
   toast('✅ Export contabil descărcat (CSV).');
+}
+/* ── Export DATEV (Buchungsstapel EXTF, simplificat) ── */
+async function exportDATEV(){
+  toast('⏳ Pregătesc exportul DATEV…');
+  const { data }=await sb.from('invoices').select('number,issue_date,total,status,clients!client_id(name)');
+  const invs=data||[]; if(!invs.length){ toast('Nicio factură de exportat.'); return; }
+  const head='"EXTF";700;21;"Buchungsstapel";9;;;;;"";"";"";"";"";;;;;;;;;;;;;;;;;;;;;;;';
+  const cols='Umsatz (ohne Soll/Haben-Kz);Soll/Haben-Kennzeichen;WKZ Umsatz;Konto;Gegenkonto (ohne BU-Schlüssel);Belegdatum;Belegfeld 1;Buchungstext';
+  const rows=invs.map(i=>{ const dd=(i.issue_date||''); const ddmm=dd?dd.slice(8,10)+dd.slice(5,7):'';
+    const sum=String((+i.total||0).toFixed(2)).replace('.',',');
+    return [sum,'S','EUR','1400','8400',ddmm,(i.number||''),(i.clients?i.clients.name:'')].map(c=>{ c=(c==null?'':String(c)); return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c; }).join(';'); });
+  const csv='﻿'+head+'\n'+cols+'\n'+rows.join('\n');
+  download(csv,'DATEV-facturi-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8');
+  toast('📊 Export DATEV descărcat. Conturile 1400/8400 (SKR03) sunt implicite — confirmă-le cu contabilul.');
+}
+/* ── e-Factură germană: XRechnung (UBL 2.1 XML) ── */
+async function genXRechnung(id){
+  toast('⏳ Generez XRechnung…');
+  const inv=(await sb.from('invoices').select('*, clients!client_id(name,idno,address,email)').eq('id',id).single()).data; if(!inv){ toast('Eroare.'); return; }
+  const items=(await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[];
+  const f=state.firm||{}, cl=inv.clients||{}; const cur=(f.currency||'EUR').toUpperCase();
+  const X=s=>(''+(s==null?'':s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const n2=v=>(+v||0).toFixed(2);
+  const lineXml=items.map((it,i)=>{ const net=(+it.qty||0)*(+it.unit_price||0);
+    return '  <cac:InvoiceLine>\n    <cbc:ID>'+(i+1)+'</cbc:ID>\n    <cbc:InvoicedQuantity unitCode="C62">'+(+it.qty||0)+'</cbc:InvoicedQuantity>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(net)+'</cbc:LineExtensionAmount>\n    <cac:Item>\n      <cbc:Name>'+X(it.name)+'</cbc:Name>\n      <cac:ClassifiedTaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>'+n2(it.vat_rate)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>\n    </cac:Item>\n    <cac:Price><cbc:PriceAmount currencyID="'+cur+'">'+n2(it.unit_price)+'</cbc:PriceAmount></cac:Price>\n  </cac:InvoiceLine>';
+  }).join('\n');
+  const xml='<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">\n'
+    +'  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</cbc:CustomizationID>\n'
+    +'  <cbc:ID>'+X(inv.number)+'</cbc:ID>\n  <cbc:IssueDate>'+(inv.issue_date||'')+'</cbc:IssueDate>\n'
+    +(inv.due_date?'  <cbc:DueDate>'+inv.due_date+'</cbc:DueDate>\n':'')
+    +'  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>\n  <cbc:DocumentCurrencyCode>'+cur+'</cbc:DocumentCurrencyCode>\n'
+    +'  <cac:AccountingSupplierParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(f.name)+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(f.address||'')+'</cbc:StreetName></cac:PostalAddress>\n'+(f.idno?'    <cac:PartyTaxScheme><cbc:CompanyID>'+X(f.idno)+'</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>\n':'')+'  </cac:Party></cac:AccountingSupplierParty>\n'
+    +'  <cac:AccountingCustomerParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(cl.name||'')+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(cl.address||'')+'</cbc:StreetName></cac:PostalAddress>\n  </cac:Party></cac:AccountingCustomerParty>\n'
+    +'  <cac:TaxTotal><cbc:TaxAmount currencyID="'+cur+'">'+n2(inv.vat_total)+'</cbc:TaxAmount></cac:TaxTotal>\n'
+    +'  <cac:LegalMonetaryTotal>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(inv.subtotal)+'</cbc:LineExtensionAmount>\n    <cbc:TaxExclusiveAmount currencyID="'+cur+'">'+n2(inv.subtotal)+'</cbc:TaxExclusiveAmount>\n    <cbc:TaxInclusiveAmount currencyID="'+cur+'">'+n2(inv.total)+'</cbc:TaxInclusiveAmount>\n    <cbc:PayableAmount currencyID="'+cur+'">'+n2(inv.total)+'</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n'
+    +lineXml+'\n</Invoice>';
+  download(xml,'XRechnung-'+(inv.number||id)+'.xml','application/xml;charset=utf-8');
+  toast('🇩🇪 XRechnung XML descărcat.');
+}
+/* ── Import catalog furnizori (CSV sau Datanorm) → Materiale ── */
+function importCatalog(){
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px">'
+    +'<div class="modal-head"><h3>📦 Import catalog materiale</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="ic-msg"></div>'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Încarcă o listă de prețuri de la furnizor: <b>CSV</b> (coloane: denumire, unitate, preț) sau fișier <b>Datanorm</b> (.001/.txt). Vezi o previzualizare înainte de import.</p>'
+    +'<input id="ic-file" type="file" accept=".csv,.txt,.001,.002,.dat,text/plain,text/csv" onchange="catalogParse(this)"/>'
+    +'<div id="ic-preview"></div>'
+    +'</div></div></div>';
+}
+async function catalogParse(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  const text=await f.text(); const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  let mats=[];
+  const datanorm=lines.filter(l=>/^A[;\s]/.test(l)).length>3;
+  if(datanorm){
+    lines.forEach(ln=>{ if(!/^A[;\s]/.test(ln)) return; const p=ln.split(';');
+      const name=((p[4]||'')+' '+(p[5]||'')).trim(); if(!name) return;
+      let price=reconNum(p[7]); if(!isNaN(price)&&price>1000) price=price/100; // Datanorm preț adesea în subunități
+      mats.push({name:name.slice(0,180),unit:(p[10]||'buc').trim()||'buc',price:isNaN(price)?0:price}); });
+  } else {
+    const delim=(lines[0].split(';').length>lines[0].split(',').length)?';':',';
+    const hdr=lines[0].toLowerCase().split(delim).map(s=>s.trim());
+    const ix=(...names)=>{ for(const n of names){ const i=hdr.findIndex(h=>h.includes(n)); if(i>=0) return i; } return -1; };
+    let ni=ix('denumire','nume','name','artikel','bezeichnung','material'), ui=ix('unitate','um','unit','einheit','me'), pi=ix('pret','preț','price','preis','pu');
+    const start=(ni>=0)?1:0; if(ni<0) ni=0;
+    lines.slice(start).forEach(ln=>{ const c=ln.split(delim).map(s=>s.replace(/^"|"$/g,'').trim()); const name=(c[ni]||'').trim(); if(!name) return;
+      mats.push({name:name.slice(0,180),unit:(ui>=0?c[ui]:'buc')||'buc',price:pi>=0?(reconNum(c[pi])||0):0}); });
+  }
+  if(!mats.length){ showMsg('ic-msg','Nu am găsit articole. Verifică formatul (CSV cu denumire/unitate/preț sau Datanorm).'); return; }
+  window._icMats=mats;
+  const sample=mats.slice(0,8).map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.unit)+'</td><td>'+money(m.price)+'</td></tr>').join('');
+  $('ic-preview').innerHTML='<div style="margin-top:.8rem;font-weight:700">'+mats.length+' articole găsite (primele 8):</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Denumire</th><th>UM</th><th>Preț</th></tr></thead><tbody>'+sample+'</tbody></table></div>'
+    +'<button class="btn-primary btn-block" style="margin-top:.6rem" onclick="catalogImport()">Importă '+mats.length+' materiale</button>';
+}
+async function catalogImport(){
+  const mats=(window._icMats||[]).slice(0,3000); if(!mats.length) return;
+  const rows=mats.map(m=>({tenant_id:state.tenant,name:m.name,unit:m.unit,last_price:m.price,active:true}));
+  const r=await sbRetry(()=>sb.from('materials').insert(rows));
+  if(r.error){ showMsg('ic-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  closeModal(); toast('✅ '+rows.length+' materiale importate în catalog.');
 }
 
 /* ════ ECHIPĂ / ACCES PE ȘANTIER (site_team) ════ */

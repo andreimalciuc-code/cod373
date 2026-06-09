@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Export DATEV (facturi)':{ru:'Экспорт DATEV (счета)',de:'DATEV-Export (Rechnungen)',en:'DATEV export (invoices)'},
+    'Import catalog materiale (Datanorm/CSV)':{ru:'Импорт каталога материалов (Datanorm/CSV)',de:'Materialkatalog importieren (Datanorm/CSV)',en:'Import material catalog (Datanorm/CSV)'},
+    'Import catalog materiale':{ru:'Импорт каталога материалов',de:'Materialkatalog importieren',en:'Import material catalog'},
+    'e-Factură DE (XRechnung XML)':{ru:'e-Счёт DE (XRechnung XML)',de:'E-Rechnung DE (XRechnung XML)',en:'e-Invoice DE (XRechnung XML)'},
     'Reconciliere plăți':{ru:'Сверка платежей',de:'Zahlungsabgleich',en:'Payment reconciliation'},
     'Importă extrasul bancar și potrivește încasările cu facturile.':{ru:'Импортируйте банковскую выписку и сопоставьте поступления со счетами.',de:'Kontoauszug importieren und Eingänge mit Rechnungen abgleichen.',en:'Import the bank statement and match receipts to invoices.'},
     'Semnătură client (acceptare)':{ru:'Подпись клиента (принятие)',de:'Kundenunterschrift (Annahme)',en:'Client signature (acceptance)'},
