@@ -473,13 +473,13 @@ const MODULES = {
       {key:'description',label:'Descriere (compactă)',type:'textarea',hint:'Ce include serviciul, condiții, observații. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză serviciu',type:'photo',hint:'Fotografie ilustrativă (exemplu de lucrare). Se încarcă în Documente.'} ] },
 
-  instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule.', icon:'🛠️', group:'Catalog', table:'tools',
+  instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true,
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
-    select:'id,name,inventory_no,status,sites(name)',
+    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,sites(name)',
     columns:[
-      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
-      {label:'Nr. inventar',get:r=>esc(r.inventory_no||'—')},
-      {label:'Șantier',get:r=>esc(r.sites?r.sites.name:'—')},
+      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">·'+esc(r.code)+'</small>':'')},
+      {label:'Cine o are acum',get:r=>'📍 '+esc(r.holder_label||'—')},
+      {label:'Stare fizică',get:r=>toolCondBadge(r.condition,r.condition_note)},
       {label:'Stare',get:r=>pill(r.status)} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
@@ -984,7 +984,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v25';
+const APP_VERSION='cod373-v26';
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
 async function openSupport(){
@@ -1019,6 +1019,41 @@ async function submitTicket(){
     +'<p style="color:var(--muted);font-size:.88rem">Mulțumim. Am primit problema cu toate detaliile și revenim cât putem de repede.</p>';
   if($('sup-send')) $('sup-send').style.display='none';
   toast('✅ Sesizare trimisă către suport.');
+}
+
+/* ════ INSTRUMENTE — custodie (birou) ════ */
+function toolCondBadge(c,note){ c=c||'ok';
+  const m={ok:['Bună','#dcfce7','#166534','✅'],dirty:['Murdar','#fef9c3','#854d0e','🧽'],defect:['Defect','#fee2e2','#b91c1c','🛠']}[c]||['—','#eee','#555',''];
+  return '<span class="pill" style="background:'+m[1]+';color:'+m[2]+'" title="'+esc(note||'')+'">'+m[3]+' '+m[0]+'</span>'+(c==='defect'&&note?' <small style="color:var(--muted)">'+esc(note)+'</small>':'');
+}
+async function toolHistory(id){
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-body"><div class="loading">Se încarcă…</div></div></div></div>';
+  const t=(await sb.from('tools').select('name,code,holder_label,condition,condition_note,last_move_at').eq('id',id).single()).data;
+  const { data:logs }=await sb.from('tool_logs').select('action,holder_label,from_label,condition,note,created_at').eq('tool_id',id).order('created_at',{ascending:false}).limit(60);
+  const AL={receive:'✅ Primit',warehouse:'🏬 În depozit',defect:'🛠 Defect',repaired:'✔️ Reparat',clean:'✔️ Curățat',handover:'➡️ Predat'};
+  const rows=(logs||[]).length?logs.map(l=>'<tr><td style="white-space:nowrap;color:var(--muted);font-size:.8rem">'+esc((l.created_at||'').slice(0,16).replace('T',' '))+'</td><td><b>'+(AL[l.action]||esc(l.action))+'</b>'+(l.holder_label?' · '+esc(l.holder_label):'')+(l.note?'<div style="color:var(--muted);font-size:.82rem">„'+esc(l.note)+'"</div>':'')+'</td></tr>').join(''):'<tr><td colspan="2" style="color:var(--muted);padding:1rem">Nicio mișcare încă.</td></tr>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'
+    +'<div class="modal-head"><h3>🕘 Istoric — '+esc(t?t.name:'Sculă')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div style="margin-bottom:.6rem">📍 <b>'+esc(t&&t.holder_label||'—')+'</b> · '+toolCondBadge(t&&t.condition,t&&t.condition_note)+'</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data / ora</th><th>Mișcare</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div></div>';
+}
+function toolLink(id){ const m=location.href.split('?')[0].replace(/\/[^/]*$/,'/'); return m+'mobil.html?tool='+id; }
+function toolQR(id,name,code){
+  const link=toolLink(id);
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:360px">'
+    +'<div class="modal-head"><h3>🏷️ Etichetă QR</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body" style="text-align:center"><div style="font-weight:700">'+esc(name||'Sculă')+'</div>'+(code?'<div style="color:var(--muted);font-size:.85rem">Cod '+esc(code)+'</div>':'')
+    +'<div id="qrbox" style="display:flex;justify-content:center;margin:.8rem 0">Se generează…</div>'
+    +'<p style="font-size:.8rem;color:var(--muted)">Lipește eticheta pe sculă. Oricine o scanează cu camera telefonului deschide fișa ei (primire/predare/defect).</p>'
+    +'<button class="btn-primary btn-block" id="qr-print" onclick="toolQRPrint(\''+esc(name).replace(/\x27/g,"")+'\',\''+esc(code||'')+'\')">🖨 Printează eticheta</button></div></div></div>';
+  const draw=()=>{ const box=$('qrbox'); if(!box) return; box.innerHTML=''; try{ new QRCode(box,{text:link,width:200,height:200,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ box.textContent='Nu s-a putut genera codul.'; } };
+  if(window.QRCode){ draw(); } else { const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js'; s.onload=draw; s.onerror=()=>{ const b=$('qrbox'); if(b)b.textContent='Codul nu s-a putut încărca (verifică internetul).'; }; document.head.appendChild(s); }
+}
+function toolQRPrint(name,code){
+  const img=document.querySelector('#qrbox img'); const canv=document.querySelector('#qrbox canvas');
+  const src=img?img.src:(canv?canv.toDataURL():''); if(!src){ toast('Codul încă se generează.'); return; }
+  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(name)+'</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:24px}img{width:240px;height:240px}h2{margin:8px 0 0;font-size:18px}div{color:#555}@media print{button{display:none}}</style></head><body><img src="'+src+'"><h2>'+esc(name)+'</h2>'+(code?'<div>Cod '+esc(code)+'</div>':'')+'<br><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 Printează</button></body></html>'); w.document.close();
 }
 
 /* ════ DASHBOARD ════ */
@@ -1849,6 +1884,7 @@ function renderList(){
       +(m.convertible?'<button class="iconbtn" title="Creează factură din deviz" onclick="estimateToInvoice(\''+r.id+'\')">🧾</button>':'')
       +(m.efactura?'<button class="iconbtn" title="e-Factura (SFS) — generează XML" onclick="genEfactura(\''+r.id+'\')">🏛️</button>':'')
       +(m.printable?'<button class="iconbtn" title="Tipărește / PDF" onclick="printDoc(\''+key+'\',\''+r.id+'\')">🖨</button>':'')
+      +(m.toolActions?'<button class="iconbtn" title="Istoric mișcări" onclick="toolHistory(\''+r.id+'\')">🕘</button><button class="iconbtn" title="Etichetă QR (de lipit pe sculă)" onclick="toolQR(\''+r.id+'\',\''+esc(r.name).replace(/\x27/g,"")+'\',\''+esc(r.code||'')+'\')">🏷️</button>':'')
       +(canDo(key,'u')?'<button class="iconbtn" title="Editează" onclick="editRecord(\''+key+'\',\''+r.id+'\')">✏️</button>':'')
       +(canDo(key,'d')?'<button class="iconbtn danger" title="Șterge" onclick="delRecord(\''+key+'\',\''+r.id+'\')">🗑</button>':'')+'</div></td></tr>').join('');
   $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';

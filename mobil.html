@@ -203,14 +203,23 @@ async function boot(){
   document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
   $('login').classList.add('hidden');$('app').classList.remove('hidden');
   render();
+  // scanare QR: link de forma mobil.html?tool=ID deschide direct scula
+  try{ const tp=new URLSearchParams(location.search).get('tool'); if(tp){ history.replaceState(null,'',location.pathname); openToolById(tp); } }catch(e){}
+}
+async function openToolById(idOrCode){
+  let t=null;
+  try{ const r=await sb.from('tools').select('id,name,code,holder_label,condition,condition_note,inventory_no,last_move_at').eq('id',idOrCode).maybeSingle(); t=r.data; }catch(e){}
+  if(!t){ try{ const r=await sb.from('tools').select('id,name,code,holder_label,condition,condition_note,inventory_no,last_move_at').eq('code',(idOrCode||'').toUpperCase()).maybeSingle(); t=r.data; }catch(e){} }
+  if(!t){ toast('Scula nu a fost găsită.'); return; }
+  toolSheet(t);
 }
 function setRole(r){ S.role=r; S.view='acasa'; document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===r)); render(); }
 
 /* NAV per role */
 const NAV={
-  worker:[['acasa','🏠','Acasă'],['comanda','🛒','Comandă'],['pontaj','⏱️','Pontaj'],['poze','📷','Poze'],['defecte','🔧','Defecte']],
-  driver:[['acasa','🏠','Acasă'],['livrari','🚚','Livrări']],
-  manager:[['acasa','🏠','Acasă'],['santiere','🏗️','Șantiere'],['comanda','🛒','Comandă'],['poze','📷','Poze']],
+  worker:[['acasa','🏠','Acasă'],['scule','🔧','Scule'],['comanda','🛒','Comandă'],['pontaj','⏱️','Pontaj'],['poze','📷','Poze'],['defecte','🔧','Defecte']],
+  driver:[['acasa','🏠','Acasă'],['scule','🔧','Scule'],['livrari','🚚','Livrări']],
+  manager:[['acasa','🏠','Acasă'],['scule','🔧','Scule'],['santiere','🏗️','Șantiere'],['comanda','🛒','Comandă'],['poze','📷','Poze']],
   subcontractor:[['acasa','🏗️','Lucrările mele'],['poze','📷','Poze'],['defecte','🔧','Probleme']],
   client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['poze','📷','Poze']]
 };
@@ -218,7 +227,7 @@ function render(){
   const nav=NAV[S.role]||NAV.worker;
   if(!nav.find(n=>n[0]===S.view)) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
+  const fn={acasa:scrAcasa,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
   $('screen').scrollTop=0; fn(); loadNotifCount();
 }
 function goV(v){S.view=v;render();}
@@ -748,7 +757,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v25', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v26', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
@@ -757,6 +766,80 @@ async function submitTicket(){
   }catch(e){ if(btn) btn.disabled=false; const m=((e&&e.message)||'').toLowerCase();
     $('sup-msg').textContent=(!navigator.onLine||/load failed|failed to fetch|network/.test(m))?'📡 Conexiune întreruptă — verifică internetul și apasă din nou.':('Eroare: '+(e.message||e)); }
 }
+
+/* ── SCULE / INSTRUMENTE (custodie + scanare) ── */
+const TOOL_COND={ok:'✅ Bună',dirty:'🧽 Murdar',defect:'🛠 Defect'};
+async function scrScule(){
+  $('screen').innerHTML='<div class="scr-title">🔧 Scule & instrumente</div>'
+    +'<button class="btn" onclick="scanTool()">📷 Scanează scula</button>'
+    +'<div class="s" style="margin:.5rem 0 .2rem">Sau alege din listă:</div>'
+    +'<input id="tool-q" placeholder="Caută după nume sau cod" oninput="renderToolList(this.value)" style="width:100%;padding:.7rem .8rem;border:1px solid var(--line);border-radius:10px;margin-bottom:.6rem"/>'
+    +'<div id="tool-list"><div class="loading">Se încarcă…</div></div>';
+  const {data,error}=await sb.from('tools').select('id,name,code,holder_label,condition,condition_note,inventory_no,last_move_at');
+  if(error){ $('tool-list').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
+  S.tools=(data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  renderToolList('');
+}
+function toolCard(t){ const c=t.condition||'ok';
+  return '<div class="card" onclick="openToolById(\''+t.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">🔧 '+esc(t.name)+' ›</div>'
+    +'<div class="s">'+(t.code?('Cod '+esc(t.code)+' · '):'')+(t.holder_label?('📍 '+esc(t.holder_label)):'📍 —')+'</div></div>'
+    +'<span class="pill" style="white-space:nowrap;'+(c==='defect'?'background:#fee2e2;color:#b91c1c':(c==='dirty'?'background:#fef9c3;color:#854d0e':'background:#dcfce7;color:#166534'))+'">'+TOOL_COND[c]+'</span></div></div>';
+}
+function renderToolList(q){ q=(q||'').toLowerCase().trim();
+  let list=S.tools||[]; if(q) list=list.filter(t=>((t.name||'')+' '+(t.code||'')+' '+(t.inventory_no||'')).toLowerCase().includes(q));
+  $('tool-list').innerHTML=list.length?list.map(toolCard).join(''):'<div class="empty"><div class="ei">🔧</div>Nicio sculă.</div>';
+}
+async function toolSheet(t){
+  const c=t.condition||'ok';
+  const {data:logs}=await sb.from('tool_logs').select('action,holder_label,from_label,condition,note,created_at').eq('tool_id',t.id).order('created_at',{ascending:false}).limit(15);
+  const AL={receive:'✅ Primit',warehouse:'🏬 În depozit',defect:'🛠 Defect',repaired:'✔️ Reparat',clean:'✔️ Curățat',handover:'➡️ Predat'};
+  const hist=(logs||[]).length?(logs.map(l=>'<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div style="font-weight:600">'+(AL[l.action]||l.action)+(l.holder_label?' · '+esc(l.holder_label):'')+'</div>'
+      +(l.note?'<div class="s">„'+esc(l.note)+'"</div>':'')
+      +'<div class="s" style="font-size:.7rem">'+esc((l.created_at||'').slice(0,16).replace('T',' '))+'</div></div>').join('')):'<div class="s">Nicio mișcare încă.</div>';
+  const html='<div class="card" style="margin:0 0 .8rem"><div class="t">🔧 '+esc(t.name)+'</div>'
+    +'<div class="s">'+(t.code?('Cod '+esc(t.code)):'')+(t.inventory_no?(' · Nr. inv. '+esc(t.inventory_no)):'')+'</div>'
+    +'<div style="margin-top:.5rem">📍 <b>'+esc(t.holder_label||'—')+'</b> · '+TOOL_COND[c]+(t.condition_note?(' — '+esc(t.condition_note)):'')+'</div>'
+    +(t.last_move_at?'<div class="s" style="font-size:.72rem">Ultima mișcare: '+esc((t.last_move_at||'').slice(0,16).replace('T',' '))+'</div>':'')+'</div>'
+    +'<div id="tool-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div class="fld"><label>Comentariu (de la cine ai primit-o, observații…)</label><textarea id="tool-note" rows="2" placeholder="Ex: Primită de la șofer, curată, fără probleme."></textarea></div>'
+    +'<div class="row" style="gap:.5rem;flex-wrap:wrap">'
+    +'<button class="btn primary" style="flex:1;min-width:130px" onclick="toolAct(\''+t.id+'\',\'receive\',\'ok\')">✅ Am primit-o</button>'
+    +'<button class="btn btn-line" style="flex:1;min-width:130px" onclick="toolAct(\''+t.id+'\',\'receive\',\'dirty\')">🧽 Primit, e murdară</button>'
+    +'<button class="btn btn-line" style="flex:1;min-width:130px" onclick="toolAct(\''+t.id+'\',\'warehouse\',null)">🏬 În depozit</button>'
+    +'<button class="btn btn-line" style="flex:1;min-width:130px;border-color:#b91c1c;color:#b91c1c" onclick="toolAct(\''+t.id+'\',\'defect\',null)">🛠 Are defect</button>'
+    +(c==='defect'||c==='dirty'?'<button class="btn btn-line" style="flex:1;min-width:130px;border-color:#166534;color:#166534" onclick="toolAct(\''+t.id+'\',\'repaired\',null)">✔️ Reparat / curat</button>':'')
+    +'</div>'
+    +'<div style="margin-top:1rem;font-weight:700">🕘 Istoric mișcări</div>'+hist;
+  openSheet('🔧 '+(t.name||'Sculă'), html);
+}
+async function toolAct(id, action, condition){
+  const note=($('tool-note')&&$('tool-note').value||'').trim()||null;
+  if(action==='defect'&&!note){ if($('tool-msg'))$('tool-msg').textContent='Scrie ce anume e defect.'; return; }
+  try{
+    const { error }=await sb.rpc('tool_move',{ p_tool:id, p_action:action, p_condition:condition, p_note:note, p_from_label:null });
+    if(error) throw error;
+    const lbl={receive:'✅ Ai preluat scula.',warehouse:'🏬 Marcată în depozit.',defect:'🛠 Marcată cu defect.',repaired:'✔️ Marcată reparată.'}[action]||'Salvat.';
+    toast(lbl); closeSheet();
+    if(S.view==='scule') scrScule();
+  }catch(e){ const m=((e&&e.message)||'').toLowerCase();
+    if($('tool-msg'))$('tool-msg').textContent=(!navigator.onLine||/load failed|failed to fetch|network/.test(m))?'📡 Conexiune întreruptă — încearcă din nou.':('Eroare: '+(e.message||e)); }
+}
+/* scanner QR în aplicație (html5-qrcode) */
+function scanTool(){
+  openSheet('📷 Scanează scula','<div class="s">Îndreaptă camera spre eticheta QR a sculei.</div><div id="qr-reader" style="width:100%;margin-top:.6rem"></div><div id="qr-msg" class="s"></div>');
+  function start(){
+    try{
+      const h=new Html5Qrcode('qr-reader'); window._qr=h;
+      h.start({facingMode:'environment'},{fps:10,qrbox:230},function(txt){ h.stop().catch(()=>{}); window._qr=null;
+        let id=txt; const m=/[?&]tool=([^&\s]+)/.exec(txt); if(m) id=decodeURIComponent(m[1]); closeSheet(); openToolById(id);
+      },function(){});
+    }catch(e){ $('qr-msg').textContent='Nu pot porni camera. Scanează eticheta cu camera telefonului sau alege scula din listă.'; }
+  }
+  if(window.Html5Qrcode){ start(); }
+  else{ const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js'; s.onload=start; s.onerror=function(){ $('qr-msg').textContent='Scanerul nu s-a încărcat. Scanează eticheta cu camera telefonului sau alege scula din listă.'; }; document.head.appendChild(s); }
+}
+const _closeSheetOrig=closeSheet;
+closeSheet=function(){ if(window._qr){ try{ window._qr.stop(); }catch(e){} window._qr=null; } _closeSheetOrig(); };
 
 /* START */
 (async function(){
