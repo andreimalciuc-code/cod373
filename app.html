@@ -405,7 +405,7 @@ const MODULES = {
   dashboard:{ title:'Tablou de bord', sub:'Privire de ansamblu asupra firmei.', icon:'▦', group:'Operațional', custom:true },
 
   santiere:{ title:'Șantiere', sub:'Proiectele firmei.', icon:'🏗️', group:'Operațional', table:'sites',
-    newLabel:'Proiect nou', portalable:true, teamable:true, scheduler:true, wizard:true, orderBy:{col:'created_at',asc:false},
+    newLabel:'Proiect nou', portalable:true, teamable:true, scheduler:true, wizard:true, siteHub:true, orderBy:{col:'created_at',asc:false},
     select:'id,name,code,address,status,budget,progress,deadline,work_type,area_m2',
     columns:[
       {label:'Proiect',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">· '+esc(r.code)+'</small>':'')+(r.work_type?' <small style="color:var(--muted)">· '+(r.work_type==='reparatie'?'reparație':'construcție')+'</small>':'')},
@@ -676,7 +676,7 @@ const MODULES = {
       {key:'priority',label:'Prioritate',type:'select',options:[{value:'low',label:'Joasă'},{value:'normal',label:'Normală'},{value:'high',label:'Înaltă'}],default:'normal'},
       {key:'status',label:'Stare',type:'select',options:opts(['open','in_progress','resolved']),default:'open'} ] },
 
-  stoc:{ title:'Stoc pe șantier', sub:'Cantități curente per material.', icon:'🏬', group:'Catalog', table:'stock',
+  stoc:{ title:'Stoc pe șantier', sub:'Cantități curente per material.', icon:'🏬', group:'Catalog', table:'stock', hidden:true,
     newLabel:'Intrare stoc', orderBy:{col:'updated_at',asc:false},
     select:'id,qty,min_qty,materials!material_id(name),sites!site_id(name)',
     columns:[
@@ -768,7 +768,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['new','watching','preparing','submitted','dismissed']),default:'new'},
       {key:'url',label:'Link',type:'text'} ] },
 
-  jurnal:{ title:'Jurnal de șantier', sub:'Raport zilnic: vreme, echipă, lucrări.', icon:'📓', group:'Operațional', table:'daily_logs',
+  jurnal:{ title:'Jurnal de șantier', sub:'Raport zilnic: vreme, echipă, lucrări.', icon:'📓', group:'Operațional', table:'daily_logs', hidden:true,
     newLabel:'Raport zilnic', orderBy:{col:'log_date',asc:false},
     select:'id,log_date,weather,crew_count,work_done,sites!site_id(name)',
     columns:[
@@ -785,7 +785,7 @@ const MODULES = {
       {key:'work_done',label:'Lucrări efectuate',type:'textarea'},
       {key:'notes',label:'Observații',type:'textarea'} ] },
 
-  situatii:{ title:'Situații de lucrări', sub:'Decontări pe stadiu de execuție.', icon:'📑', group:'Finanțe', table:'work_statements',
+  situatii:{ title:'Situații de lucrări', sub:'Decontări pe stadiu de execuție.', icon:'📑', group:'Finanțe', table:'work_statements', hidden:true,
     newLabel:'Situație nouă', orderBy:{col:'created_at',asc:false},
     select:'id,number,statement_date,percent,amount,status,sites!site_id(name),estimates!estimate_id(number)',
     columns:[
@@ -805,7 +805,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['draft','approved','invoiced']),default:'draft'},
       {key:'note',label:'Observații',type:'textarea'} ] },
 
-  modificari:{ title:'Ordine de modificare', sub:'Change orders / lucrări suplimentare.', icon:'🔁', group:'Altele', table:'change_orders',
+  modificari:{ title:'Ordine de modificare', sub:'Change orders / lucrări suplimentare.', icon:'🔁', group:'Altele', table:'change_orders', hidden:true,
     newLabel:'Ordin nou', orderBy:{col:'created_at',asc:false},
     select:'id,number,title,amount,status,sites!site_id(name)',
     columns:[
@@ -822,7 +822,7 @@ const MODULES = {
       {key:'amount',label:'Valoare (MDL)',type:'number'},
       {key:'status',label:'Stare',type:'select',options:opts(['pending','approved','rejected']),default:'pending'} ] },
 
-  rfi:{ title:'RFI / Dispoziții', sub:'Cereri de informații pe șantier.', icon:'❔', group:'Altele', table:'rfis',
+  rfi:{ title:'RFI / Dispoziții', sub:'Cereri de informații pe șantier.', icon:'❔', group:'Altele', table:'rfis', hidden:true,
     newLabel:'RFI nou', orderBy:{col:'created_at',asc:false},
     select:'id,number,question,status,sites!site_id(name)',
     columns:[
@@ -841,7 +841,7 @@ const MODULES = {
   gantt:{ title:'Grafic Gantt', sub:'Planificarea șantierelor în timp.', icon:'📅', group:'Operațional', custom:true },
   harta:{ title:'Hartă flotă (GPS)', sub:'Localizarea vehiculelor.', icon:'🗺️', group:'Catalog', custom:true },
 
-  etape:{ title:'Etape de lucru', sub:'Fazele șantierelor (pentru grafic și recenzii).', icon:'🪜', group:'Operațional', table:'site_stages',
+  etape:{ title:'Etape de lucru', sub:'Fazele șantierelor (pentru grafic și recenzii).', icon:'🪜', group:'Operațional', table:'site_stages', hidden:true,
     newLabel:'Etapă nouă', orderBy:{col:'position',asc:true},
     select:'id,name,position,status,progress,start_date,end_date,sites!site_id(name)',
     columns:[
@@ -859,7 +859,7 @@ const MODULES = {
       {key:'start_date',label:'Început',type:'date'},
       {key:'end_date',label:'Sfârșit',type:'date'} ] },
 
-  recenzii:{ title:'Recenzii clienți', sub:'Comentarii și note pe etape.', icon:'⭐', group:'Altele', table:'reviews',
+  recenzii:{ title:'Recenzii clienți', sub:'Comentarii și note pe etape.', icon:'⭐', group:'Altele', table:'reviews', hidden:true,
     newLabel:'Notă internă', orderBy:{col:'created_at',asc:false},
     select:'id,author_name,rating,body,reply,created_at,sites!site_id(name)',
     columns:[
@@ -1032,7 +1032,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v34';
+const APP_VERSION='cod373-v35';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1264,6 +1264,83 @@ async function empSSMAdd(empId, empName){
   toast('✅ Adăugat.'); empSSM(empId, empName);
 }
 async function empSSMDel(id, empId, empName){ if(!confirm('Ștergi această înregistrare SSM?')) return; const { error }=await sb.from('ssm_records').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empSSM(empId, empName); }
+
+/* ════ SUBMODULE ȘANTIER (jurnal, etape, stoc, situații, RFI, modificări, recenzii) ════ */
+const SITE_SUBS=['jurnal','etape','stoc','situatii','rfi','modificari','recenzii'];
+function siteHub(siteId, siteName){
+  const btns=SITE_SUBS.filter(k=>MODULES[k]&&canSee(k)).map(k=>{ const m=MODULES[k];
+    return '<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="subList(\''+k+'\',\'site_id\',\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">'+m.icon+'</span> '+esc(m.title)+'</button>'; }).join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px">'
+    +'<div class="modal-head"><h3>📂 '+esc(siteName||'Șantier')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><p style="color:var(--muted);font-size:.85rem;margin-top:0">Tot ce ține de acest șantier:</p>'+btns+'</div></div></div>';
+}
+async function subList(childKey, pField, pId, pName){
+  const m=MODULES[childKey]; if(!m) return;
+  const { data, error }=await sb.from(m.table).select(m.select).eq(pField,pId);
+  let rows=data||[]; if(m.orderBy) rows=sortRows(rows,m.orderBy.col,m.orderBy.asc);
+  const cols=m.columns.filter(c=>!c.secure||FINANCE_ROLES.includes(state.role));
+  const canU=canDo(childKey,'u'), canD=canDo(childKey,'d'), canC=canDo(childKey,'c');
+  const head=cols.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th></th>';
+  const body=error?('<tr><td colspan="'+(cols.length+1)+'">Eroare: '+esc(error.message)+'</td></tr>')
+    :(rows.length?rows.map(r=>'<tr>'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')+'<td><div class="rowact">'
+        +(canU?'<button class="iconbtn" title="Editează" onclick="subEdit(\''+childKey+'\',\''+r.id+'\')">✏️</button>':'')
+        +(canD?'<button class="iconbtn danger" title="Șterge" onclick="subDel(\''+childKey+'\',\''+r.id+'\')">🗑</button>':'')
+        +'</div></td></tr>').join(''):'<tr><td colspan="'+(cols.length+1)+'" style="color:var(--muted);padding:1rem">Nimic încă.</td></tr>');
+  window._subCtx={childKey,pField,pId,pName};
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:760px">'
+    +'<div class="modal-head"><h3>'+m.icon+' '+esc(m.title)+' — '+esc(pName)+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.7rem"><button class="btn-ghost" onclick="siteHub(\''+pId+'\',\''+esc(pName).replace(/\x27/g,"")+'\')">← Înapoi la șantier</button>'
+    +(canC?'<button class="btn-primary" style="margin-left:auto" onclick="subAdd()">＋ '+esc(m.newLabel||'Adaugă')+'</button>':'')+'</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div></div></div></div>';
+}
+function subAdd(){ const c=window._subCtx; subForm(c.childKey,null,c.pField,c.pId,()=>subList(c.childKey,c.pField,c.pId,c.pName)); }
+async function subEdit(childKey,id){ const c=window._subCtx; const { data }=await sb.from(MODULES[childKey].table).select('*').eq('id',id).single(); subForm(childKey,data,c.pField,c.pId,()=>subList(c.childKey,c.pField,c.pId,c.pName)); }
+async function subDel(childKey,id){ const c=window._subCtx; if(!confirm('Sigur ștergi această înregistrare?')) return; const { error }=await sb.from(MODULES[childKey].table).delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); subList(c.childKey,c.pField,c.pId,c.pName); }
+function closeSub(){ $('picker-mount').innerHTML=''; }
+async function subForm(childKey, row, pField, pId, after){
+  const m=MODULES[childKey];
+  const refFields=m.fields.filter(f=>f.type==='ref' && f.key!==pField);
+  const refData={}; for(const f of refFields){ refData[f.key]=await loadRefOptions(f.ref); }
+  let body='<div id="sf-msg"></div>';
+  m.fields.forEach(f=>{
+    if(f.key===pField || f.type==='photo') return;
+    if(f.secure && !FINANCE_ROLES.includes(state.role)) return;
+    const v = row && row[f.key]!=null ? row[f.key] : (f.default!=null?f.default:'');
+    body+='<div class="field"><label>'+esc(f.label)+(f.required?' *':'')+'</label>';
+    if(f.type==='textarea') body+='<textarea id="sf-'+f.key+'">'+esc(v)+'</textarea>';
+    else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="sf-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
+    else if(f.type==='select') body+='<select id="sf-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>';
+    else if(f.type==='ref') body+='<select id="sf-'+f.key+'"><option value="">— (niciunul) —</option>'+(refData[f.key]||[]).map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>';
+    else body+='<input id="sf-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
+    body+='</div>';
+  });
+  window._subForm={childKey,row,pField,pId,after};
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()"><div class="modal" style="max-width:480px">'
+    +'<div class="modal-head"><h3>'+(row?'Editează':esc(m.newLabel||'Adaugă'))+'</h3><button class="x" onclick="closeSub()">×</button></div>'
+    +'<div class="modal-body">'+body+'</div>'
+    +'<div class="modal-foot"><button class="btn-ghost" onclick="closeSub()">'+TR('anuleaza')+'</button><button class="btn-primary" id="sf-save" onclick="subFormSave()">'+TR('salveaza')+'</button></div></div></div>';
+  const first=document.querySelector('#picker-mount input,#picker-mount select,#picker-mount textarea'); if(first) setTimeout(()=>first.focus(),50);
+}
+async function subFormSave(){
+  const c=window._subForm; const m=MODULES[c.childKey];
+  const payload={tenant_id:state.tenant}; payload[c.pField]=c.pId;
+  for(const f of m.fields){
+    if(f.key===c.pField || f.type==='photo') continue;
+    if(f.secure && !FINANCE_ROLES.includes(state.role)) continue;
+    const el=$('sf-'+f.key); if(!el) continue;
+    let val;
+    if(f.type==='checkbox') val=el.checked;
+    else if(f.type==='number') val=(el.value===''?null:+el.value);
+    else val=(el.value===''?null:el.value);
+    if(f.required && (val===null||val==='')){ showMsg('sf-msg','Câmpul „'+f.label+'" este obligatoriu.'); return; }
+    payload[f.key]=val;
+  }
+  const btn=$('sf-save'); if(btn) btn.disabled=true;
+  const r=c.row ? await sbRetry(()=>sb.from(m.table).update(payload).eq('id',c.row.id))
+                : await sbRetry(()=>sb.from(m.table).insert(payload));
+  if(r.error){ if(btn) btn.disabled=false; showMsg('sf-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  closeSub(); toast('✅ Salvat.'); if(typeof c.after==='function') c.after();
+}
 
 /* ════ DASHBOARD ════ */
 function kpiCard(label,val,view,accent){ return '<div class="kpi"'+(view?' onclick="go(\''+view+'\')" style="cursor:pointer"':'')+'><div class="kt">'+esc(label)+'</div><div class="kv"'+(accent?' style="color:'+accent+'"':'')+'>'+val+'</div></div>'; }
@@ -2085,6 +2162,7 @@ function renderList(){
   const body=data.map(r=>'<tr>'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
       +'<td><div class="rowact">'
       +(m.invitable&&ADMIN_ROLES.includes(state.role)?'<button class="iconbtn" title="Dă acces (invitație prin link)" onclick="inviteEntity(\''+m.invitable+'\',\''+r.id+'\')">🔑</button>':'')
+      +(m.siteHub?'<button class="iconbtn" title="Detalii șantier (jurnal, etape, stoc, situații, RFI…)" onclick="siteHub(\''+r.id+'\',\''+esc(r.name||'').replace(/\x27/g,"")+'\')">📂</button>':'')
       +(m.scheduler?'<button class="iconbtn" title="Grafic lucrări (filă nouă) — interactiv, cu reordonare prin glisare" onclick="window.open(\'grafic.html?site=\'+\''+r.id+'\',\'_blank\')">📅</button>':'')
       +(m.scheduler?'<button class="iconbtn" title="Rezumat rapid (marjă & etape)" onclick="openSiteDetail(\''+r.id+'\')">📊</button>':'')
       +(m.teamable?'<button class="iconbtn" title="Acces / echipă" onclick="siteTeam(\''+r.id+'\')">👥</button>':'')
