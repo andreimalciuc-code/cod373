@@ -286,7 +286,22 @@ function newClient(){
     +'<div class="row2"><div class="field"><label>Telefon</label><input id="nc-phone"/></div><div class="field"><label>IDNO</label><input id="nc-idno"/></div></div>'
     +'<div class="field"><label>Adresă</label><input id="nc-addr"/></div>'
     +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" onclick="saveNewClient()">Creează</button></div></div></div>';
+  geoAttach($('nc-addr'));
   setTimeout(()=>$('nc-name')&&$('nc-name').focus(),50);
+}
+function geoFmt(p){ p=p||{}; var a=[]; if(p.name&&!p.street)a.push(p.name); if(p.street)a.push(p.street+(p.housenumber?(' '+p.housenumber):'')); var l=((p.postcode?p.postcode+' ':'')+(p.city||p.town||p.village||p.county||'')).trim(); if(l)a.push(l); if(p.country)a.push(p.country); return a.filter(Boolean).join(', '); }
+function geoAttach(input){ if(!input||input._geo)return; input._geo=true; input.setAttribute('autocomplete','off');
+  var wrap=input.parentNode; if(wrap)wrap.style.position='relative';
+  var box=document.createElement('div'); box.className='geo-dd'; box.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:9000;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(15,28,51,.16);max-height:240px;overflow:auto;margin-top:3px;display:none'; if(wrap)wrap.appendChild(box);
+  var t=null,ctrl=null;
+  input.addEventListener('input',function(){ var q=input.value.trim(); clearTimeout(t); if(q.length<3){box.style.display='none';return;}
+    t=setTimeout(async function(){ try{if(ctrl)ctrl.abort();}catch(e){} ctrl=('AbortController'in window)?new AbortController():null;
+      try{ var lang=(window.C373lang&&C373lang())||'ro'; var r=await fetch('https://photon.komoot.io/api/?limit=6&lang='+lang+'&q='+encodeURIComponent(q),ctrl?{signal:ctrl.signal}:{}); var j=await r.json(); var fs=(j&&j.features)||[];
+        if(!fs.length){box.style.display='none';return;} box._fs=fs;
+        box.innerHTML=fs.map(function(f,i){return '<div class="geo-it" data-i="'+i+'" style="padding:.5rem .7rem;cursor:pointer;font-size:.85rem;border-bottom:1px solid #f2f5fb">📍 '+esc(geoFmt(f.properties))+'</div>';}).join(''); box.style.display='';
+      }catch(e){box.style.display='none';} },350); });
+  box.addEventListener('mousedown',function(e){ var it=e.target.closest('.geo-it'); if(!it||!box._fs)return; e.preventDefault(); var f=box._fs[+it.dataset.i]; if(f)input.value=geoFmt(f.properties); box.style.display='none'; });
+  input.addEventListener('blur',function(){ setTimeout(function(){box.style.display='none';},180); });
 }
 async function saveNewClient(){
   const name=($('nc-name').value||'').trim(); if(!name){ $('nc-msg').textContent='Denumirea e obligatorie.'; return; }

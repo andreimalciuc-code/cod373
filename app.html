@@ -49,6 +49,9 @@
   .gate-langs button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
   .gate-logo{display:flex;align-items:center;gap:.6rem;margin-bottom:1.6rem}
   .gate-logo .lg{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.72rem}
+  .geo-dd{position:absolute;left:0;right:0;top:100%;z-index:60;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(15,28,51,.16);max-height:240px;overflow:auto;margin-top:3px}
+  .geo-it{padding:.5rem .7rem;cursor:pointer;font-size:.85rem;border-bottom:1px solid #f2f5fb;display:flex;gap:.4rem;align-items:flex-start}
+  .geo-it:hover,.geo-it.on{background:#eff4ff}
   .gate-logo .nm{font-weight:800;font-size:1.2rem}.gate-logo .nm span{color:var(--accent)}
   .gate h2{font-size:1.25rem;margin-bottom:.3rem}
   .gate .sub{color:var(--muted);margin-bottom:1.4rem;font-size:.88rem}
@@ -1028,7 +1031,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v30';
+const APP_VERSION='cod373-v31';
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
 async function openSupport(){
@@ -1397,6 +1400,7 @@ async function renderSetari(){
     +(state.role==='owner'?'<button class="btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="deleteFirm()">🗑 Șterge definitiv firma și datele</button>':'')
     +'</div></div></div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
+  geoScan($('content'));
 }
 async function uploadFirmLogo(input){
   const file=input.files&&input.files[0]; if(!file) return;
@@ -1747,7 +1751,7 @@ async function openPrevizForm(row, meas){
     +'<div class="modal-head"><h3>📋 '+(row?'Editează fișa':'Previzualizare șantier')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body">'+body+'</div>'
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="pv-save" onclick="savePreviz()">'+TR('salveaza')+'</button></div></div></div>';
-  renderPvMeas(); renderPvPhotos();
+  renderPvMeas(); renderPvPhotos(); geoScan($('modal-mount'));
 }
 function renderPvMeas(){ const el=$('pv-meas'); if(!el) return;
   el.innerHTML=previzCtx.meas.length? '<div class="lines"><table><thead><tr><th>Denumire</th><th>Cant.</th><th>UM</th><th>Notă</th><th></th></tr></thead><tbody>'
@@ -1964,6 +1968,7 @@ function quickCreate(refKey, cb){
     +'<div class="modal-head"><h3>＋ '+esc(q.title)+'</h3><button class="x" onclick="closeQc()">×</button></div>'
     +'<div class="modal-body"><div id="qc-msg"></div>'+body+'</div>'
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeQc()">'+TR('anuleaza')+'</button><button class="btn-primary" id="qc-save" onclick="saveQc()">Creează</button></div></div></div>';
+  geoScan($('picker-mount'));
   setTimeout(()=>{ const f=document.querySelector('#qc-'+q.fields[0].k); if(f) f.focus(); },50);
 }
 function closeQc(){ $('picker-mount').innerHTML=''; }
@@ -1983,6 +1988,39 @@ async function saveQc(){
   if(typeof window._qcCb==='function') window._qcCb(id,label);
 }
 
+/* ════ AUTOCOMPLETE ADRESĂ (OpenStreetMap / Photon — fără cheie API) ════ */
+function geoFmt(p){ p=p||{}; const parts=[];
+  if(p.name && !p.street) parts.push(p.name);
+  if(p.street) parts.push(p.street+(p.housenumber?(' '+p.housenumber):''));
+  const loc=((p.postcode?p.postcode+' ':'')+(p.city||p.town||p.village||p.county||'')).trim(); if(loc) parts.push(loc);
+  if(p.country) parts.push(p.country);
+  return parts.filter(Boolean).join(', ');
+}
+function geoAttach(input){
+  if(!input||input._geo) return; input._geo=true; input.setAttribute('autocomplete','off');
+  const wrap=input.parentNode; if(wrap) wrap.style.position='relative';
+  const box=document.createElement('div'); box.className='geo-dd'; box.style.display='none'; if(wrap) wrap.appendChild(box);
+  let t=null, ctrl=null;
+  input.addEventListener('input',function(){ const q=input.value.trim(); clearTimeout(t);
+    if(q.length<3){ box.style.display='none'; return; }
+    t=setTimeout(async function(){
+      try{ if(ctrl) ctrl.abort(); }catch(e){} ctrl=('AbortController'in window)?new AbortController():null;
+      try{ const lang=(window.C373lang&&C373lang())||'ro';
+        const r=await fetch('https://photon.komoot.io/api/?limit=6&lang='+lang+'&q='+encodeURIComponent(q), ctrl?{signal:ctrl.signal}:{});
+        const j=await r.json(); const feats=(j&&j.features)||[];
+        if(!feats.length){ box.style.display='none'; return; }
+        box._feats=feats;
+        box.innerHTML=feats.map(function(f,i){ return '<div class="geo-it" data-i="'+i+'"><span>📍</span><span>'+esc(geoFmt(f.properties))+'</span></div>'; }).join('');
+        box.style.display='';
+      }catch(e){ box.style.display='none'; }
+    },350);
+  });
+  box.addEventListener('mousedown',function(e){ const it=e.target.closest('.geo-it'); if(!it||!box._feats) return; e.preventDefault();
+    const f=box._feats[+it.dataset.i]; if(f){ input.value=geoFmt(f.properties); input.dispatchEvent(new Event('change')); } box.style.display='none'; });
+  input.addEventListener('blur',function(){ setTimeout(function(){ box.style.display='none'; },180); });
+}
+/* ataseaza autocomplete pe toate campurile de adresa dintr-un container */
+function geoScan(root){ try{ (root||document).querySelectorAll('input[id$="-addr"],input[id$="-address"],#f-address').forEach(geoAttach); }catch(e){} }
 async function openForm(key,row){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
@@ -2015,6 +2053,7 @@ async function openForm(key,row){
     if(!formCtx.lines.length) formCtx.lines=[{name:'',qty:1,unit:'buc',unit_price:0,vat_rate:20}];
     renderLines();
   }
+  geoScan($('modal-mount'));
   const first=document.querySelector('.modal-body input,.modal-body select,.modal-body textarea'); if(first) setTimeout(()=>first.focus(),50);
 }
 function closeModal(){ $('modal-mount').innerHTML=''; }
@@ -2128,7 +2167,7 @@ async function openSiteWizard(prefill){
     +'<div class="modal-body">'+body+'</div>'
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button>'
     +'<button class="btn-primary" id="btn-wiz" onclick="saveSiteWizard()">Creează șantierul + graficul</button></div></div></div>';
-  renderWizWorks();
+  renderWizWorks(); geoScan($('modal-mount'));
 }
 function wizSetAreaDefault(){ const a=+( $('wz-area')&&$('wz-area').value)||0; wizCtx.works.forEach(w=>{ if(!w._qtyTouched && a) w.qty=a; }); renderWizWorks(); }
 function renderWizWorks(){
@@ -2597,6 +2636,7 @@ async function printDoc(key,id){
   // daca sesiunea soseste dupa load (ex. magic link din email), pornim boot-ul
   sb.auth.onAuthStateChange((evt)=>{ if(evt==='PASSWORD_RECOVERY'){ showResetPasswordForm(); return; } if(evt==='SIGNED_IN' && !state.tenant) boot(); });
   await boot();
+  try{ geoScan(document); }catch(e){}
 })();
 </script>
 <script src="i18n.js"></script>
