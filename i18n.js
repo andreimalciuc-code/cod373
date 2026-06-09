@@ -13,6 +13,9 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Marchează oferta acceptată':{ru:'Отметить предложение принятым',de:'Angebot als angenommen markieren',en:'Mark offer as accepted'},
+    'Marchează oferta respinsă':{ru:'Отметить предложение отклонённым',de:'Angebot als abgelehnt markieren',en:'Mark offer as rejected'},
+    'Ofertă respinsă.':{ru:'Предложение отклонено.',de:'Angebot abgelehnt.',en:'Offer rejected.'},
     'ERP pentru construcții':{ru:'ERP для строительства',de:'Bau-ERP',en:'Construction ERP'},
     'ERP pentru construcții · Republica Moldova':{ru:'ERP для строительства · Республика Молдова',de:'Bau-ERP · Republik Moldau',en:'Construction ERP · Republic of Moldova'},
     'Gestionează toată firma de construcții':{ru:'Управляй всей строительной фирмой',de:'Verwalten Sie Ihr ganzes Bauunternehmen',en:'Manage your whole construction company'},

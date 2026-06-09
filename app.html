@@ -562,7 +562,7 @@ const MODULES = {
       {key:'notes',label:'Note',type:'textarea'} ] },
 
   devize:{ title:'Devize', sub:'Estimări și oferte de preț.', icon:'📋', group:'Finanțe', table:'estimates',
-    newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', orderBy:{col:'created_at',asc:false},
+    newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', acceptReject:true, orderBy:{col:'created_at',asc:false},
     select:'id,number,status,subtotal,vat_total,total,valid_until,clients!client_id(name),sites!site_id(name)',
     columns:[
       {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'},
@@ -1028,7 +1028,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v29';
+const APP_VERSION='cod373-v30';
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
 async function openSupport(){
@@ -1923,6 +1923,7 @@ function renderList(){
       +(m.scheduler?'<button class="iconbtn" title="Rezumat rapid (marjă & etape)" onclick="openSiteDetail(\''+r.id+'\')">📊</button>':'')
       +(m.teamable?'<button class="iconbtn" title="Acces / echipă" onclick="siteTeam(\''+r.id+'\')">👥</button>':'')
       +(m.portalable?'<button class="iconbtn" title="Link portal client" onclick="genPortal(\''+r.id+'\')">🔗</button>':'')
+      +(m.acceptReject&&canDo(key,'u')?(r.status!=='accepted'?'<button class="iconbtn" title="Marchează oferta acceptată" onclick="estimateStatus(\''+r.id+'\',\'accepted\')" style="color:#16a34a">✅</button>':'')+(r.status!=='rejected'?'<button class="iconbtn" title="Marchează oferta respinsă" onclick="estimateStatus(\''+r.id+'\',\'rejected\')" style="color:#dc2626">✖️</button>':''):'')
       +(m.toSite?'<button class="iconbtn" title="Creează șantier din ofertă" onclick="estimateToSite(\''+r.id+'\')">🏗️</button>':'')
       +(m.pageEditor?'<button class="iconbtn" title="Deschide / editează oferta (filă nouă)" onclick="window.open(\''+m.pageEditor+'?id=\'+\''+r.id+'\',\'_blank\')">📋</button>':'')
       +(m.convertible?'<button class="iconbtn" title="Creează factură din deviz" onclick="estimateToInvoice(\''+r.id+'\')">🧾</button>':'')
@@ -2443,6 +2444,13 @@ async function delRecord(key,id){
 
 /* ════ CONVERSIE DEVIZ → FACTURĂ ════ */
 function estimateToInvoice(estId){ window.open('factura.html?estimate='+estId,'_blank'); toast('Se deschide factura cu liniile din deviz…'); }
+async function estimateStatus(estId,status){
+  const lbl=status==='accepted'?'acceptată':'respinsă';
+  if(!confirm('Marchezi oferta ca '+lbl+'?')) return;
+  const r=await sbRetry(()=>sb.from('estimates').update({status}).eq('id',estId));
+  if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  toast(status==='accepted'?'✅ Ofertă acceptată.':'✖️ Ofertă respinsă.'); renderModule('devize');
+}
 
 /* ════ helper descărcare ════ */
 function download(content, filename, mime){
