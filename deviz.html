@@ -128,7 +128,8 @@ async function loadEstimate(id){
   const e=await sb.from('estimates').select('*').eq('id',id).single();
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', site_id:e.data.site_id||null,
-    issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'' };
+    issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'',
+    signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null };
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
   S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null }; });
   if(!S.lines.length) S.lines=[blankLine()];
@@ -168,6 +169,7 @@ function render(){
         +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="save(true)">🖨 Salvează & PDF ofertă</button>'
         +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="pdf(\'confirmare\')">📄 Confirmare de comandă (PDF)</button>'
         +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="pdf(\'livrare\')">🚚 Bon de livrare (PDF)</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="signPad()">✍️ '+(S.est.signature_url?'Semnătură client ✓':'Semnătură client (acceptare)')+'</button>'
         +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="toInvoice()">🧾 Convertește în factură</button>'
         +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="toSite()">🏗️ Creează șantier</button>'
       +'</div>'
@@ -353,6 +355,7 @@ async function pdf(docType){
   // semneaza pozele de pe linii pentru a aparea in PDF
   const lphotos={}; const ppaths=S.lines.filter(l=>l.photo_url).map(l=>l.photo_url);
   if(ppaths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(ppaths,600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) lphotos[ppaths[idx]]=x.signedUrl; }); }catch(e){} }
+  let sigHtml=''; if(S.est.signature_url && docType!=='livrare'){ try{ const {data:sd}=await sb.storage.from('docs').createSignedUrl(S.est.signature_url,600); if(sd&&sd.signedUrl){ const Ts=window.C373t||function(s){return s;}; sigHtml='<div style="margin-top:30px"><div style="color:#6b7793;font-size:11px">'+Ts('Acceptat de client')+(S.est.signer_name?' — '+esc(S.est.signer_name):'')+(S.est.signed_at?' · '+esc(String(S.est.signed_at).slice(0,10)):'')+'</div><img src="'+sd.signedUrl+'" style="height:80px;margin-top:4px"></div>'; } }catch(e){} }
   const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0); const lv=lt*(+l.vat_rate||0)/100;
     const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'')
       +(l.photo_url&&lphotos[l.photo_url]?'<img src="'+lphotos[l.photo_url]+'" style="max-height:90px;max-width:160px;border-radius:6px;border:1px solid #e5e9f2;margin-top:5px;object-fit:cover">':'');
@@ -372,9 +375,43 @@ async function pdf(docType){
     +'<div style="text-align:right"><div class="ti">'+docTitle+'</div><div style="font-weight:700;font-size:15px">'+T('Nr.')+' '+esc(S.est.number||'—')+'</div><div class="muted">'+T('Data:')+' '+esc(S.est.issue_date||'')+((!isLiv&&S.est.valid_until)?'<br>'+T('Valabil până la:')+' '+esc(S.est.valid_until):'')+'</div></div></div>'
     +'<div class="box"><div><h4>'+T('Furnizor')+'</h4><b>'+esc(f.name||'')+'</b></div><div><h4>'+T('Client')+'</h4><b>'+esc(cl.name||'—')+'</b></div></div>'
     +'<table><thead>'+tabHead+'</thead><tbody>'+(rows||'<tr><td colspan="'+(isLiv?4:7)+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
-    +totBlock
+    +totBlock+sigHtml
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div></body></html>';
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
+}
+/* ---- SEMNĂTURĂ DIGITALĂ (acceptare ofertă) ---- */
+var _sg={};
+function signPad(){
+  if(!S.id){ toast('Salvează întâi oferta.'); return; }
+  const cl=(S.clients.find(c=>c.id===S.est.client_id)||{});
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:460px"><h3>✍️ Semnătură client (acceptare)</h3>'
+    +'<div class="field"><label>Nume semnatar</label><input id="sg-name" value="'+esc(S.est.signer_name||cl.name||'')+'"/></div>'
+    +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:.3rem">Semnează cu degetul / mouse-ul în casetă:</div>'
+    +'<canvas id="sg-canvas" width="430" height="180" style="border:1px dashed var(--line);border-radius:10px;width:100%;touch-action:none;background:#fff"></canvas>'
+    +'<div id="sg-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:space-between;margin-top:.6rem"><button class="btn" onclick="sgClear()">Șterge</button><div style="display:flex;gap:.5rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="sg-save" onclick="sgSave()">Salvează semnătura</button></div></div></div></div>';
+  setTimeout(sgInit,60);
+}
+function sgInit(){ const c=$('sg-canvas'); if(!c) return; const ctx=c.getContext('2d'); ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#0f1c33'; _sg={c,ctx,drawing:false,has:false};
+  const pos=e=>{ const r=c.getBoundingClientRect(); return {x:(e.clientX-r.left)*(c.width/r.width), y:(e.clientY-r.top)*(c.height/r.height)}; };
+  c.addEventListener('pointerdown',e=>{ e.preventDefault(); _sg.drawing=true; _sg.has=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); try{c.setPointerCapture(e.pointerId);}catch(_){}});
+  c.addEventListener('pointermove',e=>{ if(!_sg.drawing) return; e.preventDefault(); const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); });
+  c.addEventListener('pointerup',()=>{ _sg.drawing=false; });
+}
+function sgClear(){ if(_sg.ctx){ _sg.ctx.clearRect(0,0,_sg.c.width,_sg.c.height); _sg.has=false; } }
+async function sgSave(){
+  if(!_sg.has){ $('sg-msg').textContent='Semnează în casetă întâi.'; return; }
+  const btn=$('sg-save'); if(btn) btn.disabled=true;
+  try{
+    const blob=await new Promise(res=>_sg.c.toBlob(res,'image/png'));
+    const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
+    const path=tid+'/signatures/'+S.id+'_'+Date.now()+'.png';
+    const up=await sb.storage.from('docs').upload(path,blob,{contentType:'image/png'}); if(up.error) throw up.error;
+    const name=($('sg-name').value||'').trim()||null; const now=new Date().toISOString();
+    const u=await sb.from('estimates').update({signature_url:path,signer_name:name,signed_at:now,status:'accepted'}).eq('id',S.id); if(u.error) throw u.error;
+    S.est.signature_url=path; S.est.signer_name=name; S.est.signed_at=now; S.est.status='accepted';
+    closeM(); toast('✅ Semnătură salvată. Ofertă acceptată.'); render();
+  }catch(e){ if(btn) btn.disabled=false; $('sg-msg').textContent='Eroare: '+(e.message||e); }
 }
 
 /* ---- conversii ---- */

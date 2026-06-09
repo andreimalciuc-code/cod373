@@ -431,6 +431,7 @@ const MODULES = {
   emailuri:{ title:'Mesaje clienți', sub:'Trimite emailuri clienților și primește răspunsurile aici.', icon:'📨', group:'Operațional', custom:true },
   postcalc:{ title:'Postcalculație (marjă)', sub:'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.', icon:'📈', group:'Rapoarte', custom:true },
   restante:{ title:'Restanțe & remindere', sub:'Facturi neîncasate scadente — trimite remindere.', icon:'⏰', group:'Rapoarte', custom:true },
+  reconciliere:{ title:'Reconciliere plăți', sub:'Importă extrasul bancar și potrivește încasările cu facturile.', icon:'🏦', group:'Rapoarte', custom:true },
 
   comenzi:{ title:'Comenzi materiale', sub:'Comenzi către furnizori.', icon:'🛒', group:'Operațional', table:'material_orders',
     newLabel:'Comandă nouă', orderBy:{col:'created_at',asc:false},
@@ -918,7 +919,7 @@ const UI={
 };
 function TR(k){ return (UI[k]&&UI[k][LANG])||(UI[k]&&UI[k].ro)||k; }
 /* acces pe roluri */
-const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi','postcalc','restante'];
+const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi','postcalc','restante','reconciliere'];
 const FINANCE_ROLES=['owner','admin','accountant','manager'];
 const ADMIN_KEYS=['utilizatori','setari'];
 const ADMIN_ROLES=['owner','admin'];
@@ -1009,7 +1010,7 @@ function go(key){
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, reconciliere:renderReconciliere}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1034,7 +1035,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v40';
+const APP_VERSION='cod373-v41';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1451,6 +1452,54 @@ function invoiceReminder(id){
   const subject='Reamintire plată — factura '+(i.number||'');
   const body='Bună ziua'+(cl.name?', '+cl.name:'')+',\n\nVă reamintim că factura '+(i.number||'')+' în valoare de '+money(i.total)+', scadentă la '+dt(i.due_date)+', este restantă de '+d+' zile.\n\nVă rugăm să efectuați plata. Dacă ați achitat deja, vă rugăm să ignorați acest mesaj.\n\nCu respect,\n'+firm;
   emailCompose({ client_id:i.client_id, to:cl.email||'', name:cl.name||'', subject, body });
+}
+
+/* ════ RECONCILIERE PLĂȚI (import extras bancar CSV) ════ */
+let _reconInv=[];
+async function renderReconciliere(){
+  $('content').innerHTML='<div class="seg"><label class="btn-primary" style="margin-left:auto;cursor:pointer">📥 Importă extras (CSV)<input type="file" id="recon-file" accept=".csv,text/csv" style="display:none" onchange="reconParse(this)"/></label></div>'
+    +'<div class="panel"><div class="panel-head"><h3>🏦 Reconciliere plăți</h3></div><div id="mod-body"><div class="empty"><div class="ei">🏦</div><div>Încarcă extrasul bancar (fișier CSV).</div><div style="color:var(--muted);font-size:.85rem;margin-top:.4rem">Potrivim automat încasările cu facturile neîncasate (după sumă sau numărul facturii din descriere). Confirmi și factura devine „plătită".</div></div></div></div>';
+  const { data }=await sb.from('invoices').select('id,number,total,status,clients(name)');
+  _reconInv=(data||[]).filter(i=>i.status!=='paid');
+}
+function reconNum(s){ if(s==null) return NaN; let t=(''+s).replace(/[^\d.,\-]/g,'').trim(); if(!t) return NaN; if(t.indexOf(',')>-1&&t.indexOf('.')>-1) t=t.replace(/\./g,'').replace(',','.'); else if(t.indexOf(',')>-1) t=t.replace(',','.'); const n=parseFloat(t); return isNaN(n)?NaN:n; }
+function reconDate(s){ if(!s) return null; if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; const m=(''+s).match(/(\d{2})[.\/](\d{2})[.\/](\d{4})/); return m?m[3]+'-'+m[2]+'-'+m[1]:null; }
+async function reconParse(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  const text=await f.text(); const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length){ toast('Fișier gol.'); return; }
+  const delim=(lines[0].split(';').length>lines[0].split(',').length)?';':',';
+  const dateRe=/(\d{4}-\d{2}-\d{2}|\d{2}[.\/]\d{2}[.\/]\d{4})/;
+  const tx=[];
+  lines.forEach(ln=>{ const cells=ln.split(delim).map(c=>c.replace(/^"|"$/g,'').trim());
+    const nums=cells.map((c,i)=>({i,n:reconNum(c)})).filter(x=>!isNaN(x.n));
+    if(!nums.length) return;
+    const best=nums.reduce((a,b)=>Math.abs(b.n)>Math.abs(a.n)?b:a);
+    if(best.n<=0) return;
+    const dm=ln.match(dateRe); const date=dm?dm[1]:'';
+    const desc=cells.filter((c,i)=>i!==best.i && !dateRe.test(c) && isNaN(reconNum(c))).join(' ').slice(0,120);
+    tx.push({date,desc,amt:best.n});
+  });
+  if(!tx.length){ toast('Nu am găsit încasări (sume pozitive) în fișier.'); return; }
+  reconRender(tx);
+}
+function reconMatch(t){ let m=_reconInv.find(i=>i.number && t.desc.toLowerCase().includes((''+i.number).toLowerCase())); if(!m) m=_reconInv.find(i=>Math.abs((+i.total||0)-t.amt)<0.01); return m; }
+function reconRender(tx){
+  window._reconTx=tx;
+  const opt=(sel)=>'<option value="">— alege factură —</option>'+_reconInv.map(x=>'<option value="'+x.id+'" '+(sel&&sel.id===x.id?'selected':'')+'>'+esc(x.number||'—')+' · '+money(x.total)+' · '+esc(x.clients?x.clients.name:'')+'</option>').join('');
+  const rows=tx.map((t,idx)=>{ const m=reconMatch(t);
+    return '<tr><td>'+esc(t.date||'—')+'</td><td class="tname">'+esc(t.desc||'—')+'</td><td><b>'+money(t.amt)+'</b></td><td><select id="rc-'+idx+'">'+opt(m)+'</select></td><td><button class="iconbtn" title="Confirmă plata" onclick="reconConfirm('+idx+')" style="color:#16a34a">✅</button></td></tr>'; }).join('');
+  $('mod-body').innerHTML='<div style="padding:.5rem 1.2rem;font-size:.85rem">'+tx.length+' încasări găsite. Verifică potrivirea și confirmă.</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Descriere</th><th>Sumă</th><th>Factură</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="padding:1rem;color:var(--muted)">Toate reconciliate. 🎉</td></tr>')+'</tbody></table></div>';
+}
+async function reconConfirm(idx){
+  const t=(window._reconTx||[])[idx]; if(!t) return; const sel=$('rc-'+idx); const invId=sel&&sel.value; if(!invId){ toast('Alege factura pentru această încasare.'); return; }
+  const r1=await sbRetry(()=>sb.from('payments').insert({tenant_id:state.tenant,invoice_id:invId,amount:t.amt,paid_date:reconDate(t.date),method:'transfer',reference:t.desc||null}));
+  if(r1.error){ toast(isNetErr(r1.error)?netMsg():('Eroare: '+esc(r1.error.message))); return; }
+  await sb.from('invoices').update({status:'paid'}).eq('id',invId);
+  _reconInv=_reconInv.filter(i=>i.id!==invId);
+  toast('✅ Plată reconciliată. Factură încasată.');
+  reconRender((window._reconTx||[]).filter((_,i)=>i!==idx));
 }
 
 /* ════ DASHBOARD ════ */

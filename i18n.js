@@ -13,6 +13,11 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Reconciliere plăți':{ru:'Сверка платежей',de:'Zahlungsabgleich',en:'Payment reconciliation'},
+    'Importă extrasul bancar și potrivește încasările cu facturile.':{ru:'Импортируйте банковскую выписку и сопоставьте поступления со счетами.',de:'Kontoauszug importieren und Eingänge mit Rechnungen abgleichen.',en:'Import the bank statement and match receipts to invoices.'},
+    'Semnătură client (acceptare)':{ru:'Подпись клиента (принятие)',de:'Kundenunterschrift (Annahme)',en:'Client signature (acceptance)'},
+    'Acceptat de client':{ru:'Принято клиентом',de:'Vom Kunden angenommen',en:'Accepted by client'},
+    'Importă extras (CSV)':{ru:'Импорт выписки (CSV)',de:'Auszug importieren (CSV)',en:'Import statement (CSV)'},
     'Concedii / absențe':{ru:'Отпуска / отсутствия',de:'Urlaub / Abwesenheiten',en:'Leaves / absences'},
     'Adaugă absență':{ru:'Добавить отсутствие',de:'Abwesenheit hinzufügen',en:'Add absence'},
     'Nicio absență înregistrată.':{ru:'Нет отсутствий.',de:'Keine Abwesenheiten erfasst.',en:'No absences recorded.'},
