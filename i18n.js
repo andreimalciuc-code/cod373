@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'ERP pentru construcții':{ru:'ERP для строительства',de:'Bau-ERP',en:'Construction ERP'},
     'ERP pentru construcții · Republica Moldova':{ru:'ERP для строительства · Республика Молдова',de:'Bau-ERP · Republik Moldau',en:'Construction ERP · Republic of Moldova'},
     'Gestionează toată firma de construcții':{ru:'Управляй всей строительной фирмой',de:'Verwalten Sie Ihr ganzes Bauunternehmen',en:'Manage your whole construction company'},
     'dintr-un singur loc':{ru:'из одного места',de:'an einem Ort',en:'from one place'},
