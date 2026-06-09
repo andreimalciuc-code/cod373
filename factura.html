@@ -85,7 +85,7 @@ async function boot(){
   await loadCatalog();
   const id=param('id');
   if(id){ await loadInvoice(id); }
-  else { S.inv.number=genNumber(); if(param('client')) S.inv.client_id=param('client'); S.lines=[blankLine()];
+  else { S.inv.number=await genNumber(); if(param('client')) S.inv.client_id=param('client'); S.lines=[blankLine()];
     const d=new Date(); d.setDate(d.getDate()+14); S.inv.due_date=d.toISOString().slice(0,10);
     if(param('estimate')) await fromEstimate(param('estimate'));
   }
@@ -98,7 +98,7 @@ async function signLineThumbs(){
   try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) S.lineThumbs[paths[idx]]=x.signedUrl; }); }catch(e){}
   renderLines();
 }
-function genNumber(){ const d=new Date(); return d.getFullYear()+'-'+String(Math.floor(Math.random()*900+100)); }
+async function genNumber(){ try{ const { count }=await sb.from('invoices').select('id',{count:'exact',head:true}); return 'FAC-'+new Date().getFullYear()+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){ return 'FAC-'+new Date().getFullYear()+'-'+Math.floor(Math.random()*900+100); } }
 function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), description:'', photo_url:null }; }
 
 async function loadCatalog(){

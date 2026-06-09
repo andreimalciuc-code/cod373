@@ -13,6 +13,13 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'CONFIRMARE DE COMANDĂ':{ru:'ПОДТВЕРЖДЕНИЕ ЗАКАЗА',de:'AUFTRAGSBESTÄTIGUNG',en:'ORDER CONFIRMATION'},
+    'BON DE LIVRARE':{ru:'НАКЛАДНАЯ',de:'LIEFERSCHEIN',en:'DELIVERY NOTE'},
+    'Confirmare de comandă (PDF)':{ru:'Подтверждение заказа (PDF)',de:'Auftragsbestätigung (PDF)',en:'Order confirmation (PDF)'},
+    'Bon de livrare (PDF)':{ru:'Накладная (PDF)',de:'Lieferschein (PDF)',en:'Delivery note (PDF)'},
+    'Salvează & PDF ofertă':{ru:'Сохранить и PDF предложение',de:'Speichern & Angebot-PDF',en:'Save & quote PDF'},
+    'Predat de':{ru:'Передал',de:'Übergeben von',en:'Handed over by'},
+    'Primit de':{ru:'Принял',de:'Erhalten von',en:'Received by'},
     'Postcalculație (marjă)':{ru:'Посткалькуляция (маржа)',de:'Nachkalkulation (Marge)',en:'Post-costing (margin)'},
     'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.':{ru:'План vs. факт по каждому объекту: выставлено, затраты, маржа.',de:'Soll/Ist pro Baustelle: fakturiert, Kosten, Marge.',en:'Plan vs. actual per site: invoiced, costs, margin.'},
     'Restanțe & remindere':{ru:'Задолженности и напоминания',de:'Außenstände & Mahnungen',en:'Overdue & reminders'},
