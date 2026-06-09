@@ -602,7 +602,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['draft','sent','paid','overdue','cancelled']),default:'draft'} ],
     lineItems:{table:'invoice_items',parentKey:'invoice_id',totals:['subtotal','vat_total','total']} },
 
-  angajati:{ title:'Angajați', sub:'Personalul firmei.', icon:'👷', group:'Echipă', table:'employees',
+  angajati:{ title:'Angajați', sub:'Personalul firmei.', icon:'👷', group:'Echipă', table:'employees', subEquip:true,
     newLabel:'Angajat nou', invitable:'employee', orderBy:{col:'full_name',asc:true},
     select:'id,full_name,position,specialty,idnp,address,birth_date,has_license,license_categories,hourly_rate,monthly_rate,net_salary,photo_url,active',
     columns:[
@@ -644,7 +644,7 @@ const MODULES = {
       {key:'price_list',label:'Listă de prețuri',type:'textarea',hint:'Prețurile lor pe lucrări. Ex: „Priză montată — 350 lei; Punct lumină — 300 lei; m² gresie — 180 lei".'},
       {key:'logo_url',label:'Logo / poză',type:'photo',hint:'Logo-ul sau o poză a firmei subcontractante (opțional).'} ] },
 
-  echipament:{ title:'Echipament angajați', sub:'Haine, scule, EIP predate fiecărui angajat.', icon:'🦺', group:'Echipă', table:'employee_equipment',
+  echipament:{ title:'Echipament angajați', sub:'Haine, scule, EIP predate fiecărui angajat.', icon:'🦺', group:'Echipă', table:'employee_equipment', hidden:true,
     newLabel:'Predare echipament', orderBy:{col:'issued_at',asc:false},
     select:'id,kind,item,qty,issued_at,employees!employee_id(full_name)',
     columns:[
@@ -993,7 +993,7 @@ async function boot(){
 function buildNav(){
   let html='';
   GROUPS.forEach(g=>{
-    const keys=Object.keys(MODULES).filter(k=>MODULES[k].group===g && canSee(k));
+    const keys=Object.keys(MODULES).filter(k=>MODULES[k].group===g && !MODULES[k].hidden && canSee(k));
     if(!keys.length) return;
     html+='<div class="nav-group">'+esc(tg(g))+'</div>';
     keys.forEach(k=>{ const m=MODULES[k];
@@ -1032,7 +1032,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v32';
+const APP_VERSION='cod373-v33';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1172,6 +1172,41 @@ async function emailReply(id,to){
   }catch(e){ if(btn)btn.disabled=false; showMsg('em-rmsg', isNetErr(e)?netMsg():('Eroare: '+esc(e.message||e))); }
 }
 async function emailCloseThread(id,isClosed){ const { error }=await sb.from('email_threads').update({status:isClosed?'open':'closed'}).eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('✅ Actualizat.'); closeModal(); renderEmailuri(); }
+
+/* ════ ECHIPAMENT ANGAJAT (submodul în Angajați) ════ */
+const EQUIP_KIND={haine:'Haine',instrument:'Instrument',eip:'EIP (protecție)',altul:'Altul'};
+async function empEquip(empId, empName){
+  const canU=canDo('angajati','u'), canD=canDo('angajati','d');
+  const { data, error }=await sb.from('employee_equipment').select('id,kind,item,qty,issued_at,note').eq('employee_id',empId).order('issued_at',{ascending:false});
+  const rows=error?('<tr><td colspan="5">Eroare: '+esc(error.message)+'</td></tr>')
+    :((data||[]).map(r=>'<tr><td>'+esc(EQUIP_KIND[r.kind]||r.kind)+'</td><td class="tname">'+esc(r.item)+(r.note?' <small style="color:var(--muted)">· '+esc(r.note)+'</small>':'')+'</td><td>'+esc(r.qty)+'</td><td>'+dt(r.issued_at)+'</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="empEquipDel(\''+r.id+'\',\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">🗑</button>':'')+'</td></tr>').join('')||'<tr><td colspan="5" style="color:var(--muted);padding:1rem">Niciun echipament predat încă.</td></tr>');
+  const today=new Date().toISOString().slice(0,10);
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Predare nouă</div>'
+    +'<div class="row-2"><div class="field"><label>Tip</label><select id="ee-kind"><option value="haine">Haine</option><option value="instrument" selected>Instrument</option><option value="eip">EIP (protecție)</option><option value="altul">Altul</option></select></div>'
+    +'<div class="field"><label>Cantitate</label><input id="ee-qty" type="number" value="1"/></div></div>'
+    +'<div class="field"><label>Articol *</label><input id="ee-item" placeholder="Ex: salopetă mărimea L, bormașină Bosch, cască de protecție"/></div>'
+    +'<div class="row-2"><div class="field"><label>Data predării</label><input id="ee-date" type="date" value="'+today+'"/></div><div class="field"><label>Observații</label><input id="ee-note"/></div></div>'
+    +'<button class="btn-primary" id="ee-add" onclick="empEquipAdd(\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">Adaugă echipament</button></div>'):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px">'
+    +'<div class="modal-head"><h3>🦺 Echipament — '+esc(empName||'angajat')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="ee-msg"></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tip</th><th>Articol</th><th>Cant.</th><th>Data predării</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +addForm+'</div></div></div>';
+}
+async function empEquipAdd(empId, empName){
+  const item=($('ee-item').value||'').trim(); if(!item){ showMsg('ee-msg','Scrie articolul.'); return; }
+  const rec={tenant_id:state.tenant, employee_id:empId, kind:$('ee-kind').value, item, qty:+$('ee-qty').value||1, issued_at:$('ee-date').value||null, note:($('ee-note').value||'').trim()||null};
+  const btn=$('ee-add'); if(btn) btn.disabled=true;
+  const r=await sbRetry(()=>sb.from('employee_equipment').insert(rec));
+  if(r.error){ if(btn) btn.disabled=false; showMsg('ee-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  toast('✅ Echipament predat.'); empEquip(empId, empName);
+}
+async function empEquipDel(id, empId, empName){
+  if(!confirm('Ștergi acest echipament din lista angajatului?')) return;
+  const { error }=await sb.from('employee_equipment').delete().eq('id',id);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  toast('🗑 Șters.'); empEquip(empId, empName);
+}
 
 /* ════ DASHBOARD ════ */
 function kpiCard(label,val,view,accent){ return '<div class="kpi"'+(view?' onclick="go(\''+view+'\')" style="cursor:pointer"':'')+'><div class="kt">'+esc(label)+'</div><div class="kv"'+(accent?' style="color:'+accent+'"':'')+'>'+val+'</div></div>'; }
@@ -1997,6 +2032,7 @@ function renderList(){
       +(m.scheduler?'<button class="iconbtn" title="Rezumat rapid (marjă & etape)" onclick="openSiteDetail(\''+r.id+'\')">📊</button>':'')
       +(m.teamable?'<button class="iconbtn" title="Acces / echipă" onclick="siteTeam(\''+r.id+'\')">👥</button>':'')
       +(m.portalable?'<button class="iconbtn" title="Link portal client" onclick="genPortal(\''+r.id+'\')">🔗</button>':'')
+      +(m.subEquip?'<button class="iconbtn" title="Echipamentul angajatului" onclick="empEquip(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">🦺</button>':'')
       +(m.acceptReject&&canDo(key,'u')?(r.status!=='accepted'?'<button class="iconbtn" title="Marchează oferta acceptată" onclick="estimateStatus(\''+r.id+'\',\'accepted\')" style="color:#16a34a">✅</button>':'')+(r.status!=='rejected'?'<button class="iconbtn" title="Marchează oferta respinsă" onclick="estimateStatus(\''+r.id+'\',\'rejected\')" style="color:#dc2626">✖️</button>':''):'')
       +(m.toSite?'<button class="iconbtn" title="Creează șantier din ofertă" onclick="estimateToSite(\''+r.id+'\')">🏗️</button>':'')
       +(m.pageEditor?'<button class="iconbtn" title="Deschide / editează oferta (filă nouă)" onclick="window.open(\''+m.pageEditor+'?id=\'+\''+r.id+'\',\'_blank\')">📋</button>':'')

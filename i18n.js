@@ -13,6 +13,13 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Echipamentul angajatului':{ru:'Снаряжение сотрудника',de:'Ausrüstung des Mitarbeiters',en:'Employee equipment'},
+    'Predare nouă':{ru:'Новая выдача',de:'Neue Ausgabe',en:'New issue'},
+    'Adaugă echipament':{ru:'Добавить снаряжение',de:'Ausrüstung hinzufügen',en:'Add equipment'},
+    'Niciun echipament predat încă.':{ru:'Снаряжение пока не выдавалось.',de:'Noch keine Ausrüstung ausgegeben.',en:'No equipment issued yet.'},
+    'Scrie articolul.':{ru:'Укажите предмет.',de:'Artikel eingeben.',en:'Enter the item.'},
+    'Echipament predat.':{ru:'Снаряжение выдано.',de:'Ausrüstung ausgegeben.',en:'Equipment issued.'},
+    'Ștergi acest echipament din lista angajatului?':{ru:'Удалить это снаряжение из списка сотрудника?',de:'Diese Ausrüstung aus der Liste des Mitarbeiters löschen?',en:'Remove this equipment from the employee list?'},
     'Mesaje clienți':{ru:'Сообщения клиентам',de:'Kundennachrichten',en:'Client messages'},
     'Trimite emailuri clienților și primește răspunsurile aici.':{ru:'Отправляйте email клиентам и получайте ответы здесь.',de:'Senden Sie E-Mails an Kunden und empfangen Sie Antworten hier.',en:'Send emails to clients and receive replies here.'},
     'Conversații':{ru:'Беседы',de:'Konversationen',en:'Conversations'},
