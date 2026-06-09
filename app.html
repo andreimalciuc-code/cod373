@@ -724,7 +724,7 @@ const MODULES = {
       {key:'hours',label:'Ore lucrate',type:'number',default:8},
       {key:'approved',label:'Aprobat',type:'checkbox',default:false} ] },
 
-  ssm:{ title:'SSM / Securitate', sub:'Instructaje și echipament de protecție.', icon:'🦺', group:'Echipă', table:'ssm_records',
+  ssm:{ title:'SSM / Securitate', sub:'Instructaje și echipament de protecție.', icon:'🦺', group:'Echipă', table:'ssm_records', hidden:true,
     newLabel:'Înregistrare SSM', orderBy:{col:'created_at',asc:false},
     select:'id,kind,title,valid_until,status,employees(full_name)',
     columns:[
@@ -1032,7 +1032,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v33';
+const APP_VERSION='cod373-v34';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1207,6 +1207,63 @@ async function empEquipDel(id, empId, empName){
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   toast('🗑 Șters.'); empEquip(empId, empName);
 }
+/* ── Pontajul angajatului (submodul) ── */
+async function empPontaj(empId, empName){
+  const canU=canDo('pontaj','u'), canD=canDo('pontaj','d');
+  const tsR=await sb.from('timesheets').select('id,work_date,hours,approved,sites!site_id(name)').eq('employee_id',empId).order('work_date',{ascending:false}).limit(200);
+  const sites=await loadRefOptions('sites');
+  const ts=tsR.data||[]; const total=ts.reduce((s,r)=>s+(+r.hours||0),0);
+  const rows=ts.length?ts.map(r=>'<tr><td>'+dt(r.work_date)+'</td><td><b>'+esc(r.hours)+'</b> h</td><td>'+esc(r.sites?r.sites.name:'—')+'</td><td>'+(r.approved?'<span class="pill active">Aprobat</span>':'<span class="pill planned">Neaprobat</span>')+'</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="empPontajDel(\''+r.id+'\',\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">🗑</button>':'')+'</td></tr>').join(''):'<tr><td colspan="5" style="color:var(--muted);padding:1rem">Niciun pontaj încă.</td></tr>';
+  const today=new Date().toISOString().slice(0,10);
+  const siteOpts='<option value="">— (fără șantier) —</option>'+sites.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('');
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Adaugă pontaj</div>'
+    +'<div class="row-2"><div class="field"><label>Data</label><input id="pt-date" type="date" value="'+today+'"/></div><div class="field"><label>Ore lucrate</label><input id="pt-hours" type="number" step="any" value="8"/></div></div>'
+    +'<div class="field"><label>Șantier</label><select id="pt-site">'+siteOpts+'</select></div>'
+    +'<button class="btn-primary" id="pt-add" onclick="empPontajAdd(\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">Adaugă pontaj</button></div>'):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px">'
+    +'<div class="modal-head"><h3>⏱️ Pontaj — '+esc(empName||'angajat')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="pt-msg"></div>'
+    +'<div style="margin-bottom:.5rem;font-size:.88rem">Total: <b>'+(Math.round(total*100)/100)+' ore</b></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Ore</th><th>Șantier</th><th>Stare</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +addForm+'</div></div></div>';
+}
+async function empPontajAdd(empId, empName){
+  const h=+($('pt-hours').value||0); if(!h){ showMsg('pt-msg','Scrie orele lucrate.'); return; }
+  const rec={tenant_id:state.tenant, employee_id:empId, work_date:$('pt-date').value||null, hours:h, site_id:$('pt-site').value||null};
+  const btn=$('pt-add'); if(btn) btn.disabled=true;
+  const r=await sbRetry(()=>sb.from('timesheets').insert(rec));
+  if(r.error){ if(btn) btn.disabled=false; showMsg('pt-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  toast('✅ Pontaj adăugat.'); empPontaj(empId, empName);
+}
+async function empPontajDel(id, empId, empName){ if(!confirm('Ștergi acest pontaj?')) return; const { error }=await sb.from('timesheets').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empPontaj(empId, empName); }
+/* ── SSM / Securitate angajat (submodul) ── */
+const SSM_KIND={instructaj:'Instructaj',eip:'EIP',incident:'Incident'};
+async function empSSM(empId, empName){
+  const canU=canDo('ssm','u'), canD=canDo('ssm','d');
+  const r0=await sb.from('ssm_records').select('id,kind,title,valid_until,status,note').eq('employee_id',empId).order('valid_until',{ascending:false});
+  const list=r0.data||[];
+  const sp={ok:'<span class="pill active">OK</span>',expiring:'<span class="pill planned">Expiră</span>',expired:'<span class="pill cancelled">Expirat</span>'};
+  const rows=list.length?list.map(r=>'<tr><td>'+esc(SSM_KIND[r.kind]||r.kind)+'</td><td class="tname">'+esc(r.title||'—')+(r.note?' <small style="color:var(--muted)">· '+esc(r.note)+'</small>':'')+'</td><td>'+dt(r.valid_until)+'</td><td>'+(sp[r.status]||esc(r.status||''))+'</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="empSSMDel(\''+r.id+'\',\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">🗑</button>':'')+'</td></tr>').join(''):'<tr><td colspan="5" style="color:var(--muted);padding:1rem">Niciun instructaj/document SSM încă.</td></tr>';
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Adaugă SSM</div>'
+    +'<div class="row-2"><div class="field"><label>Tip</label><select id="sm-kind"><option value="instructaj" selected>Instructaj</option><option value="eip">EIP</option><option value="incident">Incident</option></select></div>'
+    +'<div class="field"><label>Valabil până</label><input id="sm-valid" type="date"/></div></div>'
+    +'<div class="field"><label>Titlu</label><input id="sm-title" placeholder="Ex: Instructaj periodic SSM, fișă EIP"/></div>'
+    +'<div class="field"><label>Notă</label><input id="sm-note"/></div>'
+    +'<button class="btn-primary" id="sm-add" onclick="empSSMAdd(\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">Adaugă</button></div>'):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px">'
+    +'<div class="modal-head"><h3>🛡️ SSM / Securitate — '+esc(empName||'angajat')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="sm-msg"></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tip</th><th>Titlu</th><th>Valabil până</th><th>Stare</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +addForm+'</div></div></div>';
+}
+async function empSSMAdd(empId, empName){
+  const rec={tenant_id:state.tenant, employee_id:empId, kind:$('sm-kind').value, title:($('sm-title').value||'').trim()||null, valid_until:$('sm-valid').value||null, status:'ok', note:($('sm-note').value||'').trim()||null};
+  const btn=$('sm-add'); if(btn) btn.disabled=true;
+  const r=await sbRetry(()=>sb.from('ssm_records').insert(rec));
+  if(r.error){ if(btn) btn.disabled=false; showMsg('sm-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  toast('✅ Adăugat.'); empSSM(empId, empName);
+}
+async function empSSMDel(id, empId, empName){ if(!confirm('Ștergi această înregistrare SSM?')) return; const { error }=await sb.from('ssm_records').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empSSM(empId, empName); }
 
 /* ════ DASHBOARD ════ */
 function kpiCard(label,val,view,accent){ return '<div class="kpi"'+(view?' onclick="go(\''+view+'\')" style="cursor:pointer"':'')+'><div class="kt">'+esc(label)+'</div><div class="kv"'+(accent?' style="color:'+accent+'"':'')+'>'+val+'</div></div>'; }
@@ -2032,7 +2089,7 @@ function renderList(){
       +(m.scheduler?'<button class="iconbtn" title="Rezumat rapid (marjă & etape)" onclick="openSiteDetail(\''+r.id+'\')">📊</button>':'')
       +(m.teamable?'<button class="iconbtn" title="Acces / echipă" onclick="siteTeam(\''+r.id+'\')">👥</button>':'')
       +(m.portalable?'<button class="iconbtn" title="Link portal client" onclick="genPortal(\''+r.id+'\')">🔗</button>':'')
-      +(m.subEquip?'<button class="iconbtn" title="Echipamentul angajatului" onclick="empEquip(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">🦺</button>':'')
+      +(m.subEquip?'<button class="iconbtn" title="Echipamentul angajatului" onclick="empEquip(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">🦺</button><button class="iconbtn" title="Pontajul angajatului" onclick="empPontaj(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">⏱️</button><button class="iconbtn" title="SSM / Securitate angajat" onclick="empSSM(\''+r.id+'\',\''+esc(r.full_name||'').replace(/\x27/g,"")+'\')">🛡️</button>':'')
       +(m.acceptReject&&canDo(key,'u')?(r.status!=='accepted'?'<button class="iconbtn" title="Marchează oferta acceptată" onclick="estimateStatus(\''+r.id+'\',\'accepted\')" style="color:#16a34a">✅</button>':'')+(r.status!=='rejected'?'<button class="iconbtn" title="Marchează oferta respinsă" onclick="estimateStatus(\''+r.id+'\',\'rejected\')" style="color:#dc2626">✖️</button>':''):'')
       +(m.toSite?'<button class="iconbtn" title="Creează șantier din ofertă" onclick="estimateToSite(\''+r.id+'\')">🏗️</button>':'')
       +(m.pageEditor?'<button class="iconbtn" title="Deschide / editează oferta (filă nouă)" onclick="window.open(\''+m.pageEditor+'?id=\'+\''+r.id+'\',\'_blank\')">📋</button>':'')

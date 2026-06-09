@@ -13,6 +13,14 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Pontajul angajatului':{ru:'Табель сотрудника',de:'Zeiterfassung des Mitarbeiters',en:'Employee timesheet'},
+    'SSM / Securitate angajat':{ru:'ОТ / Безопасность сотрудника',de:'AuS / Sicherheit des Mitarbeiters',en:'OHS / safety of employee'},
+    'Adaugă pontaj':{ru:'Добавить табель',de:'Zeiteintrag hinzufügen',en:'Add timesheet'},
+    'Pontaj adăugat.':{ru:'Табель добавлен.',de:'Zeiteintrag hinzugefügt.',en:'Timesheet added.'},
+    'Neaprobat':{ru:'Не утверждено',de:'Nicht genehmigt',en:'Not approved'},
+    'Adaugă SSM':{ru:'Добавить ОТ',de:'AuS hinzufügen',en:'Add OHS'},
+    'Niciun instructaj/document SSM încă.':{ru:'Пока нет инструктажей/документов ОТ.',de:'Noch keine Unterweisungen/AuS-Dokumente.',en:'No briefings/OHS documents yet.'},
+    'Total:':{ru:'Итого:',de:'Gesamt:',en:'Total:'},
     'Echipamentul angajatului':{ru:'Снаряжение сотрудника',de:'Ausrüstung des Mitarbeiters',en:'Employee equipment'},
     'Predare nouă':{ru:'Новая выдача',de:'Neue Ausgabe',en:'New issue'},
     'Adaugă echipament':{ru:'Добавить снаряжение',de:'Ausrüstung hinzufügen',en:'Add equipment'},
