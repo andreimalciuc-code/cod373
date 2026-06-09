@@ -428,6 +428,7 @@ const MODULES = {
       {key:'deadline',label:'Termen',type:'date',hint:'Data țintă de finalizare. Folosită în graficul Gantt și la alerte.'} ] },
 
   previzualizare:{ title:'Previzualizare șantier', sub:'Fișă de vizită pe teren — poze, întrebări, măsurători → PDF și deviz.', icon:'📋', group:'Operațional', custom:true },
+  emailuri:{ title:'Mesaje clienți', sub:'Trimite emailuri clienților și primește răspunsurile aici.', icon:'📨', group:'Operațional', custom:true },
 
   comenzi:{ title:'Comenzi materiale', sub:'Comenzi către furnizori.', icon:'🛒', group:'Operațional', table:'material_orders',
     newLabel:'Comandă nouă', orderBy:{col:'created_at',asc:false},
@@ -1006,7 +1007,7 @@ function go(key){
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1031,7 +1032,8 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v31';
+const APP_VERSION='cod373-v32';
+const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
 async function openSupport(){
@@ -1102,6 +1104,74 @@ function toolQRPrint(name,code){
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; }
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(name)+'</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:24px}img{width:240px;height:240px}h2{margin:8px 0 0;font-size:18px}div{color:#555}@media print{button{display:none}}</style></head><body><img src="'+src+'"><h2>'+esc(name)+'</h2>'+(code?'<div>Cod '+esc(code)+'</div>':'')+'<br><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 Printează</button></body></html>'); w.document.close();
 }
+
+/* ════ MESAJE / EMAIL CLIENȚI ════ */
+let emailThreads=[];
+async function renderEmailuri(){
+  $('content').innerHTML='<div class="seg"><button class="btn-primary" style="margin-left:auto" onclick="emailCompose()">✉️ Mesaj nou</button></div>'
+    +'<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:10px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.85rem">ℹ️ Trimiterea și primirea reală se activează după conectarea domeniului și a furnizorului de email. Până atunci, mesajele se salvează aici, iar conversațiile sunt pregătite.</div>'
+    +'<div class="panel"><div class="panel-head"><h3>Conversații</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  const { data, error }=await sb.from('email_threads').select('id,subject,to_name,to_email,status,last_message_at,client_id');
+  if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
+  emailThreads=sortRows(data||[],'last_message_at',false);
+  if(!emailThreads.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📨</div><div>Nicio conversație încă.</div><div style="margin-top:1rem"><button class="btn-primary" onclick="emailCompose()">✉️ Scrie primul mesaj</button></div></div>'; return; }
+  const body=emailThreads.map(t=>'<tr onclick="openEmailThread(\''+t.id+'\')" style="cursor:pointer"><td class="tname">'+esc(t.subject||'(fără subiect)')+'</td><td>'+esc(t.to_name||t.to_email||'—')+'</td><td>'+(t.status==='closed'?'<span class="pill cancelled">Închisă</span>':'<span class="pill active">Deschisă</span>')+'</td><td>'+esc((t.last_message_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join('');
+  $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem;font-size:.8rem;color:var(--muted)">👉 Apasă pe o conversație ca s-o deschizi.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Subiect</th><th>Client</th><th>Stare</th><th>Ultima activitate</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+async function emailCompose(){
+  const { data:cl }=await sb.from('clients').select('id,name,email');
+  const cmap={}; (cl||[]).forEach(c=>cmap[c.id]=c); window._emailClients=cmap;
+  const opts='<option value="">— alege client —</option>'+(cl||[]).filter(c=>c.name).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>'<option value="'+c.id+'">'+esc(c.name)+(c.email?'':' (fără email)')+'</option>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'
+    +'<div class="modal-head"><h3>✉️ Mesaj nou</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="em-msg"></div>'
+    +'<div class="field"><label>Client</label><select id="em-client" onchange="emailPickClient()">'+opts+'</select></div>'
+    +'<div class="row-2"><div class="field"><label>Către (email) *</label><input id="em-to" type="email" placeholder="client@email.md"/></div><div class="field"><label>Nume</label><input id="em-name"/></div></div>'
+    +'<div class="field"><label>Subiect</label><input id="em-subject"/></div>'
+    +'<div class="field"><label>Mesaj *</label><textarea id="em-body" rows="6"></textarea></div>'
+    +'<div class="field"><label>Atașamente (opțional)</label><input id="em-files" type="file" multiple/></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="em-send" onclick="emailCreateThread()">Trimite</button></div></div></div>';
+}
+function emailPickClient(){ const c=(window._emailClients||{})[$('em-client').value]; if(!c) return; if(c.email) $('em-to').value=c.email; $('em-name').value=c.name||''; }
+async function emailUpload(input){ const out=[]; const files=(input&&input.files)?[...input.files]:[]; for(const f of files){ const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/email/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'application/octet-stream'}); if(!up.error) out.push(path); } return out; }
+async function emailCreateThread(){
+  const to=($('em-to').value||'').trim(); if(!to){ showMsg('em-msg','Scrie adresa destinatarului.'); return; }
+  const body=($('em-body').value||'').trim(); if(!body){ showMsg('em-msg','Scrie mesajul.'); return; }
+  const btn=$('em-send'); if(btn) btn.disabled=true;
+  try{
+    const atts=await emailUpload($('em-files'));
+    const subj=($('em-subject').value||'').trim()||null;
+    const th=await sbRetry(()=>sb.from('email_threads').insert({tenant_id:state.tenant, client_id:$('em-client').value||null, subject:subj, to_email:to, to_name:($('em-name').value||'').trim()||null}).select('id').single());
+    if(th.error) throw th.error;
+    const msg=await sbRetry(()=>sb.from('email_messages').insert({tenant_id:state.tenant, thread_id:th.data.id, direction:'out', to_email:to, from_name:(state.firm&&state.firm.name)||null, subject:subj, body, attachments:atts.length?atts:null, status:'queued'}));
+    if(msg.error) throw msg.error;
+    closeModal(); toast('✅ Mesaj salvat. Se trimite când emailul e conectat.'); renderEmailuri();
+  }catch(e){ if(btn)btn.disabled=false; showMsg('em-msg', isNetErr(e)?netMsg():('Eroare: '+esc(e.message||e))); }
+}
+async function openEmailThread(id){
+  const t=(await sb.from('email_threads').select('*').eq('id',id).single()).data; if(!t){ toast('Eroare.'); return; }
+  const { data:msgs }=await sb.from('email_messages').select('*').eq('thread_id',id).order('created_at',{ascending:true});
+  const rows=(msgs||[]).map(m=>{ const out=m.direction==='out'; return '<div style="margin:.5rem 0;padding:.6rem .8rem;border-radius:10px;background:'+(out?'#eff4ff':'#f4f6fb')+'"><div style="font-size:.74rem;color:var(--muted)">'+(out?'➡️ Trimis':'⬅️ Primit')+' · '+esc((m.created_at||'').slice(0,16).replace('T',' '))+(m.status==='queued'?' · ⏳ în așteptare':'')+'</div><div style="white-space:pre-wrap;margin-top:.3rem">'+esc(m.body||'')+'</div>'+((m.attachments&&m.attachments.length)?'<div style="font-size:.78rem;color:var(--muted);margin-top:.3rem">📎 '+m.attachments.length+' atașament(e)</div>':'')+'</div>'; }).join('')||'<div style="color:var(--muted)">Niciun mesaj.</div>';
+  const replyAddr=t.reply_key?(t.reply_key+'@'+(MAIL_DOMAIN||'(domeniul platformei)')):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px">'
+    +'<div class="modal-head"><h3>📨 '+esc(t.subject||'(fără subiect)')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div style="color:var(--muted);font-size:.84rem">'+esc(t.to_name||t.to_email||'')+'</div>'
+    +(replyAddr?'<div style="font-size:.72rem;color:var(--muted);margin:.2rem 0 .6rem">Clientul răspunde la: <code>'+esc(replyAddr)+'</code></div>':'')
+    +'<div id="em-thread">'+rows+'</div><div id="em-rmsg"></div>'
+    +'<div class="field" style="margin-top:.6rem"><label>Răspunde</label><textarea id="em-reply" rows="3"></textarea></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="emailCloseThread(\''+id+'\','+(t.status==='closed'?'true':'false')+')">'+(t.status==='closed'?'Redeschide':'Închide')+'</button><button class="btn-primary" id="em-reply-btn" onclick="emailReply(\''+id+'\',\''+esc(t.to_email||'').replace(/\x27/g,'')+'\')">Trimite răspuns</button></div></div></div>';
+}
+async function emailReply(id,to){
+  const body=($('em-reply').value||'').trim(); if(!body){ showMsg('em-rmsg','Scrie un răspuns.'); return; }
+  const btn=$('em-reply-btn'); if(btn) btn.disabled=true;
+  try{
+    const msg=await sbRetry(()=>sb.from('email_messages').insert({tenant_id:state.tenant, thread_id:id, direction:'out', to_email:to||null, from_name:(state.firm&&state.firm.name)||null, body, status:'queued'}));
+    if(msg.error) throw msg.error;
+    await sb.from('email_threads').update({last_message_at:new Date().toISOString()}).eq('id',id);
+    toast('✅ Răspuns salvat.'); openEmailThread(id);
+  }catch(e){ if(btn)btn.disabled=false; showMsg('em-rmsg', isNetErr(e)?netMsg():('Eroare: '+esc(e.message||e))); }
+}
+async function emailCloseThread(id,isClosed){ const { error }=await sb.from('email_threads').update({status:isClosed?'open':'closed'}).eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('✅ Actualizat.'); closeModal(); renderEmailuri(); }
 
 /* ════ DASHBOARD ════ */
 function kpiCard(label,val,view,accent){ return '<div class="kpi"'+(view?' onclick="go(\''+view+'\')" style="cursor:pointer"':'')+'><div class="kt">'+esc(label)+'</div><div class="kv"'+(accent?' style="color:'+accent+'"':'')+'>'+val+'</div></div>'; }
