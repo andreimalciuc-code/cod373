@@ -1667,104 +1667,213 @@ async function delPayroll(id){
 }
 
 /* ════ GHID DE UTILIZARE ════ */
+function gNorm(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function gPlain(html){ return gNorm((html||'').replace(/<[^>]+>/g,' ').replace(/&[a-z]+;/g,' ')); }
+function gTog(h){ const it=h.parentElement; const open=it.classList.toggle('open'); const p=h.querySelector('.gp'); if(p) p.textContent=open?'−':'＋'; }
+function ghidSearch(v){
+  const q=gNorm(v).trim();
+  const cnt=document.getElementById('ghid-list'); if(!cnt) return;
+  const empty=document.getElementById('ghid-empty');
+  let any=false;
+  cnt.querySelectorAll('.gchap').forEach(ch=>{
+    let chHit=false;
+    ch.querySelectorAll('.gsub').forEach(sub=>{
+      const hit = !q || (sub.getAttribute('data-txt')||'').includes(q);
+      sub.style.display = hit?'':'none';
+      if(hit && q){ sub.classList.add('open'); const p=sub.querySelector('.gp'); if(p) p.textContent='−'; }
+      if(hit) chHit=true;
+    });
+    const chTxtHit = q && (ch.getAttribute('data-txt')||'').includes(q);
+    const show = !q || chHit || chTxtHit;
+    ch.style.display = show?'':'none';
+    if(show && q){ ch.classList.add('open'); const p=ch.querySelector(':scope > .ghd .gp'); if(p) p.textContent='−';
+      if(chTxtHit && !chHit){ ch.querySelectorAll('.gsub').forEach(s=>{ s.style.display=''; }); }
+    }
+    if(!q){ ch.classList.remove('open'); const p=ch.querySelector(':scope > .ghd .gp'); if(p) p.textContent='＋';
+      ch.querySelectorAll('.gsub').forEach(s=>{ s.classList.remove('open'); s.style.display=''; const sp=s.querySelector('.gp'); if(sp) sp.textContent='＋'; }); }
+    if(show) any=true;
+  });
+  if(empty) empty.style.display = any?'none':'block';
+}
 function renderGhid(){
-  $('content').innerHTML = `
-  <style>
-    .help{max-width:880px}
-    .help .panel{margin-bottom:1.1rem}
-    .help .pb{padding:1.2rem 1.4rem;line-height:1.65}
-    .help h4{font-size:.95rem;margin:.2rem 0 .5rem}
-    .help p{color:var(--muted);margin-bottom:.6rem}
-    .help ol,.help ul{margin:.2rem 0 .6rem 1.2rem}
-    .help li{margin:.3rem 0}
-    .help .step{display:flex;gap:.8rem;padding:.7rem 0;border-bottom:1px solid var(--line)}
-    .help .step:last-child{border-bottom:none}
-    .help .num{width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.82rem}
-    .help .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem}
-    .help .mc{border:1px solid var(--line);border-radius:11px;padding:.9rem}
-    .help .mc .t{font-weight:700;margin-bottom:.25rem}
-    .help .mc .d{font-size:.85rem;color:var(--muted)}
-    .help .tag{display:inline-block;background:var(--primary-soft);color:#1d4ed8;border-radius:6px;padding:.05rem .4rem;font-size:.75rem;font-weight:600}
-    .help kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.05rem .4rem;font-size:.8rem}
-  </style>
-  <div class="help">
-    <div class="panel"><div class="pb">
-      <h3 style="font-size:1.1rem">👋 Bun venit în Cod373</h3>
-      <p>Platforma de gestiune pentru firme de construcții din Moldova. Tot ce introduci se salvează în siguranță în cloud și e <b>izolat pe firma ta</b>. Există trei aplicații care folosesc aceleași date:</p>
-      <ul>
-        <li>🖥️ <b>Biroul</b> (aici) — administrare completă: proiecte, bani, oameni, documente.</li>
-        <li>📱 <b>Aplicația de teren</b> (<span class="tag">mobil.html</span>) — pentru muncitori și șoferi: pontaj, livrări, poze.</li>
-        <li>👤 <b>Portalul clientului</b> — un link prin care clientul vede progresul lucrării, fără cont și fără prețuri.</li>
-      </ul>
-    </div></div>
-
-    <div class="panel"><div class="pb">
-      <h4>🚀 Primii pași (pentru proprietar)</h4>
-      <div class="step"><div class="num">1</div><div><b>Completează datele firmei</b> — meniul <b>Setări firmă</b> (nume, IDNO, TVA, adresă). Acestea apar pe facturi și în portal.</div></div>
-      <div class="step"><div class="num">2</div><div><b>Adaugă-ți echipa</b> — <b>Utilizatori &amp; Roluri</b> → „Adaugă membru". Colegul își face întâi cont (din pagina de login), apoi îl adaugi după email și îi dai un rol.</div></div>
-      <div class="step"><div class="num">3</div><div><b>Adaugă primul client și primul șantier</b> — meniurile <b>Clienți</b> și <b>Șantiere</b> (butonul <kbd>＋</kbd> sus-dreapta).</div></div>
-      <div class="step"><div class="num">4</div><div><b>Lucrează zilnic</b> — comenzi de materiale, devize, facturi, pontaj. Totul e legat între ele.</div></div>
-    </div></div>
-
-    <div class="panel"><div class="pb">
-      <h4>🧭 Cum funcționează fiecare listă</h4>
-      <p>Toate modulele arată la fel, deci înveți o singură dată:</p>
-      <ul>
-        <li><kbd>＋ Adaugă</kbd> (sus-dreapta) — deschide formularul pentru o înregistrare nouă.</li>
-        <li>🔍 <b>Caută</b> și filtrul de <b>stare</b> — în capul fiecărei liste.</li>
-        <li>✏️ pe un rând — <b>editezi</b>; 🗑 — <b>ștergi</b> (cu confirmare).</li>
-      </ul>
-    </div></div>
-
-    <div class="panel"><div class="pb">
-      <h4>📚 Modulele, pe scurt</h4>
-      <div class="mgrid">
-        <div class="mc"><div class="t">🏗️ Șantiere</div><div class="d">Proiectele tale, progres, buget, termen. Butonul 🔗 generează linkul de portal pentru client.</div></div>
-        <div class="mc"><div class="t">🤝 Clienți</div><div class="d">Baza de clienți și etapa în vânzări (lead → câștigat).</div></div>
-        <div class="mc"><div class="t">🛒 Comenzi / 🚚 Livrări</div><div class="d">Comenzi la furnizori (cu linii) și transportul către șantier.</div></div>
-        <div class="mc"><div class="t">📦 Catalog</div><div class="d">Materiale, servicii, scule, flotă, furnizori, stoc — baza pentru devize și comenzi.</div></div>
-        <div class="mc"><div class="t">📋 Devize → 🧾 Facturi</div><div class="d">Adaugi linii, TVA și totalul se calculează singure. Butonul 🖨 tipărește sau salvează PDF.</div></div>
-        <div class="mc"><div class="t">📥 Achiziții</div><div class="d">Facturile primite de la furnizori.</div></div>
-        <div class="mc"><div class="t">👷 Angajați · ⏱️ Pontaj</div><div class="d">Personalul și orele lucrate pe șantier.</div></div>
-        <div class="mc"><div class="t">💰 Salarii</div><div class="d">Alegi luna → „Calculează". Impozit 12%, CNAM 9%, CNAS 24% — automat.</div></div>
-        <div class="mc"><div class="t">🦺 SSM · 🔧 Defecte</div><div class="d">Instructaje/echipament și remedieri (cu poză din teren).</div></div>
-        <div class="mc"><div class="t">📄 Acte &amp; Documente</div><div class="d">Încarci contracte, scanuri, poze — stocate securizat pe firmă.</div></div>
-        <div class="mc"><div class="t">🤖 Licitații</div><div class="d">Achiziții publice urmărite (MTender).</div></div>
-        <div class="mc"><div class="t">👥 Utilizatori · ⚙️ Setări</div><div class="d">Doar proprietarul/adminul: membri, roluri și datele firmei.</div></div>
-      </div>
-    </div></div>
-
-    <div class="panel"><div class="pb">
-      <h4>👤 Portalul clientului</h4>
-      <p>În <b>Șantiere</b>, apasă 🔗 pe un proiect → primești un link. Îl trimiți clientului (WhatsApp, email). El îl deschide pe telefon și vede progresul și etapele — <b>fără cont și fără prețuri</b> (prețurile le poți activa per link).</p>
-    </div></div>
-
-    <div class="panel"><div class="pb">
-      <h4>📱 Aplicația de teren</h4>
-      <p>Pe telefon, deschide <span class="tag">mobil.html</span>. Muncitorul/șoferul intră cu contul lui și vede doar ce-i trebuie:</p>
-      <ul>
-        <li><b>Muncitor</b> — șantierele (fără prețuri), pontaj, raportare defecte cu <b>poză</b>.</li>
-        <li><b>Șofer</b> — livrările: Accept → Pe drum → Am livrat.</li>
-        <li><b>Responsabil</b> — vedere de ansamblu pe șantiere.</li>
-      </ul>
-      <p>Poate fi „instalată" pe ecranul telefonului (Adaugă pe ecranul principal) și arată ca o aplicație normală.</p>
-    </div></div>
-
-    <div class="panel"><div class="pb">
-      <h4>🔒 Roluri și acces</h4>
-      <p>Fiecare om vede doar ce trebuie. <b>Muncitorul și șoferul nu văd prețuri</b> și nici modulele financiare. Proprietarul și adminul văd tot. Schimbi rolurile din <b>Utilizatori &amp; Roluri</b>.</p>
-    </div></div>
-
-    <div class="panel"><div class="pb">
-      <h4>⏳ Ce urmează (în lucru)</h4>
-      <p>Aceste funcții cer conturi oficiale și se vor activa împreună, ulterior:</p>
-      <ul>
-        <li><b>e-Factura SFS</b> — trimiterea facturilor către Fisc (cere cont business + semnătură electronică).</li>
-        <li><b>Plăți abonament</b> — MAIB / Paynet (cere cont de comerciant).</li>
-      </ul>
-      <p style="margin-bottom:0">Ai o întrebare sau vrei o funcție nouă? Spune și o adăugăm.</p>
-    </div></div>
-  </div>`;
+  const FAQ=[
+    ['Cum adaug un coleg (utilizator) nou?','Mergi la <b>Administrare → Utilizatori &amp; Roluri</b> și apasă <kbd>＋ Invită membru</kbd>. Colegul primește invitația pe email și își setează singur parola (tu nu îi creezi parola). La invitație alegi <b>rolul</b> și, opțional, <b>accesul granular</b> (vezi/creează/modifică/șterge per modul).'],
+    ['De ce un coleg nu vede prețurile sau facturile?','Pentru că are un rol fără acces financiar (muncitor, șofer). Doar <b>proprietarul</b> și <b>contabilul/adminul</b> văd banii. Schimbi accesul din <b>Utilizatori &amp; Roluri</b> → apeși pe membru → editezi rolul/permisiunile.'],
+    ['Unde se salvează datele și sunt în siguranță?','Totul se salvează automat în cloud (Supabase, servere în Frankfurt). Datele sunt <b>izolate strict pe firma ta</b> — nicio altă firmă nu le poate vedea. Pozele și actele stau în stocare securizată.'],
+    ['Cum trimit clientului progresul lucrării?','La <b>Șantiere</b>, apeși pe șantier → <b>🔗 Link portal</b>. Trimiți linkul clientului (WhatsApp/email). El vede progresul și pozele <b>fără cont și fără prețuri</b>.'],
+    ['Cum fac o factură dintr-un deviz acceptat?','Deschizi devizul (oferta), apeși <b>✅ Acceptat</b>, apoi din opțiunile ofertei alegi <b>convertește în factură</b>. Numărul facturii se generează automat.'],
+    ['Cum funcționează aplicația de pe telefon?','Deschizi <b>mobil.html</b> pe telefon, te loghezi cu contul tău. Muncitorul face pontaj și raportează defecte cu poză; șoferul confirmă livrările. Poate fi „instalată" pe ecranul principal.'],
+    ['Pot adăuga poze din galerie, nu doar făcute pe loc?','Da. Peste tot unde adaugi poze poți alege din <b>galerie</b> sau face poză pe loc — pe telefon și pe calculator.'],
+    ['Cum schimb limba aplicației?','Selectorul de limbă e pe prima pagină (login) și în aplicație. Sunt 4 limbi: <b>RO, RU, DE, EN</b>. Aplicația se deschide automat în limba telefonului/browserului.'],
+    ['Mi-a apărut eroarea „Load failed" / „Network". Ce fac?','Înseamnă conexiune slabă (internet instabil), nu o eroare a datelor. Aplicația reîncearcă automat; dacă persistă, verifică semnalul și reapasă Salvează.'],
+    ['Am nevoie de ajutor de la voi. Cum vă contactez?','Apasă butonul <b>🛟</b> din antet (sus). Scrii problema și ne trimiți un tichet de suport direct din aplicație.']
+  ];
+  const CH=[
+    {ic:'📊',t:'Tablou de bord',subs:[
+      ['Ce arată','Pagina de start cu indicatorii cheie: total facturat, încasări, restanțe, șantiere active, comenzi. Fiecare card e <b>clicabil</b> și te duce direct în modulul respectiv.'],
+      ['Cum citești cifrele','Cifrele se actualizează automat din datele tale reale. Dacă un card arată 0, înseamnă că nu ai încă înregistrări în acel modul.']
+    ]},
+    {ic:'🏗️',t:'Șantiere (proiecte)',subs:[
+      ['Adaugă un șantier','Apasă <kbd>＋</kbd> sus-dreapta. Completează nume, client, adresă (cu sugestii automate de adresă), buget, început și termen. „Început" și „Termen" sunt necesare ca să apară în graficul Gantt.'],
+      ['Apasă pe un rând → opțiuni','Click pe orice șantier deschide o foaie cu opțiuni: previzualizare, editare, detalii, link portal, ștergere. Butoanele clasice (✏️ editează, 🗑 șterge) rămân și pe rând.'],
+      ['🔗 Link portal client','Generează un link pe care îl trimiți clientului. El vede progresul, etapele și pozele — fără cont și fără prețuri (prețurile le poți activa per link).'],
+      ['📂 Detalii (submodule)','Înăuntrul unui șantier ai submodulele legate de el: <b>Jurnal de șantier</b>, <b>Etape</b>, <b>Stoc pe șantier</b>, <b>Situații de lucrări</b>, <b>RFI / Dispoziții</b>, <b>Ordine de modificare</b>, <b>Recenzii</b>.'],
+      ['Jurnal de șantier','Însemnări zilnice de pe teren (ce s-a lucrat, vreme, incidente). Se completează și din aplicația de teren.'],
+      ['Etape','Împarți lucrarea în etape cu procent de progres — apar și în portalul clientului.'],
+      ['Situații de lucrări','Documentul prin care soliciți plata pentru lucrările executate într-o perioadă (cantități × preț). Util la decontări parțiale.'],
+      ['RFI / Dispoziții','„Request for Information" — întrebări oficiale către proiectant/client și dispozițiile de șantier, ca să rămână urma scrisă.'],
+      ['Ordine de modificare','Modificări față de contractul inițial (lucrări în plus/minus) cu impact pe preț și termen.'],
+      ['Recenzii','Feedback de la client la finalul lucrării.']
+    ]},
+    {ic:'🤝',t:'Clienți',subs:[
+      ['Adaugă client','<kbd>＋</kbd> → nume, telefon, email, adresă, IDNO. Adresa are sugestii automate (verificate în hărți, fără cost).'],
+      ['Etapa în vânzări','Marchezi clientul: lead → ofertă → negociere → câștigat/pierdut, ca să-ți urmărești pâlnia de vânzări.'],
+      ['Apasă pe client → opțiuni','Vezi istoricul, editezi, trimiți email, ștergi.']
+    ]},
+    {ic:'📋',t:'Devize / Oferte',subs:[
+      ['Creează un deviz','Din modulul Devize sau direct dintr-o fișă de șantier („Creează deviz din fișă"). Numărul ofertei (OF-AAAA-NNNN) se generează automat.'],
+      ['Adaugă linii','Butonul <kbd>＋ adaugă linie</kbd>. Scrii denumirea (caută în catalog) sau adaugi un serviciu nou pe loc. Completezi cantitate, UM, preț, TVA — totalul se calculează singur.'],
+      ['Scrii totalul pe linie invers','Dacă scrii suma finală în coloana „Total", prețul unitar se recalculează automat invers.'],
+      ['Adaugă din norme','Butonul de norme deschide catalogul de norme de deviz — alegi poziții standard cu preț orientativ.'],
+      ['📷 Descriere și poză pe linie','Apeși pe 📷 sau 📝 la o linie ca să adaugi o descriere și o poză (din galerie sau cameră). Apar și în PDF, lângă poziție.'],
+      ['🧠 Generează din descriere (AI)','Scrii lucrarea în câteva cuvinte (ex. „renovare baie 6 m²") și AI propune liniile devizului. Le poți edita după. (Necesită cheia AI configurată în Setări de administrator.)'],
+      ['✍️ Semnătură client (acceptare)','Clientul semnează pe ecran (deget/mouse) ca să accepte oferta. Oferta devine „acceptată" și semnătura apare în PDF.'],
+      ['📄 PDF-uri','Generezi: <b>Ofertă</b>, <b>Confirmare de comandă</b> și <b>Bon de livrare</b> (fără prețuri). PDF-ul iese în limba selectată.'],
+      ['✅ Acceptat / ✖️ Respins','Marchezi rezultatul ofertei. La „Acceptat", dacă ai activat automatizările, se poate crea automat șantierul și o factură de avans.']
+    ]},
+    {ic:'🧾',t:'Facturi',subs:[
+      ['Creează factură','Numărul (FAC-AAAA-NNNN) se generează automat și secvențial. Adaugi liniile la fel ca la deviz; TVA și totalul se calculează singure.'],
+      ['📄 PDF factură','Tipărești sau salvezi PDF, în limba selectată, cu datele firmei și logo-ul.'],
+      ['🏛️ e-Factura (SFS) — XML','Generează fișierul XML pentru sistemul SFS din Moldova.'],
+      ['🇩🇪 e-Factură DE (XRechnung)','Generează XML conform XRechnung — formatul obligatoriu pentru facturile din Germania.'],
+      ['Stare factură','Marchezi: ciornă → emisă → plătită. Facturile neîncasate scadente apar la Restanțe.']
+    ]},
+    {ic:'📥',t:'Achiziții (facturi primite)',subs:[
+      ['Înregistrează o factură de la furnizor','Adaugi facturile primite de la furnizori (cheltuieli). Intră în calculul de postcalculație (marja reală pe șantier).']
+    ]},
+    {ic:'🛒',t:'Comenzi materiale & 🚚 Livrări',subs:[
+      ['Comandă materiale','Creezi o comandă la furnizor cu mai multe linii (material, cantitate, preț).'],
+      ['Livrări','Transportul către șantier. Șoferul, din aplicația de teren, confirmă: Accept → Pe drum → Am livrat (cu poză).']
+    ]},
+    {ic:'📦',t:'Catalog',subs:[
+      ['Materiale','Lista materialelor cu unitate și preț. Baza pentru devize și comenzi. Poți importa în masă un catalog de furnizor (Setări → Import Datanorm/CSV).'],
+      ['Servicii','Lucrări/servicii cu preț, folosite ca linii în devize.'],
+      ['Scule & echipamente + custodie QR','Fiecare sculă are o etichetă QR. Cu telefonul scanezi când o <b>primești</b>, o <b>predai</b>, o pui la <b>depozit</b> sau o marchezi <b>defectă</b>. Vezi oricând unde e scula și tot istoricul (cine, când, ora).'],
+      ['Flotă (mașini/utilaje)','Vehiculele firmei, urmărite și pe hartă (GPS).'],
+      ['Furnizori','Baza de furnizori folosită la comenzi și achiziții.'],
+      ['Stoc','Cantitățile pe depozit; stocul pe șantier se vede în detaliile șantierului.']
+    ]},
+    {ic:'👷',t:'Angajați',subs:[
+      ['Adaugă angajat','<kbd>＋</kbd> → nume, funcție, contact, salariu. Salariul e vizibil doar proprietarului/contabilului.'],
+      ['🦺 Echipament','Submodul pe angajat: ce echipament/EIP i s-a predat.'],
+      ['⏱️ Pontaj','Orele lucrate de angajat pe șantiere (vezi și modulul Pontaj).'],
+      ['🛡️ SSM','Instructaje de securitate și sănătate în muncă.'],
+      ['🏖️ Concedii','Concediu, medical, nemotivat, învoire — cu perioadă și număr de zile.']
+    ]},
+    {ic:'⏱️',t:'Pontaj',subs:[
+      ['Înregistrează ore','Cine, pe ce șantier, câte ore, în ce zi. Se completează ușor din aplicația de teren și intră în calculul salariilor și al postcalculației.']
+    ]},
+    {ic:'💰',t:'Salarii',subs:[
+      ['Calculează salariile','Alegi luna și apeși „Calculează". Impozitul (12%), CNAM (9%) și CNAS (24%) se aplică automat. Rezultatul e vizibil doar rolurilor financiare.']
+    ]},
+    {ic:'🗓️',t:'Planificare echipe (Plantafel)',subs:[
+      ['Cum planifici','Grilă pe săptămână: pe fiecare rând un angajat, pe coloane cele 7 zile. Alegi pentru fiecare zi pe ce șantier lucrează — se salvează automat.'],
+      ['Navigare','Butoanele „Săpt. anterioară / următoare" și „Azi" mută săptămâna afișată.']
+    ]},
+    {ic:'👁️',t:'Previzualizare șantier',subs:[
+      ['Ce e','O vedere rapidă, read-only, a unui șantier (ca cea pe care o vede clientul). Apeși pe un rând → opțiuni + buton de previzualizare.']
+    ]},
+    {ic:'📨',t:'Mesaje clienți (email)',subs:[
+      ['Trimite email clientului','Compui și trimiți emailuri către clienți direct din aplicație (ofertă, factură, mesaj general).'],
+      ['Răspunsurile revin în aplicație','Când clientul răspunde, mesajul se întoarce în inbox-ul din aplicație. (Trimiterea/primirea live necesită configurarea unui domeniu și a unei chei de către administrator.)']
+    ]},
+    {ic:'📈',t:'Rapoarte',subs:[
+      ['Postcalculație (marja reală)','Compară pe fiecare șantier veniturile (facturi) cu cheltuielile (materiale, achiziții, manoperă din pontaj) și arată marja reală. Apeși pe rând pentru detalii.'],
+      ['Restanțe & remindere','Facturile neîncasate scadente. Butonul de reminder pregătește un email către client; „marchează plătită" închide factura.'],
+      ['Reconciliere plăți','Încarci extrasul bancar (CSV). Sistemul potrivește automat încasările cu facturile neîncasate (după sumă sau numărul facturii din descriere). Confirmi cu ✅ și factura devine „plătită".']
+    ]},
+    {ic:'📄',t:'Acte & Documente',subs:[
+      ['Încarcă documente','Contracte, scanuri, autorizații, poze — stocate securizat pe firma ta.'],
+      ['Apasă pe document → opțiuni','Descarci, previzualizezi, ștergi. Versionarea păstrează variantele.']
+    ]},
+    {ic:'🛠️',t:'Custodie scule (QR)',subs:[
+      ['Generează eticheta QR','La o sculă, generezi și tipărești eticheta QR pe care o lipești pe unealtă.'],
+      ['Scanează la primire/predare','Din aplicația de teren scanezi QR-ul: primire, predare către coleg, retur la depozit sau marcare ca defectă.'],
+      ['Istoric mișcări','Vezi toate mișcările sculei: cine a avut-o, când, ora și data, și starea curentă.']
+    ]},
+    {ic:'🤖',t:'Licitații (achiziții publice)',subs:[
+      ['Urmărește licitații','Achizițiile publice relevante (MTender), ca să nu pierzi oportunități.']
+    ]},
+    {ic:'👥',t:'Utilizatori & Roluri',subs:[
+      ['Invită membru','<kbd>＋ Invită membru</kbd> → email + rol. Persoana își setează singură parola din invitație. Tu nu introduci parole pentru nimeni.'],
+      ['Roluri','Proprietar (vede tot), Admin, Contabil (financiar), Manager, Muncitor și Șofer (fără prețuri). Fiecare vede doar ce-i trebuie.'],
+      ['Acces granular pe funcții','Pe lângă rol, poți da acces fin: pentru un modul alegi exact <b>vezi / creează / modifică / șterge</b>. Funcționează la invitație și la editarea unui membru existent.'],
+      ['Apasă pe membru → opțiuni','Editezi rolul/permisiunile, dezactivezi accesul.']
+    ]},
+    {ic:'⚙️',t:'Setări firmă',subs:[
+      ['Datele firmei','Nume, IDNO, cod TVA, adresă, telefon — apar pe facturi și în portal.'],
+      ['Logo','Încarci logo-ul firmei; apare pe PDF-uri (facturi, oferte).'],
+      ['🤖 Automatizări','Reguli care rulează singure: la acceptarea unei oferte → creează automat șantierul și/sau o factură de avans (procent configurabil).'],
+      ['📊 Export contabil & DATEV','Exporți facturile în CSV/1C (Moldova) sau în format DATEV (Buchungsstapel, pentru contabilul german).'],
+      ['📦 Import catalog materiale','Încarci o listă de prețuri de la furnizor (CSV sau Datanorm) și o imporți în masă în Materiale, cu previzualizare.'],
+      ['🧠 Cheie AI','Administratorul adaugă cheia API (Anthropic) ca secret în Supabase ca să funcționeze butonul „Generează din descriere".'],
+      ['🗑 Șterge firma','Doar proprietarul. Șterge definitiv firma și toate datele — ireversibil.']
+    ]},
+    {ic:'📅',t:'Grafic Gantt & 🗺️ Hartă flotă',subs:[
+      ['Gantt','Vizualizezi șantierele pe o axă de timp (necesită „Început" și „Termen" completate pe șantier).'],
+      ['Hartă flotă','Pozițiile GPS ale vehiculelor pe hartă.']
+    ]},
+    {ic:'📱',t:'Aplicația de teren (mobil)',subs:[
+      ['Cum o folosești','Deschizi mobil.html pe telefon și te loghezi. Poate fi „instalată" pe ecranul principal (Adaugă pe ecranul principal) și arată ca o aplicație.'],
+      ['Muncitor','Vede șantierele (fără prețuri), face pontaj, raportează defecte cu poză, scanează scule.'],
+      ['Șofer','Vede livrările și le confirmă: Accept → Pe drum → Am livrat.'],
+      ['Responsabil','Vedere de ansamblu pe șantiere.']
+    ]},
+    {ic:'👤',t:'Portalul clientului',subs:[
+      ['Ce vede clientul','Progresul lucrării, etapele și pozele — fără cont și fără prețuri. Linkul îl generezi din Șantiere (🔗).'],
+      ['Activarea prețurilor','Opțional, poți activa afișarea prețurilor pentru un link anume.']
+    ]},
+    {ic:'🛟',t:'Suport & limbă',subs:[
+      ['Tichet de suport','Butonul 🛟 din antet deschide formularul; scrii problema și ne trimiți un tichet direct din aplicație.'],
+      ['Schimbarea limbii','Selectorul de limbă (RO/RU/DE/EN) e pe pagina de login și în aplicație. Limba inițială se detectează automat.']
+    ]}
+  ];
+  let html='<style>'
+    +'.help{max-width:900px}'
+    +'.gsearch{position:sticky;top:0;z-index:5;background:var(--bg2,#fff);padding:.2rem 0 .7rem}'
+    +'.gsearch input{width:100%;padding:.7rem 1rem;border:1px solid var(--line);border-radius:11px;font-size:.95rem;outline:none}'
+    +'.gsec-t{font-weight:800;font-size:1.05rem;margin:1rem 0 .5rem}'
+    +'.gchap,.gsub{border:1px solid var(--line);border-radius:11px;margin-bottom:.55rem;overflow:hidden;background:#fff}'
+    +'.gsub{margin:.45rem 0 0;background:var(--bg,#f7f9fc)}'
+    +'.ghd,.gsh{display:flex;align-items:center;gap:.6rem;padding:.85rem 1rem;cursor:pointer;font-weight:700;user-select:none}'
+    +'.gsh{padding:.65rem .9rem;font-weight:600;font-size:.92rem}'
+    +'.gp{display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:6px;background:var(--primary-soft,#e8f0ff);color:var(--primary,#2f6bff);font-weight:800;flex-shrink:0}'
+    +'.gchap > .gbody{padding:0 1rem .6rem}'
+    +'.gsub .gbody{padding:.1rem .9rem .8rem 2.4rem;color:var(--muted);line-height:1.6;font-size:.9rem}'
+    +'.gbody{display:none}.gchap.open > .gbody{display:block}.gsub.open > .gbody{display:block}'
+    +'.help kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.05rem .4rem;font-size:.82rem;white-space:nowrap}'
+    +'.help ul{margin:.3rem 0 0 1.1rem}.help li{margin:.25rem 0}'
+    +'</style>';
+  html+='<div class="help">';
+  html+='<div class="gsearch"><input id="ghid-q" type="search" placeholder="🔍 Caută în ghid (ex: factură, QR, salariu, portal)…" oninput="ghidSearch(this.value)"></div>';
+  html+='<div id="ghid-empty" style="display:none;color:var(--muted);padding:1rem">Niciun rezultat. Încearcă alt cuvânt.</div>';
+  html+='<div id="ghid-list">';
+  // FAQ chapter (open by default)
+  html+='<div class="gsec-t">❓ Întrebări frecvente</div>';
+  html+='<div class="gchap open" data-txt="'+esc(gNorm('intrebari frecvente faq ajutor'))+'"><div class="ghd" onclick="gTog(this)"><span class="gp">−</span> <b>Întrebări frecvente</b></div><div class="gbody">';
+  FAQ.forEach(f=>{ const txt=gNorm(f[0])+' '+gPlain(f[1]);
+    html+='<div class="gsub" data-txt="'+esc(txt)+'"><div class="gsh" onclick="gTog(this)"><span class="gp">＋</span> '+esc(f[0])+'</div><div class="gbody">'+f[1]+'</div></div>'; });
+  html+='</div></div>';
+  // Chapters
+  html+='<div class="gsec-t">📚 Ghid pe module</div>';
+  CH.forEach(c=>{ let chTxt=gNorm(c.t); c.subs.forEach(s=>{ chTxt+=' '+gNorm(s[0])+' '+gPlain(s[1]); });
+    html+='<div class="gchap" data-txt="'+esc(chTxt)+'"><div class="ghd" onclick="gTog(this)"><span class="gp">＋</span> <b>'+c.ic+' '+esc(c.t)+'</b></div><div class="gbody">';
+    c.subs.forEach(s=>{ const txt=gNorm(s[0])+' '+gPlain(s[1]);
+      html+='<div class="gsub" data-txt="'+esc(txt)+'"><div class="gsh" onclick="gTog(this)"><span class="gp">＋</span> '+esc(s[0])+'</div><div class="gbody">'+s[1]+'</div></div>'; });
+    html+='</div></div>';
+  });
+  html+='</div></div>';
+  $('content').innerHTML=html;
 }
 
 /* ════ CATALOG NORME DE DEVIZ ════ */
