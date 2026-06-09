@@ -217,6 +217,7 @@
       <div class="page-title"><span id="ptitle">Tablou de bord</span><small id="psub"></small></div>
       <div class="top-actions">
         <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
+        <button class="btn-ghost" id="support-btn" onclick="openSupport()" title="Suport / Ajutor">🛟</button>
         <button class="btn-ghost" id="notif-btn" onclick="openNotifPanel()" title="Notificări" style="position:relative">🔔<span id="notif-badge" style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:0 .3rem;display:none"></span></button>
         <button class="btn-ghost" id="btn-iesi" onclick="doLogout()">Ieși</button>
         <div class="user-av" id="user-av">A</div>
@@ -980,6 +981,44 @@ async function openNotifPanel(){
     ? list.map(n=>'<div style="padding:.7rem 0;border-bottom:1px solid var(--line)"><div style="font-weight:600">'+(ic[n.entity_type]||'🔔')+' '+esc(n.title)+'</div>'+(n.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(n.body)+'</div>':'')+'<div style="color:var(--muted);font-size:.74rem;margin-top:.2rem">'+esc((n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>').join('')
     : '<div class="empty"><div class="ei">🔔</div>Nicio notificare încă.</div>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><div class="modal-head"><h3>🔔 Notificări</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+rows+'</div></div></div>';
+}
+
+/* ════ SUPORT / AJUTOR ════ */
+const APP_VERSION='cod373-v25';
+const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
+function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
+async function openSupport(){
+  const cats=SUPPORT_CATS.map(c=>'<option>'+esc(c)+'</option>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px">'
+    +'<div class="modal-head"><h3>🛟 Suport / Ajutor</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="sup-msg"></div>'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Descrie problema în câteva cuvinte. Atașăm automat detaliile tehnice ca să te putem ajuta mai repede.</p>'
+    +'<div class="field"><label>Tip</label><select id="sup-cat">'+cats+'</select></div>'
+    +'<div class="field"><label>Subiect</label><input id="sup-subject" placeholder="Pe scurt, ce s-a întâmplat"/></div>'
+    +'<div class="field"><label>Mesaj *</label><textarea id="sup-message" rows="4" placeholder="Descrie pas cu pas ce ai făcut și ce s-a întâmplat."></textarea></div>'
+    +'<p style="font-size:.74rem;color:var(--muted)">Se atașează automat: firma, contul tău, modulul curent, versiunea aplicației și browserul.</p>'
+    +'<div id="sup-list"></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="sup-send" onclick="submitTicket()">Trimite sesizarea</button></div></div></div>';
+  // istoricul sesizarilor firmei
+  try{ const { data }=await sb.from('support_tickets').select('subject,category,status,created_at').order('created_at',{ascending:false}).limit(5);
+    if(data&&data.length){ const st={open:'În lucru',in_progress:'Se rezolvă',closed:'Rezolvat'};
+      $('sup-list').innerHTML='<div style="margin-top:.6rem;font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase">Sesizările tale recente</div>'
+        +data.map(t=>'<div style="display:flex;justify-content:space-between;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--line);font-size:.84rem"><span>'+esc(t.subject||t.category||'Sesizare')+'</span><span style="color:var(--muted);white-space:nowrap">'+esc(st[t.status]||t.status||'')+'</span></div>').join('');
+    } }catch(e){}
+}
+async function submitTicket(){
+  const message=($('sup-message').value||'').trim();
+  if(!message){ showMsg('sup-msg','Scrie un mesaj ca să putem ajuta.'); return; }
+  const rec={ tenant_id:state.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
+    message, module:curModuleKey(), app_version:APP_VERSION, user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+  $('sup-send').disabled=true;
+  const r=await sbRetry(()=>sb.from('support_tickets').insert(rec));
+  $('sup-send').disabled=false;
+  if(r.error){ showMsg('sup-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  $('modal-mount').querySelector('.modal-body').innerHTML='<p style="color:var(--green,#16a34a);font-weight:600">✅ Sesizare trimisă!</p>'
+    +'<p style="color:var(--muted);font-size:.88rem">Mulțumim. Am primit problema cu toate detaliile și revenim cât putem de repede.</p>';
+  if($('sup-send')) $('sup-send').style.display='none';
+  toast('✅ Sesizare trimisă către suport.');
 }
 
 /* ════ DASHBOARD ════ */

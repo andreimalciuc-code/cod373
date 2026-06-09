@@ -126,6 +126,7 @@
       <img id="firm-logo" alt="" style="display:none;height:30px;max-width:84px;object-fit:contain;margin-right:.3rem;border-radius:6px;background:#fff;padding:1px"/>
       <button class="out" id="notif-btn" onclick="openNotif()" title="Notificări" style="margin-right:.3rem;position:relative">🔔<span id="notif-badge" style="position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:.6rem;font-weight:700;padding:0 .28rem;display:none"></span></button>
       <button class="out" onclick="openChat()" title="Chat" style="margin-right:.3rem">💬</button>
+      <button class="out" onclick="openSupport()" title="Suport / Ajutor" style="margin-right:.3rem">🛟</button>
       <button class="out" onclick="doLogout()">Ieși</button>
     </div>
     <div class="roles" id="roles">
@@ -731,6 +732,31 @@ function openSheet(title,html){
   $('sheet-mount').innerHTML='<div class="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet"><h3>'+esc(title)+'<button class="x" onclick="closeSheet()">×</button></h3>'+html+'</div></div>';
 }
 function closeSheet(){$('sheet-mount').innerHTML='';}
+
+/* ── SUPORT ── */
+function openSupport(){
+  const cats=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'].map(c=>'<option>'+esc(c)+'</option>').join('');
+  const html='<div id="sup-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<p class="s" style="margin-top:0">Descrie problema. Atașăm automat detaliile tehnice ca să te putem ajuta mai repede.</p>'
+    +'<div class="fld"><label>Tip</label><select id="sup-cat">'+cats+'</select></div>'
+    +'<div class="fld"><label>Subiect</label><input id="sup-subject" placeholder="Pe scurt, ce s-a întâmplat"/></div>'
+    +'<div class="fld"><label>Mesaj</label><textarea id="sup-message" rows="4" placeholder="Descrie pas cu pas ce ai făcut și ce s-a întâmplat."></textarea></div>'
+    +'<button class="btn primary" style="width:100%" onclick="submitTicket()" id="sup-send">Trimite sesizarea</button>';
+  openSheet('🛟 Suport / Ajutor', html);
+}
+async function submitTicket(){
+  const message=($('sup-message').value||'').trim();
+  if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
+  const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
+    message, module:'mobil', app_version:'cod373-v25', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+  const btn=$('sup-send'); if(btn) btn.disabled=true;
+  try{
+    const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
+    $('sheet-mount').querySelector('.sheet').innerHTML='<h3>🛟 Suport<button class="x" onclick="closeSheet()">×</button></h3><p style="color:var(--green,#16a34a);font-weight:600">✅ Sesizare trimisă!</p><p class="s">Mulțumim. Revenim cât putem de repede.</p>';
+    toast('✅ Sesizare trimisă către suport.');
+  }catch(e){ if(btn) btn.disabled=false; const m=((e&&e.message)||'').toLowerCase();
+    $('sup-msg').textContent=(!navigator.onLine||/load failed|failed to fetch|network/.test(m))?'📡 Conexiune întreruptă — verifică internetul și apasă din nou.':('Eroare: '+(e.message||e)); }
+}
 
 /* START */
 (async function(){
