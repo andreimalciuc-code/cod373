@@ -1032,7 +1032,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v36';
+const APP_VERSION='cod373-v37';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1707,13 +1707,14 @@ async function renderUtilizatori(){
   else{
     const me=state.session.user.id;
     const roleOpts=(cur,uid)=>Object.keys(ROLE_LABELS).map(r=>'<option value="'+r+'" '+(r===cur?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
+    membersList=data||[];
     const body=(data||[]).map(u=>{ const self=u.user_id===me;
-      return '<tr><td class="tname">'+esc(u.email)+(self?' <small style="color:var(--muted)">(tu)</small>':'')+'</td>'
-      +'<td><select '+(self?'disabled':'')+' onchange="changeRole(\''+u.user_id+'\',this.value)">'+roleOpts(u.role)+'</select></td>'
+      return '<tr'+(self?'':' onclick="memberOptions(\''+u.user_id+'\')" style="cursor:pointer"')+'><td class="tname">'+esc(u.email)+(self?' <small style="color:var(--muted)">(tu)</small>':'')+'</td>'
+      +'<td onclick="event.stopPropagation()"><select '+(self?'disabled':'')+' onchange="changeRole(\''+u.user_id+'\',this.value)">'+roleOpts(u.role)+'</select></td>'
       +'<td>'+(u.active?'<span class="pill active">Activ</span>':'<span class="pill cancelled">Inactiv</span>')+'</td>'
       +'<td><div class="rowact">'
-      +(self?'':'<button class="iconbtn" title="Permisiuni (module accesibile)" onclick="editMemberPerms(\''+u.user_id+'\',\''+u.role+'\',\''+esc(u.email).replace(/\x27/g,"")+'\')">🔐</button>')
-      +(self?'':'<button class="iconbtn" title="'+(u.active?'Dezactivează':'Activează')+'" onclick="toggleMember(\''+u.user_id+'\','+(u.active?'false':'true')+')">'+(u.active?'🚫':'✅')+'</button>')
+      +(self?'':'<button class="iconbtn" title="Permisiuni (module accesibile)" onclick="event.stopPropagation();editMemberPerms(\''+u.user_id+'\',\''+u.role+'\',\''+esc(u.email).replace(/\x27/g,"")+'\')">🔐</button>')
+      +(self?'':'<button class="iconbtn" title="'+(u.active?'Dezactivează':'Activează')+'" onclick="event.stopPropagation();toggleMember(\''+u.user_id+'\','+(u.active?'false':'true')+')">'+(u.active?'🚫':'✅')+'</button>')
       +'</div></td></tr>'; }).join('');
     $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Rol</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
   }
@@ -2078,14 +2079,31 @@ async function renderDocumente(){
     +'<div class="panel"><div class="panel-head"><h3>Acte & Documente</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
   const { data, error }=await sb.from('documents').select('id,name,mime,size_bytes,file_url,created_at,version');
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
-  const docs=sortRows(data||[],'created_at',false);
+  const docs=sortRows(data||[],'created_at',false); docsList=docs;
   if(!docs.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📄</div><div>Niciun fișier încă.</div><div style="margin-top:1rem"><label class="btn-primary" style="cursor:pointer">＋ Încarcă primul fișier<input type="file" style="display:none" onchange="uploadDoc(this)"/></label></div></div>'; return; }
   const body=docs.map(r=>{ const isImg=(r.mime||'').startsWith('image/'); const ver=r.version||1;
-    return '<tr><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td>'
-    +'<td><div class="rowact"><button class="iconbtn" title="Deschide" onclick="openDoc(\''+encodeURIComponent(r.file_url)+'\')">👁</button>'
-    +'<button class="iconbtn" title="Versiune nouă" onclick="newDocVersion(\''+r.id+'\','+ver+')">🔄</button>'
-    +'<button class="iconbtn danger" title="Șterge" onclick="delDoc(\''+r.id+'\',\''+encodeURIComponent(r.file_url)+'\')">🗑</button></div></td></tr>'; }).join('');
-  $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+    return '<tr onclick="docOptions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td>'
+    +'<td><div class="rowact"><button class="iconbtn" title="Deschide" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(r.file_url)+'\')">👁</button>'
+    +'<button class="iconbtn" title="Versiune nouă" onclick="event.stopPropagation();newDocVersion(\''+r.id+'\','+ver+')">🔄</button>'
+    +'<button class="iconbtn danger" title="Șterge" onclick="event.stopPropagation();delDoc(\''+r.id+'\',\''+encodeURIComponent(r.file_url)+'\')">🗑</button></div></td></tr>'; }).join('');
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un fișier pentru opțiuni.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+let docsList=[];
+function docOptions(id){
+  const r=(docsList||[]).find(x=>x.id===id); if(!r) return; const ver=r.version||1; const ep=encodeURIComponent(r.file_url);
+  actionsSheet(r.name||'Fișier',[
+    {i:'👁',l:'Deschide',f:"openDoc('"+ep+"')"},
+    {i:'🔄',l:'Versiune nouă',f:"newDocVersion('"+r.id+"',"+ver+")"},
+    {i:'🗑',l:'Șterge',f:"delDoc('"+r.id+"','"+ep+"')",d:true}
+  ]);
+}
+let membersList=[];
+function memberOptions(uid){
+  const u=(membersList||[]).find(x=>x.user_id===uid); if(!u) return;
+  actionsSheet(u.email,[
+    {i:'🔐',l:'Permisiuni (module accesibile)',f:"editMemberPerms('"+uid+"','"+u.role+"','"+jsArg(u.email)+"')"},
+    {i:(u.active?'🚫':'✅'),l:(u.active?'Dezactivează membrul':'Activează membrul'),f:"toggleMember('"+uid+"',"+(u.active?'false':'true')+")"}
+  ]);
 }
 async function uploadDoc(input){
   const file=input.files&&input.files[0]; if(!file) return;
@@ -2193,12 +2211,15 @@ function rowActions(key,m,r){
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
   return a;
 }
+/* panou de opțiuni reutilizabil: title + listă de acțiuni {i,l,f,d} */
+function actionsSheet(title, acts){
+  if(!acts||!acts.length) return;
+  const B=acts.map(a=>'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0'+(a.d?';color:var(--red,#dc2626)':'')+'" onclick="closeModal();'+a.f+'"><span style="font-size:1.1rem">'+a.i+'</span> '+esc(a.l)+'</button>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px"><div class="modal-head"><h3>'+esc(title)+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+B+'</div></div></div>';
+}
 function rowOptions(key,id){
   const r=(listState.rows||[]).find(x=>x.id===id), m=listState.m; if(!r||!m) return;
-  const acts=rowActions(key,m,r); if(!acts.length) return;
-  const name=esc(r.name||r.full_name||r.number||r.title||r.item||r.label||'Opțiuni');
-  const B=acts.map(a=>'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0'+(a.d?';color:var(--red,#dc2626)':'')+'" onclick="closeModal();'+a.f+'"><span style="font-size:1.1rem">'+a.i+'</span> '+esc(a.l)+'</button>').join('');
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px"><div class="modal-head"><h3>'+name+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+B+'</div></div></div>';
+  actionsSheet(r.name||r.full_name||r.number||r.title||r.item||r.label||'Opțiuni', rowActions(key,m,r));
 }
 
 /* ════ FORM (create + edit) ════ */
