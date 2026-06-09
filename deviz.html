@@ -223,6 +223,7 @@ async function lineDetails(i){
   setTimeout(()=>$('ld-desc')&&$('ld-desc').focus(),50);
 }
 function lineRemovePhoto(i){ S.lines[i].photo_url=null; lineDetails(i); }
+function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
 async function saveLineDetails(i){
   const l=S.lines[i]; l.description=($('ld-desc').value||'').trim()||'';
   const f=$('ld-photo');
@@ -230,12 +231,19 @@ async function saveLineDetails(i){
     const btn=$('ld-save'); if(btn) btn.disabled=true; $('ld-msg').textContent='Se încarcă poza…';
     try{
       const file=f.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-      const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
+      const mq=await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle();
+      if(mq.error) throw mq.error;
+      const tid=mq.data&&mq.data.tenant_id; if(!tid) throw new Error('Sesiune expirată. Reîncarcă pagina.');
       const path=tid+'/lines/'+Date.now()+'_'+safe;
-      const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
+      // reîncearcă automat dacă rețeaua pică (util pe telefon / 4G)
+      let up, attempt=0;
+      while(true){ up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
+        if(!up.error || !isNetErr(up.error) || attempt>=2) break;
+        attempt++; $('ld-msg').textContent='📡 Conexiune slabă — reîncerc ('+attempt+')…'; await new Promise(s=>setTimeout(s,700*attempt)); }
       if(up.error) throw up.error;
       l.photo_url=path;
-    }catch(e){ if($('ld-save'))$('ld-save').disabled=false; $('ld-msg').textContent='Eroare: '+(e.message||e); return; }
+    }catch(e){ if($('ld-save'))$('ld-save').disabled=false;
+      $('ld-msg').textContent = isNetErr(e) ? '📡 Conexiune întreruptă — verifică internetul și apasă din nou.' : ('Eroare: '+(e.message||e)); return; }
   }
   closeM(); toast('✅ Detalii salvate.'); renderLines(); signLineThumbs();
 }
