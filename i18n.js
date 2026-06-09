@@ -7,6 +7,15 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Data:':{ru:'Дата:',de:'Datum:',en:'Date:'},
+    'Emisă:':{ru:'Выдан:',de:'Ausgestellt:',en:'Issued:'},
+    'Scadență:':{ru:'Срок оплаты:',de:'Fällig:',en:'Due:'},
+    'Valabil până la:':{ru:'Действительно до:',de:'Gültig bis:',en:'Valid until:'},
+    'Tel:':{ru:'Тел.:',de:'Tel.:',en:'Tel.:'},
+    'Factură generată cu Cod373.':{ru:'Счёт создан в Cod373.',de:'Rechnung erstellt mit Cod373.',en:'Invoice generated with Cod373.'},
+    'Date generale':{ru:'Общие данные',de:'Allgemeine Angaben',en:'General details'},
+    'Obiect':{ru:'Объект',de:'Objekt',en:'Object'},
+    'Permite ferestrele pop-up.':{ru:'Разрешите всплывающие окна.',de:'Pop-ups erlauben.',en:'Allow pop-ups.'},
     'ACHITATĂ.':{ru:'ОПЛАЧЕНО.',de:'BEZAHLT.',en:'PAID.'},
     'Total facturat':{ru:'Всего выставлено',de:'Gesamt fakturiert',en:'Total invoiced'},
     'Încasat':{ru:'Получено',de:'Eingenommen',en:'Collected'},

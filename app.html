@@ -1675,21 +1675,22 @@ async function previzPDF(id){
   let imgs=[]; if(s.photo_urls&&s.photo_urls.length){ const su=await sb.storage.from('docs').createSignedUrls(s.photo_urls,600); imgs=(su.data||[]).map(x=>x.signedUrl).filter(Boolean); }
   const firm=(state.firm&&state.firm.name)||'Firmă';
   let plogo=''; { const _plu=await firmLogoUrl(600); if(_plu) plogo='<img src="'+_plu+'" style="max-height:48px;max-width:170px;margin-bottom:6px;object-fit:contain"><br>'; }
-  const wt=s.work_type==='reparatie'?'Reparație':(s.work_type==='constructie'?'Construcție':'—');
-  const qRows=QKEYS.filter(q=>s.answers&&s.answers[q.key]!=null&&s.answers[q.key]!=='').map(q=>'<tr><td style="color:#555;width:42%">'+esc(q.label)+'</td><td><b>'+esc(s.answers[q.key])+'</b></td></tr>').join('');
+  const T=window.C373t||function(s){return s;}; const L=(window.C373lang&&window.C373lang())||'ro';
+  const wt=s.work_type==='reparatie'?T('Reparație'):(s.work_type==='constructie'?T('Construcție'):'—');
+  const qRows=QKEYS.filter(q=>s.answers&&s.answers[q.key]!=null&&s.answers[q.key]!=='').map(q=>'<tr><td style="color:#555;width:42%">'+esc(T(q.label))+'</td><td><b>'+esc(s.answers[q.key])+'</b></td></tr>').join('');
   const mRows=meas.map(m=>'<tr><td>'+esc(m.label)+'</td><td style="text-align:right"><b>'+esc(m.qty!=null?m.qty:'')+'</b> '+esc(m.unit||'')+'</td><td style="color:#666">'+esc(m.note||'')+'</td></tr>').join('');
-  const html='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Fișă vizită — '+esc(s.name)+'</title>'
+  const html='<!doctype html><html lang="'+L+'"><head><meta charset="utf-8"><title>'+esc(T('Fișă de vizită șantier'))+' — '+esc(s.name)+'</title>'
     +'<style>body{font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#1f2937;margin:24px;font-size:13px}h1{font-size:20px;margin:0}h2{font-size:14px;border-bottom:2px solid #eee;padding-bottom:4px;margin:18px 0 8px}table{width:100%;border-collapse:collapse}td{padding:5px 6px;border-bottom:1px solid #eee;vertical-align:top}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0f1c33;padding-bottom:10px}.muted{color:#6b7280;font-size:12px}.imgs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.imgs img{width:31%;border-radius:8px;border:1px solid #eee}@media print{.noprint{display:none}}</style></head><body>'
-    +'<div class="hd"><div>'+plogo+'<h1>Fișă de vizită șantier</h1><div class="muted">'+esc(firm)+'</div></div><div style="text-align:right" class="muted">Data vizitei: <b>'+esc(s.visit_date||'')+'</b><br>'+esc(s.surveyor_name||'')+'</div></div>'
-    +'<h2>Date generale</h2><table><tr><td style="width:42%;color:#555">Obiect</td><td><b>'+esc(s.name)+'</b></td></tr>'
-    +'<tr><td style="color:#555">Client</td><td>'+esc(clientName)+'</td></tr>'
-    +'<tr><td style="color:#555">Adresă</td><td>'+esc(s.address||'—')+'</td></tr>'
-    +'<tr><td style="color:#555">Tip lucrare</td><td>'+wt+(s.area_m2?' · '+s.area_m2+' m²':'')+'</td></tr></table>'
-    +(qRows?'<h2>Întrebări cheie</h2><table>'+qRows+'</table>':'')
-    +(mRows?'<h2>Volume / măsurători</h2><table><thead><tr><th style="text-align:left">Denumire</th><th style="text-align:right">Cantitate</th><th style="text-align:left">Notă</th></tr></thead><tbody>'+mRows+'</tbody></table>':'')
-    +(s.notes?'<h2>Comentarii</h2><div>'+esc(s.notes).replace(/\n/g,'<br>')+'</div>':'')
-    +(imgs.length?'<h2>Poze cu starea actuală</h2><div class="imgs">'+imgs.map(u=>'<img src="'+u+'">').join('')+'</div>':'')
-    +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div>'
+    +'<div class="hd"><div>'+plogo+'<h1>'+T('Fișă de vizită șantier')+'</h1><div class="muted">'+esc(firm)+'</div></div><div style="text-align:right" class="muted">'+T('Data vizitei')+': <b>'+esc(s.visit_date||'')+'</b><br>'+esc(s.surveyor_name||'')+'</div></div>'
+    +'<h2>'+T('Date generale')+'</h2><table><tr><td style="width:42%;color:#555">'+T('Obiect')+'</td><td><b>'+esc(s.name)+'</b></td></tr>'
+    +'<tr><td style="color:#555">'+T('Client')+'</td><td>'+esc(clientName)+'</td></tr>'
+    +'<tr><td style="color:#555">'+T('Adresă')+'</td><td>'+esc(s.address||'—')+'</td></tr>'
+    +'<tr><td style="color:#555">'+T('Tip lucrare')+'</td><td>'+wt+(s.area_m2?' · '+s.area_m2+' m²':'')+'</td></tr></table>'
+    +(qRows?'<h2>'+T('Întrebări cheie')+'</h2><table>'+qRows+'</table>':'')
+    +(mRows?'<h2>'+T('Volume / măsurători')+'</h2><table><thead><tr><th style="text-align:left">'+T('Denumire')+'</th><th style="text-align:right">'+T('Cantitate')+'</th><th style="text-align:left">'+T('Notă')+'</th></tr></thead><tbody>'+mRows+'</tbody></table>':'')
+    +(s.notes?'<h2>'+T('Comentarii')+'</h2><div>'+esc(s.notes).replace(/\n/g,'<br>')+'</div>':'')
+    +(imgs.length?'<h2>'+T('Poze cu starea actuală')+'</h2><div class="imgs">'+imgs.map(u=>'<img src="'+u+'">').join('')+'</div>':'')
+    +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
     +'</body></html>';
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(html); w.document.close();
 }
