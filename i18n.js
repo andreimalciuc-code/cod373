@@ -13,6 +13,18 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Postcalculație (marjă)':{ru:'Посткалькуляция (маржа)',de:'Nachkalkulation (Marge)',en:'Post-costing (margin)'},
+    'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.':{ru:'План vs. факт по каждому объекту: выставлено, затраты, маржа.',de:'Soll/Ist pro Baustelle: fakturiert, Kosten, Marge.',en:'Plan vs. actual per site: invoiced, costs, margin.'},
+    'Restanțe & remindere':{ru:'Задолженности и напоминания',de:'Außenstände & Mahnungen',en:'Overdue & reminders'},
+    'Facturi neîncasate scadente — trimite remindere.':{ru:'Неоплаченные просроченные счета — отправьте напоминания.',de:'Fällige unbezahlte Rechnungen — Mahnungen senden.',en:'Unpaid due invoices — send reminders.'},
+    'Facturi restante':{ru:'Просроченные счета',de:'Überfällige Rechnungen',en:'Overdue invoices'},
+    'Trimite reminder pe email':{ru:'Отправить напоминание на email',de:'Mahnung per E-Mail senden',en:'Send reminder by email'},
+    'Întârziere':{ru:'Просрочка',de:'Verzug',en:'Overdue'},
+    'Nicio factură restantă. Felicitări!':{ru:'Нет просроченных счетов. Поздравляем!',de:'Keine überfälligen Rechnungen. Glückwunsch!',en:'No overdue invoices. Congratulations!'},
+    'Ofertat':{ru:'Предложено',de:'Angeboten',en:'Quoted'},
+    'Cost mat.':{ru:'Стоим. мат.',de:'Materialkosten',en:'Material cost'},
+    'Manoperă':{ru:'Работа',de:'Arbeit',en:'Labor'},
+    'Marjă':{ru:'Маржа',de:'Marge',en:'Margin'},
     'Apasă pe un rând pentru toate opțiunile.':{ru:'Нажмите на строку для всех опций.',de:'Auf eine Zeile tippen für alle Optionen.',en:'Tap a row for all options.'},
     'Tot ce ține de acest șantier:':{ru:'Всё, что относится к этому объекту:',de:'Alles zu dieser Baustelle:',en:'Everything related to this site:'},
     'Înapoi la șantier':{ru:'Назад к объекту',de:'Zurück zur Baustelle',en:'Back to site'},

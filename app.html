@@ -429,6 +429,8 @@ const MODULES = {
 
   previzualizare:{ title:'Previzualizare șantier', sub:'Fișă de vizită pe teren — poze, întrebări, măsurători → PDF și deviz.', icon:'📋', group:'Operațional', custom:true },
   emailuri:{ title:'Mesaje clienți', sub:'Trimite emailuri clienților și primește răspunsurile aici.', icon:'📨', group:'Operațional', custom:true },
+  postcalc:{ title:'Postcalculație (marjă)', sub:'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.', icon:'📈', group:'Rapoarte', custom:true },
+  restante:{ title:'Restanțe & remindere', sub:'Facturi neîncasate scadente — trimite remindere.', icon:'⏰', group:'Rapoarte', custom:true },
 
   comenzi:{ title:'Comenzi materiale', sub:'Comenzi către furnizori.', icon:'🛒', group:'Operațional', table:'material_orders',
     newLabel:'Comandă nouă', orderBy:{col:'created_at',asc:false},
@@ -875,7 +877,7 @@ const MODULES = {
       {key:'body',label:'Comentariu',type:'textarea',required:true},
       {key:'reply',label:'Răspunsul firmei',type:'textarea'} ] },
 };
-const GROUPS = ['Operațional','Catalog','Finanțe','Echipă','Altele','Administrare'];
+const GROUPS = ['Operațional','Catalog','Finanțe','Echipă','Rapoarte','Altele','Administrare'];
 const GROUPS_RU = {'Operațional':'Операционный','Catalog':'Каталог','Finanțe':'Финансы','Echipă':'Команда','Altele':'Другое','Administrare':'Администрирование'};
 const MOD_RU = {
   dashboard:['Панель управления','Обзор по фирме.'], santiere:['Объекты','Проекты фирмы.'],
@@ -916,7 +918,7 @@ const UI={
 };
 function TR(k){ return (UI[k]&&UI[k][LANG])||(UI[k]&&UI[k].ro)||k; }
 /* acces pe roluri */
-const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi'];
+const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi','postcalc','restante'];
 const FINANCE_ROLES=['owner','admin','accountant','manager'];
 const ADMIN_KEYS=['utilizatori','setari'];
 const ADMIN_ROLES=['owner','admin'];
@@ -1007,7 +1009,7 @@ function go(key){
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1032,7 +1034,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v37';
+const APP_VERSION='cod373-v38';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1118,7 +1120,7 @@ async function renderEmailuri(){
   const body=emailThreads.map(t=>'<tr onclick="openEmailThread(\''+t.id+'\')" style="cursor:pointer"><td class="tname">'+esc(t.subject||'(fără subiect)')+'</td><td>'+esc(t.to_name||t.to_email||'—')+'</td><td>'+(t.status==='closed'?'<span class="pill cancelled">Închisă</span>':'<span class="pill active">Deschisă</span>')+'</td><td>'+esc((t.last_message_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join('');
   $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem;font-size:.8rem;color:var(--muted)">👉 Apasă pe o conversație ca s-o deschizi.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Subiect</th><th>Client</th><th>Stare</th><th>Ultima activitate</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
-async function emailCompose(){
+async function emailCompose(prefill){
   const { data:cl }=await sb.from('clients').select('id,name,email');
   const cmap={}; (cl||[]).forEach(c=>cmap[c.id]=c); window._emailClients=cmap;
   const opts='<option value="">— alege client —</option>'+(cl||[]).filter(c=>c.name).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>'<option value="'+c.id+'">'+esc(c.name)+(c.email?'':' (fără email)')+'</option>').join('');
@@ -1131,6 +1133,7 @@ async function emailCompose(){
     +'<div class="field"><label>Mesaj *</label><textarea id="em-body" rows="6"></textarea></div>'
     +'<div class="field"><label>Atașamente (opțional)</label><input id="em-files" type="file" multiple/></div>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="em-send" onclick="emailCreateThread()">Trimite</button></div></div></div>';
+  if(prefill){ if(prefill.client_id&&$('em-client')){ $('em-client').value=prefill.client_id; } if(prefill.to&&$('em-to')) $('em-to').value=prefill.to; if(prefill.name&&$('em-name')) $('em-name').value=prefill.name; if(prefill.subject&&$('em-subject')) $('em-subject').value=prefill.subject; if(prefill.body&&$('em-body')) $('em-body').value=prefill.body; }
 }
 function emailPickClient(){ const c=(window._emailClients||{})[$('em-client').value]; if(!c) return; if(c.email) $('em-to').value=c.email; $('em-name').value=c.name||''; }
 async function emailUpload(input){ const out=[]; const files=(input&&input.files)?[...input.files]:[]; for(const f of files){ const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/email/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'application/octet-stream'}); if(!up.error) out.push(path); } return out; }
@@ -1340,6 +1343,83 @@ async function subFormSave(){
                 : await sbRetry(()=>sb.from(m.table).insert(payload));
   if(r.error){ if(btn) btn.disabled=false; showMsg('sf-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   closeSub(); toast('✅ Salvat.'); if(typeof c.after==='function') c.after();
+}
+
+/* ════ POSTCALCULAȚIE — marjă reală pe șantier (plan vs. real) ════ */
+async function renderPostcalc(){
+  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>📈 Postcalculație — marjă pe șantier</h3></div><div id="mod-body"><div class="loading">Se calculează…</div></div></div>';
+  const [sitesR,invR,moR,tsR,empR,estR]=await Promise.all([
+    sb.from('sites').select('id,name,budget,status'),
+    sb.from('invoices').select('site_id,estimate_id,total,status'),
+    sb.from('material_orders').select('site_id,total'),
+    sb.from('timesheets').select('site_id,hours,employee_id'),
+    sb.from('employees').select('id,hourly_rate'),
+    sb.from('estimates').select('id,site_id,total')
+  ]);
+  const rate={}; (empR.data||[]).forEach(e=>rate[e.id]=+e.hourly_rate||0);
+  const estSite={}; (estR.data||[]).forEach(e=>{ if(e.id) estSite[e.id]=e.site_id; });
+  const A={}; const ens=id=>A[id]||(A[id]={fact:0,paid:0,mat:0,lab:0,est:0});
+  (estR.data||[]).forEach(r=>{ if(r.site_id) ens(r.site_id).est+=+r.total||0; });
+  (invR.data||[]).forEach(r=>{ const sid=r.site_id||estSite[r.estimate_id]; if(!sid) return; const a=ens(sid); a.fact+=+r.total||0; if(r.status==='paid') a.paid+=+r.total||0; });
+  (moR.data||[]).forEach(r=>{ if(r.site_id) ens(r.site_id).mat+=+r.total||0; });
+  (tsR.data||[]).forEach(r=>{ if(r.site_id) ens(r.site_id).lab+=(+r.hours||0)*(rate[r.employee_id]||0); });
+  const list=(sitesR.data||[]).map(s=>{ const a=A[s.id]||{fact:0,paid:0,mat:0,lab:0,est:0}; const cost=a.mat+a.lab; const baza=a.fact||a.est; const marja=baza-cost; const mp=baza?Math.round(marja/baza*100):0; return {s,a,cost,marja,mp,baza}; })
+    .filter(x=>x.baza||x.cost||x.s.budget).sort((x,y)=>y.marja-x.marja);
+  let tF=0,tC=0,tM=0; list.forEach(x=>{ tF+=x.a.fact; tC+=x.cost; tM+=x.marja; });
+  if(!list.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📈</div>Nimic de calculat încă. Adaugă oferte/facturi, comenzi de materiale și pontaj pe șantiere.</div>'; return; }
+  const mcol=v=>'<b style="color:'+(v<0?'#dc2626':'#16a34a')+'">'+money(v)+'</b>';
+  const rows=list.map(x=>'<tr onclick="postcalcDetail(\''+x.s.id+'\',\''+esc(x.s.name).replace(/\x27/g,"")+'\')" style="cursor:pointer"><td class="tname">'+esc(x.s.name)+'</td>'
+    +'<td>'+money(x.s.budget||0)+'</td><td>'+money(x.a.est)+'</td><td>'+money(x.a.fact)+'</td><td>'+money(x.a.mat)+'</td><td>'+money(x.a.lab)+'</td><td>'+mcol(x.marja)+'</td><td><b>'+x.mp+'%</b></td></tr>').join('');
+  $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem;font-size:.78rem;color:var(--muted)">Marjă = (Facturat sau Ofertat) − Costuri (materiale + manoperă). Manopera = ore pontate × tarif orar al angajatului.</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Șantier</th><th>Buget</th><th>Ofertat</th><th>Facturat</th><th>Cost mat.</th><th>Manoperă</th><th>Marjă</th><th>%</th></tr></thead><tbody>'+rows
+    +'<tr style="border-top:2px solid var(--line);font-weight:700"><td>TOTAL</td><td></td><td></td><td>'+money(tF)+'</td><td colspan="2">'+money(tC)+' costuri</td><td>'+mcol(tM)+'</td><td></td></tr></tbody></table></div>';
+}
+async function postcalcDetail(siteId, siteName){
+  const [invR,moR,tsR,empR,estR]=await Promise.all([
+    sb.from('invoices').select('number,total,status,estimate_id,site_id'),
+    sb.from('material_orders').select('number,total,ordered_at').eq('site_id',siteId),
+    sb.from('timesheets').select('hours,employee_id,work_date').eq('site_id',siteId),
+    sb.from('employees').select('id,full_name,hourly_rate'),
+    sb.from('estimates').select('id,number,total').eq('site_id',siteId)
+  ]);
+  const estIds=(estR.data||[]).map(e=>e.id);
+  const inv=(invR.data||[]).filter(i=>i.site_id===siteId||estIds.includes(i.estimate_id));
+  const emp={}; (empR.data||[]).forEach(e=>emp[e.id]={n:e.full_name,r:+e.hourly_rate||0});
+  const lab={}; (tsR.data||[]).forEach(t=>{ const e=emp[t.employee_id]||{n:'—',r:0}; lab[t.employee_id]=lab[t.employee_id]||{n:e.n,h:0,c:0}; lab[t.employee_id].h+=+t.hours||0; lab[t.employee_id].c+=(+t.hours||0)*e.r; });
+  const sec=(title,rowsHtml)=>'<div style="font-weight:700;margin:.8rem 0 .3rem">'+title+'</div>'+(rowsHtml||'<div style="color:var(--muted);font-size:.85rem">—</div>');
+  const invH=inv.length?'<table class="tbl"><tbody>'+inv.map(i=>'<tr><td>'+esc(i.number||'—')+'</td><td style="text-align:right">'+money(i.total)+'</td><td>'+(i.status==='paid'?'✅':'⏳')+'</td></tr>').join('')+'</tbody></table>':'';
+  const matH=(moR.data||[]).length?'<table class="tbl"><tbody>'+(moR.data||[]).map(o=>'<tr><td>'+esc(o.number||'comandă')+'</td><td style="text-align:right">'+money(o.total)+'</td></tr>').join('')+'</tbody></table>':'';
+  const labH=Object.values(lab).length?'<table class="tbl"><tbody>'+Object.values(lab).map(l=>'<tr><td>'+esc(l.n)+'</td><td style="text-align:right">'+(Math.round(l.h*10)/10)+' h</td><td style="text-align:right">'+money(l.c)+'</td></tr>').join('')+'</tbody></table>':'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px">'
+    +'<div class="modal-head"><h3>📈 '+esc(siteName)+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'+sec('🧾 Facturat',invH)+sec('🛒 Materiale (comenzi)',matH)+sec('⏱️ Manoperă (pontaj × tarif)',labH)+'</div></div></div>';
+}
+
+/* ════ RESTANȚE & REMINDERE (Mahnwesen) ════ */
+async function renderRestante(){
+  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>⏰ Facturi restante</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  const { data, error }=await sb.from('invoices').select('id,number,total,issue_date,due_date,status,client_id,clients(name,email)');
+  if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
+  const today=new Date().toISOString().slice(0,10);
+  const overdue=(data||[]).filter(i=>i.status!=='paid'&&i.due_date&&i.due_date<today).sort((a,b)=>a.due_date<b.due_date?-1:1);
+  window._restante={}; overdue.forEach(i=>window._restante[i.id]=i);
+  if(!overdue.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">✅</div>Nicio factură restantă. Felicitări!</div>'; return; }
+  const tot=overdue.reduce((s,i)=>s+(+i.total||0),0);
+  const days=d=>Math.floor((new Date(today)-new Date(d))/86400000);
+  const rows=overdue.map(i=>{ const d=days(i.due_date); const sev=d>30?'#dc2626':(d>7?'#d97706':'#6b7280');
+    return '<tr><td class="tname">'+esc(i.number||'—')+'</td><td>'+esc(i.clients?i.clients.name:'—')+'</td><td>'+money(i.total)+'</td><td>'+dt(i.due_date)+'</td><td style="color:'+sev+';font-weight:700">'+d+' zile</td>'
+      +'<td><div class="rowact"><button class="iconbtn" title="Marchează plătită" onclick="invoicePaid(\''+i.id+'\')" style="color:#16a34a">✅</button><button class="iconbtn" title="Trimite reminder pe email" onclick="invoiceReminder(\''+i.id+'\')">📧</button></div></td></tr>'; }).join('');
+  $('mod-body').innerHTML='<div style="padding:.5rem 1.2rem;font-size:.9rem">Total restant: <b style="color:#dc2626">'+money(tot)+'</b> · '+overdue.length+' facturi</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Factură</th><th>Client</th><th>Sumă</th><th>Scadență</th><th>Întârziere</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+async function invoicePaid(id){ if(!confirm('Marchezi factura ca încasată?')) return; const r=await sbRetry(()=>sb.from('invoices').update({status:'paid'}).eq('id',id)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } toast('✅ Factură încasată.'); renderRestante(); }
+function invoiceReminder(id){
+  const i=(window._restante||{})[id]; if(!i) return; const cl=i.clients||{};
+  const today=new Date().toISOString().slice(0,10); const d=Math.floor((new Date(today)-new Date(i.due_date))/86400000);
+  const firm=(state.firm&&state.firm.name)||'';
+  const subject='Reamintire plată — factura '+(i.number||'');
+  const body='Bună ziua'+(cl.name?', '+cl.name:'')+',\n\nVă reamintim că factura '+(i.number||'')+' în valoare de '+money(i.total)+', scadentă la '+dt(i.due_date)+', este restantă de '+d+' zile.\n\nVă rugăm să efectuați plata. Dacă ați achitat deja, vă rugăm să ignorați acest mesaj.\n\nCu respect,\n'+firm;
+  emailCompose({ client_id:i.client_id, to:cl.email||'', name:cl.name||'', subject, body });
 }
 
 /* ════ DASHBOARD ════ */
