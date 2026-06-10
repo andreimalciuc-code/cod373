@@ -366,14 +366,17 @@ async function pdf(){
   const lphotos={}; const ppaths=S.lines.filter(l=>l.photo_url).map(l=>l.photo_url);
   if(ppaths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(ppaths,600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) lphotos[ppaths[idx]]=x.signedUrl; }); }catch(e){} }
   const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const net=lineNet(l);
-    const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'')
-      +(l.photo_url&&lphotos[l.photo_url]?'<img src="'+lphotos[l.photo_url]+'" style="max-height:90px;max-width:160px;border-radius:6px;border:1px solid #e5e9f2;margin-top:5px;object-fit:cover">':'');
+    const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'');
     return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td>'
       +(showDiscCol?'<td class="r">'+num2(l.disc||0)+'%</td>':'')
       +(showVatCol?'<td class="r">'+num2(l.vat_rate)+'%</td>':'')
       +'<td class="r">'+money(net)+'</td></tr>'; }).join('');
   const f=S.firm;
   const T=window.C373t||function(s){return s;}; const L=(window.C373lang&&window.C373lang())||'ro';
+  const photoLines=S.lines.filter(l=>(l.name||'').trim() && l.photo_url && lphotos[l.photo_url]);
+  const gallery=photoLines.length?('<div style="margin-top:26px;page-break-inside:avoid"><div style="font-size:13px;font-weight:700;border-bottom:2px solid #e5e9f2;padding-bottom:5px;margin-bottom:11px">📷 '+T('Imagini')+'</div><div style="display:flex;flex-wrap:wrap;gap:10px">'
+    +photoLines.map(l=>'<div style="width:168px"><img src="'+lphotos[l.photo_url]+'" style="width:168px;height:126px;object-fit:cover;border-radius:8px;border:1px solid #e5e9f2"><div style="font-size:10px;color:#6b7793;margin-top:3px;line-height:1.25">'+esc(l.name)+'</div></div>').join('')
+    +'</div></div>'):'';
   const doc='<!doctype html><html lang="'+L+'"><head><meta charset="utf-8"><title>'+T('Factură')+' '+esc(S.inv.number||'')+'</title><style>'
     +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:32px;max-width:800px;margin:0 auto;font-size:13px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2f6bff;padding-bottom:16px;margin-bottom:20px}.ti{font-size:22px;font-weight:800;color:#2f6bff}.muted{color:#6b7793}.box{display:flex;gap:24px;margin:0 0 20px}.box>div{flex:1;background:#f4f6fb;border-radius:10px;padding:12px 14px}.box h4{font-size:11px;text-transform:uppercase;color:#6b7793;margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px 10px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}.tot{margin-top:16px;margin-left:auto;width:280px}.tot div{display:flex;justify-content:space-between;padding:5px 0}.tot .g{font-size:17px;font-weight:800;border-top:2px solid #0f1c33;margin-top:6px;padding-top:8px}.ft{margin-top:30px;color:#6b7793;font-size:11px;border-top:1px solid #e5e9f2;padding-top:12px}@media print{.noprint{display:none}}'
     +'</style></head><body><div class="hd"><div>'+logo+'<div style="font-size:18px;font-weight:800">'+esc(f.name||'Firma')+'</div><div class="muted">'+(f.idno?'IDNO: '+esc(f.idno)+'<br>':'')+(f.address?esc(f.address)+'<br>':'')+(f.phone?T('Tel:')+' '+esc(f.phone):'')+'</div></div>'
@@ -385,6 +388,7 @@ async function pdf(){
       +(vmode!=='none'?'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>':'')
       +'<div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div></div>'
     +(()=>{ const pn=prepayNote(t.total); return (pn&&S.inv.status!=='paid')?'<div style="margin-top:12px;margin-left:auto;width:380px;padding:11px 13px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:12px;color:#065f46;line-height:1.5">💸 '+T('La achitarea 100% în avans beneficiați de o reducere suplimentară de')+' <b>'+num2(pn.pct)+'%</b> '+T('din suma finală')+' ('+T('economisiți')+' <b>'+money(pn.save)+'</b>). '+T('Total cu avans:')+' <b>'+money(pn.after)+'</b></div>':''; })()
+    +gallery
     +'<div class="ft">'+T('Factură generată cu Cod373.')+' '+(S.inv.status==='paid'?T('ACHITATĂ.'):T('Vă rugăm achitați până la scadență.'))+'</div>'
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div></body></html>';
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
