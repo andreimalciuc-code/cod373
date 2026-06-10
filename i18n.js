@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Foto':{ru:'Фото',de:'Foto',en:'Photo'},
     'Imagini':{ru:'Изображения',de:'Bilder',en:'Images'},
     'La achitarea 100% în avans beneficiați de o reducere suplimentară de':{ru:'При оплате 100% авансом вы получаете дополнительную скидку',de:'Bei 100% Vorauszahlung erhalten Sie einen zusätzlichen Nachlass von',en:'Pay 100% in advance and get an additional discount of'},
     'din suma finală':{ru:'от итоговой суммы',de:'auf den Endbetrag',en:'off the final amount'},
