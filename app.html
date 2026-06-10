@@ -1536,7 +1536,8 @@ async function planSet(empId,date,siteId){
 /* ════ AUTOMATIZĂRI PE REGULI ════ */
 function automationsCfg(){ return (state.firm&&state.firm.automations)||{}; }
 async function saveAutomations(){
-  const au={ acc_site:$('au-site').checked, acc_invoice:$('au-inv').checked, acc_invoice_pct:+($('au-pct').value||30) };
+  const au={ acc_site:$('au-site').checked, acc_invoice:$('au-inv').checked, acc_invoice_pct:+($('au-pct').value||30),
+    prepay_show:$('au-prepay').checked, prepay_pct:+($('au-prepay-pct').value||3) };
   const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant));
   if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   state.firm.automations=au; toast('✅ Automatizări salvate.');
@@ -1984,6 +1985,9 @@ async function renderSetari(){
     +'<div class="field"><div class="chk"><input type="checkbox" id="au-site" '+(au.acc_site?'checked':'')+'/> <span>La acceptarea ofertei → <b>creează automat șantierul</b> (dacă nu există)</span></div></div>'
     +'<div class="field"><div class="chk"><input type="checkbox" id="au-inv" '+(au.acc_invoice?'checked':'')+'/> <span>La acceptarea ofertei → <b>creează o factură de avans</b></span></div></div>'
     +'<div class="field" style="max-width:160px"><label>Avans (%)</label><input id="au-pct" type="number" value="'+(au.acc_invoice_pct!=null?au.acc_invoice_pct:30)+'"/></div>'
+    +'<hr style="border:none;border-top:1px solid var(--line);margin:.9rem 0">'
+    +'<div class="field"><div class="chk"><input type="checkbox" id="au-prepay" '+(au.prepay_show!==false?'checked':'')+'/> <span>Pe oferte și facturi → afișează <b>reducerea la plata 100% în avans</b> (Skonto)</span></div></div>'
+    +'<div class="field" style="max-width:200px"><label>Reducere la plata în avans (%)</label><input id="au-prepay-pct" type="number" step="any" value="'+(au.prepay_pct!=null?au.prepay_pct:3)+'"/></div>'
     +'<button class="btn-primary" onclick="saveAutomations()">Salvează automatizările</button>'
     +'</div></div></div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
