@@ -2558,7 +2558,7 @@ function rowActions(key,m,r){
   if(m.convertible) a.push({i:'🧾',l:'Creează factură din deviz',f:"estimateToInvoice('"+id+"')"});
   if(m.efactura) a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"});
   if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
-  if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:"printDoc('"+key+"','"+id+"')"});
+  if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
@@ -3301,6 +3301,7 @@ async function genPortal(siteId){
 function copyPortal(){ const i=$('portal-url'); i.select(); try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); } toast('📋 Link copiat.'); }
 
 /* ════ TIPĂRIRE / PDF (factură, deviz) ════ */
+function openEditorPdf(page,id){ window.open(page+'?id='+encodeURIComponent(id)+'&print=1','_blank'); }
 async function printDoc(key,id){
   const m=MODULES[key];
   const { data:p, error } = await sb.from(m.table).select('*, clients!client_id(name,idno,address), sites!site_id(name)').eq('id',id).single();

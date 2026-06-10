@@ -90,6 +90,7 @@ async function boot(){
     S.inv.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.inv.vat_mode=(S.firm.vat_rate?'line':'none');
     if(param('estimate')) await fromEstimate(param('estimate'));
   }
+  if(param('print')){ await pdf(true); return; }
   render();
   signLineThumbs();
 }
@@ -359,7 +360,7 @@ async function markPaid(){
   S.inv.status='paid'; toast('✅ Factură marcată plătită.'); render();
 }
 
-async function pdf(){
+async function pdf(inPlace){
   const t=totals(); const cl=S.clients.find(c=>c.id===S.inv.client_id)||{};
   const showDiscCol=S.inv.disc_mode==='line', showVatCol=S.inv.vat_mode==='line', vmode=S.inv.vat_mode||'none';
   const colsN=7+(showDiscCol?1:0)+(showVatCol?1:0);
@@ -392,6 +393,7 @@ async function pdf(){
     +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'
     +'<script>function zoom(s){var l=document.getElementById("lb");document.getElementById("lbimg").src=s;l.style.display="flex";}document.addEventListener("keydown",function(e){if(e.key==="Escape"){var l=document.getElementById("lb");if(l)l.style.display="none";}});<\/script>'
     +'</body></html>';
+  if(inPlace){ document.open(); document.write(doc); document.close(); return; }
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
 }
 boot();

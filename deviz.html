@@ -96,6 +96,7 @@ async function boot(){
     S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none'); }
   // din fisa de previzualizare
   if(param('survey')) await fromSurvey(param('survey'));
+  if(param('print')){ await pdf(param('doctype')||'oferta', true); return; }
   render();
   signLineThumbs();
 }
@@ -428,7 +429,7 @@ async function save(thenPdf){
 }
 
 /* ---- PDF (docType: oferta | confirmare | livrare) ---- */
-async function pdf(docType){
+async function pdf(docType,inPlace){
   docType=docType||'oferta'; const isLiv=docType==='livrare';
   const t=totals(); const cl=S.clients.find(c=>c.id===S.est.client_id)||{};
   const showDiscCol=S.est.disc_mode==='line', showVatCol=S.est.vat_mode==='line', vmode=S.est.vat_mode||'none';
@@ -470,6 +471,7 @@ async function pdf(docType){
     +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'
     +'<script>function zoom(s){var l=document.getElementById("lb");document.getElementById("lbimg").src=s;l.style.display="flex";}document.addEventListener("keydown",function(e){if(e.key==="Escape"){var l=document.getElementById("lb");if(l)l.style.display="none";}});<\/script>'
     +'</body></html>';
+  if(inPlace){ document.open(); document.write(doc); document.close(); return; }
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
 }
 /* ---- SEMNĂTURĂ DIGITALĂ (acceptare ofertă) ---- */
