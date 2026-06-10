@@ -13,6 +13,12 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Reducere':{ru:'Скидка',de:'Rabatt',en:'Discount'},
+    'Reducere:':{ru:'Скидка:',de:'Rabatt:',en:'Discount:'},
+    'Fără':{ru:'Без',de:'Ohne',en:'None'},
+    'Pe poziție':{ru:'По позиции',de:'Pro Position',en:'Per line'},
+    'La final':{ru:'В конце',de:'Am Ende',en:'At the end'},
+    'Unificat':{ru:'Единый',de:'Einheitlich',en:'Unified'},
     'generează din descriere (AI)':{ru:'сгенерировать из описания (ИИ)',de:'aus Beschreibung erstellen (KI)',en:'generate from description (AI)'},
     'Generează din descriere':{ru:'Сгенерировать из описания',de:'Aus Beschreibung erstellen',en:'Generate from description'},
     'Descrie lucrarea în câteva cuvinte — AI propune liniile devizului (le poți edita după).':{ru:'Опишите работу в нескольких словах — ИИ предложит позиции сметы (их можно редактировать).',de:'Beschreibe die Arbeit in wenigen Worten — die KI schlägt die Angebotspositionen vor (danach editierbar).',en:'Describe the job in a few words — the AI proposes the estimate lines (you can edit them).'},

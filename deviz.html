@@ -80,7 +80,7 @@ function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/
 
 const STATUS={draft:'Ciornă',sent:'Trimisă',accepted:'Acceptată',rejected:'Respinsă'};
 const FIN=['owner','admin','manager','accountant'];
-let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:''},
+let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0},
         lines:[], clients:[], catalog:[], normMat:{}, _activeDD:null, lineThumbs:{} };
 
 async function boot(){
@@ -92,7 +92,8 @@ async function boot(){
   await loadCatalog();
   const id=param('id');
   if(id){ await loadEstimate(id); }
-  else { S.est.number=await genNumber(); if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()]; }
+  else { S.est.number=await genNumber(); if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()];
+    S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none'); }
   // din fisa de previzualizare
   if(param('survey')) await fromSurvey(param('survey'));
   render();
@@ -106,7 +107,7 @@ async function signLineThumbs(){
   renderLines();
 }
 async function genNumber(){ try{ const { count }=await sb.from('estimates').select('id',{count:'exact',head:true}); return 'OF-'+new Date().getFullYear()+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){ return 'OF-'+new Date().getFullYear()+'-'+Math.floor(Math.random()*900+100); } }
-function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), kind:'service', norm_code:null, description:'', photo_url:null }; }
+function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), disc:0, kind:'service', norm_code:null, description:'', photo_url:null }; }
 
 async function loadCatalog(){
   const [cl, svc, nrm, mat, nm]=await Promise.all([
@@ -129,9 +130,10 @@ async function loadEstimate(id){
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'',
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0,
     signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null };
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
-  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null }; });
+  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null }; });
   if(!S.lines.length) S.lines=[blankLine()];
 }
 async function fromSurvey(sid){
@@ -142,7 +144,19 @@ async function fromSurvey(sid){
   if(meas.length){ S.lines=meas.map(x=>({ name:x.label, qty:+x.qty||1, unit:x.unit||'m2', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), kind:'service', norm_code:null, description:x.note||'', photo_url:null })); }
 }
 
-function totals(){ let sub=0,vat=0; S.lines.forEach(l=>{ const t=(+l.qty||0)*(+l.unit_price||0); sub+=t; vat+=t*(+l.vat_rate||0)/100; }); return {sub,vat,total:sub+vat}; }
+function lineNet(l){ const g=(+l.qty||0)*(+l.unit_price||0); return (S.est.disc_mode==='line')? g*(1-(+l.disc||0)/100) : g; }
+function totals(){
+  const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none';
+  let gross=0, sumNet=0;
+  S.lines.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); gross+=g; sumNet+=lineNet(l); });
+  const factor=(dm==='total')? (1-(+S.est.disc_value||0)/100) : 1;
+  const base=sumNet*factor;                 // bază după toate reducerile (net)
+  const disc=gross-base;                     // reducere totală (linie + final)
+  let vat=0;
+  if(vm==='line') S.lines.forEach(l=>{ vat+=lineNet(l)*factor*(+l.vat_rate||0)/100; });
+  else if(vm==='total') vat=base*(+S.est.vat_value||0)/100;
+  return { gross:gross, sub:base, disc:disc, vat:vat, total:base+vat };
+}
 
 function render(){
   const t=totals();
@@ -158,9 +172,10 @@ function render(){
       +'<div class="field"><label>Valabil până la</label><input type="date" id="f-valid" value="'+esc(S.est.valid_until||'')+'" oninput="S.est.valid_until=this.value"/></div></div>'
     +'</div>'
     +'<div class="panel"><h3>Linii ofertă <span class="sub" style="font-weight:400">— tastează ca să cauți (sau „＋ Adaugă nou" dacă lipsește) · apasă 📝 pe o linie pentru descriere și poză</span></h3>'
-      +'<table class="lines"><thead><tr><th style="width:18px"></th><th style="width:52px;text-align:center">Poză</th><th>Descriere</th><th style="width:72px">Cant.</th><th style="width:64px">UM</th><th style="width:96px">Preț</th><th style="width:64px">TVA%</th><th style="width:104px;text-align:right">Total</th><th style="width:24px"></th></tr></thead><tbody id="lines-body"></tbody></table>'
+      +'<div id="lines-wrap"></div>'
       +'<button class="addline" onclick="addLine()">＋ adaugă linie</button>'
       +'<button class="addline" onclick="aiOffer()" style="margin-left:.4rem">🧠 generează din descriere (AI)</button>'
+      +optBar()
     +'</div>'
     +'<div class="panel"><h3>Note / condiții</h3><textarea id="f-notes" rows="3" placeholder="Ex: Prețurile sunt orientative, valabile 30 de zile. Termen de execuție convenit la semnare." oninput="S.est.notes=this.value">'+esc(S.est.notes||'')+'</textarea></div>'
     +'</div>'
@@ -178,9 +193,26 @@ function render(){
     +'</div></div>';
   renderLines(); renderSummary(); renderBOM();
 }
+function optBar(){
+  const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none';
+  const opt=(cur,val,lab)=>'<option value="'+val+'" '+(cur===val?'selected':'')+'>'+lab+'</option>';
+  return '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;margin-top:.8rem;padding-top:.7rem;border-top:1px dashed var(--line);font-size:.82rem">'
+    +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">Reducere: <select onchange="setDiscMode(this.value)" style="width:auto">'+opt(dm,'none','Fără')+opt(dm,'line','Pe poziție')+opt(dm,'total','La final')+'</select></label>'
+    +(dm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.est.disc_value||0)+'" oninput="setDiscVal(this.value)" style="width:78px"/> %</label>':'')
+    +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">TVA: <select onchange="setVatMode(this.value)" style="width:auto">'+opt(vm,'none','Fără')+opt(vm,'line','Pe poziție')+opt(vm,'total','Unificat')+'</select></label>'
+    +(vm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.est.vat_value||0)+'" oninput="setVatVal(this.value)" style="width:78px"/> %</label>':'')
+    +'</div>';
+}
+function setDiscMode(v){ S.est.disc_mode=v; render(); }
+function setVatMode(v){ S.est.vat_mode=v; render(); }
+function setDiscVal(v){ S.est.disc_value=+v||0; renderSummary(); }
+function setVatVal(v){ S.est.vat_value=+v||0; renderSummary(); }
 function renderLines(){
-  const b=$('lines-body');
-  b.innerHTML=S.lines.map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0)*(1+(+l.vat_rate||0)/100);
+  const showDisc=S.est.disc_mode==='line', showVat=S.est.vat_mode==='line';
+  const head='<tr><th style="width:18px"></th><th style="width:52px;text-align:center">Poză</th><th>Descriere</th><th style="width:68px">Cant.</th><th style="width:60px">UM</th><th style="width:92px">Preț</th>'
+    +(showDisc?'<th style="width:58px">Red.%</th>':'')+(showVat?'<th style="width:58px">TVA%</th>':'')
+    +'<th style="width:100px;text-align:right">Total</th><th style="width:24px"></th></tr>';
+  const rows=S.lines.map((l,i)=>{ const lt=lineNet(l);
     const thumb=l.photo_url
       ? (S.lineThumbs[l.photo_url]
           ? '<img onclick="lineDetails('+i+')" src="'+S.lineThumbs[l.photo_url]+'" title="Apasă pentru a edita descrierea/poza" style="width:42px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:pointer;vertical-align:middle">'
@@ -194,22 +226,27 @@ function renderLines(){
       +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
       +'<td><input value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
       +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
-      +'<td><input id="vt-'+i+'" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>'
-      +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="Scrie aici suma finală pe poziție → prețul unitar se recalculează invers"/></td>'
+      +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
+      +(showVat?'<td><input id="vt-'+i+'" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>':'')
+      +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="Scrie aici totalul net pe poziție → prețul unitar se recalculează invers"/></td>'
       +'<td style="white-space:nowrap"><button class="delx" onclick="lineDetails('+i+')" title="Descriere și poză" style="'+((l.description||l.photo_url)?'color:#2f6bff':'')+'">'+((l.description||l.photo_url)?'📝':'＋')+'</button>'
       +'<button class="delx" onclick="delLine('+i+')" title="Șterge linia">×</button></td></tr>';
   }).join('');
+  $('lines-wrap').innerHTML='<table class="lines"><thead>'+head+'</thead><tbody id="lines-body">'+rows+'</tbody></table>';
+  const b=$('lines-body');
   Sortable.create(b,{ handle:'.grip', animation:150, onEnd:e=>{ const m=S.lines.splice(e.oldIndex,1)[0]; S.lines.splice(e.newIndex,0,m); render(); } });
 }
-function renderSummary(){ const t=totals();
-  $('sum').innerHTML='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.sub)+'</b></div>'
-    +'<div class="totrow"><span class="sub">TVA</span><b>'+money(t.vat)+'</b></div>'
-    +'<div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
+function renderSummary(){ const t=totals(); const vm=S.est.vat_mode||'none';
+  let h='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.gross)+'</b></div>';
+  if(t.disc>0.005) h+='<div class="totrow"><span class="sub">Reducere</span><b style="color:var(--green)">−'+money(t.disc)+'</b></div>';
+  if(vm!=='none') h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.est.vat_value)?(' '+num2(S.est.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
+  h+='<div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
+  $('sum').innerHTML=h;
 }
-function refreshLineTotal(i){ const l=S.lines[i]; const g=(+l.qty||0)*(+l.unit_price||0)*(1+(+l.vat_rate||0)/100); const el=$('tt-'+i); if(el) el.value=num2(g); }
+function refreshLineTotal(i){ const el=$('tt-'+i); if(el) el.value=num2(lineNet(S.lines[i])); }
 function lineEdit(i,k,v){ S.lines[i][k]=v; if(k==='unit') return; refreshLineTotal(i); renderSummary(); if(k==='qty') renderBOM(); }
-function lineSetTotal(i,v){ const l=S.lines[i]; const q=+l.qty||0; const vr=+l.vat_rate||0; const tot=+v||0;
-  if(q>0){ l.unit_price=Math.round((tot/(q*(1+vr/100)))*100)/100; const up=$('up-'+i); if(up) up.value=l.unit_price; }
+function lineSetTotal(i,v){ const l=S.lines[i]; const q=+l.qty||0; const dfac=(S.est.disc_mode==='line')?(1-(+l.disc||0)/100):1; const net=+v||0;
+  if(q>0 && dfac>0){ l.unit_price=Math.round((net/(q*dfac))*100)/100; const up=$('up-'+i); if(up) up.value=l.unit_price; }
   renderSummary(); }
 function addLine(){ S.lines.push(blankLine()); renderLines(); }
 /* ---- AI: generează liniile devizului din descriere ---- */
@@ -368,12 +405,13 @@ async function save(thenPdf){
   const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
   const rec={ tenant_id:tid, client_id:S.est.client_id||null, number:S.est.number||null, status:S.est.status,
     issue_date:S.est.issue_date||null, valid_until:S.est.valid_until||null, notes:S.est.notes||null,
+    disc_mode:S.est.disc_mode||'none', disc_value:+S.est.disc_value||0, vat_mode:S.est.vat_mode||'none', vat_value:+S.est.vat_value||0,
     subtotal:t.sub, vat_total:t.vat, total:t.total };
   try{
     if(S.id){ const u=await sb.from('estimates').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('estimates').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'deviz.html?id='+S.id); }
     await sb.from('estimate_items').delete().eq('estimate_id',S.id);
-    const items=valid.map((l,i)=>({tenant_id:tid,estimate_id:S.id,kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
+    const items=valid.map((l,i)=>({tenant_id:tid,estimate_id:S.id,kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('estimate_items').insert(items); if(im.error) throw im.error;
     $('btn-save').disabled=false; toast('✅ Ofertă salvată.');
     if(thenPdf) pdf();
@@ -384,30 +422,38 @@ async function save(thenPdf){
 async function pdf(docType){
   docType=docType||'oferta'; const isLiv=docType==='livrare';
   const t=totals(); const cl=S.clients.find(c=>c.id===S.est.client_id)||{};
+  const showDiscCol=S.est.disc_mode==='line', showVatCol=S.est.vat_mode==='line', vmode=S.est.vat_mode||'none';
   let logo=''; if(S.firm.logo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(S.firm.logo_url,600); if(data&&data.signedUrl) logo='<img src="'+data.signedUrl+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }catch(e){} }
   // semneaza pozele de pe linii pentru a aparea in PDF
   const lphotos={}; const ppaths=S.lines.filter(l=>l.photo_url).map(l=>l.photo_url);
   if(ppaths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(ppaths,600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) lphotos[ppaths[idx]]=x.signedUrl; }); }catch(e){} }
   let sigHtml=''; if(S.est.signature_url && docType!=='livrare'){ try{ const {data:sd}=await sb.storage.from('docs').createSignedUrl(S.est.signature_url,600); if(sd&&sd.signedUrl){ const Ts=window.C373t||function(s){return s;}; sigHtml='<div style="margin-top:30px"><div style="color:#6b7793;font-size:11px">'+Ts('Acceptat de client')+(S.est.signer_name?' — '+esc(S.est.signer_name):'')+(S.est.signed_at?' · '+esc(String(S.est.signed_at).slice(0,10)):'')+'</div><img src="'+sd.signedUrl+'" style="height:80px;margin-top:4px"></div>'; } }catch(e){} }
-  const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0); const lv=lt*(+l.vat_rate||0)/100;
+  const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const net=lineNet(l);
     const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'')
       +(l.photo_url&&lphotos[l.photo_url]?'<img src="'+lphotos[l.photo_url]+'" style="max-height:90px;max-width:160px;border-radius:6px;border:1px solid #e5e9f2;margin-top:5px;object-fit:cover">':'');
     if(isLiv) return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td></tr>';
-    return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td><td class="r">'+num2(l.vat_rate)+'%</td><td class="r">'+money(lt+lv)+'</td></tr>'; }).join('');
+    return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td>'
+      +(showDiscCol?'<td class="r">'+num2(l.disc||0)+'%</td>':'')
+      +(showVatCol?'<td class="r">'+num2(l.vat_rate)+'%</td>':'')
+      +'<td class="r">'+money(net)+'</td></tr>'; }).join('');
   const f=S.firm;
   const T=window.C373t||function(s){return s;}; const L=(window.C373lang&&window.C373lang())||'ro';
   const docTitle=isLiv?T('BON DE LIVRARE'):(docType==='confirmare'?T('CONFIRMARE DE COMANDĂ'):T('OFERTĂ / DEVIZ'));
   const tabHead=isLiv?('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th></tr>')
-    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th><th class="r">'+T('TVA')+'</th><th class="r">'+T('Total')+'</th></tr>');
+    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th></tr>');
+  const colsN=isLiv?4:(6+(showDiscCol?1:0)+(showVatCol?1:0));
   const totBlock=isLiv?'<div style="margin-top:40px;display:flex;justify-content:space-between;gap:30px"><div style="flex:1">'+T('Predat de')+':<br><br>____________________</div><div style="flex:1">'+T('Primit de')+':<br><br>____________________</div></div>'
-    :('<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.sub)+'</b></div><div><span>'+T('TVA:')+'</span><b>'+money(t.vat)+'</b></div><div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div></div>'
+    :('<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
+       +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
+       +(vmode!=='none'?'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.est.vat_value)?(' '+num2(S.est.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>':'')
+       +'<div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div></div>'
        +(S.est.notes?'<div class="ft">'+esc(S.est.notes).replace(/\n/g,'<br>')+'</div>':'<div class="ft">'+T('Vă mulțumim!')+'</div>'));
   const doc='<!doctype html><html lang="'+L+'"><head><meta charset="utf-8"><title>'+esc(docTitle)+' '+esc(S.est.number||'')+'</title><style>'
     +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:32px;max-width:800px;margin:0 auto;font-size:13px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2f6bff;padding-bottom:16px;margin-bottom:20px}.ti{font-size:22px;font-weight:800;color:#2f6bff}.muted{color:#6b7793}.box{display:flex;gap:24px;margin:0 0 20px}.box>div{flex:1;background:#f4f6fb;border-radius:10px;padding:12px 14px}.box h4{font-size:11px;text-transform:uppercase;color:#6b7793;margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px 10px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}.tot{margin-top:16px;margin-left:auto;width:280px}.tot div{display:flex;justify-content:space-between;padding:5px 0}.tot .g{font-size:17px;font-weight:800;border-top:2px solid #0f1c33;margin-top:6px;padding-top:8px}.ft{margin-top:30px;color:#6b7793;font-size:11px;border-top:1px solid #e5e9f2;padding-top:12px}@media print{.noprint{display:none}}'
     +'</style></head><body><div class="hd"><div>'+logo+'<div style="font-size:18px;font-weight:800">'+esc(f.name||'Firma')+'</div><div class="muted">'+(f.idno?'IDNO: '+esc(f.idno)+'<br>':'')+(f.address?esc(f.address)+'<br>':'')+(f.phone?T('Tel:')+' '+esc(f.phone):'')+'</div></div>'
     +'<div style="text-align:right"><div class="ti">'+docTitle+'</div><div style="font-weight:700;font-size:15px">'+T('Nr.')+' '+esc(S.est.number||'—')+'</div><div class="muted">'+T('Data:')+' '+esc(S.est.issue_date||'')+((!isLiv&&S.est.valid_until)?'<br>'+T('Valabil până la:')+' '+esc(S.est.valid_until):'')+'</div></div></div>'
     +'<div class="box"><div><h4>'+T('Furnizor')+'</h4><b>'+esc(f.name||'')+'</b></div><div><h4>'+T('Client')+'</h4><b>'+esc(cl.name||'—')+'</b></div></div>'
-    +'<table><thead>'+tabHead+'</thead><tbody>'+(rows||'<tr><td colspan="'+(isLiv?4:7)+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
+    +'<table><thead>'+tabHead+'</thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
     +totBlock+sigHtml
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div></body></html>';
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
