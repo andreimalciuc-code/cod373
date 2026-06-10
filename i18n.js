@@ -13,6 +13,13 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'generează din descriere (AI)':{ru:'сгенерировать из описания (ИИ)',de:'aus Beschreibung erstellen (KI)',en:'generate from description (AI)'},
+    'Generează din descriere':{ru:'Сгенерировать из описания',de:'Aus Beschreibung erstellen',en:'Generate from description'},
+    'Descrie lucrarea în câteva cuvinte — AI propune liniile devizului (le poți edita după).':{ru:'Опишите работу в нескольких словах — ИИ предложит позиции сметы (их можно редактировать).',de:'Beschreibe die Arbeit in wenigen Worten — die KI schlägt die Angebotspositionen vor (danach editierbar).',en:'Describe the job in a few words — the AI proposes the estimate lines (you can edit them).'},
+    'Generează':{ru:'Сгенерировать',de:'Erstellen',en:'Generate'},
+    'Se generează…':{ru:'Генерация…',de:'Wird erstellt…',en:'Generating…'},
+    'Scrie o descriere.':{ru:'Введите описание.',de:'Beschreibung eingeben.',en:'Enter a description.'},
+    'Necesită cheia AI configurată de administrator (Setări).':{ru:'Требуется ключ ИИ, настроенный администратором (Настройки).',de:'Erfordert den vom Admin konfigurierten KI-Schlüssel (Einstellungen).',en:'Requires the AI key configured by an admin (Settings).'},
     'Planificare echipe':{ru:'Планирование бригад',de:'Teamplanung',en:'Crew planning'},
     'Cine, pe ce șantier, în ce zi — pe săptămână.':{ru:'Кто, на каком объекте, в какой день — на неделю.',de:'Wer, auf welcher Baustelle, an welchem Tag — pro Woche.',en:'Who, on which site, on which day — per week.'},
     'Săpt. anterioară':{ru:'Пред. неделя',de:'Vorwoche',en:'Prev. week'},
