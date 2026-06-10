@@ -369,7 +369,7 @@ async function pdf(){
   const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const net=lineNet(l);
     const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'');
     const hasPhoto=l.photo_url&&lphotos[l.photo_url];
-    const photoCell='<td style="text-align:center;vertical-align:middle">'+(hasPhoto?'<img src="'+lphotos[l.photo_url]+'" onclick="zoom(this.src)" title="'+T('Apasă pentru a mări')+'" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e9f2;cursor:zoom-in">':'')+'</td>';
+    const photoCell='<td style="text-align:center;vertical-align:middle">'+(hasPhoto?'<img src="'+lphotos[l.photo_url]+'" onclick="zoom(this.src)" title="'+T('Apasă pentru a mări')+'" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid #e5e9f2;cursor:zoom-in">':'')+'</td>';
     return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td>'
       +(showDiscCol?'<td class="r">'+num2(l.disc||0)+'%</td>':'')
       +(showVatCol?'<td class="r">'+num2(l.vat_rate)+'%</td>':'')
@@ -381,7 +381,7 @@ async function pdf(){
     +'</style></head><body><div class="hd"><div>'+logo+'<div style="font-size:18px;font-weight:800">'+esc(f.name||'Firma')+'</div><div class="muted">'+(f.idno?'IDNO: '+esc(f.idno)+'<br>':'')+(f.address?esc(f.address)+'<br>':'')+(f.phone?T('Tel:')+' '+esc(f.phone):'')+'</div></div>'
     +'<div style="text-align:right"><div class="ti">'+T('FACTURĂ FISCALĂ')+'</div><div style="font-weight:700;font-size:15px">'+T('Nr.')+' '+esc(S.inv.number||'—')+'</div><div class="muted">'+T('Emisă:')+' '+esc(S.inv.issue_date||'')+(S.inv.due_date?'<br>'+T('Scadență:')+' '+esc(S.inv.due_date):'')+'</div></div></div>'
     +'<div class="box"><div><h4>'+T('Furnizor')+'</h4><b>'+esc(f.name||'')+'</b></div><div><h4>'+T('Client')+'</h4><b>'+esc(cl.name||'—')+'</b></div></div>'
-    +'<table><thead><tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th><th style="width:78px;text-align:center">'+T('Foto')+'</th></tr></thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
+    +'<table><thead><tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr></thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
     +'<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
       +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
       +(vmode!=='none'?'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>':'')

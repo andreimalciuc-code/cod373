@@ -441,7 +441,7 @@ async function pdf(docType){
   const rows=S.lines.filter(l=>(l.name||'').trim()).map((l,i)=>{ const net=lineNet(l);
     const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'');
     const hasPhoto=l.photo_url&&lphotos[l.photo_url];
-    const photoCell='<td style="text-align:center;vertical-align:middle">'+(hasPhoto?'<img src="'+lphotos[l.photo_url]+'" onclick="zoom(this.src)" title="'+T('Apasă pentru a mări')+'" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e9f2;cursor:zoom-in">':'')+'</td>';
+    const photoCell='<td style="text-align:center;vertical-align:middle">'+(hasPhoto?'<img src="'+lphotos[l.photo_url]+'" onclick="zoom(this.src)" title="'+T('Apasă pentru a mări')+'" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid #e5e9f2;cursor:zoom-in">':'')+'</td>';
     if(isLiv) return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td>'+photoCell+'</tr>';
     return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td>'
       +(showDiscCol?'<td class="r">'+num2(l.disc||0)+'%</td>':'')
@@ -450,8 +450,8 @@ async function pdf(docType){
   const f=S.firm;
   const T=window.C373t||function(s){return s;}; const L=(window.C373lang&&window.C373lang())||'ro';
   const docTitle=isLiv?T('BON DE LIVRARE'):(docType==='confirmare'?T('CONFIRMARE DE COMANDĂ'):T('OFERTĂ / DEVIZ'));
-  const tabHead=isLiv?('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th style="width:78px;text-align:center">'+T('Foto')+'</th></tr>')
-    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th><th style="width:78px;text-align:center">'+T('Foto')+'</th></tr>');
+  const tabHead=isLiv?('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>')
+    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>');
   const totBlock=isLiv?'<div style="margin-top:40px;display:flex;justify-content:space-between;gap:30px"><div style="flex:1">'+T('Predat de')+':<br><br>____________________</div><div style="flex:1">'+T('Primit de')+':<br><br>____________________</div></div>'
     :('<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
        +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
