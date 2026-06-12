@@ -573,9 +573,9 @@ const MODULES = {
 
   devize:{ title:'Devize', sub:'Estimări și oferte de preț.', icon:'📋', group:'Finanțe', table:'estimates',
     newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', acceptReject:true, orderBy:{col:'created_at',asc:false},
-    select:'id,number,status,subtotal,vat_total,total,valid_until,clients!client_id(name),sites!site_id(name)',
+    select:'id,number,title,status,subtotal,vat_total,total,valid_until,clients!client_id(name),sites!site_id(name)',
     columns:[
-      {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'},
+      {label:'Nr. / lucrări',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'+(r.title?'<div style="color:var(--muted);font-size:.78rem">'+esc(r.title)+'</div>':'')},
       {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
       {label:'Șantier',get:r=>esc(r.sites?r.sites.name:'—')},
       {label:'Total',get:r=>money(r.total)},
@@ -591,9 +591,9 @@ const MODULES = {
 
   facturi:{ title:'Facturi', sub:'Facturi emise + e-Factura.', icon:'🧾', group:'Finanțe', table:'invoices',
     newLabel:'Factură nouă', printable:'FACTURĂ FISCALĂ', efactura:true, pageEditor:'factura.html', orderBy:{col:'created_at',asc:false},
-    select:'id,number,status,total,issue_date,due_date,efactura_status,clients(name)',
+    select:'id,number,title,status,total,issue_date,due_date,efactura_status,clients(name)',
     columns:[
-      {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number)+'</span>'},
+      {label:'Nr. / lucrări',get:r=>'<span class="tname">'+esc(r.number)+'</span>'+(r.title?'<div style="color:var(--muted);font-size:.78rem">'+esc(r.title)+'</div>':'')},
       {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
       {label:'Total',get:r=>money(r.total)},
       {label:'Emisă',get:r=>dt(r.issue_date)},

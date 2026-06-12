@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Subtotal grup':{ru:'Подытог группы',de:'Gruppen-Zwischensumme',en:'Group subtotal'},
+    'Grup':{ru:'Группа',de:'Gruppe',en:'Group'},
+    'grup nou':{ru:'новая группа',de:'neue Gruppe',en:'new group'},
+    'Poziții fără grup —':{ru:'Позиции без группы —',de:'Positionen ohne Gruppe —',en:'Ungrouped items —'},
     'Adaugă în catalog':{ru:'Добавить в каталог',de:'Zum Katalog hinzufügen',en:'Add to catalog'},
     'Creează și adaugă':{ru:'Создать и добавить',de:'Erstellen und hinzufügen',en:'Create and add'},
     'Serviciu / manoperă':{ru:'Услуга / работа',de:'Leistung / Arbeit',en:'Service / labor'},
