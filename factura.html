@@ -22,6 +22,8 @@
   .right{ position:sticky; top:72px; }
   .field{ margin-bottom:.7rem; } label{ display:block; font-size:.78rem; font-weight:600; margin-bottom:.25rem; color:#46506a; }
   input,select,textarea{ width:100%; padding:.5rem .65rem; border:1px solid var(--line); border-radius:9px; font-size:.88rem; font-family:inherit; outline:none; background:#fff; }
+  input[type=number]{ -moz-appearance:textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   input:focus,select:focus,textarea:focus{ border-color:var(--primary); }
   .row2{ display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
   .lines{ width:100%; border-collapse:collapse; }
@@ -117,15 +119,15 @@ function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rat
 async function loadCatalog(){
   const [cl, svc, nrm, mat]=await Promise.all([
     sb.from('clients').select('id,name').order('name'),
-    sb.from('services').select('id,name,unit,price,vat_rate').eq('active',true),
+    sb.from('services').select('id,name,unit,price,vat_rate,description,photo_url').eq('active',true),
     sb.from('norms').select('id,name,unit,unit_price'),
-    sb.from('materials').select('id,name,unit,last_price,vat_rate').eq('active',true)
+    sb.from('materials').select('id,name,unit,last_price,vat_rate,description,photo_url').eq('active',true)
   ]);
   S.clients=cl.data||[];
   S.catalog=[].concat(
-    (svc.data||[]).map(x=>({icon:'🧰',name:x.name,unit:x.unit||'buc',price:+x.price||0,vat:+x.vat_rate||20})),
+    (svc.data||[]).map(x=>({icon:'🧰',name:x.name,unit:x.unit||'buc',price:+x.price||0,vat:+x.vat_rate||20,desc:x.description||'',photo:x.photo_url||null})),
     (nrm.data||[]).map(x=>({icon:'📐',name:x.name,unit:x.unit||'m2',price:+x.unit_price||0,vat:20})),
-    (mat.data||[]).map(x=>({icon:'📦',name:x.name,unit:x.unit||'buc',price:+x.last_price||0,vat:+x.vat_rate||20}))
+    (mat.data||[]).map(x=>({icon:'📦',name:x.name,unit:x.unit||'buc',price:+x.last_price||0,vat:+x.vat_rate||20,desc:x.description||'',photo:x.photo_url||null}))
   );
 }
 async function loadInvoice(id){
@@ -241,7 +243,7 @@ function lineRowHtml(i,inGroup){
     +(l.description?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita" style="cursor:pointer;margin-top:5px;font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
     +'</td>'
     +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
-    +'<td><input value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
+    +'<td><input list="uom-list" autocomplete="off" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
     +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
     +(showVat?'<td><input id="vt-'+i+'" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>':'')
@@ -257,13 +259,14 @@ function sectionTableHtml(idxs,inGroup,gidv){
   const rows=idxs.map(i=>lineRowHtml(i,inGroup)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
 }
+function uomOptions(){ const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct']; const cu=(S.firm&&S.firm.automations&&S.firm.automations.units)||[]; const cat=(S.catalog||[]).map(c=>c.unit).filter(Boolean); return Array.from(new Set(base.concat(cu).concat(cat))).map(u=>'<option value="'+esc(u)+'"></option>').join(''); }
 function renderLines(){
   const ungIdx=S.lines.map((l,i)=>i).filter(i=>!S.lines[i].group);
-  let html='<div class="lsec">'+sectionTableHtml(ungIdx,false,'')+'</div>';
+  let html='<datalist id="uom-list">'+uomOptions()+'</datalist><div class="lsec">'+sectionTableHtml(ungIdx,false,'')+'</div>';
   html+='<div id="groups-wrap">';
   S.groups.forEach(g=>{ const gi=S.lines.map((l,i)=>i).filter(i=>S.lines[i].group===g.id); const gt=groupTotals(g);
-    html+='<div class="lgroup" data-g="'+g.id+'" style="border:1px solid var(--line);border-radius:11px;margin-top:.8rem;overflow:hidden">'
-      +'<div class="lghead" style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;background:#eef2ff;padding:.5rem .7rem;border-bottom:1px solid var(--line)">'
+    html+='<div class="lgroup" data-g="'+g.id+'" style="border:1px solid var(--line);border-radius:11px;margin-top:.8rem">'
+      +'<div class="lghead" style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;background:#eef2ff;padding:.5rem .7rem;border-bottom:1px solid var(--line);border-radius:10px 10px 0 0">'
         +'<span class="ggrip" style="cursor:grab;color:#94a3b8;font-size:1.1rem">≡</span>'
         +'<input value="'+esc(g.name||'')+'" placeholder="Nume grup (ex: Manoperă, Materiale, 12 mai)" oninput="setGroupName(\''+g.id+'\',this.value)" style="flex:1;min-width:150px;font-weight:700"/>'
         +'<label style="font-size:.76rem;color:#46506a;display:flex;align-items:center;gap:.25rem">TVA <input type="number" step="any" value="'+esc(g.vat||0)+'" oninput="setGroupVat(\''+g.id+'\',this.value)" style="width:58px"/>%</label>'
@@ -365,7 +368,7 @@ function lineSearch(i,q){ S.lines[i].name=q; const dd=$('dd-'+i); if(!dd) return
   dd.innerHTML=html||'<div class="it sub">Niciun rezultat.</div>'; dd.style.display='';
 }
 function hideDD(i){ setTimeout(()=>{ const dd=$('dd-'+i); if(dd) dd.style.display='none'; },150); }
-function pickCatalog(i,ci){ const c=S.catalog[ci]; if(!c) return; const l=S.lines[i]; l.name=c.name; l.unit=c.unit; l.unit_price=c.price; l.vat_rate=c.vat; renderLines(); renderSummary(); }
+function pickCatalog(i,ci){ const c=S.catalog[ci]; if(!c) return; const l=S.lines[i]; l.name=c.name; l.unit=c.unit; l.unit_price=c.price; l.vat_rate=c.vat; if(c.desc) l.description=l.description||c.desc; if(c.photo) l.photo_url=l.photo_url||c.photo; renderLines(); renderSummary(); signLineThumbs(); }
 function catalogNew(){ const l=blankLine(); S.lines.push(l); reorderLinesBySection(); const i=S.lines.indexOf(l); renderLines(); quickAddService(i); }
 function quickAddService(i){
   const name=(S.lines[i]?S.lines[i].name:'')||'';
