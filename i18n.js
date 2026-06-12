@@ -13,6 +13,9 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Adaugă în catalog':{ru:'Добавить в каталог',de:'Zum Katalog hinzufügen',en:'Add to catalog'},
+    'Creează și adaugă':{ru:'Создать и добавить',de:'Erstellen und hinzufügen',en:'Create and add'},
+    'Serviciu / manoperă':{ru:'Услуга / работа',de:'Leistung / Arbeit',en:'Service / labor'},
     'Unități de măsură':{ru:'Единицы измерения',de:'Maßeinheiten',en:'Units of measure'},
     'Previzualizare':{ru:'Просмотр',de:'Vorschau',en:'Preview'},
     'Cod intern (SKU) — generat automat':{ru:'Внутренний код (SKU) — генерируется автоматически',de:'Interner Code (SKU) — automatisch generiert',en:'Internal code (SKU) — auto-generated'},

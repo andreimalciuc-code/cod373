@@ -493,7 +493,6 @@ const MODULES = {
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
     select:'id,name,sku,unit,category,last_price,vat_rate,description,photo_url',
     columns:[
-      {label:'Foto',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#f1f5f9">':'<span style="color:var(--muted)">—</span>')},
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
@@ -514,7 +513,6 @@ const MODULES = {
     newLabel:'Serviciu nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'SRV'},
     select:'id,name,sku,unit,price,vat_rate,description,photo_url',
     columns:[
-      {label:'Foto',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#f1f5f9">':'<span style="color:var(--muted)">—</span>')},
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
@@ -614,7 +612,7 @@ const MODULES = {
     newLabel:'Angajat nou', invitable:'employee', orderBy:{col:'full_name',asc:true},
     select:'id,full_name,position,specialty,idnp,address,birth_date,has_license,license_categories,hourly_rate,monthly_rate,net_salary,photo_url,active',
     columns:[
-      {label:'Nume',get:r=>(r.photo_url?'<span onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="cursor:pointer" title="vezi poza">🖼️ </span>':'')+'<span class="tname">'+esc(r.full_name)+'</span>'},
+      {label:'Nume',get:r=>'<span class="tname">'+esc(r.full_name)+'</span>'},
       {label:'Funcție',get:r=>esc(r.position||'—')},
       {label:'Specialitate',get:r=>esc(r.specialty||'—')},
       {label:'Permis',get:r=>r.has_license?('🚗 '+esc(r.license_categories||'')):'—'},
@@ -2553,7 +2551,12 @@ function renderList(){
   if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q));
   if($('list-count')) $('list-count').textContent=data.length+' '+(data.length===1?TR('rez1'):TR('rezN'));
   if(!data.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">🔍</div><div>'+TR('nrez')+'</div></div>'; return; }
-  const cols=m.columns.filter(c=>!c.secure||FINANCE_ROLES.includes(state.role));
+  let cols=m.columns.filter(c=>!c.secure||FINANCE_ROLES.includes(state.role));
+  // coloană Foto generică: dacă modulul are un câmp de tip „photo", arată miniatura
+  const pf=(m.fields||[]).find(f=>f.type==='photo');
+  if(pf && !cols.some(c=>c.label==='Foto')){
+    cols=[{label:'Foto',get:r=>{ const p=r[pf.key]; return p?'<img class="lazimg" data-p="'+encodeURIComponent(p)+'" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(p)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#f1f5f9">':'<span style="color:var(--muted)">—</span>'; }}].concat(cols);
+  }
   const head='<tr>'+cols.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th></th></tr>';
   const body=data.map(r=>{ const acts=rowActions(key,m,r);
     return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
