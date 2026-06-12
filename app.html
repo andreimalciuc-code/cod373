@@ -490,7 +490,7 @@ const MODULES = {
       {key:'notes',label:'Note',type:'textarea'} ] },
 
   materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials',
-    newLabel:'Material nou', orderBy:{col:'name',asc:true},
+    newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
     select:'id,name,sku,unit,category,last_price,vat_rate,description,photo_url',
     columns:[
       {label:'Denumire',get:r=>(r.photo_url?'<span onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="cursor:pointer" title="vezi poza">🖼️ </span>':'')+'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
@@ -501,8 +501,8 @@ const MODULES = {
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
-      {key:'sku',label:'Cod intern (SKU)',type:'text'},
-      {key:'unit',label:'Unitate de măsură',type:'text',default:'buc'},
+      {key:'sku',label:'Cod intern (SKU) — generat automat',type:'text'},
+      {key:'unit',label:'Unitate de măsură',type:'unit',default:'buc'},
       {key:'category',label:'Categorie',type:'text'},
       {key:'last_price',label:'Ultim preț (MDL)',type:'number'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
@@ -519,7 +519,7 @@ const MODULES = {
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
-      {key:'unit',label:'Unitate de măsură',type:'text',default:'m2'},
+      {key:'unit',label:'Unitate de măsură',type:'unit',default:'m2'},
       {key:'price',label:'Tarif standard (MDL)',type:'number'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
       {key:'description',label:'Descriere (compactă)',type:'textarea',hint:'Ce include serviciul, condiții, observații. Apare în nomenclator și pe oferte.'},
@@ -2548,6 +2548,7 @@ function renderList(){
 function jsArg(s){ return esc(s||'').replace(/\x27/g,''); }
 function rowActions(key,m,r){
   const a=[], id=r.id;
+  if(m.fields && !m.pageEditor) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
   if(m.invitable&&ADMIN_ROLES.includes(state.role)) a.push({i:'🔑',l:'Dă acces (invitație prin link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
   if(m.siteHub) a.push({i:'📂',l:'Detalii șantier (jurnal, etape, stoc, situații, RFI…)',f:"siteHub('"+id+"','"+jsArg(r.name)+"')"});
   if(m.scheduler){ a.push({i:'📅',l:'Grafic lucrări (filă nouă)',f:"window.open('grafic.html?site="+id+"','_blank')"}); a.push({i:'📊',l:'Rezumat rapid (marjă & etape)',f:"openSiteDetail('"+id+"')"}); }
@@ -2575,6 +2576,23 @@ function actionsSheet(title, acts){
 function rowOptions(key,id){
   const r=(listState.rows||[]).find(x=>x.id===id), m=listState.m; if(!r||!m) return;
   actionsSheet(r.name||r.full_name||r.number||r.title||r.item||r.label||'Opțiuni', rowActions(key,m,r));
+}
+/* previzualizare read-only a unei înregistrări (toate câmpurile) */
+async function recordPreview(key,id){
+  const m=MODULES[key]; let r=(listState.rows||[]).find(x=>x.id===id);
+  if(!r){ try{ r=(await sb.from(m.table).select('*').eq('id',id).single()).data; }catch(e){} }
+  if(!r){ toast('Eroare la încărcare.'); return; }
+  let ph=''; if(r.photo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(r.photo_url,600); if(data&&data.signedUrl) ph='<img src="'+data.signedUrl+'" style="max-width:100%;max-height:240px;border-radius:10px;border:1px solid var(--line);margin-bottom:.7rem;object-fit:contain;display:block">'; }catch(e){} }
+  const rows=(m.fields||[]).filter(f=>f.type!=='photo' && (!f.secure||FINANCE_ROLES.includes(state.role))).map(f=>{
+    let v=r[f.key]; if(v==null||v==='') return '';
+    if(f.type==='checkbox') v=v?'Da':'Nu';
+    else if(f.type==='select'&&f.options){ const o=f.options.find(o=>String(o.value)===String(v)); if(o) v=o.label; }
+    else if(f.type==='number'&&/price|pret|cost/i.test(f.key)) v=money(v);
+    else if(f.key==='vat_rate') v=v+'%';
+    return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.5rem 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted)">'+esc(f.label)+'</span><b style="text-align:right;white-space:pre-wrap">'+esc(v)+'</b></div>';
+  }).join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>👁 '+esc(r.name||r.full_name||r.label||r.number||'Detalii')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+ph+rows
+    +'<div style="margin-top:.9rem;display:flex;gap:.5rem;justify-content:flex-end">'+(canDo(key,'u')?'<button class="btn-ghost" onclick="closeModal();editRecord(\''+key+'\',\''+id+'\')">✏️ Editează</button>':'')+'<button class="btn-primary" onclick="closeModal()">Închide</button></div></div></div></div>';
 }
 
 /* ════ FORM (create + edit) ════ */
@@ -2659,6 +2677,16 @@ function geoAttach(input){
 }
 /* ataseaza autocomplete pe toate campurile de adresa dintr-un container */
 function geoScan(root){ try{ (root||document).querySelectorAll('input[id$="-addr"],input[id$="-address"],#f-address').forEach(geoAttach); }catch(e){} }
+/* ──── unități de măsură: listă din bază + implicite (selectabile + editabile) ──── */
+let UNIT_LIST=null;
+async function loadUnits(){ if(UNIT_LIST) return UNIT_LIST;
+  const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct'];
+  try{ const [a,b]=await Promise.all([sb.from('materials').select('unit'),sb.from('services').select('unit')]);
+    const s=new Set(base); (a.data||[]).forEach(x=>{ if(x.unit) s.add(x.unit); }); (b.data||[]).forEach(x=>{ if(x.unit) s.add(x.unit); });
+    UNIT_LIST=Array.from(s);
+  }catch(e){ UNIT_LIST=base; }
+  return UNIT_LIST;
+}
 /* ──── SCHIȚE AUTO-SALVATE (draft) pentru formularele generice ──── */
 function fdraftKey(key){ return 'c373_fdraft_'+(state.tenant||'')+'_'+key; }
 function fdraftSave(){ if(!formCtx||formCtx.id||!formCtx.key) return; const m=MODULES[formCtx.key]; if(!m) return;
@@ -2676,6 +2704,7 @@ async function openForm(key,row){
   // preload ref options
   const refFields=m.fields.filter(f=>f.type==='ref');
   const refData={}; for(const f of refFields){ refData[f.key]=await loadRefOptions(f.ref); }
+  if(m.fields.some(f=>f.type==='unit')) await loadUnits();
   let body='<div id="form-msg"></div>';
   // pack fields in pairs where short
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
@@ -2686,6 +2715,7 @@ async function openForm(key,row){
     else if(f.type==='select'){ body+='<select id="f-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
     else if(f.type==='photo'){ body+='<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?' <a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="font-size:.8rem;color:var(--primary);cursor:pointer">vezi poza curentă</a>':''); }
+    else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" autocomplete="off" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
@@ -2709,6 +2739,8 @@ async function openForm(key,row){
     if(m.lineItems && dr._lines && dr._lines.length){ formCtx.lines=dr._lines; renderLines(); }
     const msg=$('form-msg'); if(msg) msg.insertAdjacentHTML('beforebegin','<div id="draft-banner" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><button class="btn-ghost" style="padding:.2rem .5rem" onclick="fdraftDiscard()">🗑 Renunță</button></div>');
   }}
+  // SKU generat automat (doar la adăugare, dacă e gol)
+  if(!row && m.autoCode){ const el=$('f-'+m.autoCode.field); if(el && !el.value){ try{ const { count }=await sb.from(m.table).select('id',{count:'exact',head:true}); el.value=m.autoCode.prefix+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){} } }
   const mb=document.querySelector('.modal-body'); if(mb) mb.addEventListener('input',function(){ clearTimeout(window._fdt); window._fdt=setTimeout(fdraftSave,500); });
   const first=document.querySelector('.modal-body input,.modal-body select,.modal-body textarea'); if(first) setTimeout(()=>first.focus(),50);
 }
