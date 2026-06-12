@@ -991,7 +991,8 @@ async function boot(){
   document.querySelectorAll('[data-lang-btn]').forEach(b=>b.classList.toggle('on',b.dataset.langBtn===LANG));
   if(LANG==='ru'){ const o=$('btn-iesi'); if(o)o.textContent='Выход'; }
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
-  go('dashboard');
+  let _lv; try{ _lv=localStorage.getItem('c373_last_view'); }catch(e){}
+  go(_lv && MODULES[_lv] && canSee(_lv) ? _lv : 'dashboard');
 }
 
 function buildNav(){
@@ -1009,6 +1010,7 @@ function buildNav(){
 function go(key){
   const m=MODULES[key]; if(!m) return;
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
+  try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
   if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, reconciliere:renderReconciliere, plantafel:renderPlantafel}[key]||renderDashboard)(); }
@@ -2657,6 +2659,17 @@ function geoAttach(input){
 }
 /* ataseaza autocomplete pe toate campurile de adresa dintr-un container */
 function geoScan(root){ try{ (root||document).querySelectorAll('input[id$="-addr"],input[id$="-address"],#f-address').forEach(geoAttach); }catch(e){} }
+/* ──── SCHIȚE AUTO-SALVATE (draft) pentru formularele generice ──── */
+function fdraftKey(key){ return 'c373_fdraft_'+(state.tenant||'')+'_'+key; }
+function fdraftSave(){ if(!formCtx||formCtx.id||!formCtx.key) return; const m=MODULES[formCtx.key]; if(!m) return;
+  const d={}; m.fields.forEach(f=>{ if(f.type==='photo') return; const el=$('f-'+f.key); if(!el) return; d[f.key]=(f.type==='checkbox')?el.checked:el.value; });
+  if(m.lineItems) d._lines=formCtx.lines;
+  const has=Object.keys(d).some(k=>k!=='_lines'&&d[k]!==''&&d[k]!==false&&d[k]!=null);
+  try{ if(has) localStorage.setItem(fdraftKey(formCtx.key),JSON.stringify(d)); else localStorage.removeItem(fdraftKey(formCtx.key)); }catch(e){}
+}
+function fdraftClear(key){ try{ localStorage.removeItem(fdraftKey(key)); }catch(e){} }
+function fdraftGet(key){ try{ const r=localStorage.getItem(fdraftKey(key)); return r?JSON.parse(r):null; }catch(e){ return null; } }
+function fdraftDiscard(){ const k=formCtx&&formCtx.key; if(k) fdraftClear(k); const b=$('draft-banner'); if(b) b.remove(); }
 async function openForm(key,row){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
@@ -2678,7 +2691,7 @@ async function openForm(key,row){
   });
   if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Din norme</button><button type="button" class="addline" style="margin-left:1rem" onclick="openServicePicker()">🧰 Din servicii</button>':'')+'</div>'; }
   if(m.bomFromNorms){ formCtx.bom=true; body+='<div id="form-bom"></div>'; await ensureNorms(); await ensureNormMaterials(); }
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">'
+  $('modal-mount').innerHTML='<div class="modal-overlay"><div class="modal">'
     +'<div class="modal-head"><h3>'+(row?'Editează':esc(m.newLabel))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body">'+body+'</div>'
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button>'
@@ -2690,6 +2703,13 @@ async function openForm(key,row){
     renderLines();
   }
   geoScan($('modal-mount'));
+  // restaurează schița nesalvată (doar la adăugare nouă)
+  if(!row){ const dr=fdraftGet(key); if(dr){
+    m.fields.forEach(f=>{ if(f.type==='photo'||dr[f.key]==null) return; const el=$('f-'+f.key); if(!el) return; if(f.type==='checkbox') el.checked=!!dr[f.key]; else el.value=dr[f.key]; });
+    if(m.lineItems && dr._lines && dr._lines.length){ formCtx.lines=dr._lines; renderLines(); }
+    const msg=$('form-msg'); if(msg) msg.insertAdjacentHTML('beforebegin','<div id="draft-banner" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><button class="btn-ghost" style="padding:.2rem .5rem" onclick="fdraftDiscard()">🗑 Renunță</button></div>');
+  }}
+  const mb=document.querySelector('.modal-body'); if(mb) mb.addEventListener('input',function(){ clearTimeout(window._fdt); window._fdt=setTimeout(fdraftSave,500); });
   const first=document.querySelector('.modal-body input,.modal-body select,.modal-body textarea'); if(first) setTimeout(()=>first.focus(),50);
 }
 function closeModal(){ $('modal-mount').innerHTML=''; }
@@ -3082,6 +3102,7 @@ async function saveRecord(){
   }
 
   $('btn-save').disabled=true; showMsg('form-msg','');
+  try{ const { data:{ session } }=await sb.auth.getSession(); if(session && session.expires_at && session.expires_at*1000 < Date.now()+60000){ await sb.auth.refreshSession(); } }catch(e){}
   try{
     let parentId=formCtx.id;
     if(formCtx.id){
@@ -3097,7 +3118,7 @@ async function saveRecord(){
       const { error } = await sb.from(m.lineItems.table).insert(rows);
       if(error) throw error;
     }
-    closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
+    fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
   }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', isNetErr(e)?netMsg():(e.message||'Eroare la salvare.')); }
 }
 

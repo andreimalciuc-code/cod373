@@ -75,6 +75,13 @@ const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
         inv:{status:'draft',number:'',client_id:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0},
         lines:[], clients:[], catalog:[], lineThumbs:{} };
+/* ── schiță auto-salvată (factură nouă) ── */
+let _dzT=null;
+function dkey(){ return 'c373_draft_factura_'+(S.tenant||''); }
+function getDraftDz(){ try{ const r=localStorage.getItem(dkey()); return r?JSON.parse(r):null; }catch(e){ return null; } }
+function saveDraftDz(){ if(S.id) return; try{ const has=(S.lines||[]).some(l=>(l.name||'').trim()||(+l.unit_price>0)); if(!has){ localStorage.removeItem(dkey()); return; } localStorage.setItem(dkey(), JSON.stringify({t:Date.now(), inv:S.inv, lines:S.lines})); }catch(e){} }
+function clearDraftDz(){ try{ localStorage.removeItem(dkey()); }catch(e){} }
+function scheduleDraft(){ if(S.id) return; clearTimeout(_dzT); _dzT=setTimeout(saveDraftDz,600); }
 
 async function boot(){
   const { data:{ session } }=await sb.auth.getSession();
@@ -89,10 +96,13 @@ async function boot(){
     const d=new Date(); d.setDate(d.getDate()+14); S.inv.due_date=d.toISOString().slice(0,10);
     S.inv.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.inv.vat_mode=(S.firm.vat_rate?'line':'none');
     if(param('estimate')) await fromEstimate(param('estimate'));
+    else { const dr=getDraftDz(); if(dr && dr.lines && dr.lines.length){ if(dr.inv) S.inv=Object.assign(S.inv,dr.inv); S.lines=dr.lines; S._restored=true; } }
   }
   if(param('print')){ await pdf(true); return; }
   render();
   signLineThumbs();
+  document.addEventListener('input',scheduleDraft); document.addEventListener('change',scheduleDraft);
+  if(S._restored) toast('↩️ Schiță nesalvată restaurată.');
 }
 async function signLineThumbs(){
   const paths=S.lines.filter(l=>l.photo_url && !S.lineThumbs[l.photo_url]).map(l=>l.photo_url);
@@ -160,7 +170,7 @@ function render(){
   $('hd-num').textContent=S.inv.number||'';
   $('hd-status').innerHTML='<span class="pill '+(S.inv.status||'draft')+'">'+(STATUS[S.inv.status]||'')+'</span>';
   const clientOpts='<option value="">— alege client —</option>'+S.clients.map(c=>'<option value="'+c.id+'" '+(S.inv.client_id===c.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
-  $('root').innerHTML='<div class="wrap"><div class="left">'
+  $('root').innerHTML=(S._restored?'<div style="max-width:1240px;margin:0 auto;padding:.5rem 1.1rem 0"><div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .8rem;font-size:.84rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><a onclick="clearDraftDz();location.href=\'factura.html\'" style="cursor:pointer;text-decoration:underline">Începe gol</a></div></div>':'')+'<div class="wrap"><div class="left">'
     +'<div class="panel"><h3>Detalii factură</h3>'
       +'<div class="field"><label>Client</label><div style="display:flex;gap:.4rem"><select id="f-client" style="flex:1" onchange="S.inv.client_id=this.value">'+clientOpts+'</select><button class="btn" onclick="newClient()">＋ nou</button></div></div>'
       +'<div class="row2"><div class="field"><label>Număr factură *</label><input id="f-num" value="'+esc(S.inv.number)+'" oninput="S.inv.number=this.value"/></div>'
@@ -268,7 +278,7 @@ function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
   h+='<div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
   const pn=prepayNote(t.total);
   if(pn) h+='<div style="margin-top:.55rem;padding:.5rem .6rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:.76rem;color:#065f46;line-height:1.45">💸 La achitarea 100% în avans: <b>−'+num2(pn.pct)+'%</b> (economisiți <b>'+money(pn.save)+'</b>). Total cu avans: <b>'+money(pn.after)+'</b></div>';
-  $('sum').innerHTML=h;
+  $('sum').innerHTML=h; scheduleDraft();
 }
 function refreshLineTotal(i){ const el=$('tt-'+i); if(el) el.value=num2(lineNet(S.lines[i])); }
 function lineEdit(i,k,v){ S.lines[i][k]=v; if(k==='unit') return; refreshLineTotal(i); renderSummary(); }
@@ -338,7 +348,9 @@ async function save(thenPdf){
   if(!(S.inv.number||'').trim()){ toast('Numărul facturii e obligatoriu.'); return; }
   if(!S.inv.client_id){ toast('Alege un client.'); return; }
   const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
-  $('btn-save').disabled=true; const t=totals();
+  $('btn-save').disabled=true;
+  try{ const {data:{session:_s}}=await sb.auth.getSession(); if(_s&&_s.expires_at&&_s.expires_at*1000<Date.now()+60000){ await sb.auth.refreshSession(); } }catch(e){}
+  const t=totals();
   const rec={ tenant_id:S.tenant, client_id:S.inv.client_id||null, number:S.inv.number, status:S.inv.status,
     issue_date:S.inv.issue_date||null, due_date:S.inv.due_date||null, estimate_id:S._fromEstimate||null,
     disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0,
@@ -349,7 +361,7 @@ async function save(thenPdf){
     await sb.from('invoice_items').delete().eq('invoice_id',S.id);
     const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('invoice_items').insert(items); if(im.error) throw im.error;
-    $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Factură salvată.'+(dp>0?' Reducere '+dp+'%':'')); if(thenPdf) pdf();
+    clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Factură salvată.'+(dp>0?' Reducere '+dp+'%':'')); if(thenPdf) pdf();
   }catch(e){ $('btn-save').disabled=false; toast('Eroare: '+(e.message||e)); }
 }
 async function markPaid(){

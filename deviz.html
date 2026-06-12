@@ -82,23 +82,33 @@ const STATUS={draft:'Ciornă',sent:'Trimisă',accepted:'Acceptată',rejected:'Re
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0},
         lines:[], clients:[], catalog:[], normMat:{}, _activeDD:null, lineThumbs:{} };
+/* ── schiță auto-salvată (ofertă nouă) ── */
+let _dzT=null;
+function dkey(){ return 'c373_draft_deviz_'+(S.tenant||''); }
+function getDraftDz(){ try{ const r=localStorage.getItem(dkey()); return r?JSON.parse(r):null; }catch(e){ return null; } }
+function saveDraftDz(){ if(S.id) return; try{ const has=(S.lines||[]).some(l=>(l.name||'').trim()||(+l.unit_price>0)); if(!has){ localStorage.removeItem(dkey()); return; } localStorage.setItem(dkey(), JSON.stringify({t:Date.now(), est:S.est, lines:S.lines})); }catch(e){} }
+function clearDraftDz(){ try{ localStorage.removeItem(dkey()); }catch(e){} }
+function scheduleDraft(){ if(S.id) return; clearTimeout(_dzT); _dzT=setTimeout(saveDraftDz,600); }
 
 async function boot(){
   const { data:{ session } }=await sb.auth.getSession();
   if(!session){ $('root').innerHTML='<div class="center">🔒 Trebuie să fii autentificat.<br><br><a class="btn primary" href="app.html">Deschide aplicația</a></div>'; return; }
-  const mem=await sb.from('memberships').select('role, tenants(name,idno,address,phone,vat_rate,currency,logo_url,automations)').eq('active',true).limit(1).maybeSingle();
-  S.role=mem.data?mem.data.role:null; S.firm=(mem.data&&mem.data.tenants)||{}; S.canEdit=FIN.includes(S.role); CUR=(S.firm.currency||'MDL').toUpperCase();
+  const mem=await sb.from('memberships').select('role, tenant_id, tenants(name,idno,address,phone,vat_rate,currency,logo_url,automations)').eq('active',true).limit(1).maybeSingle();
+  S.role=mem.data?mem.data.role:null; S.tenant=mem.data?mem.data.tenant_id:null; S.firm=(mem.data&&mem.data.tenants)||{}; S.canEdit=FIN.includes(S.role); CUR=(S.firm.currency||'MDL').toUpperCase();
   if(!S.canEdit){ $('root').innerHTML='<div class="center">🔒 Doar proprietar/administrator/manager/contabil pot crea oferte.</div>'; return; }
   await loadCatalog();
   const id=param('id');
   if(id){ await loadEstimate(id); }
   else { S.est.number=await genNumber(); if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()];
-    S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none'); }
+    S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none');
+    if(!param('survey')){ const dr=getDraftDz(); if(dr && dr.lines && dr.lines.length){ if(dr.est) S.est=Object.assign(S.est,dr.est); S.lines=dr.lines; S._restored=true; } } }
   // din fisa de previzualizare
   if(param('survey')) await fromSurvey(param('survey'));
   if(param('print')){ await pdf(param('doctype')||'oferta', true); return; }
   render();
   signLineThumbs();
+  document.addEventListener('input',scheduleDraft); document.addEventListener('change',scheduleDraft);
+  if(S._restored) toast('↩️ Schiță nesalvată restaurată.');
 }
 /* semneaza pozele liniilor pentru previzualizare in editor (cache), apoi re-randeaza liniile */
 async function signLineThumbs(){
@@ -171,7 +181,7 @@ function render(){
   $('hd-num').textContent=S.est.number||'';
   $('hd-status').innerHTML='<span class="pill '+(S.est.status||'draft')+'">'+(STATUS[S.est.status]||'')+'</span>';
   const clientOpts='<option value="">— alege client —</option>'+S.clients.map(c=>'<option value="'+c.id+'" '+(S.est.client_id===c.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
-  $('root').innerHTML='<div class="wrap"><div class="left">'
+  $('root').innerHTML=(S._restored?'<div style="max-width:1240px;margin:0 auto;padding:.5rem 1.1rem 0"><div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .8rem;font-size:.84rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><a onclick="clearDraftDz();location.href=\'deviz.html\'" style="cursor:pointer;text-decoration:underline">Începe gol</a></div></div>':'')+'<div class="wrap"><div class="left">'
     +'<div class="panel"><h3>Detalii ofertă</h3>'
       +'<div class="field"><label>Client</label><div style="display:flex;gap:.4rem"><select id="f-client" style="flex:1" onchange="S.est.client_id=this.value">'+clientOpts+'</select><button class="btn" onclick="newClient()">＋ nou</button></div></div>'
       +'<div class="row2"><div class="field"><label>Număr</label><input id="f-num" value="'+esc(S.est.number)+'" oninput="S.est.number=this.value"/></div>'
@@ -251,7 +261,7 @@ function renderSummary(){ const t=totals(); const vm=S.est.vat_mode||'none';
   h+='<div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
   const pn=prepayNote(t.total);
   if(pn) h+='<div style="margin-top:.55rem;padding:.5rem .6rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:.76rem;color:#065f46;line-height:1.45">💸 La achitarea 100% în avans: <b>−'+num2(pn.pct)+'%</b> (economisiți <b>'+money(pn.save)+'</b>). Total cu avans: <b>'+money(pn.after)+'</b></div>';
-  $('sum').innerHTML=h;
+  $('sum').innerHTML=h; scheduleDraft();
 }
 function refreshLineTotal(i){ const el=$('tt-'+i); if(el) el.value=num2(lineNet(S.lines[i])); }
 function lineEdit(i,k,v){ S.lines[i][k]=v; if(k==='unit') return; refreshLineTotal(i); renderSummary(); if(k==='qty') renderBOM(); }
@@ -411,6 +421,7 @@ async function save(thenPdf){
   if(!S.est.client_id){ toast('Alege un client.'); return; }
   const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
   $('btn-save').disabled=true;
+  try{ const {data:{session:_s}}=await sb.auth.getSession(); if(_s&&_s.expires_at&&_s.expires_at*1000<Date.now()+60000){ await sb.auth.refreshSession(); } }catch(e){}
   const t=totals();
   const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
   const rec={ tenant_id:tid, client_id:S.est.client_id||null, number:S.est.number||null, status:S.est.status,
@@ -423,7 +434,7 @@ async function save(thenPdf){
     await sb.from('estimate_items').delete().eq('estimate_id',S.id);
     const items=valid.map((l,i)=>({tenant_id:tid,estimate_id:S.id,kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('estimate_items').insert(items); if(im.error) throw im.error;
-    $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Ofertă salvată.'+(dp>0?' Reducere '+dp+'%':''));
+    clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Ofertă salvată.'+(dp>0?' Reducere '+dp+'%':''));
     if(thenPdf) pdf();
   }catch(e){ $('btn-save').disabled=false; toast('Eroare: '+(e.message||e)); }
 }
