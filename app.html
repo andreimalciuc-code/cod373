@@ -493,7 +493,8 @@ const MODULES = {
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
     select:'id,name,sku,unit,category,last_price,vat_rate,description,photo_url',
     columns:[
-      {label:'Denumire',get:r=>(r.photo_url?'<span onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="cursor:pointer" title="vezi poza">🖼️ </span>':'')+'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
+      {label:'Foto',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#f1f5f9">':'<span style="color:var(--muted)">—</span>')},
+      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Categorie',get:r=>esc(r.category||'—')},
@@ -510,15 +511,18 @@ const MODULES = {
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
 
   servicii:{ title:'Servicii', sub:'Manoperă și lucrări.', icon:'🧰', group:'Catalog', table:'services',
-    newLabel:'Serviciu nou', orderBy:{col:'name',asc:true},
-    select:'id,name,unit,price,vat_rate,description,photo_url',
+    newLabel:'Serviciu nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'SRV'},
+    select:'id,name,sku,unit,price,vat_rate,description,photo_url',
     columns:[
-      {label:'Denumire',get:r=>(r.photo_url?'<span onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="cursor:pointer" title="vezi poza">🖼️ </span>':'')+'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
+      {label:'Foto',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" onclick="openDoc(\''+encodeURIComponent(r.photo_url)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#f1f5f9">':'<span style="color:var(--muted)">—</span>')},
+      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
+      {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Tarif',get:r=>money(r.price)},
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
+      {key:'sku',label:'Cod intern (SKU) — generat automat',type:'text'},
       {key:'unit',label:'Unitate de măsură',type:'unit',default:'m2'},
       {key:'price',label:'Tarif standard (MDL)',type:'number'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
@@ -1538,12 +1542,19 @@ async function planSet(empId,date,siteId){
 /* ════ AUTOMATIZĂRI PE REGULI ════ */
 function automationsCfg(){ return (state.firm&&state.firm.automations)||{}; }
 async function saveAutomations(){
-  const au={ acc_site:$('au-site').checked, acc_invoice:$('au-inv').checked, acc_invoice_pct:+($('au-pct').value||30),
-    prepay_show:$('au-prepay').checked, prepay_pct:+($('au-prepay-pct').value||3) };
+  const au=Object.assign({}, state.firm.automations||{}, { acc_site:$('au-site').checked, acc_invoice:$('au-inv').checked, acc_invoice_pct:+($('au-pct').value||30),
+    prepay_show:$('au-prepay').checked, prepay_pct:+($('au-prepay-pct').value||3) });
   const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant));
   if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   state.firm.automations=au; toast('✅ Automatizări salvate.');
 }
+/* ── unități de măsură proprii (Setări) ── */
+function renderUnitChips(){ const u=(state.firm.automations&&state.firm.automations.units)||[];
+  return u.length? u.map((x,i)=>'<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--primary-soft,#e8f0ff);color:#1d4ed8;border-radius:8px;padding:.2rem .55rem;font-size:.82rem">'+esc(x)+' <span onclick="removeUnit('+i+')" style="cursor:pointer;font-weight:700">×</span></span>').join('') : '<span style="color:var(--muted);font-size:.85rem">— nicio unitate proprie (sunt disponibile cele standard) —</span>';
+}
+async function saveUnitsCfg(){ const au=Object.assign({}, state.firm.automations||{}); const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return false; } UNIT_LIST=null; return true; }
+async function addUnit(){ const el=$('unit-new'); const v=(el&&el.value||'').trim(); if(!v) return; const a=state.firm.automations||(state.firm.automations={}); a.units=a.units||[]; if(!a.units.includes(v)) a.units.push(v); if(el) el.value=''; if(await saveUnitsCfg()){ $('unit-chips').innerHTML=renderUnitChips(); toast('✅ Unitate adăugată.'); } }
+async function removeUnit(i){ const a=state.firm.automations||{}; if(a.units){ a.units.splice(i,1); if(await saveUnitsCfg()) $('unit-chips').innerHTML=renderUnitChips(); } }
 async function runAutomations(estId){
   const au=automationsCfg(); if(!au.acc_site && !au.acc_invoice) return;
   try{
@@ -1991,7 +2002,13 @@ async function renderSetari(){
     +'<div class="field"><div class="chk"><input type="checkbox" id="au-prepay" '+(au.prepay_show!==false?'checked':'')+'/> <span>Pe oferte și facturi → afișează <b>reducerea la plata 100% în avans</b> (Skonto)</span></div></div>'
     +'<div class="field" style="max-width:200px"><label>Reducere la plata în avans (%)</label><input id="au-prepay-pct" type="number" step="any" value="'+(au.prepay_pct!=null?au.prepay_pct:3)+'"/></div>'
     +'<button class="btn-primary" onclick="saveAutomations()">Salvează automatizările</button>'
-    +'</div></div></div>';
+    +'</div></div>'
+    +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>📏 Unități de măsură</h3></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Unități proprii — disponibile la adăugarea de materiale și servicii (pe lângă cele standard: buc, m, m², m³, kg, l…).</p>'
+    +'<div id="unit-chips" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem">'+renderUnitChips()+'</div>'
+    +'<div style="display:flex;gap:.5rem;max-width:440px"><input id="unit-new" placeholder="ex: tonă, palet, m³, oră" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addUnit();}" style="flex:1"/><button class="btn-primary" onclick="addUnit()">Adaugă</button></div>'
+    +'</div></div>'
+    +'</div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
   geoScan($('content'));
 }
@@ -2543,6 +2560,7 @@ function renderList(){
       +'<td><div class="rowact">'+acts.map(a=>'<button class="iconbtn'+(a.d?' danger':'')+'" title="'+esc(a.l)+'" onclick="event.stopPropagation();'+a.f+'">'+a.i+'</button>').join('')+'</div></td></tr>';
   }).join('');
   $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un rând pentru toate opțiunile.</div><div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+  signThumbs();
 }
 /* acțiunile unui rând — sursă comună pentru butoanele inline ȘI panoul de opțiuni */
 function jsArg(s){ return esc(s||'').replace(/\x27/g,''); }
@@ -2681,11 +2699,21 @@ function geoScan(root){ try{ (root||document).querySelectorAll('input[id$="-addr
 let UNIT_LIST=null;
 async function loadUnits(){ if(UNIT_LIST) return UNIT_LIST;
   const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct'];
+  const custom=(state.firm&&state.firm.automations&&state.firm.automations.units)||[];
   try{ const [a,b]=await Promise.all([sb.from('materials').select('unit'),sb.from('services').select('unit')]);
-    const s=new Set(base); (a.data||[]).forEach(x=>{ if(x.unit) s.add(x.unit); }); (b.data||[]).forEach(x=>{ if(x.unit) s.add(x.unit); });
+    const s=new Set(base.concat(custom)); (a.data||[]).forEach(x=>{ if(x.unit) s.add(x.unit); }); (b.data||[]).forEach(x=>{ if(x.unit) s.add(x.unit); });
     UNIT_LIST=Array.from(s);
-  }catch(e){ UNIT_LIST=base; }
+  }catch(e){ UNIT_LIST=base.concat(custom); }
   return UNIT_LIST;
+}
+/* ──── miniaturi foto „lazy": semnează căile și pune src după randare ──── */
+async function signThumbs(){
+  const imgs=Array.from(document.querySelectorAll('.lazimg[data-p]')); if(!imgs.length) return;
+  const paths=Array.from(new Set(imgs.map(i=>{ try{ return decodeURIComponent(i.getAttribute('data-p')); }catch(e){ return i.getAttribute('data-p'); } })));
+  try{ const { data }=await sb.storage.from('docs').createSignedUrls(paths,3600);
+    const map={}; (data||[]).forEach((x,idx)=>{ if(x&&x.signedUrl) map[paths[idx]]=x.signedUrl; });
+    imgs.forEach(i=>{ let p; try{ p=decodeURIComponent(i.getAttribute('data-p')); }catch(e){ p=i.getAttribute('data-p'); } if(map[p]){ i.src=map[p]; i.removeAttribute('data-p'); } });
+  }catch(e){}
 }
 /* ──── SCHIȚE AUTO-SALVATE (draft) pentru formularele generice ──── */
 function fdraftKey(key){ return 'c373_fdraft_'+(state.tenant||'')+'_'+key; }
@@ -2714,7 +2742,7 @@ async function openForm(key,row){
     else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="f-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
     else if(f.type==='select'){ body+='<select id="f-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
-    else if(f.type==='photo'){ body+='<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?' <a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="font-size:.8rem;color:var(--primary);cursor:pointer">vezi poza curentă</a>':''); }
+    else if(f.type==='photo'){ body+=(v?'<img class="lazimg" data-p="'+encodeURIComponent(v)+'" onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="display:block;max-width:100%;max-height:180px;border-radius:9px;border:1px solid var(--line);margin-bottom:.5rem;object-fit:contain;background:#f1f5f9;cursor:zoom-in">':'')+'<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a înlocui poza.</div>':''); }
     else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" autocomplete="off" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
@@ -2733,6 +2761,7 @@ async function openForm(key,row){
     renderLines();
   }
   geoScan($('modal-mount'));
+  signThumbs();
   // restaurează schița nesalvată (doar la adăugare nouă)
   if(!row){ const dr=fdraftGet(key); if(dr){
     m.fields.forEach(f=>{ if(f.type==='photo'||dr[f.key]==null) return; const el=$('f-'+f.key); if(!el) return; if(f.type==='checkbox') el.checked=!!dr[f.key]; else el.value=dr[f.key]; });

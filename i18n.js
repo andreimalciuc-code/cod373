@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Unități de măsură':{ru:'Единицы измерения',de:'Maßeinheiten',en:'Units of measure'},
     'Previzualizare':{ru:'Просмотр',de:'Vorschau',en:'Preview'},
     'Cod intern (SKU) — generat automat':{ru:'Внутренний код (SKU) — генерируется автоматически',de:'Interner Code (SKU) — automatisch generiert',en:'Internal code (SKU) — auto-generated'},
     'alege sau scrie (ex: buc, m2, kg)':{ru:'выберите или введите (напр.: шт, м2, кг)',de:'wählen oder eingeben (z. B. Stk, m2, kg)',en:'pick or type (e.g. pc, m2, kg)'},
