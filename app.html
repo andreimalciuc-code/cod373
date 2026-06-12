@@ -575,7 +575,7 @@ const MODULES = {
     newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', acceptReject:true, orderBy:{col:'created_at',asc:false},
     select:'id,number,title,status,subtotal,vat_total,total,valid_until,clients!client_id(name),sites!site_id(name)',
     columns:[
-      {label:'Nr. / lucrări',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'+(r.title?'<div style="color:var(--muted);font-size:.78rem">'+esc(r.title)+'</div>':'')},
+      {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
       {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
       {label:'Șantier',get:r=>esc(r.sites?r.sites.name:'—')},
       {label:'Total',get:r=>money(r.total)},
@@ -593,7 +593,7 @@ const MODULES = {
     newLabel:'Factură nouă', printable:'FACTURĂ FISCALĂ', efactura:true, pageEditor:'factura.html', orderBy:{col:'created_at',asc:false},
     select:'id,number,title,status,total,issue_date,due_date,efactura_status,clients(name)',
     columns:[
-      {label:'Nr. / lucrări',get:r=>'<span class="tname">'+esc(r.number)+'</span>'+(r.title?'<div style="color:var(--muted);font-size:.78rem">'+esc(r.title)+'</div>':'')},
+      {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
       {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
       {label:'Total',get:r=>money(r.total)},
       {label:'Emisă',get:r=>dt(r.issue_date)},
