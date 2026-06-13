@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'etape-șablon':{ru:'шаблон этапов',de:'Phasen-Vorlage',en:'template phases'},
+    '📋 Etape-șablon adăugate.':{ru:'📋 Шаблонные этапы добавлены.',de:'📋 Phasen-Vorlage hinzugefügt.',en:'📋 Template phases added.'},
+    'Șantierul are deja etape.':{ru:'У объекта уже есть этапы.',de:'Die Baustelle hat bereits Phasen.',en:'The site already has phases.'},
+    '📋 Am adăugat etape-șablon în grafic (le poți edita în Gantt).':{ru:'📋 Добавлены шаблонные этапы в график (можно изменить в Ганте).',de:'📋 Phasen-Vorlage zum Diagramm hinzugefügt (im Gantt bearbeitbar).',en:'📋 Added template phases to the chart (editable in Gantt).'},
     '📅 Grafic Gantt — etape':{ru:'📅 График Ганта — этапы',de:'📅 Gantt-Diagramm — Phasen',en:'📅 Gantt chart — phases'},
     'Săptămână':{ru:'Неделя',de:'Woche',en:'Week'},
     'Trimestru':{ru:'Квартал',de:'Quartal',en:'Quarter'},

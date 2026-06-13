@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v48';
+const APP_VERSION='cod373-v49';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2157,7 +2157,7 @@ async function renderGantt(){
       rowsHtml+='<div class="grow"><div class="glabel gstagelbl">↳ '+esc(st.name)+dep+'</div><div class="gtrack">'+bar+'</div></div>';
       ri++;
     });
-    if(!sts.length){ rowsHtml+='<div class="grow"><div class="glabel gstagelbl" style="color:var(--muted)">— nicio etapă — <a onclick="ganttAddStage(\''+s.id+'\')" style="cursor:pointer;color:var(--primary)">adaugă</a></div><div class="gtrack"></div></div>'; ri++; }
+    if(!sts.length){ rowsHtml+='<div class="grow"><div class="glabel gstagelbl" style="color:var(--muted)">— nicio etapă — <a onclick="ganttAddStage(\''+s.id+'\')" style="cursor:pointer;color:var(--primary)">adaugă</a> · <a onclick="ganttSeedTemplate(\''+s.id+'\')" style="cursor:pointer;color:var(--primary)">etape-șablon</a></div><div class="gtrack"></div></div>'; ri++; }
   });
   const totalH=G_HEAD+ri*G_ROW;
   // linie azi
@@ -2242,6 +2242,25 @@ async function ganttSaveStage(id){ const name=($('ge-name').value||'').trim(); i
   const r=await sbRetry(()=>sb.from('site_stages').update(rec).eq('id',id)); if(r.error){ showMsg('ge-msg','Eroare: '+esc(r.error.message)); return; }
   closeModal(); toast('✅ Etapă salvată.'); renderGantt(); }
 async function ganttDelStage(id){ if(!confirm('Ștergi această etapă?')) return; const r=await sb.from('site_stages').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } closeModal(); toast('Etapă ștearsă.'); renderGantt(); }
+/* ── etape-șablon (la creare șantier sau manual) ── */
+const STAGE_TEMPLATES={
+  constructie:['Pregătire teren & organizare','Fundație','Structură / Zidărie','Acoperiș','Instalații (electrice & sanitare)','Finisaje interioare','Finisaje exterioare','Recepție & predare'],
+  reparatie:['Demontări & pregătire','Reparații / pereți','Instalații','Finisaje','Curățenie & predare'],
+  default:['Pregătire','Execuție','Finisaje','Recepție']
+};
+async function seedSiteStages(siteId, workType, startDate, perDays){
+  try{ const ex=await sb.from('site_stages').select('id').eq('site_id',siteId).limit(1); if(ex.data && ex.data.length) return false; }catch(e){ return false; }
+  const tpl=STAGE_TEMPLATES[workType]||STAGE_TEMPLATES.default; const len=(+perDays||10);
+  let cur=startDate?new Date(startDate):new Date(); if(isNaN(cur)) cur=new Date(); cur.setHours(0,0,0,0);
+  let prevId=null;
+  for(let i=0;i<tpl.length;i++){
+    const s=new Date(cur), e=new Date(cur); e.setDate(e.getDate()+len-1);
+    const r=await sb.from('site_stages').insert({tenant_id:state.tenant,site_id:siteId,name:tpl[i],position:i+1,status:'plan',progress:0,start_date:s.toISOString().slice(0,10),end_date:e.toISOString().slice(0,10),depends_on:prevId}).select('id').single();
+    if(r.error) break; prevId=r.data.id; cur=new Date(e); cur.setDate(cur.getDate()+1);
+  }
+  return true;
+}
+async function ganttSeedTemplate(siteId){ const s=(await sb.from('sites').select('work_type,start_date').eq('id',siteId).single()).data||{}; const ok=await seedSiteStages(siteId, s.work_type, s.start_date); if(ok){ toast('📋 Etape-șablon adăugate.'); renderGantt(); } else toast('Șantierul are deja etape.'); }
 
 /* ════ HARTĂ FLOTĂ (Leaflet) ════ */
 let _leaflet=false;
@@ -3540,6 +3559,7 @@ async function saveRecord(){
       const rrows=(formCtx.recipe||[]).filter(r=>(r.material_name||'').trim()).map((r,idx)=>({tenant_id:state.tenant,service_id:parentId,material_id:r.material_id||null,material_name:r.material_name||null,unit:r.unit||null,qty_per_unit:+r.qty_per_unit||0,waste_pct:+r.waste_pct||0,position:idx+1}));
       if(rrows.length){ const { error }=await sb.from('service_materials').insert(rrows); if(error) throw error; }
     }
+    if(m.table==='sites' && !formCtx.id){ try{ if(await seedSiteStages(parentId, payload.work_type, payload.start_date)) toast('📋 Am adăugat etape-șablon în grafic (le poți edita în Gantt).'); }catch(e){} }
     fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
   }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', isNetErr(e)?netMsg():(e.message||'Eroare la salvare.')); }
 }
