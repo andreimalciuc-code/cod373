@@ -509,8 +509,8 @@ const MODULES = {
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
 
-  servicii:{ title:'Servicii', sub:'Manoperă și lucrări.', icon:'🧰', group:'Catalog', table:'services',
-    newLabel:'Serviciu nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'SRV'},
+  servicii:{ title:'Servicii', sub:'Manoperă și lucrări — cu rețetă de materiale.', icon:'🧰', group:'Catalog', table:'services',
+    newLabel:'Serviciu nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'SRV'}, recipe:true,
     select:'id,name,sku,unit,price,vat_rate,description,photo_url',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
@@ -2729,6 +2729,27 @@ function fdraftSave(){ if(!formCtx||formCtx.id||!formCtx.key) return; const m=MO
 function fdraftClear(key){ try{ localStorage.removeItem(fdraftKey(key)); }catch(e){} }
 function fdraftGet(key){ try{ const r=localStorage.getItem(fdraftKey(key)); return r?JSON.parse(r):null; }catch(e){ return null; } }
 function fdraftDiscard(){ const k=formCtx&&formCtx.key; if(k) fdraftClear(k); const b=$('draft-banner'); if(b) b.remove(); }
+/* ──── REȚETĂ de materiale pe serviciu ──── */
+function recipeMatch(i){ const r=formCtx.recipe[i]; const mm=(formCtx.materials||[]).find(x=>x.name===r.material_name); if(mm){ r.material_id=mm.id; r.unit=mm.unit||r.unit; r._price=+mm.last_price||0; } else { r.material_id=null; r._price=0; } }
+function recipeAdd(){ formCtx.recipe=formCtx.recipe||[]; formCtx.recipe.push({material_id:null,material_name:'',unit:'',qty_per_unit:0,waste_pct:0,_price:0}); renderRecipe(); }
+function recipeDel(i){ formCtx.recipe.splice(i,1); renderRecipe(); }
+function recipeEdit(i,k,v){ const r=formCtx.recipe[i]; r[k]=v; if(k==='material_name'){ recipeMatch(i); renderRecipe(); } else { recipeTotals(); } }
+function recipeRowCost(r){ return (+r.qty_per_unit||0)*(1+(+r.waste_pct||0)/100)*(+r._price||0); }
+function recipeTotals(){ let c=0; (formCtx.recipe||[]).forEach(r=>c+=recipeRowCost(r)); const el=$('recipe-total'); if(el) el.textContent=money(c); }
+function renderRecipe(){ const el=$('recipe-mount'); if(!el) return; const rows=(formCtx.recipe||[]);
+  if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:.82rem;padding:.3rem 0">Niciun material încă — apasă „＋ adaugă material".</div>'; return; }
+  let html='<div class="tbl-wrap"><table class="tbl" style="font-size:.82rem"><thead><tr><th>Material</th><th>UM</th><th>Consum/UM</th><th>Pierdere %</th><th>Preț unit.</th><th>Cost</th><th></th></tr></thead><tbody>';
+  rows.forEach((r,i)=>{ html+='<tr>'
+    +'<td><input list="recipe-mat-list" autocomplete="off" value="'+esc(r.material_name||'')+'" oninput="recipeEdit('+i+',\'material_name\',this.value)" placeholder="alege material" style="min-width:150px"/></td>'
+    +'<td>'+esc(r.unit||'—')+'</td>'
+    +'<td><input type="number" step="any" value="'+esc(r.qty_per_unit||0)+'" oninput="recipeEdit('+i+',\'qty_per_unit\',this.value)" style="width:84px"/></td>'
+    +'<td><input type="number" step="any" value="'+esc(r.waste_pct||0)+'" oninput="recipeEdit('+i+',\'waste_pct\',this.value)" style="width:64px"/></td>'
+    +'<td>'+money(r._price||0)+'</td><td><b>'+money(recipeRowCost(r))+'</b></td>'
+    +'<td><button class="delx" onclick="recipeDel('+i+')" title="Șterge">×</button></td></tr>';
+  });
+  html+='</tbody></table></div><div style="text-align:right;font-size:.82rem;margin-top:.3rem">Cost materiale la 1 unitate de serviciu: <b id="recipe-total">'+money(0)+'</b></div>';
+  el.innerHTML=html; recipeTotals();
+}
 async function openForm(key,row){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
@@ -2736,6 +2757,9 @@ async function openForm(key,row){
   const refFields=m.fields.filter(f=>f.type==='ref');
   const refData={}; for(const f of refFields){ refData[f.key]=await loadRefOptions(f.ref); }
   if(m.fields.some(f=>f.type==='unit')) await loadUnits();
+  if(m.recipe){ formCtx.materials=((await sb.from('materials').select('id,name,unit,last_price').order('name')).data)||[]; formCtx.recipe=[];
+    if(row){ const rr=((await sb.from('service_materials').select('*').eq('service_id',row.id).order('position')).data)||[]; const pm={}; formCtx.materials.forEach(mm=>pm[mm.id]=mm);
+      formCtx.recipe=rr.map(x=>({material_id:x.material_id||null,material_name:x.material_name||(pm[x.material_id]?pm[x.material_id].name:''),unit:x.unit||'',qty_per_unit:+x.qty_per_unit||0,waste_pct:+x.waste_pct||0,_price:(x.material_id&&pm[x.material_id])?(+pm[x.material_id].last_price||0):0})); } }
   let body='<div id="form-msg"></div>';
   // pack fields in pairs where short
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
@@ -2750,6 +2774,7 @@ async function openForm(key,row){
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
+  if(m.recipe){ body+='<div class="field"><label>🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)</label><datalist id="recipe-mat-list">'+(formCtx.materials||[]).map(mm=>'<option value="'+esc(mm.name)+'"></option>').join('')+'</datalist><div id="recipe-mount"></div><button type="button" class="addline" onclick="recipeAdd()">＋ adaugă material</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Consum × volumul măsurat (la previzualizare șantier) = cantitatea de material. Prețul se ia automat din Materiale.</div></div>'; }
   if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Din norme</button><button type="button" class="addline" style="margin-left:1rem" onclick="openServicePicker()">🧰 Din servicii</button>':'')+'</div>'; }
   if(m.bomFromNorms){ formCtx.bom=true; body+='<div id="form-bom"></div>'; await ensureNorms(); await ensureNormMaterials(); }
   $('modal-mount').innerHTML='<div class="modal-overlay"><div class="modal">'
@@ -2763,6 +2788,7 @@ async function openForm(key,row){
     if(!formCtx.lines.length) formCtx.lines=[{name:'',qty:1,unit:'buc',unit_price:0,vat_rate:20}];
     renderLines();
   }
+  if(m.recipe) renderRecipe();
   geoScan($('modal-mount'));
   signThumbs();
   // restaurează schița nesalvată (doar la adăugare nouă)
@@ -3181,6 +3207,10 @@ async function saveRecord(){
       const rows=lineRows.map(r=>({ ...r, [m.lineItems.parentKey]:parentId }));
       const { error } = await sb.from(m.lineItems.table).insert(rows);
       if(error) throw error;
+    }
+    if(m.recipe){ await sb.from('service_materials').delete().eq('service_id',parentId);
+      const rrows=(formCtx.recipe||[]).filter(r=>(r.material_name||'').trim()).map((r,idx)=>({tenant_id:state.tenant,service_id:parentId,material_id:r.material_id||null,material_name:r.material_name||null,unit:r.unit||null,qty_per_unit:+r.qty_per_unit||0,waste_pct:+r.waste_pct||0,position:idx+1}));
+      if(rrows.length){ const { error }=await sb.from('service_materials').insert(rrows); if(error) throw error; }
     }
     fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
   }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', isNetErr(e)?netMsg():(e.message||'Eroare la salvare.')); }

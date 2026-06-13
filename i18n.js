@@ -13,6 +13,14 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Manoperă și lucrări — cu rețetă de materiale.':{ru:'Работы — с рецептурой материалов.',de:'Arbeiten — mit Materialrezeptur.',en:'Labor — with a material recipe.'},
+    '🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)':{ru:'🧪 Рецептура — используемые материалы (расход на 1 ед. услуги)',de:'🧪 Rezeptur — verwendete Materialien (Verbrauch je 1 Leistungseinheit)',en:'🧪 Recipe — materials used (consumption per 1 service unit)'},
+    'adaugă material':{ru:'добавить материал',de:'Material hinzufügen',en:'add material'},
+    'Consum/UM':{ru:'Расход/ед.',de:'Verbrauch/Einh.',en:'Use/unit'},
+    'Pierdere %':{ru:'Потери %',de:'Verlust %',en:'Waste %'},
+    'Preț unit.':{ru:'Цена ед.',de:'Einzelpreis',en:'Unit price'},
+    'Cost':{ru:'Стоимость',de:'Kosten',en:'Cost'},
+    'Cost materiale la 1 unitate de serviciu:':{ru:'Стоимость материалов на 1 ед. услуги:',de:'Materialkosten je 1 Leistungseinheit:',en:'Material cost per 1 service unit:'},
     'Lucrări / nr.':{ru:'Работы / №',de:'Arbeiten / Nr.',en:'Works / no.'},
     '(fără titlu)':{ru:'(без названия)',de:'(ohne Titel)',en:'(no title)'},
     'Titlu / ce lucrări (apare în listă)':{ru:'Название / какие работы (видно в списке)',de:'Titel / welche Arbeiten (in der Liste sichtbar)',en:'Title / what works (shown in the list)'},
