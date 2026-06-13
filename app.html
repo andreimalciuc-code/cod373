@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v45';
+const APP_VERSION='cod373-v46';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1508,102 +1508,179 @@ async function reconConfirm(idx){
 }
 
 /* ════ PLANTAFEL — planificare echipe pe săptămână (stil PlanCraft) ════ */
-let _planMon=null, _planData={}, _planSites=[], _planEmps=[], _planDates=[], _planColor={};
+let _planMon=null, _planData={}, _planSites=[], _planEmps=[], _planDates=[], _planColor={}, _planTeams=[];
+let _planHalf=localStorage.getItem('c373_plan_half')==='1';
+let _planGroup=localStorage.getItem('c373_plan_teams')==='1';
 const PLAN_PALETTE=['#2f6bff','#16b364','#f79009','#f04438','#7a5af8','#06aed4','#ec4899','#65a30d','#d97706','#0ea5e9','#14b8a6','#a855f7','#e11d48','#475569'];
 const PLAN_ABS=[['concediu','🏖️ Concediu','#0ea5e9'],['liber','🏠 Liber','#94a3b8'],['boala','🤒 Boală','#f59e0b']];
 function mondayOf(d){ d=new Date(d); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
 function isoD(d){ return new Date(d).toISOString().slice(0,10); }
 function planAbs(n){ return PLAN_ABS.find(a=>a[0]===n); }
-function planChipHtml(rec, empId, date){
+function planChipHtml(rec, id, date, slot){
   if(!rec) return '';
+  const mv='move:'+id+'|'+date+'|'+slot;
   if(rec.site_id){ const c=_planColor[rec.site_id]||'#475569'; const s=_planSites.find(x=>x.id===rec.site_id); const nm=s?s.name:'șantier';
-    return '<div class="plchip" draggable="true" ondragstart="planDragStart(event,\'move:'+empId+'|'+date+'\')" style="background:'+c+'" title="'+esc(nm)+'">'+esc(nm)+'<span class="plx" onclick="event.stopPropagation();planAssign(\''+empId+'\',\''+date+'\',null,null)">×</span></div>'; }
+    return '<div class="plchip" draggable="true" ondragstart="event.stopPropagation();planDragStart(event,\''+mv+'\')" style="background:'+c+'" title="'+esc(nm)+'">'+esc(nm)+'<span class="plx" onclick="event.stopPropagation();planAssign(\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">×</span></div>'; }
   if(rec.note){ const a=planAbs(rec.note)||['',rec.note,'#94a3b8'];
-    return '<div class="plchip plabs" draggable="true" ondragstart="planDragStart(event,\'move:'+empId+'|'+date+'\')" style="background:#fff;color:#475569;border:1px dashed '+a[2]+'">'+esc(a[1])+'<span class="plx" onclick="event.stopPropagation();planAssign(\''+empId+'\',\''+date+'\',null,null)">×</span></div>'; }
+    return '<div class="plchip plabs" draggable="true" ondragstart="event.stopPropagation();planDragStart(event,\''+mv+'\')" style="background:#fff;color:#475569;border:1px dashed '+a[2]+'">'+esc(a[1])+'<span class="plx" onclick="event.stopPropagation();planAssign(\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">×</span></div>'; }
   return '';
 }
+function planZone(empId,date,dropSlot,o,half){
+  const chip=o?planChipHtml(o.rec,empId,date,o.slot):'<span class="pladd">＋</span>';
+  return '<div class="plzone'+(half?' plhalf':'')+'" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'emp\',\''+empId+'\',\''+date+'\',\''+dropSlot+'\')" onclick="planCellMenu(event,\'emp\',\''+empId+'\',\''+date+'\',\''+dropSlot+'\')">'+chip+'</div>';
+}
+function planCellTd(empId,date,we,td){
+  const k=empId+'|'+date, full=_planData[k+'|full'], am=_planData[k+'|am'], pm=_planData[k+'|pm'];
+  let inner;
+  if(_planHalf){ const amO=am?{rec:am,slot:'am'}:(full?{rec:full,slot:'full'}:null), pmO=pm?{rec:pm,slot:'pm'}:(full?{rec:full,slot:'full'}:null);
+    inner=planZone(empId,date,'am',amO,true)+planZone(empId,date,'pm',pmO,true); }
+  else if(full){ inner=planZone(empId,date,'full',{rec:full,slot:'full'},false); }
+  else if(am||pm){ inner=planZone(empId,date,'am',am?{rec:am,slot:'am'}:null,true)+planZone(empId,date,'pm',pm?{rec:pm,slot:'pm'}:null,true); }
+  else { inner=planZone(empId,date,'full',null,false); }
+  return '<td class="plcelltd'+(we?' plwe':'')+(td?' pltoday':'')+'">'+inner+'</td>';
+}
+function planTeamTd(teamId,date,we,td){
+  const t=_planTeams.find(x=>x.id===teamId), mem=t?t.members:[];
+  const sids=mem.map(e=>{ const f=_planData[e+'|'+date+'|full']; return f?f.site_id:null; }).filter(Boolean);
+  let chip='<span class="pladd" style="font-size:.72rem">＋ brigadă</span>';
+  if(mem.length && sids.length===mem.length && sids.every(s=>s===sids[0])){ const c=_planColor[sids[0]]||'#475569'; const s=_planSites.find(x=>x.id===sids[0]); chip='<span class="plchip plsm" style="background:'+c+'">'+esc(s?s.name:'')+'</span>'; }
+  else if(sids.length){ chip='<span style="font-size:.72rem;color:var(--muted)">'+sids.length+'/'+mem.length+'</span>'; }
+  return '<td class="plcelltd plteamcell'+(we?' plwe':'')+(td?' pltoday':'')+'"><div class="plzone" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')" onclick="planCellMenu(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')">'+chip+'</div></td>';
+}
+function planEmpRow(e,indent,dates,today){ return '<tr><td class="plsticky tname"'+(indent?' style="padding-left:1.5rem"':'')+'>'+esc(e.full_name)+'</td>'+dates.map((d,i)=>planCellTd(e.id,d,i>=5,d===today)).join('')+'</tr>'; }
 async function renderPlantafel(){
   if(!_planMon) _planMon=mondayOf(new Date());
   const start=new Date(_planMon); const dates=[]; for(let i=0;i<7;i++){ const d=new Date(start); d.setDate(start.getDate()+i); dates.push(isoD(d)); }
   _planDates=dates; const today=isoD(new Date());
-  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="planNav(-7)">← Săpt. anterioară</button><b style="margin:0 .6rem">'+dates[0].split('-').reverse().join('.')+' — '+dates[6].split('-').reverse().join('.')+'</b><button class="btn-ghost" onclick="planNav(7)">Săpt. următoare →</button><button class="btn-ghost" onclick="planNav(0)" style="margin-left:auto">Azi</button></div>'
+  const tgl=(on)=>on?'background:var(--primary-soft,#e8f0ff);color:#1d4ed8;font-weight:700':'';
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="planNav(-7)">←</button><b style="margin:0 .5rem">'+dates[0].split('-').reverse().join('.')+' — '+dates[6].split('-').reverse().join('.')+'</b><button class="btn-ghost" onclick="planNav(7)">→</button><button class="btn-ghost" onclick="planNav(0)">Azi</button><span style="flex:1"></span>'
+    +'<button class="btn-ghost" onclick="planTogHalf()" style="'+tgl(_planHalf)+'">½ Jumătăți de zi</button>'
+    +'<button class="btn-ghost" onclick="planTogGroup()" style="'+tgl(_planGroup)+'">👥 Pe echipe</button>'
+    +'<button class="btn-ghost" onclick="planTeamsModal()">👷 Echipe</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>🗓️ Planificare echipe</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
-  const [empR,siteR,planR]=await Promise.all([
+  const [empR,siteR,planR,teamR,tmR]=await Promise.all([
     sb.from('employees').select('id,full_name,active'),
     sb.from('sites').select('id,name,status'),
-    sb.from('crew_plan').select('employee_id,site_id,plan_date,note').gte('plan_date',dates[0]).lte('plan_date',dates[6])
+    sb.from('crew_plan').select('employee_id,site_id,plan_date,note,slot').gte('plan_date',dates[0]).lte('plan_date',dates[6]),
+    sb.from('crew_teams').select('id,name,position'),
+    sb.from('crew_team_members').select('team_id,employee_id')
   ]);
   const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
   const sites=(siteR.data||[]).filter(s=>s.status!=='done'&&s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   _planEmps=emps; _planSites=sites; _planColor={}; sites.forEach((s,i)=>{ _planColor[s.id]=PLAN_PALETTE[i%PLAN_PALETTE.length]; });
-  _planData={}; (planR.data||[]).forEach(p=>{ _planData[p.employee_id+'|'+p.plan_date]={site_id:p.site_id,note:p.note}; });
+  _planData={}; (planR.data||[]).forEach(p=>{ _planData[p.employee_id+'|'+p.plan_date+'|'+(p.slot||'full')]={site_id:p.site_id,note:p.note}; });
+  const memByTeam={}; (tmR.data||[]).forEach(m=>{ (memByTeam[m.team_id]=memByTeam[m.team_id]||[]).push(m.employee_id); });
+  _planTeams=(teamR.data||[]).sort((a,b)=>(a.position||0)-(b.position||0)||(a.name||'').localeCompare(b.name||'')).map(t=>({id:t.id,name:t.name,members:(memByTeam[t.id]||[]).filter(id=>emps.some(e=>e.id===id))}));
   const dn=['Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă','Duminică'];
-  // paletă proiecte (draggable) + absențe
   const palette='<div class="plpalette"><span class="pllbl">Trage pe zi:</span>'
     +(sites.length?sites.map(s=>'<div class="plchip plpal" draggable="true" ondragstart="planDragStart(event,\'site:'+s.id+'\')" style="background:'+_planColor[s.id]+'">'+esc(s.name)+'</div>').join(''):'<span style="color:var(--muted);font-size:.8rem">— niciun șantier activ —</span>')
     +'<span style="width:1px;height:20px;background:var(--line);margin:0 .3rem"></span>'
     +PLAN_ABS.map(a=>'<div class="plchip plpal plabs" draggable="true" ondragstart="planDragStart(event,\'abs:'+a[0]+'\')" style="background:#fff;color:#475569;border:1px dashed '+a[2]+'">'+a[1]+'</div>').join('')
     +'</div>';
-  // grilă
   const head='<tr><th class="plsticky">Angajat</th>'+dates.map((d,i)=>{ const we=i>=5, td=d===today; return '<th class="plday'+(we?' plwe':'')+(td?' pltoday':'')+'">'+dn[i].slice(0,3)+'<br><span style="font-weight:400;font-size:.72rem">'+d.slice(8,10)+'.'+d.slice(5,7)+'</span></th>'; }).join('')+'</tr>';
-  const body=emps.length?emps.map(e=>'<tr><td class="plsticky tname">'+esc(e.full_name)+'</td>'+dates.map((d,i)=>{ const we=i>=5, td=d===today; const rec=_planData[e.id+'|'+d];
-      return '<td class="plcell'+(we?' plwe':'')+(td?' pltoday':'')+'" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\''+e.id+'\',\''+d+'\')" onclick="planCellMenu(event,\''+e.id+'\',\''+d+'\')">'+(planChipHtml(rec,e.id,d)||'<span class="pladd">＋</span>')+'</td>'; }).join('')+'</tr>').join(''):'<tr><td colspan="8" style="color:var(--muted);padding:1rem">Niciun angajat activ. Adaugă întâi angajați.</td></tr>';
-  // sumar pe șantiere (om-zile săptămâna asta)
-  const cnt={}; Object.values(_planData).forEach(r=>{ if(r.site_id) cnt[r.site_id]=(cnt[r.site_id]||0)+1; });
-  const summary=Object.keys(cnt).length?'<div class="plsum"><span class="pllbl">Săptămâna asta (om-zile):</span>'+sites.filter(s=>cnt[s.id]).map(s=>'<span class="plchip plsm" style="background:'+_planColor[s.id]+'">'+esc(s.name)+' · '+cnt[s.id]+'</span>').join('')+'</div>':'';
+  let body='';
+  if(!emps.length){ body='<tr><td colspan="8" style="color:var(--muted);padding:1rem">Niciun angajat activ. Adaugă întâi angajați.</td></tr>'; }
+  else if(_planGroup && _planTeams.length){
+    const seen=new Set();
+    _planTeams.forEach(t=>{ body+='<tr class="plteamrow"><td class="plsticky" style="font-weight:700;background:#eef2f7">👥 '+esc(t.name)+' <span style="color:var(--muted);font-weight:400;font-size:.72rem">('+t.members.length+')</span></td>'+dates.map((d,i)=>planTeamTd(t.id,d,i>=5,d===today)).join('')+'</tr>';
+      t.members.forEach(id=>{ const e=emps.find(x=>x.id===id); if(e){ seen.add(id); body+=planEmpRow(e,true,dates,today); } }); });
+    const rest=emps.filter(e=>!seen.has(e.id));
+    if(rest.length){ body+='<tr><td class="plsticky" style="font-weight:600;color:var(--muted);background:#f8fafc">Fără echipă</td>'+dates.map((d,i)=>'<td class="plcelltd'+(i>=5?' plwe':'')+(d===today?' pltoday':'')+'" style="background:#f8fafc"></td>').join('')+'</tr>'; rest.forEach(e=>body+=planEmpRow(e,false,dates,today)); }
+  } else { body=emps.map(e=>planEmpRow(e,false,dates,today)).join(''); }
+  // sumar pe șantiere (om-zile: zi=1, jumătate=0.5)
+  const cnt={}; Object.keys(_planData).forEach(key=>{ const r=_planData[key]; if(r&&r.site_id){ const slot=key.split('|')[2]; cnt[r.site_id]=(cnt[r.site_id]||0)+(slot==='full'?1:0.5); } });
+  const fmt=n=>(n%1)?n.toFixed(1):n;
+  const summary=Object.keys(cnt).length?'<div class="plsum"><span class="pllbl">Săptămâna asta (om-zile):</span>'+sites.filter(s=>cnt[s.id]).map(s=>'<span class="plchip plsm" style="background:'+_planColor[s.id]+'">'+esc(s.name)+' · '+fmt(cnt[s.id])+'</span>').join('')+'</div>':'';
   $('mod-body').innerHTML=planStyle()+palette+'<div class="tbl-wrap plwrap"><table class="tbl pltbl">'+head+'<tbody>'+body+'</tbody></table></div>'+summary
-    +'<div style="padding:.5rem 1.2rem .8rem;font-size:.76rem;color:var(--muted)">Trage un proiect din paletă pe o zi, mută între celule, sau dă clic pe o celulă pentru meniu. Se salvează automat.</div>';
+    +'<div style="padding:.5rem 1.2rem .8rem;font-size:.76rem;color:var(--muted)">Trage un proiect din paletă pe o zi (sau pe rândul echipei = toată brigada), mută între celule, ori dă clic pentru meniu. „½ Jumătăți de zi" = dimineața/după-amiaza pe șantiere diferite. Se salvează automat.</div>';
 }
 function planStyle(){ if(document.getElementById('plan-style')) return ''; return '<style id="plan-style">'
   +'.plpalette{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;padding:.6rem 1.2rem;border-bottom:1px solid var(--line)}'
   +'.pllbl{font-size:.76rem;color:var(--muted);font-weight:600;margin-right:.2rem}'
-  +'.plchip{display:inline-flex;align-items:center;gap:.3rem;color:#fff;border-radius:8px;padding:.28rem .55rem;font-size:.78rem;font-weight:600;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab;box-shadow:0 1px 2px rgba(0,0,0,.12)}'
+  +'.plchip{display:inline-flex;align-items:center;gap:.3rem;color:#fff;border-radius:8px;padding:.26rem .5rem;font-size:.77rem;font-weight:600;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab;box-shadow:0 1px 2px rgba(0,0,0,.12)}'
   +'.plpal{cursor:grab} .plabs{font-weight:600}'
   +'.plx{cursor:pointer;font-weight:800;opacity:.8;padding:0 .1rem;border-radius:4px} .plx:hover{opacity:1;background:rgba(255,255,255,.25)}'
-  +'.pltbl td,.pltbl th{padding:.3rem .35rem;text-align:center;vertical-align:middle}'
+  +'.pltbl td,.pltbl th{padding:.25rem .3rem;text-align:center;vertical-align:middle}'
   +'.pltbl th.plday{font-size:.78rem}'
-  +'.plcell{min-width:108px;height:46px;cursor:pointer;border:1px solid transparent}'
-  +'.plcell:hover{background:var(--primary-soft,#eef4ff)} .plcell.plover{outline:2px dashed var(--primary,#2f6bff);outline-offset:-2px;background:var(--primary-soft,#eef4ff)}'
+  +'.plcelltd{min-width:114px;padding:2px!important}'
+  +'.plzone{min-height:42px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;border:1px solid transparent}'
+  +'.plzone:hover{background:var(--primary-soft,#eef4ff)} .plzone.plover{outline:2px dashed var(--primary,#2f6bff);outline-offset:-2px;background:var(--primary-soft,#eef4ff)}'
+  +'.plhalf{min-height:20px} .plhalf+.plhalf{margin-top:2px}'
+  +'.plteamcell .plzone{min-height:28px} .plteamrow td{background:#f7f9fc}'
   +'.plwe{background:#f8fafc} .pltoday{background:#fffbeb}'
   +'.pladd{color:#cbd5e1;font-size:1.05rem;font-weight:700}'
   +'.plsticky{position:sticky;left:0;background:#fff;z-index:2;text-align:left;white-space:nowrap;box-shadow:1px 0 0 var(--line)}'
   +'.plsum{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;padding:.6rem 1.2rem;border-top:1px solid var(--line)}'
   +'.plsm{max-width:none;cursor:default}'
-  +'#plmenu{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:.5rem;max-height:60vh;overflow:auto;min-width:200px}'
+  +'#plmenu{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:.5rem;max-height:60vh;overflow:auto;min-width:210px}'
   +'#plmenu .plopt{display:flex;align-items:center;gap:.5rem;padding:.4rem .55rem;border-radius:8px;cursor:pointer;font-size:.85rem} #plmenu .plopt:hover{background:var(--bg,#f1f5f9)}'
   +'#plmenu .pldot{width:14px;height:14px;border-radius:4px;flex:none}'
   +'</style>'; }
+function planTogHalf(){ _planHalf=!_planHalf; localStorage.setItem('c373_plan_half',_planHalf?'1':'0'); renderPlantafel(); }
+function planTogGroup(){ _planGroup=!_planGroup; localStorage.setItem('c373_plan_teams',_planGroup?'1':'0'); renderPlantafel(); }
 function planNav(delta){ closePlMenu(); if(delta===0) _planMon=mondayOf(new Date()); else { _planMon=new Date(_planMon); _planMon.setDate(_planMon.getDate()+delta); } renderPlantafel(); }
 function planDragStart(ev,payload){ ev.dataTransfer.setData('text/plain',payload); ev.dataTransfer.effectAllowed='move'; }
-function planDrop(ev,empId,date){ ev.preventDefault(); const cell=ev.currentTarget; if(cell) cell.classList.remove('plover');
+function planDrop(ev,kind,id,date,slot){ ev.preventDefault(); if(ev.currentTarget) ev.currentTarget.classList.remove('plover');
   const data=ev.dataTransfer.getData('text/plain')||'';
-  if(data.indexOf('site:')===0){ planAssign(empId,date,data.slice(5),null); }
-  else if(data.indexOf('abs:')===0){ planAssign(empId,date,null,data.slice(4)); }
-  else if(data.indexOf('move:')===0){ const [se,sd]=data.slice(5).split('|'); if(se===empId&&sd===date) return; const src=_planData[se+'|'+sd]; if(!src) return; planMove(se,sd,empId,date,src); }
+  if(data.indexOf('site:')===0){ planAssignK(kind,id,date,data.slice(5),null,slot); }
+  else if(data.indexOf('abs:')===0){ planAssignK(kind,id,date,null,data.slice(4),slot); }
+  else if(data.indexOf('move:')===0){ const p=data.slice(5).split('|'); const se=p[0],sd=p[1],ss=p[2]||'full'; if(kind==='emp'&&se===id&&sd===date&&ss===slot) return; const src=_planData[se+'|'+sd+'|'+ss]; if(!src) return; planMoveK(se,sd,ss,kind,id,date,slot,src); }
 }
-async function planWrite(empId,date,siteId,note){
-  await sb.from('crew_plan').delete().eq('employee_id',empId).eq('plan_date',date);
-  if(siteId||note){ const r=await sbRetry(()=>sb.from('crew_plan').insert({tenant_id:state.tenant,employee_id:empId,site_id:siteId||null,plan_date:date,note:note||null})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return false; } }
-  return true;
+function planAssignK(kind,id,date,site,note,slot){ if(kind==='team') planAssignTeam(id,date,site,note); else planAssign(id,date,site,note,slot); }
+function planDelQ(empId,date,slot){ let q=sb.from('crew_plan').delete().eq('employee_id',empId).eq('plan_date',date); if(slot) q=q.eq('slot',slot); return q; }
+async function planIns(empId,date,siteId,note,slot){ return sbRetry(()=>sb.from('crew_plan').insert({tenant_id:state.tenant,employee_id:empId,site_id:siteId||null,plan_date:date,note:note||null,slot:slot})); }
+async function planSetSlot(empId,date,siteId,note,slot){
+  if(slot==='full'){ await planDelQ(empId,date,null); if(siteId||note){ const r=await planIns(empId,date,siteId,note,'full'); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); } } return; }
+  const full=_planData[empId+'|'+date+'|full'];
+  if(full){ const other=slot==='am'?'pm':'am'; await planDelQ(empId,date,'full'); if(full.site_id||full.note) await planIns(empId,date,full.site_id,full.note,other); }
+  await planDelQ(empId,date,slot); if(siteId||note){ const r=await planIns(empId,date,siteId,note,slot); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); } }
 }
-async function planAssign(empId,date,siteId,note){ closePlMenu(); const ok=await planWrite(empId,date,siteId,note); if(ok) toast('✅ Salvat.'); renderPlantafel(); }
-async function planMove(se,sd,de,dd,src){ const a=await planWrite(de,dd,src.site_id,src.note); const b=await planWrite(se,sd,null,null); if(a&&b) toast('✅ Mutat.'); renderPlantafel(); }
+async function planAssign(empId,date,siteId,note,slot){ closePlMenu(); await planSetSlot(empId,date,siteId,note,slot||'full'); toast('✅ Salvat.'); renderPlantafel(); }
+async function planAssignTeam(teamId,date,siteId,note){ closePlMenu(); const t=_planTeams.find(x=>x.id===teamId); if(!t) return; for(const m of t.members){ await planSetSlot(m,date,siteId,note,'full'); } toast((siteId||note)?'✅ Brigadă planificată.':'✅ Șters.'); renderPlantafel(); }
+async function planMoveK(se,sd,ss,kind,id,date,slot,src){ closePlMenu();
+  if(kind==='team'){ const t=_planTeams.find(x=>x.id===id); if(t){ for(const m of t.members) await planSetSlot(m,date,src.site_id,src.note,'full'); } }
+  else { await planSetSlot(id,date,src.site_id,src.note,slot); }
+  await planSetSlot(se,sd,null,null,ss); toast('✅ Mutat.'); renderPlantafel();
+}
 function closePlMenu(){ const m=document.getElementById('plmenu'); if(m) m.remove(); document.removeEventListener('click',_plMenuOut,true); }
 function _plMenuOut(ev){ const m=document.getElementById('plmenu'); if(m && !m.contains(ev.target)){ closePlMenu(); } }
-function planCellMenu(ev,empId,date){
+function planCellMenu(ev,kind,id,date,slot){
   ev.stopPropagation(); closePlMenu();
-  const emp=_planEmps.find(e=>e.id===empId); const cur=_planData[empId+'|'+date];
-  let html='<div style="font-size:.76rem;color:var(--muted);font-weight:600;padding:.2rem .55rem .35rem">'+esc(emp?emp.full_name:'')+' · '+date.slice(8,10)+'.'+date.slice(5,7)+'</div>';
-  html+=_planSites.map(s=>'<div class="plopt" onclick="planAssign(\''+empId+'\',\''+date+'\',\''+s.id+'\',null)"><span class="pldot" style="background:'+_planColor[s.id]+'"></span>'+esc(s.name)+'</div>').join('');
+  let title;
+  if(kind==='team'){ const t=_planTeams.find(x=>x.id===id); title='👥 '+(t?esc(t.name):''); }
+  else { const e=_planEmps.find(x=>x.id===id); title=esc(e?e.full_name:''); }
+  const sl=(kind==='emp'&&slot==='am')?' · dimineața':(kind==='emp'&&slot==='pm')?' · după-amiaza':'';
+  let html='<div style="font-size:.76rem;color:var(--muted);font-weight:600;padding:.2rem .55rem .35rem">'+title+' · '+date.slice(8,10)+'.'+date.slice(5,7)+sl+'</div>';
+  html+=_planSites.map(s=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',\''+s.id+'\',null,\''+slot+'\')"><span class="pldot" style="background:'+_planColor[s.id]+'"></span>'+esc(s.name)+'</div>').join('');
   if(!_planSites.length) html+='<div style="padding:.4rem .55rem;color:var(--muted);font-size:.82rem">Niciun șantier activ.</div>';
   html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div>';
-  html+=PLAN_ABS.map(a=>'<div class="plopt" onclick="planAssign(\''+empId+'\',\''+date+'\',null,\''+a[0]+'\')"><span class="pldot" style="background:'+a[2]+'"></span>'+a[1]+'</div>').join('');
-  if(cur) html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div><div class="plopt" style="color:var(--red)" onclick="planAssign(\''+empId+'\',\''+date+'\',null,null)">🗑 Șterge</div>';
+  html+=PLAN_ABS.map(a=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,\''+a[0]+'\',\''+slot+'\')"><span class="pldot" style="background:'+a[2]+'"></span>'+a[1]+'</div>').join('');
+  html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div><div class="plopt" style="color:var(--red)" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">🗑 Șterge</div>';
   const m=document.createElement('div'); m.id='plmenu'; m.innerHTML=html; document.body.appendChild(m);
   const x=Math.min(ev.clientX, window.innerWidth-m.offsetWidth-12), y=Math.min(ev.clientY, window.innerHeight-m.offsetHeight-12);
   m.style.left=Math.max(8,x)+'px'; m.style.top=Math.max(8,y)+'px';
   setTimeout(()=>document.addEventListener('click',_plMenuOut,true),0);
 }
+/* ── gestionare echipe / brigăzi ── */
+async function planTeamsModal(){
+  const [teamR,tmR,empR]=await Promise.all([
+    sb.from('crew_teams').select('id,name'),
+    sb.from('crew_team_members').select('team_id,employee_id'),
+    sb.from('employees').select('id,full_name,active')
+  ]);
+  const teams=(teamR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
+  const mem={}; (tmR.data||[]).forEach(m=>{ (mem[m.team_id]=mem[m.team_id]||{})[m.employee_id]=1; });
+  const blk=t=>'<div style="border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;margin-bottom:.6rem">'
+    +'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem"><b style="flex:1">👥 '+esc(t.name)+'</b><button class="btn-ghost" style="color:var(--red)" onclick="planDelTeam(\''+t.id+'\')">🗑 Șterge</button></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(emps.length?emps.map(e=>{ const ck=mem[t.id]&&mem[t.id][e.id]; return '<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.84rem;background:var(--bg,#f1f5f9);border-radius:8px;padding:.25rem .55rem;cursor:pointer"><input type="checkbox" '+(ck?'checked':'')+' onchange="planToggleMember(\''+t.id+'\',\''+e.id+'\',this.checked)"/> '+esc(e.full_name)+'</label>'; }).join(''):'<span style="color:var(--muted);font-size:.83rem">Niciun angajat activ.</span>')+'</div></div>';
+  const body=(teams.length?teams.map(blk).join(''):'<div style="color:var(--muted);padding:.4rem 0 .7rem">Nicio echipă încă. Creează o brigadă și bifează membrii.</div>')
+    +'<button class="btn-primary" onclick="planNewTeam()">＋ Echipă nouă</button>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this){closeModal();renderPlantafel();}"><div class="modal" style="max-width:580px"><div class="modal-head"><h3>👷 Echipe / brigăzi</h3><button class="x" onclick="closeModal();renderPlantafel()">×</button></div><div class="modal-body">'+body+'</div><div class="modal-foot"><button class="btn-primary" onclick="closeModal();renderPlantafel()">Gata</button></div></div></div>';
+}
+async function planNewTeam(){ const n=(prompt('Numele echipei / brigăzii:')||'').trim(); if(!n) return; const r=await sbRetry(()=>sb.from('crew_teams').insert({tenant_id:state.tenant,name:n})); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
+async function planToggleMember(teamId,empId,ck){ if(ck){ const r=await sbRetry(()=>sb.from('crew_team_members').insert({tenant_id:state.tenant,team_id:teamId,employee_id:empId})); if(r.error) toast('Eroare: '+esc(r.error.message)); } else { await sb.from('crew_team_members').delete().eq('team_id',teamId).eq('employee_id',empId); } }
+async function planDelTeam(teamId){ if(!confirm('Ștergi echipa? (planificările individuale rămân neatinse)')) return; const r=await sb.from('crew_teams').delete().eq('id',teamId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
 
 /* ════ AUTOMATIZĂRI PE REGULI ════ */
 function automationsCfg(){ return (state.firm&&state.firm.automations)||{}; }

@@ -13,6 +13,19 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    '½ Jumătăți de zi':{ru:'½ Полдня',de:'½ Halbe Tage',en:'½ Half-days'},
+    '👥 Pe echipe':{ru:'👥 По бригадам',de:'👥 Nach Teams',en:'👥 By team'},
+    '👷 Echipe':{ru:'👷 Бригады',de:'👷 Teams',en:'👷 Teams'},
+    '👷 Echipe / brigăzi':{ru:'👷 Бригады',de:'👷 Teams / Kolonnen',en:'👷 Teams / crews'},
+    '＋ Echipă nouă':{ru:'＋ Новая бригада',de:'＋ Neues Team',en:'＋ New team'},
+    'Numele echipei / brigăzii:':{ru:'Название бригады:',de:'Name des Teams / der Kolonne:',en:'Team / crew name:'},
+    'Fără echipă':{ru:'Без бригады',de:'Ohne Team',en:'No team'},
+    'Nicio echipă încă. Creează o brigadă și bifează membrii.':{ru:'Пока нет бригад. Создайте бригаду и отметьте участников.',de:'Noch keine Teams. Erstellen Sie ein Team und wählen Sie die Mitglieder.',en:'No teams yet. Create a crew and tick the members.'},
+    'Niciun angajat activ.':{ru:'Нет активных сотрудников.',de:'Keine aktiven Mitarbeiter.',en:'No active employees.'},
+    'Ștergi echipa? (planificările individuale rămân neatinse)':{ru:'Удалить бригаду? (индивидуальные планы останутся)',de:'Team löschen? (individuelle Planungen bleiben erhalten)',en:'Delete team? (individual plans stay untouched)'},
+    'Brigadă planificată.':{ru:'Бригада запланирована.',de:'Team eingeplant.',en:'Crew scheduled.'},
+    'Trage un proiect din paletă pe o zi (sau pe rândul echipei = toată brigada), mută între celule, ori dă clic pentru meniu. „½ Jumătăți de zi" = dimineața/după-amiaza pe șantiere diferite. Se salvează automat.':{ru:'Перетащите проект из палитры на день (или на строку бригады = вся бригада), перемещайте между ячейками или нажмите для меню. «½ Полдня» = утро/после обеда на разных объектах. Сохраняется автоматически.',de:'Ziehen Sie ein Projekt aus der Palette auf einen Tag (oder auf die Team-Zeile = ganzes Team), verschieben Sie zwischen Zellen oder klicken Sie für das Menü. „½ Halbe Tage" = vormittags/nachmittags auf verschiedenen Baustellen. Wird automatisch gespeichert.',en:'Drag a project onto a day (or onto the team row = whole crew), move between cells, or click for the menu. "½ Half-days" = morning/afternoon on different sites. Saves automatically.'},
+    'Gata':{ru:'Готово',de:'Fertig',en:'Done'},
     'Trage pe zi:':{ru:'Перетащите на день:',de:'Auf Tag ziehen:',en:'Drag onto a day:'},
     '🏖️ Concediu':{ru:'🏖️ Отпуск',de:'🏖️ Urlaub',en:'🏖️ Vacation'},
     '🏠 Liber':{ru:'🏠 Выходной',de:'🏠 Frei',en:'🏠 Day off'},
