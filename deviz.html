@@ -82,7 +82,7 @@ function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/
 
 const STATUS={draft:'Ciornă',sent:'Trimisă',accepted:'Acceptată',rejected:'Respinsă'};
 const FIN=['owner','admin','manager','accountant'];
-let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0},
+let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed'},
         lines:[], groups:[], clients:[], catalog:[], normMat:{}, _activeDD:null, lineThumbs:{} };
 function gid(){ return 'g'+Date.now().toString(36)+Math.floor(Math.random()*1000); }
 /* ── schiță auto-salvată (ofertă nouă) ── */
@@ -144,7 +144,7 @@ async function loadEstimate(id){
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'',
-    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0,
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed',
     signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
@@ -155,9 +155,42 @@ async function loadEstimate(id){
 async function fromSurvey(sid){
   const sv=await sb.from('site_surveys').select('name,client_id,area_m2').eq('id',sid).single();
   const m=await sb.from('survey_measurements').select('*').eq('survey_id',sid);
-  if(sv.data){ if(sv.data.client_id) S.est.client_id=sv.data.client_id; }
+  if(sv.data){ if(sv.data.client_id) S.est.client_id=sv.data.client_id; if(sv.data.name && !S.est.title) S.est.title=sv.data.name; }
   const meas=(m.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
-  if(meas.length){ S.lines=meas.map(x=>({ name:x.label, qty:+x.qty||1, unit:x.unit||'m2', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), kind:'service', norm_code:null, description:x.note||'', photo_url:null })); }
+  if(!meas.length) return;
+  const dv=(S.firm.vat_rate!=null?+S.firm.vat_rate:20);
+  // încarcă serviciile legate + rețetele lor + prețurile materialelor
+  const svcIds=[...new Set(meas.map(x=>x.service_id).filter(Boolean))];
+  let svcById={}, recBy={}, matById={};
+  if(svcIds.length){
+    const svc=((await sb.from('services').select('id,name,unit,price,vat_rate,description').in('id',svcIds)).data)||[];
+    svc.forEach(s=>svcById[s.id]=s);
+    const sm=((await sb.from('service_materials').select('*').in('service_id',svcIds)).data)||[];
+    const matIds=[...new Set(sm.map(r=>r.material_id).filter(Boolean))];
+    if(matIds.length){ const mats=((await sb.from('materials').select('id,name,unit,last_price,vat_rate,description,photo_url').in('id',matIds)).data)||[]; mats.forEach(x=>matById[x.id]=x); }
+    sm.forEach(r=>{ (recBy[r.service_id]=recBy[r.service_id]||[]).push(r); });
+  }
+  const lines=[], groups=[];
+  meas.forEach((x,gi)=>{
+    const q=+x.qty||1;
+    const svc=x.service_id?svcById[x.service_id]:null;
+    if(svc){
+      const gv='g'+Date.now().toString(36)+gi+Math.floor(Math.random()*1000);
+      groups.push({ id:gv, name:svc.name||x.label, vat:(svc.vat_rate!=null?+svc.vat_rate:dv), disc:0 });
+      // manopera = prețul serviciului
+      lines.push(Object.assign(blankLine(),{ name:svc.name||x.label, qty:q, unit:x.unit||svc.unit||'buc', unit_price:+svc.price||0, vat_rate:(svc.vat_rate!=null?+svc.vat_rate:dv), kind:'service', description:x.note||svc.description||'', group:gv, cat_id:svc.id, cat_src:'services', _catName:svc.name, _catPrice:+svc.price||0, _catUnit:svc.unit||'' }));
+      // materiale din rețetă (consum × (1+pierdere%) × volum)
+      (recBy[x.service_id]||[]).sort((a,b)=>(a.position||0)-(b.position||0)).forEach(r=>{
+        const mat=r.material_id?matById[r.material_id]:null;
+        const mq=q*(+r.qty_per_unit||0)*(1+(+r.waste_pct||0)/100);
+        lines.push(Object.assign(blankLine(),{ name:(mat&&mat.name)||r.material_name||'Material', qty:+mq.toFixed(3), unit:(mat&&mat.unit)||r.unit||'buc', unit_price:(mat?+mat.last_price||0:0), vat_rate:(mat&&mat.vat_rate!=null?+mat.vat_rate:dv), kind:'material', description:(mat&&mat.description)||'', photo_url:(mat&&mat.photo_url)||null, group:gv, cat_id:r.material_id||null, cat_src:r.material_id?'materials':'', _catName:(mat&&mat.name)||r.material_name||'', _catPrice:(mat?+mat.last_price||0:0), _catUnit:(mat&&mat.unit)||r.unit||'', _catDesc:(mat&&mat.description)||'', _catPhoto:(mat&&mat.photo_url)||'' }));
+      });
+    } else {
+      lines.push(Object.assign(blankLine(),{ name:x.label, qty:q, unit:x.unit||'m2', unit_price:0, vat_rate:dv, kind:'service', description:x.note||'', group:'' }));
+    }
+  });
+  S.lines=lines; S.groups=groups; reorderLinesBySection();
+  if(typeof signLineThumbs==='function') signLineThumbs();
 }
 
 /* păstrează S.lines ordonate: fără grup întâi, apoi pe grupuri (în ordinea S.groups) */
@@ -234,7 +267,7 @@ function render(){
   renderLines(); renderSummary(); renderBOM();
 }
 function optBar(){
-  const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none';
+  const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none', mm=S.est.materials_mode||'detailed';
   const opt=(cur,val,lab)=>'<option value="'+val+'" '+(cur===val?'selected':'')+'>'+lab+'</option>';
   return '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;margin-top:.8rem;padding-top:.7rem;border-top:1px dashed var(--line);font-size:.82rem">'
     +'<span style="color:var(--muted);font-weight:600">Poziții fără grup —</span>'
@@ -242,8 +275,10 @@ function optBar(){
     +(dm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.est.disc_value||0)+'" oninput="setDiscVal(this.value)" style="width:78px"/> %</label>':'')
     +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">TVA: <select onchange="setVatMode(this.value)" style="width:auto">'+opt(vm,'none','Fără')+opt(vm,'line','Pe poziție')+opt(vm,'total','Unificat')+'</select></label>'
     +(vm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.est.vat_value||0)+'" oninput="setVatVal(this.value)" style="width:78px"/> %</label>':'')
+    +(S.groups.length?'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a" title="În PDF: detaliat = materialele apar ca linii separate sub serviciu; incluse = materialele se ascund și costul lor se adaugă în prețul manoperei (totalul rămâne același).">Materiale în PDF: <select onchange="setMatMode(this.value)" style="width:auto">'+opt(mm,'detailed','Detaliate')+opt(mm,'rolled','Incluse în manoperă')+'</select></label>':'')
     +'</div>';
 }
+function setMatMode(v){ S.est.materials_mode=v; render(); }
 function setDiscMode(v){ S.est.disc_mode=v; render(); }
 function setVatMode(v){ S.est.vat_mode=v; render(); }
 function setDiscVal(v){ S.est.disc_value=+v||0; renderSummary(); }
@@ -541,7 +576,7 @@ async function save(thenPdf){
   const rec={ tenant_id:tid, client_id:S.est.client_id||null, number:S.est.number||null, status:S.est.status, title:S.est.title||null,
     issue_date:S.est.issue_date||null, valid_until:S.est.valid_until||null, notes:S.est.notes||null,
     groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
-    disc_mode:S.est.disc_mode||'none', disc_value:+S.est.disc_value||0, vat_mode:S.est.vat_mode||'none', vat_value:+S.est.vat_value||0,
+    disc_mode:S.est.disc_mode||'none', disc_value:+S.est.disc_value||0, vat_mode:S.est.vat_mode||'none', vat_value:+S.est.vat_value||0, materials_mode:S.est.materials_mode||'detailed',
     subtotal:t.sub, vat_total:t.vat, total:t.total };
   try{
     if(S.id){ const u=await sb.from('estimates').update(rec).eq('id',S.id); if(u.error) throw u.error; }
@@ -577,11 +612,17 @@ async function pdf(docType,inPlace){
       +(showVatCol?'<td class="r">'+num2(l.vat_rate)+'%</td>':'')
       +'<td class="r">'+money(net)+'</td>'+photoCell+'</tr>';
   }
+  const isRolled = !isLiv && (S.est.materials_mode==='rolled'); // materiale incluse in manopera (ascunse)
   let _n=0, rows='';
   S.lines.filter(l=>(l.name||'').trim() && !l.group).forEach(l=>{ rows+=pdfRow(l,++_n); });
   S.groups.forEach(g=>{ const gl=S.lines.filter(l=>(l.name||'').trim() && l.group===g.id); if(!gl.length && !(g.name||'').trim()) return;
     rows+='<tr><td colspan="'+colsN+'" style="background:#eef2ff;font-weight:800">'+esc(g.name||T('Grup'))+'</td></tr>';
-    gl.forEach(l=>{ rows+=pdfRow(l,++_n); });
+    if(isRolled){
+      const mats=gl.filter(l=>l.kind==='material'), labor=gl.filter(l=>l.kind!=='material');
+      const matGross=mats.reduce((s,l)=>s+(+l.qty||0)*(+l.unit_price||0),0);
+      if(labor.length){ labor.forEach((l,idx)=>{ const cl=Object.assign({},l); const q=+cl.qty||0; const own=q*(+cl.unit_price||0); const gross=own+(idx===0?matGross:0); cl.unit_price=q?gross/q:gross; rows+=pdfRow(cl,++_n); }); }
+      else { rows+=pdfRow(Object.assign(blankLine(),{name:g.name||T('Materiale'),qty:1,unit:'set',unit_price:matGross,vat_rate:(g.vat||0),group:g.id}),++_n); }
+    } else { gl.forEach(l=>{ rows+=pdfRow(l,++_n); }); }
     if(!isLiv){ const gt=groupTotals(g); rows+='<tr><td colspan="'+(colsN-2)+'" style="text-align:right;color:#6b7793;font-size:11px;padding-right:10px">'+T('Subtotal grup')+(g.disc?(' −'+num2(g.disc)+'%'):'')+(g.vat?(' · TVA '+num2(g.vat)+'%'):'')+'</td><td class="r"><b>'+money(gt.total)+'</b></td><td></td></tr>'; }
   });
   const docTitle=isLiv?T('BON DE LIVRARE'):(docType==='confirmare'?T('CONFIRMARE DE COMANDĂ'):T('OFERTĂ / DEVIZ'));

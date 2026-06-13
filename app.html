@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v43';
+const APP_VERSION='cod373-v44';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2339,8 +2339,20 @@ async function editPreviz(id){
 }
 async function delPreviz(id){ if(!confirm('Ștergi această fișă de vizită?')) return; const { error }=await sb.from('site_surveys').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Fișă ștearsă.'); renderPreviz(); }
 
+async function loadPvServices(){
+  // servicii + reteta (cost materiale la 1 UM) pentru calcul live la previz
+  const svc=((await sb.from('services').select('id,name,unit,price')).data)||[];
+  const sm=((await sb.from('service_materials').select('service_id,material_id,qty_per_unit,waste_pct')).data)||[];
+  const mats=((await sb.from('materials').select('id,last_price')).data)||[];
+  const pm={}; mats.forEach(m=>pm[m.id]=+m.last_price||0);
+  const mc={}; sm.forEach(x=>{ const c=(+x.qty_per_unit||0)*(1+(+x.waste_pct||0)/100)*(pm[x.material_id]||0); mc[x.service_id]=(mc[x.service_id]||0)+c; });
+  previzCtx.services=svc.map(s=>({id:s.id,name:s.name,unit:s.unit||'',price:+s.price||0,matCost:mc[s.id]||0}));
+}
+function pvSvcById(id){ return (previzCtx.services||[]).find(s=>s.id===id); }
+function pvSvcByName(n){ n=(n||'').trim().toLowerCase(); return (previzCtx.services||[]).find(s=>(s.name||'').toLowerCase()===n); }
 async function openPrevizForm(row, meas){
-  previzCtx={ id: row?row.id:null, photos:(row&&row.photo_urls)||[], meas:(meas||[]).map(m=>({label:m.label,qty:m.qty,unit:m.unit||'m2',note:m.note||''})) };
+  previzCtx={ id: row?row.id:null, photos:(row&&row.photo_urls)||[], meas:(meas||[]).map(m=>({label:m.label,qty:m.qty,unit:m.unit||'m2',note:m.note||'',service_id:m.service_id||''})), services:[] };
+  await loadPvServices();
   const a=(row&&row.answers)||{};
   const clients=await loadRefOptions('clients');
   const qHtml=QKEYS.map(q=>{ const v=a[q.key]!=null?a[q.key]:'';
@@ -2370,17 +2382,31 @@ async function openPrevizForm(row, meas){
   renderPvMeas(); renderPvPhotos(); geoScan($('modal-mount'));
 }
 function renderPvMeas(){ const el=$('pv-meas'); if(!el) return;
-  el.innerHTML=previzCtx.meas.length? '<div class="lines"><table><thead><tr><th>Denumire</th><th>Cant.</th><th>UM</th><th>Notă</th><th></th></tr></thead><tbody>'
-    +previzCtx.meas.map((m,i)=>'<tr><td class="li-name"><input value="'+esc(m.label)+'" oninput="pvMeasEdit('+i+',\'label\',this.value)"/></td>'
-      +'<td><input type="number" step="any" style="width:80px" value="'+esc(m.qty)+'" oninput="pvMeasEdit('+i+',\'qty\',this.value)"/></td>'
-      +'<td><input style="width:60px" value="'+esc(m.unit)+'" oninput="pvMeasEdit('+i+',\'unit\',this.value)"/></td>'
-      +'<td><input value="'+esc(m.note)+'" oninput="pvMeasEdit('+i+',\'note\',this.value)"/></td>'
-      +'<td><button type="button" class="li-del" onclick="delPvMeas('+i+')">×</button></td></tr>').join('')+'</tbody></table></div>'
-    : '<div style="color:var(--muted);font-size:.85rem;padding:.3rem 0">Nicio măsurătoare. Adaugă volumele relevante.</div>';
+  const svcOpts=(previzCtx.services||[]).map(s=>'<option value="'+esc(s.name)+'">').join('');
+  let gLab=0,gMat=0;
+  const rows=previzCtx.meas.map((m,i)=>{
+    const svc=m.service_id?pvSvcById(m.service_id):pvSvcByName(m.label);
+    const q=+m.qty||0, lab=svc?q*svc.price:0, mat=svc?q*svc.matCost:0; gLab+=lab; gMat+=mat;
+    const dot=svc?'<span title="Legat de un serviciu cu rețetă — preț calculat automat" style="color:#16a34a">●</span> ':'';
+    return '<tr><td class="li-name">'+dot+'<input list="pv-svc-list" value="'+esc(m.label)+'" oninput="pvMeasEdit('+i+',\'label\',this.value)" onchange="pvMeasSvc('+i+',this.value)" placeholder="serviciu / denumire"/></td>'
+      +'<td><input type="number" step="any" style="width:72px" value="'+esc(m.qty)+'" oninput="pvMeasEdit('+i+',\'qty\',this.value)" onchange="renderPvMeas()"/></td>'
+      +'<td><input style="width:52px" value="'+esc(m.unit)+'" oninput="pvMeasEdit('+i+',\'unit\',this.value)"/></td>'
+      +'<td style="text-align:right;white-space:nowrap;font-size:.82rem">'+(svc?money(lab):'<span style="color:var(--muted)">—</span>')+'</td>'
+      +'<td style="text-align:right;white-space:nowrap;font-size:.82rem">'+(svc?money(mat):'<span style="color:var(--muted)">—</span>')+'</td>'
+      +'<td style="text-align:right;white-space:nowrap;font-weight:600">'+(svc?money(lab+mat):'<span style="color:var(--muted)">—</span>')+'</td>'
+      +'<td><input value="'+esc(m.note)+'" style="width:84px" oninput="pvMeasEdit('+i+',\'note\',this.value)"/></td>'
+      +'<td><button type="button" class="li-del" onclick="delPvMeas('+i+')">×</button></td></tr>';
+  }).join('');
+  el.innerHTML='<datalist id="pv-svc-list">'+svcOpts+'</datalist>'+(previzCtx.meas.length?
+    '<div class="lines"><table><thead><tr><th>Serviciu / denumire</th><th>Cant.</th><th>UM</th><th>Manoperă</th><th>Materiale</th><th>Total</th><th>Notă</th><th></th></tr></thead><tbody>'
+    +rows+'</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--border)"><td colspan="3" style="text-align:right">Total estimativ:</td><td style="text-align:right">'+money(gLab)+'</td><td style="text-align:right">'+money(gMat)+'</td><td style="text-align:right">'+money(gLab+gMat)+'</td><td colspan="2"></td></tr></tfoot></table></div>'
+    +'<div style="color:var(--muted);font-size:.78rem;margin-top:.3rem">● = legat de un serviciu cu rețetă; manopera și materialele se calculează automat la volumul introdus. Din această fișă poți genera devizul cu un singur clic.</div>'
+    : '<div style="color:var(--muted);font-size:.85rem;padding:.3rem 0">Nicio măsurătoare. Adaugă volumele și alege un serviciu ca să vezi prețul pe loc.</div>');
 }
-function addPvMeas(){ previzCtx.meas.push({label:'',qty:'',unit:'m2',note:''}); renderPvMeas(); }
+function addPvMeas(){ previzCtx.meas.push({label:'',qty:'',unit:'m2',note:'',service_id:''}); renderPvMeas(); }
 function delPvMeas(i){ previzCtx.meas.splice(i,1); renderPvMeas(); }
 function pvMeasEdit(i,k,v){ previzCtx.meas[i][k]=v; }
+function pvMeasSvc(i,v){ const m=previzCtx.meas[i]; m.label=v; const s=pvSvcByName(v); m.service_id=s?s.id:''; if(s&&s.unit) m.unit=s.unit; renderPvMeas(); }
 function renderPvPhotos(){ const el=$('pv-photos'); if(!el) return;
   el.innerHTML=previzCtx.photos.length? '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem">'+previzCtx.photos.map((p,i)=>'<span style="display:inline-flex;align-items:center;gap:.3rem;background:#f1f5f9;border-radius:8px;padding:.25rem .5rem;font-size:.78rem"><a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary)">🖼️ '+(i+1)+'</a><span onclick="delPvPhoto('+i+')" style="cursor:pointer;color:var(--red)" title="șterge">×</span></span>').join('')+'</div>' : '';
 }
@@ -2400,7 +2426,7 @@ async function savePreviz(){
     else { rec.created_by=state.session.user.id; const ins=await sb.from('site_surveys').insert(rec).select('id').single(); if(ins.error) throw ins.error; sid=ins.data.id; }
     // masuratori: inlocuim complet
     await sb.from('survey_measurements').delete().eq('survey_id',sid);
-    const ms=previzCtx.meas.filter(m=>(m.label||'').trim()).map((m,i)=>({tenant_id:state.tenant,survey_id:sid,label:m.label,qty:(+m.qty||null),unit:m.unit||'m2',note:m.note||null,position:i+1}));
+    const ms=previzCtx.meas.filter(m=>(m.label||'').trim()).map((m,i)=>({tenant_id:state.tenant,survey_id:sid,label:m.label,qty:(+m.qty||null),unit:m.unit||'m2',note:m.note||null,service_id:m.service_id||null,position:i+1}));
     if(ms.length){ const im=await sb.from('survey_measurements').insert(ms); if(im.error) throw im.error; }
     closeModal(); toast('✅ Fișă salvată.'); renderPreviz();
   }catch(e){ showMsg('pv-msg', isNetErr(e)?netMsg():('Eroare: '+esc(e.message||e))); if(btn){ btn.disabled=false; btn.textContent=TR('salveaza'); } }

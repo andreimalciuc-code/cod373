@@ -75,7 +75,7 @@ function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/
 const STATUS={draft:'Ciornă',sent:'Trimisă',paid:'Plătită',overdue:'Restantă',cancelled:'Anulată'};
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
-        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0},
+        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed'},
         lines:[], groups:[], clients:[], catalog:[], lineThumbs:{} };
 function gid(){ return 'g'+Date.now().toString(36)+Math.floor(Math.random()*1000); }
 /* ── schiță auto-salvată (factură nouă) ── */
@@ -135,20 +135,20 @@ async function loadInvoice(id){
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
-    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0 };
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed' };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
-  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', description:x.description||'', photo_url:x.photo_url||null }));
+  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
   reorderLinesBySection();
   if(!S.lines.length) S.lines=[blankLine()];
 }
 async function fromEstimate(eid){
-  const e=await sb.from('estimates').select('client_id,title,disc_mode,disc_value,vat_mode,vat_value,groups').eq('id',eid).single();
+  const e=await sb.from('estimates').select('client_id,title,disc_mode,disc_value,vat_mode,vat_value,groups,materials_mode').eq('id',eid).single();
   if(e.data&&e.data.client_id) S.inv.client_id=e.data.client_id;
-  if(e.data){ S.inv.title=e.data.title||''; S.inv.disc_mode=e.data.disc_mode||'none'; S.inv.disc_value=+e.data.disc_value||0; S.inv.vat_mode=e.data.vat_mode||S.inv.vat_mode; S.inv.vat_value=+e.data.vat_value||S.inv.vat_value; S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[]; }
+  if(e.data){ S.inv.title=e.data.title||''; S.inv.disc_mode=e.data.disc_mode||'none'; S.inv.disc_value=+e.data.disc_value||0; S.inv.vat_mode=e.data.vat_mode||S.inv.vat_mode; S.inv.vat_value=+e.data.vat_value||S.inv.vat_value; S.inv.materials_mode=e.data.materials_mode||'detailed'; S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[]; }
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',eid);
   const items=(it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
-  if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', description:x.description||'', photo_url:x.photo_url||null }));
+  if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
   reorderLinesBySection();
   S._fromEstimate=eid;
 }
@@ -214,7 +214,7 @@ function render(){
   renderLines(); renderSummary();
 }
 function optBar(){
-  const dm=S.inv.disc_mode||'none', vm=S.inv.vat_mode||'none';
+  const dm=S.inv.disc_mode||'none', vm=S.inv.vat_mode||'none', mm=S.inv.materials_mode||'detailed';
   const opt=(cur,val,lab)=>'<option value="'+val+'" '+(cur===val?'selected':'')+'>'+lab+'</option>';
   return '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;margin-top:.8rem;padding-top:.7rem;border-top:1px dashed var(--line);font-size:.82rem">'
     +'<span style="color:var(--muted);font-weight:600">Poziții fără grup —</span>'
@@ -222,8 +222,10 @@ function optBar(){
     +(dm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.inv.disc_value||0)+'" oninput="setDiscVal(this.value)" style="width:78px"/> %</label>':'')
     +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">TVA: <select onchange="setVatMode(this.value)" style="width:auto">'+opt(vm,'none','Fără')+opt(vm,'line','Pe poziție')+opt(vm,'total','Unificat')+'</select></label>'
     +(vm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.inv.vat_value||0)+'" oninput="setVatVal(this.value)" style="width:78px"/> %</label>':'')
+    +(S.groups.length?'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a" title="În PDF: detaliat = materialele apar ca linii separate sub serviciu; incluse = materialele se ascund și costul lor se adaugă în prețul manoperei (totalul rămâne același).">Materiale în PDF: <select onchange="setMatMode(this.value)" style="width:auto">'+opt(mm,'detailed','Detaliate')+opt(mm,'rolled','Incluse în manoperă')+'</select></label>':'')
     +'</div>';
 }
+function setMatMode(v){ S.inv.materials_mode=v; render(); }
 function setDiscMode(v){ S.inv.disc_mode=v; render(); }
 function setVatMode(v){ S.inv.vat_mode=v; render(); }
 function setDiscVal(v){ S.inv.disc_value=+v||0; renderSummary(); }
@@ -465,13 +467,13 @@ async function save(thenPdf){
   const rec={ tenant_id:S.tenant, client_id:S.inv.client_id||null, number:S.inv.number, status:S.inv.status, title:S.inv.title||null,
     issue_date:S.inv.issue_date||null, due_date:S.inv.due_date||null, estimate_id:S._fromEstimate||null,
     groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
-    disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0,
+    disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0, materials_mode:S.inv.materials_mode||'detailed',
     subtotal:t.sub, vat_total:t.vat, total:t.total };
   try{
     if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('invoices').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
     await sb.from('invoice_items').delete().eq('invoice_id',S.id);
-    const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
+    const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,kind:l.kind||'service',position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('invoice_items').insert(items); if(im.error) throw im.error;
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Factură salvată.'+(dp>0?' Reducere '+dp+'%':'')); if(thenPdf) pdf();
   }catch(e){ $('btn-save').disabled=false; toast('Eroare: '+(e.message||e)); }
@@ -502,11 +504,17 @@ async function pdf(inPlace){
       +(showVatCol?'<td class="r">'+num2(l.vat_rate)+'%</td>':'')
       +'<td class="r">'+money(net)+'</td>'+photoCell+'</tr>';
   }
+  const isRolled = (S.inv.materials_mode==='rolled'); // materiale incluse in manopera (ascunse)
   let _n=0, rows='';
   S.lines.filter(l=>(l.name||'').trim() && !l.group).forEach(l=>{ rows+=pdfRow(l,++_n); });
   S.groups.forEach(g=>{ const gl=S.lines.filter(l=>(l.name||'').trim() && l.group===g.id); if(!gl.length && !(g.name||'').trim()) return;
     rows+='<tr><td colspan="'+colsN+'" style="background:#eef2ff;font-weight:800">'+esc(g.name||T('Grup'))+'</td></tr>';
-    gl.forEach(l=>{ rows+=pdfRow(l,++_n); });
+    if(isRolled){
+      const mats=gl.filter(l=>l.kind==='material'), labor=gl.filter(l=>l.kind!=='material');
+      const matGross=mats.reduce((s,l)=>s+(+l.qty||0)*(+l.unit_price||0),0);
+      if(labor.length){ labor.forEach((l,idx)=>{ const cl=Object.assign({},l); const q=+cl.qty||0; const own=q*(+cl.unit_price||0); const gross=own+(idx===0?matGross:0); cl.unit_price=q?gross/q:gross; rows+=pdfRow(cl,++_n); }); }
+      else { rows+=pdfRow(Object.assign(blankLine(),{name:g.name||T('Materiale'),qty:1,unit:'set',unit_price:matGross,vat_rate:(g.vat||0),group:g.id}),++_n); }
+    } else { gl.forEach(l=>{ rows+=pdfRow(l,++_n); }); }
     const gt=groupTotals(g); rows+='<tr><td colspan="'+(colsN-2)+'" style="text-align:right;color:#6b7793;font-size:11px;padding-right:10px">'+T('Subtotal grup')+(g.disc?(' −'+num2(g.disc)+'%'):'')+(g.vat?(' · TVA '+num2(g.vat)+'%'):'')+'</td><td class="r"><b>'+money(gt.total)+'</b></td><td></td></tr>';
   });
   const doc='<!doctype html><html lang="'+L+'"><head><meta charset="utf-8"><title>'+T('Factură')+' '+esc(S.inv.number||'')+'</title><style>'
