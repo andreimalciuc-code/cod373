@@ -13,6 +13,11 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    '📊 Raport':{ru:'📊 Отчёт',de:'📊 Bericht',en:'📊 Report'},
+    '🖨 PDF':{ru:'🖨 PDF',de:'🖨 PDF',en:'🖨 PDF'},
+    'Deschide planificarea întâi.':{ru:'Сначала откройте планирование.',de:'Öffnen Sie zuerst die Planung.',en:'Open the planner first.'},
+    'Pregătesc PDF-ul…':{ru:'Готовлю PDF…',de:'PDF wird vorbereitet…',en:'Preparing the PDF…'},
+    'Nicio etapă cu date. Adaugă etape întâi.':{ru:'Нет этапов с датами. Сначала добавьте этапы.',de:'Keine Phasen mit Daten. Fügen Sie zuerst Phasen hinzu.',en:'No phases with dates. Add phases first.'},
     '🪜 Etape-șablon (la creare șantier)':{ru:'🪜 Шаблон этапов (при создании объекта)',de:'🪜 Phasen-Vorlage (bei Baustellen-Erstellung)',en:'🪜 Phase template (on site creation)'},
     'Când creezi un șantier nou, i se adaugă automat aceste etape în Gantt (în lanț, una după alta). Scrie o etapă pe rând. Setul folosit depinde de tipul lucrării.':{ru:'При создании объекта эти этапы добавляются в Гант (по цепочке). По одному этапу на строку. Набор зависит от типа работ.',de:'Bei einer neuen Baustelle werden diese Phasen automatisch ins Gantt eingefügt (verkettet). Eine Phase pro Zeile. Der Satz hängt von der Arbeitsart ab.',en:'When you create a site, these phases are auto-added to the Gantt (chained). One phase per line. The set depends on the work type.'},
     '🏗️ Construcție':{ru:'🏗️ Строительство',de:'🏗️ Neubau',en:'🏗️ Construction'},

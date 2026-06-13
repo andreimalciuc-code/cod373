@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v50';
+const APP_VERSION='cod373-v51';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1556,7 +1556,8 @@ async function renderPlantafel(){
   $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="planNav(-7)">←</button><b style="margin:0 .5rem">'+dates[0].split('-').reverse().join('.')+' — '+dates[6].split('-').reverse().join('.')+'</b><button class="btn-ghost" onclick="planNav(7)">→</button><button class="btn-ghost" onclick="planNav(0)">Azi</button><span style="flex:1"></span>'
     +'<button class="btn-ghost" onclick="planTogHalf()" style="'+tgl(_planHalf)+'">½ Jumătăți de zi</button>'
     +'<button class="btn-ghost" onclick="planTogGroup()" style="'+tgl(_planGroup)+'">👥 Pe echipe</button>'
-    +'<button class="btn-ghost" onclick="planTeamsModal()">👷 Echipe</button></div>'
+    +'<button class="btn-ghost" onclick="planTeamsModal()">👷 Echipe</button>'
+    +'<button class="btn-ghost" onclick="planReport()">📊 Raport</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>🗓️ Planificare echipe</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
   let empR,siteR,planR,teamR,tmR;
   try{
@@ -1697,6 +1698,31 @@ async function planTeamsModal(){
 async function planNewTeam(){ const n=(prompt('Numele echipei / brigăzii:')||'').trim(); if(!n) return; const r=await sbRetry(()=>sb.from('crew_teams').insert({tenant_id:state.tenant,name:n})); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
 async function planToggleMember(teamId,empId,ck){ if(ck){ const r=await sbRetry(()=>sb.from('crew_team_members').insert({tenant_id:state.tenant,team_id:teamId,employee_id:empId})); if(r.error) toast('Eroare: '+esc(r.error.message)); } else { await sb.from('crew_team_members').delete().eq('team_id',teamId).eq('employee_id',empId); } }
 async function planDelTeam(teamId){ if(!confirm('Ștergi echipa? (planificările individuale rămân neatinse)')) return; const r=await sb.from('crew_teams').delete().eq('id',teamId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
+/* ── raport săptămânal: cine, pe ce șantier, câte zile ── */
+function planReport(){
+  const dates=_planDates; if(!dates||!dates.length){ toast('Deschide planificarea întâi.'); return; }
+  const emps=_planEmps||[], sites=_planSites||[]; const fr=s=>s==='full'?1:0.5; const fmt=n=>(n%1)?n.toFixed(1):String(n);
+  const empRows=emps.map(e=>{ const bySite={}, abs={}; let tot=0;
+    dates.forEach(d=>['full','am','pm'].forEach(sl=>{ const r=_planData[e.id+'|'+d+'|'+sl]; if(!r) return; if(r.site_id){ bySite[r.site_id]=(bySite[r.site_id]||0)+fr(sl); tot+=fr(sl); } else if(r.note){ const a=planAbs(r.note); const l=a?a[1]:r.note; abs[l]=(abs[l]||0)+fr(sl); } }));
+    return { name:e.full_name, sites:Object.keys(bySite).map(id=>{ const s=sites.find(x=>x.id===id); return esc(s?s.name:'?')+' <b>'+fmt(bySite[id])+'</b>'; }).join(', ')||'—', abs:Object.keys(abs).map(k=>esc(k)+' '+fmt(abs[k])).join(', '), tot }; })
+    .filter(r=>r.tot>0 || r.abs);
+  const siteAgg={}; emps.forEach(e=>dates.forEach(d=>['full','am','pm'].forEach(sl=>{ const r=_planData[e.id+'|'+d+'|'+sl]; if(r&&r.site_id){ const a=siteAgg[r.site_id]||(siteAgg[r.site_id]={md:0,emps:{}}); a.md+=fr(sl); a.emps[e.id]=1; } })));
+  const empTbl=empRows.length?empRows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+r.sites+'</td><td>'+(r.abs||'—')+'</td><td class="r"><b>'+fmt(r.tot)+'</b></td></tr>').join(''):'<tr><td colspan="4" style="text-align:center;color:#888;padding:14px">Nicio planificare în această săptămână.</td></tr>';
+  const siteTbl=Object.keys(siteAgg).length?Object.keys(siteAgg).sort((a,b)=>siteAgg[b].md-siteAgg[a].md).map(id=>{ const s=sites.find(x=>x.id===id); const a=siteAgg[id]; return '<tr><td>'+esc(s?s.name:'?')+'</td><td class="r">'+Object.keys(a.emps).length+'</td><td class="r"><b>'+fmt(a.md)+'</b></td></tr>'; }).join(''):'<tr><td colspan="3" style="text-align:center;color:#888;padding:14px">—</td></tr>';
+  const totalMD=Object.values(siteAgg).reduce((t,a)=>t+a.md,0);
+  const range=dates[0].split('-').reverse().join('.')+' — '+dates[6].split('-').reverse().join('.');
+  const doc='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Raport săptămână '+range+'</title><style>'
+    +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:30px;max-width:820px;margin:0 auto;font-size:13px}'
+    +'h1{font-size:19px;margin:0 0 2px;color:#2f6bff} .muted{color:#6b7793;font-size:12px}'
+    +'h2{font-size:14px;margin:22px 0 6px;border-bottom:2px solid #0f1c33;padding-bottom:4px}'
+    +'table{width:100%;border-collapse:collapse;margin-top:4px}th,td{padding:7px 9px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}'
+    +'@media print{.noprint{display:none}}</style></head><body>'
+    +'<h1>'+esc(state.firm.name||'Firma')+'</h1><div class="muted">Raport săptămânal — repartiția echipei (planificat) · '+range+'</div>'
+    +'<h2>Pe angajat</h2><table><thead><tr><th>Angajat</th><th>Șantiere (zile)</th><th>Absențe</th><th class="r">Total zile</th></tr></thead><tbody>'+empTbl+'</tbody></table>'
+    +'<h2>Pe șantier</h2><table><thead><tr><th>Șantier</th><th class="r">Oameni</th><th class="r">Om-zile</th></tr></thead><tbody>'+siteTbl+'</tbody><tfoot><tr style="font-weight:700;border-top:2px solid #0f1c33"><td>Total</td><td></td><td class="r">'+fmt(totalMD)+'</td></tr></tfoot></table>'
+    +'<div class="noprint" style="margin-top:22px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div></body></html>';
+  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
+}
 
 /* ════ AUTOMATIZĂRI PE REGULI ════ */
 function automationsCfg(){ return (state.firm&&state.firm.automations)||{}; }
@@ -2118,7 +2144,7 @@ function gISO(d){ return new Date(d).toISOString().slice(0,10); }
 function ganttSetZoom(z){ _gZoom=z; try{localStorage.setItem('c373_gantt_zoom',z);}catch(e){} renderGantt(); }
 async function renderGantt(){
   const z=(zz,lbl)=>'<button class="btn-ghost" onclick="ganttSetZoom(\''+zz+'\')" style="'+(_gZoom===zz?'background:var(--primary-soft,#e8f0ff);color:#1d4ed8;font-weight:700':'')+'">'+lbl+'</button>';
-  $('content').innerHTML='<div class="seg"><b style="margin-right:.4rem">📅 Grafic Gantt — etape</b><span style="flex:1"></span>'+z('week','Săptămână')+z('month','Lună')+z('quarter','Trimestru')+'<button class="btn-ghost" onclick="renderGantt()">↻</button></div>'
+  $('content').innerHTML='<div class="seg"><b style="margin-right:.4rem">📅 Grafic Gantt — etape</b><span style="flex:1"></span>'+z('week','Săptămână')+z('month','Lună')+z('quarter','Trimestru')+'<button class="btn-ghost" onclick="ganttPDF()">🖨 PDF</button><button class="btn-ghost" onclick="renderGantt()">↻</button></div>'
     +'<div class="panel"><div id="gantt-body"><div class="loading">Se încarcă…</div></div></div>';
   let siteR,stageR,cpR;
   try{
@@ -2290,6 +2316,43 @@ async function seedSiteStages(siteId, workType, startDate, perDays){
   return true;
 }
 async function ganttSeedTemplate(siteId){ const s=(await sb.from('sites').select('work_type,start_date').eq('id',siteId).single()).data||{}; const ok=await seedSiteStages(siteId, s.work_type, s.start_date); if(ok){ toast('📋 Etape-șablon adăugate.'); renderGantt(); } else toast('Șantierul are deja etape.'); }
+async function ganttPDF(){
+  toast('⏳ Pregătesc PDF-ul…');
+  let siteR,stageR;
+  try{ [siteR,stageR]=await Promise.all([ sb.from('sites').select('id,name,status,start_date,deadline'), sb.from('site_stages').select('id,site_id,name,status,progress,start_date,end_date,position') ]); }catch(e){ toast('Eroare: '+esc(e.message||e)); return; }
+  const sites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const bySite={}; (stageR.data||[]).forEach(st=>{ (bySite[st.site_id]=bySite[st.site_id]||[]).push(st); });
+  let lo=null,hi=null; const push=d=>{ if(!d)return; const x=new Date(d); if(isNaN(x))return; if(!lo||x<lo)lo=x; if(!hi||x>hi)hi=x; };
+  (stageR.data||[]).forEach(st=>{ push(st.start_date); push(st.end_date); }); sites.forEach(s=>{ push(s.start_date); push(s.deadline); });
+  const today=new Date(); today.setHours(0,0,0,0); push(today);
+  if(!lo){ toast('Nicio etapă cu date. Adaugă etape întâi.'); return; }
+  lo=new Date(lo.getFullYear(),lo.getMonth(),1); hi=new Date(hi.getFullYear(),hi.getMonth()+1,0);
+  const totalDays=Math.round((hi-lo)/86400000)+1; const LBL=190, TLW=900, px=Math.max(1.2,TLW/totalDays), W=LBL+TLW;
+  const off=d=>Math.round((new Date(d)-lo)/86400000); const col={plan:'#94a3b8',active:'#2f6bff',done:'#16b364',delayed:'#f04338'};
+  let months=''; let m=new Date(lo);
+  while(m<=hi){ const next=new Date(m.getFullYear(),m.getMonth()+1,1); const segEnd=next>hi?new Date(hi.getTime()+86400000):next; const days=Math.round((segEnd-m)/86400000);
+    months+='<div style="position:absolute;left:'+(off(m.toISOString().slice(0,10))*px)+'px;width:'+(days*px)+'px;border-left:1px solid #d6deea;font-size:10px;color:#6b7793;padding-left:3px;box-sizing:border-box;height:100%">'+m.toLocaleDateString('ro-RO',{month:'short'})+' \''+String(m.getFullYear()).slice(2)+'</div>'; m=next; }
+  let rows='';
+  sites.forEach(s=>{
+    const sts=(bySite[s.id]||[]).slice().sort((a,b)=>((a.position||0)-(b.position||0))||String(a.start_date||'').localeCompare(String(b.start_date||'')));
+    rows+='<div style="display:flex;height:24px;align-items:center;background:#f1f5f9;border-bottom:1px solid #e5e9f2"><div style="width:'+LBL+'px;flex:none;font-weight:700;font-size:11px;padding:0 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+esc(s.name)+'</div><div style="flex:1"></div></div>';
+    if(!sts.length){ rows+='<div style="display:flex;height:22px;align-items:center;border-bottom:1px solid #eef1f6"><div style="width:'+LBL+'px;flex:none;font-size:10px;color:#94a3b8;padding:0 6px">— fără etape —</div></div>'; }
+    sts.forEach(st=>{ let bar='';
+      if(st.start_date&&st.end_date){ const l=off(st.start_date)*px, w=Math.max(px,(Math.round((new Date(st.end_date)-new Date(st.start_date))/86400000)+1)*px);
+        bar='<div style="position:absolute;left:'+l+'px;width:'+w+'px;top:3px;height:15px;background:'+(col[st.status]||'#2f6bff')+';border-radius:3px;color:#fff;font-size:9px;line-height:15px;padding:0 3px;overflow:hidden;white-space:nowrap">'+esc(st.name)+' '+(st.progress||0)+'%</div>'; }
+      rows+='<div style="display:flex;height:21px;border-bottom:1px solid #eef1f6"><div style="width:'+LBL+'px;flex:none;font-size:10px;color:#334155;padding:2px 6px 0 16px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">↳ '+esc(st.name)+'</div><div style="flex:1;position:relative">'+bar+'</div></div>'; });
+  });
+  const todayX=LBL+off(today.toISOString().slice(0,10))*px;
+  const doc='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Grafic Gantt</title><style>body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:24px;margin:0}h1{font-size:18px;color:#2f6bff;margin:0 0 2px}.muted{color:#6b7793;font-size:12px;margin-bottom:12px}@media print{.noprint{display:none}}@page{size:landscape}</style></head><body>'
+    +'<h1>'+esc(state.firm.name||'Firma')+' — Grafic Gantt</h1><div class="muted">Generat '+new Date().toLocaleDateString('ro-RO')+' · '+lo.toLocaleDateString('ro-RO')+' → '+hi.toLocaleDateString('ro-RO')+'</div>'
+    +'<div style="width:'+W+'px;border:1px solid #e5e9f2;position:relative">'
+    +'<div style="display:flex;height:20px;border-bottom:2px solid #0f1c33;position:relative"><div style="width:'+LBL+'px;flex:none"></div><div style="flex:1;position:relative">'+months+'</div></div>'
+    +'<div style="position:absolute;left:'+todayX+'px;top:20px;bottom:0;width:1.5px;background:#f04338"></div>'
+    +rows+'</div>'
+    +'<div style="margin-top:10px;font-size:11px;color:#6b7793">▮ planificat ▮ în lucru ▮ finalizat ▮ întârziat · linia roșie = azi</div>'
+    +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div></body></html>';
+  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
+}
 
 /* ════ HARTĂ FLOTĂ (Leaflet) ════ */
 let _leaflet=false;
