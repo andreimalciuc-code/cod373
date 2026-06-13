@@ -13,6 +13,16 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    '🪜 Etape-șablon (la creare șantier)':{ru:'🪜 Шаблон этапов (при создании объекта)',de:'🪜 Phasen-Vorlage (bei Baustellen-Erstellung)',en:'🪜 Phase template (on site creation)'},
+    'Când creezi un șantier nou, i se adaugă automat aceste etape în Gantt (în lanț, una după alta). Scrie o etapă pe rând. Setul folosit depinde de tipul lucrării.':{ru:'При создании объекта эти этапы добавляются в Гант (по цепочке). По одному этапу на строку. Набор зависит от типа работ.',de:'Bei einer neuen Baustelle werden diese Phasen automatisch ins Gantt eingefügt (verkettet). Eine Phase pro Zeile. Der Satz hängt von der Arbeitsart ab.',en:'When you create a site, these phases are auto-added to the Gantt (chained). One phase per line. The set depends on the work type.'},
+    '🏗️ Construcție':{ru:'🏗️ Строительство',de:'🏗️ Neubau',en:'🏗️ Construction'},
+    '🔧 Reparație':{ru:'🔧 Ремонт',de:'🔧 Reparatur',en:'🔧 Repair'},
+    '📦 Implicit (tip nedefinit)':{ru:'📦 По умолчанию',de:'📦 Standard (Typ undefiniert)',en:'📦 Default (type undefined)'},
+    'Zile per etapă (implicit)':{ru:'Дней на этап (по умолчанию)',de:'Tage pro Phase (Standard)',en:'Days per phase (default)'},
+    'Salvează etapele-șablon':{ru:'Сохранить шаблон этапов',de:'Phasen-Vorlage speichern',en:'Save phase template'},
+    'Revino la implicit':{ru:'Сбросить к стандартным',de:'Auf Standard zurücksetzen',en:'Reset to default'},
+    '✅ Etape-șablon salvate.':{ru:'✅ Шаблон этапов сохранён.',de:'✅ Phasen-Vorlage gespeichert.',en:'✅ Phase template saved.'},
+    'O etapă pe rând':{ru:'По одному этапу на строку',de:'Eine Phase pro Zeile',en:'One phase per line'},
     'etape-șablon':{ru:'шаблон этапов',de:'Phasen-Vorlage',en:'template phases'},
     '📋 Etape-șablon adăugate.':{ru:'📋 Шаблонные этапы добавлены.',de:'📋 Phasen-Vorlage hinzugefügt.',en:'📋 Template phases added.'},
     'Șantierul are deja etape.':{ru:'У объекта уже есть этапы.',de:'Die Baustelle hat bereits Phasen.',en:'The site already has phases.'},

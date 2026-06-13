@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v49';
+const APP_VERSION='cod373-v50';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1714,6 +1714,32 @@ function renderUnitChips(){ const u=(state.firm.automations&&state.firm.automati
 async function saveUnitsCfg(){ const au=Object.assign({}, state.firm.automations||{}); const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return false; } UNIT_LIST=null; return true; }
 async function addUnit(){ const el=$('unit-new'); const v=(el&&el.value||'').trim(); if(!v) return; const a=state.firm.automations||(state.firm.automations={}); a.units=a.units||[]; if(!a.units.includes(v)) a.units.push(v); if(el) el.value=''; if(await saveUnitsCfg()){ $('unit-chips').innerHTML=renderUnitChips(); toast('✅ Unitate adăugată.'); } }
 async function removeUnit(i){ const a=state.firm.automations||{}; if(a.units){ a.units.splice(i,1); if(await saveUnitsCfg()) $('unit-chips').innerHTML=renderUnitChips(); } }
+/* ── etape-șablon editabile (Setări) ── */
+function stageTplGet(){ return (state.firm.automations&&state.firm.automations.stage_tpl)||{}; }
+function stageTplPanel(){ const cfg=stageTplGet(); const days=(state.firm.automations&&state.firm.automations.stage_tpl_days)||10;
+  const box=(key,lbl)=>{ const arr=(cfg[key]&&cfg[key].length)?cfg[key]:STAGE_TEMPLATES[key]; return '<div class="field"><label>'+lbl+'</label><textarea id="stpl-'+key+'" rows="'+Math.max(4,(arr||[]).length+1)+'" placeholder="O etapă pe rând">'+esc((arr||[]).join('\n'))+'</textarea></div>'; };
+  return '<div class="panel" style="max-width:760px;margin-top:1.2rem"><div class="panel-head"><h3>🪜 Etape-șablon (la creare șantier)</h3></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Când creezi un șantier nou, i se adaugă automat aceste etape în Gantt (în lanț, una după alta). Scrie <b>o etapă pe rând</b>. Setul folosit depinde de tipul lucrării.</p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">'+box('constructie','🏗️ Construcție')+box('reparatie','🔧 Reparație')+'</div>'
+    +box('default','📦 Implicit (tip nedefinit)')
+    +'<div class="field" style="max-width:220px"><label>Zile per etapă (implicit)</label><input id="stpl-days" type="number" min="1" value="'+days+'"/></div>'
+    +'<button class="btn-primary" onclick="saveStageTpl()">Salvează etapele-șablon</button>'
+    +'<button class="btn-ghost" style="margin-left:.5rem" onclick="resetStageTpl()">Revino la implicit</button>'
+    +'</div></div>'; }
+async function saveStageTpl(){
+  const parse=id=>($('stpl-'+id).value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const a=state.firm.automations||(state.firm.automations={});
+  a.stage_tpl={ constructie:parse('constructie'), reparatie:parse('reparatie'), default:parse('default') };
+  a.stage_tpl_days=Math.max(1,+$('stpl-days').value||10);
+  const r=await sbRetry(()=>sb.from('tenants').update({automations:a}).eq('id',state.tenant));
+  if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  toast('✅ Etape-șablon salvate.');
+}
+async function resetStageTpl(){ if(!confirm('Revii la seturile implicite (construcție/reparație/implicit)?')) return;
+  const a=state.firm.automations||(state.firm.automations={}); delete a.stage_tpl; delete a.stage_tpl_days;
+  const r=await sbRetry(()=>sb.from('tenants').update({automations:a}).eq('id',state.tenant));
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('Revenit la implicit.'); renderSetari();
+}
 async function runAutomations(estId){
   const au=automationsCfg(); if(!au.acc_site && !au.acc_invoice) return;
   try{
@@ -2250,7 +2276,10 @@ const STAGE_TEMPLATES={
 };
 async function seedSiteStages(siteId, workType, startDate, perDays){
   try{ const ex=await sb.from('site_stages').select('id').eq('site_id',siteId).limit(1); if(ex.data && ex.data.length) return false; }catch(e){ return false; }
-  const tpl=STAGE_TEMPLATES[workType]||STAGE_TEMPLATES.default; const len=(+perDays||10);
+  const cfg=(state.firm.automations&&state.firm.automations.stage_tpl)||{};
+  let tpl=(cfg[workType]&&cfg[workType].length)?cfg[workType]:(cfg.default&&cfg.default.length?cfg.default:null);
+  if(!tpl) tpl=STAGE_TEMPLATES[workType]||STAGE_TEMPLATES.default;
+  const len=(+perDays||(state.firm.automations&&+state.firm.automations.stage_tpl_days)||10);
   let cur=startDate?new Date(startDate):new Date(); if(isNaN(cur)) cur=new Date(); cur.setHours(0,0,0,0);
   let prevId=null;
   for(let i=0;i<tpl.length;i++){
@@ -2327,6 +2356,7 @@ async function renderSetari(){
     +'<div id="unit-chips" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem">'+renderUnitChips()+'</div>'
     +'<div style="display:flex;gap:.5rem;max-width:440px"><input id="unit-new" placeholder="ex: tonă, palet, m³, oră" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addUnit();}" style="flex:1"/><button class="btn-primary" onclick="addUnit()">Adaugă</button></div>'
     +'</div></div>'
+    +stageTplPanel()
     +'</div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
   geoScan($('content'));
