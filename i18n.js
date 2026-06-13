@@ -13,6 +13,16 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Trage pe zi:':{ru:'Перетащите на день:',de:'Auf Tag ziehen:',en:'Drag onto a day:'},
+    '🏖️ Concediu':{ru:'🏖️ Отпуск',de:'🏖️ Urlaub',en:'🏖️ Vacation'},
+    '🏠 Liber':{ru:'🏠 Выходной',de:'🏠 Frei',en:'🏠 Day off'},
+    '🤒 Boală':{ru:'🤒 Больничный',de:'🤒 Krank',en:'🤒 Sick'},
+    'Săptămâna asta (om-zile):':{ru:'Эта неделя (чел.-дни):',de:'Diese Woche (Manntage):',en:'This week (man-days):'},
+    'Trage un proiect din paletă pe o zi, mută între celule, sau dă clic pe o celulă pentru meniu. Se salvează automat.':{ru:'Перетащите проект из палитры на день, перемещайте между ячейками или нажмите на ячейку для меню. Сохраняется автоматически.',de:'Ziehen Sie ein Projekt aus der Palette auf einen Tag, verschieben Sie zwischen Zellen oder klicken Sie auf eine Zelle für das Menü. Wird automatisch gespeichert.',en:'Drag a project from the palette onto a day, move between cells, or click a cell for the menu. Saves automatically.'},
+    'Niciun angajat activ. Adaugă întâi angajați.':{ru:'Нет активных сотрудников. Сначала добавьте сотрудников.',de:'Keine aktiven Mitarbeiter. Fügen Sie zuerst Mitarbeiter hinzu.',en:'No active employees. Add employees first.'},
+    '🗑 Șterge':{ru:'🗑 Удалить',de:'🗑 Löschen',en:'🗑 Delete'},
+    'Mutat.':{ru:'Перемещено.',de:'Verschoben.',en:'Moved.'},
+    'Salvat.':{ru:'Сохранено.',de:'Gespeichert.',en:'Saved.'},
     'Manoperă și lucrări — cu rețetă de materiale.':{ru:'Работы — с рецептурой материалов.',de:'Arbeiten — mit Materialrezeptur.',en:'Labor — with a material recipe.'},
     '🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)':{ru:'🧪 Рецептура — используемые материалы (расход на 1 ед. услуги)',de:'🧪 Rezeptur — verwendete Materialien (Verbrauch je 1 Leistungseinheit)',en:'🧪 Recipe — materials used (consumption per 1 service unit)'},
     'adaugă material':{ru:'добавить материал',de:'Material hinzufügen',en:'add material'},
