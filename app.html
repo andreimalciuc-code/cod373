@@ -489,7 +489,7 @@ const MODULES = {
       {key:'stage',label:'Etapă',type:'select',options:opts(['lead','contacted','offer','won','lost','active']),default:'lead'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
-  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials',
+  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'last_price'},
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
     select:'id,name,sku,unit,category,last_price,vat_rate,description,photo_url',
     columns:[
@@ -509,7 +509,7 @@ const MODULES = {
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
 
-  servicii:{ title:'Servicii', sub:'Manoperă și lucrări — cu rețetă de materiale.', icon:'🧰', group:'Catalog', table:'services',
+  servicii:{ title:'Servicii', sub:'Manoperă și lucrări — cu rețetă de materiale.', icon:'🧰', group:'Catalog', table:'services', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'price'},
     newLabel:'Serviciu nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'SRV'}, recipe:true,
     select:'id,name,sku,unit,price,vat_rate,description,photo_url',
     columns:[
@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v52';
+const APP_VERSION='cod373-v53';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2956,7 +2956,7 @@ async function delDoc(id,encPath){
 let listState={ key:null, m:null, rows:[], q:'', status:'', statusField:null };
 
 async function renderModule(key){
-  const m=MODULES[key];
+  const m=MODULES[key]; _bulkSel={};
   const statusField=m.fields.find(f=>['status','stage'].includes(f.key)&&f.type==='select')||null;
   let bar='<div class="seg">'
     +'<input id="list-search" placeholder="'+TR('cauta')+'" oninput="onListSearch(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none;min-width:200px"/>';
@@ -2966,6 +2966,7 @@ async function renderModule(key){
     :m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
     :m.pageEditor?'<button class="btn-primary" style="margin-left:auto" onclick="window.open(\''+m.pageEditor+'?new=1\',\'_blank\')">📋 '+esc(m.newLabel)+' (filă nouă)</button><button class="btn-ghost" onclick="openForm(\''+key+'\')">＋ rapid</button>'
     :'<button class="btn-primary" style="margin-left:auto" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>')+'</div>';
+  if(m.bulkOrder && canAdd) bar=bar.replace(/<\/div>$/,'<button class="btn-ghost" id="bulk-order-btn" onclick="bulkCreateOrder()" style="margin-left:.5rem;display:none">🛒 '+esc(m.bulkOrder.label||'Creează comandă')+' (<span id="bulk-n">0</span>)</button></div>');
   $('content').innerHTML=bar+'<div class="panel"><div class="panel-head"><h3>'+esc(m.title)+'</h3><span id="list-count" style="font-size:.8rem;color:var(--muted)"></span></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
   // sortarea o facem în client (robust față de hopurile Supabase pe ordonarea după coloane temporale)
   let sel=m.select;
@@ -2979,6 +2980,15 @@ async function renderModule(key){
 }
 function onListSearch(v){ listState.q=(v||'').toLowerCase(); renderList(); }
 function onListStatus(v){ listState.status=v||''; renderList(); }
+let _bulkSel={};
+function bulkToggle(id,ck){ if(ck) _bulkSel[id]=1; else delete _bulkSel[id]; updateBulkBtn(); }
+function bulkToggleAll(ck){ const data=bulkVisibleRows(); data.forEach(r=>{ if(ck) _bulkSel[r.id]=1; else delete _bulkSel[r.id]; }); renderList(); }
+function bulkVisibleRows(){ const {rows,q,status,statusField}=listState; let data=rows; if(status&&statusField) data=data.filter(r=>String(r[statusField.key])===status); if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q)); return data; }
+function updateBulkBtn(){ const n=Object.keys(_bulkSel).length; const b=$('bulk-order-btn'); if(b){ b.style.display=n?'inline-flex':'none'; const c=$('bulk-n'); if(c) c.textContent=n; } const all=$('bulk-all'); if(all){ const data=bulkVisibleRows(); all.checked=data.length>0 && data.every(r=>_bulkSel[r.id]); } }
+function bulkCreateOrder(){ const m=listState.m; if(!m.bulkOrder) return; const rows=listState.rows.filter(r=>_bulkSel[r.id]); if(!rows.length){ toast('Selectează cel puțin o poziție.'); return; }
+  const pk=m.bulkOrder.price||'last_price';
+  const lines=rows.map(r=>({ name:r.name, qty:1, unit:r.unit||'buc', unit_price:+(r[pk]!=null?r[pk]:(r.last_price!=null?r.last_price:r.price))||0, vat_rate:+r.vat_rate||20 }));
+  _bulkSel={}; openForm(m.bulkOrder.target||'comenzi', null, { lines }); }
 function renderList(){
   const { key,m,rows,q,status,statusField }=listState;
   if(!rows.length){
@@ -2997,12 +3007,17 @@ function renderList(){
   if(pf && !cols.some(c=>c.label==='Foto')){
     cols=[{label:'Foto',get:r=>{ const p=r[pf.key]; return p?'<img class="lazimg" data-p="'+encodeURIComponent(p)+'" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(p)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#f1f5f9">':'<span style="color:var(--muted)">—</span>'; }}].concat(cols);
   }
-  const head='<tr>'+cols.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th></th></tr>';
+  const bulk=!!m.bulkOrder && canDo(key,'c');
+  const cbHead=bulk?'<th style="width:34px;text-align:center"><input type="checkbox" id="bulk-all" onclick="event.stopPropagation();bulkToggleAll(this.checked)"></th>':'';
+  const head='<tr>'+cbHead+cols.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th></th></tr>';
   const body=data.map(r=>{ const acts=rowActions(key,m,r);
-    return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
+    const cb=bulk?'<td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" class="bulk-cb" '+(_bulkSel[r.id]?'checked':'')+' onclick="event.stopPropagation();bulkToggle(\''+r.id+'\',this.checked)"></td>':'';
+    return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cb+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
       +'<td><div class="rowact">'+acts.map(a=>'<button class="iconbtn'+(a.d?' danger':'')+'" title="'+esc(a.l)+'" onclick="event.stopPropagation();'+a.f+'">'+a.i+'</button>').join('')+'</div></td></tr>';
   }).join('');
-  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un rând pentru toate opțiunile.</div><div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+  const hint=bulk?'👉 Bifează poziții și apasă „🛒 '+esc(m.bulkOrder.label||'Creează comandă')+'" sus, sau apasă pe un rând pentru opțiuni.':'👉 Apasă pe un rând pentru toate opțiunile.';
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">'+hint+'</div><div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+  if(bulk) updateBulkBtn();
   signThumbs();
 }
 /* acțiunile unui rând — sursă comună pentru butoanele inline ȘI panoul de opțiuni */
@@ -3190,7 +3205,7 @@ function renderRecipe(){ const el=$('recipe-mount'); if(!el) return; const rows=
   html+='</tbody></table></div><div style="text-align:right;font-size:.82rem;margin-top:.3rem">Cost materiale la 1 unitate de serviciu: <b id="recipe-total">'+money(0)+'</b></div>';
   el.innerHTML=html; recipeTotals();
 }
-async function openForm(key,row){
+async function openForm(key,row,preset){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
   // preload ref options
@@ -3225,14 +3240,15 @@ async function openForm(key,row){
   if(m.lineItems){
     if(row){ const { data:items } = await sb.from(m.lineItems.table).select('*').eq(m.lineItems.parentKey,row.id);
       formCtx.lines=(items||[]).map(it=>({name:it.name,qty:it.qty,unit:it.unit,unit_price:it.unit_price,vat_rate:it.vat_rate})); }
+    else if(preset && preset.lines && preset.lines.length){ formCtx.lines=preset.lines.map(l=>({name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||20})); }
     if(!formCtx.lines.length) formCtx.lines=[{name:'',qty:1,unit:'buc',unit_price:0,vat_rate:20}];
     renderLines();
   }
   if(m.recipe) renderRecipe();
   geoScan($('modal-mount'));
   signThumbs();
-  // restaurează schița nesalvată (doar la adăugare nouă)
-  if(!row){ const dr=fdraftGet(key); if(dr){
+  // restaurează schița nesalvată (doar la adăugare nouă, nu când venim cu poziții preselectate)
+  if(!row && !preset){ const dr=fdraftGet(key); if(dr){
     m.fields.forEach(f=>{ if(f.type==='photo'||dr[f.key]==null) return; const el=$('f-'+f.key); if(!el) return; if(f.type==='checkbox') el.checked=!!dr[f.key]; else el.value=dr[f.key]; });
     if(m.lineItems && dr._lines && dr._lines.length){ formCtx.lines=dr._lines; renderLines(); }
     const msg=$('form-msg'); if(msg) msg.insertAdjacentHTML('beforebegin','<div id="draft-banner" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><button class="btn-ghost" style="padding:.2rem .5rem" onclick="fdraftDiscard()">🗑 Renunță</button></div>');

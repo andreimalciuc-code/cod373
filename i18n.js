@@ -13,6 +13,9 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Creează comandă':{ru:'Создать заказ',de:'Bestellung erstellen',en:'Create order'},
+    'Selectează cel puțin o poziție.':{ru:'Выберите хотя бы одну позицию.',de:'Wählen Sie mindestens eine Position.',en:'Select at least one item.'},
+    '👉 Bifează poziții și apasă „🛒 Creează comandă" sus, sau apasă pe un rând pentru opțiuni.':{ru:'👉 Отметьте позиции и нажмите «🛒 Создать заказ» вверху, или нажмите на строку для опций.',de:'👉 Positionen ankreuzen und oben „🛒 Bestellung erstellen" drücken, oder auf eine Zeile für Optionen klicken.',en:'👉 Tick items and press "🛒 Create order" above, or click a row for options.'},
     'Skonto dezactivat pe acest document · ':{ru:'Skonto отключён для этого документа · ',de:'Skonto für dieses Dokument deaktiviert · ',en:'Skonto disabled for this document · '},
     'reactivează':{ru:'включить снова',de:'reaktivieren',en:'re-enable'},
     'Exclude pe acest document':{ru:'Исключить для этого документа',de:'Für dieses Dokument ausschließen',en:'Exclude on this document'},
