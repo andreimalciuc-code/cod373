@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v46';
+const APP_VERSION='cod373-v47';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1558,13 +1558,21 @@ async function renderPlantafel(){
     +'<button class="btn-ghost" onclick="planTogGroup()" style="'+tgl(_planGroup)+'">👥 Pe echipe</button>'
     +'<button class="btn-ghost" onclick="planTeamsModal()">👷 Echipe</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>🗓️ Planificare echipe</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
-  const [empR,siteR,planR,teamR,tmR]=await Promise.all([
-    sb.from('employees').select('id,full_name,active'),
-    sb.from('sites').select('id,name,status'),
-    sb.from('crew_plan').select('employee_id,site_id,plan_date,note,slot').gte('plan_date',dates[0]).lte('plan_date',dates[6]),
-    sb.from('crew_teams').select('id,name,position'),
-    sb.from('crew_team_members').select('team_id,employee_id')
-  ]);
+  let empR,siteR,planR,teamR,tmR;
+  try{
+    // angajați + șantiere + plan = esențiale; echipele sunt opționale (dacă tabelele lipsesc, mergem mai departe)
+    const safe=p=>p.then(r=>r).catch(()=>({data:[]}));
+    [empR,siteR,planR,teamR,tmR]=await Promise.all([
+      sb.from('employees').select('id,full_name,active'),
+      sb.from('sites').select('id,name,status'),
+      sb.from('crew_plan').select('employee_id,site_id,plan_date,note,slot').gte('plan_date',dates[0]).lte('plan_date',dates[6]),
+      safe(sb.from('crew_teams').select('id,name,position')),
+      safe(sb.from('crew_team_members').select('team_id,employee_id'))
+    ]);
+    const fe=(empR&&empR.error)||(siteR&&siteR.error)||(planR&&planR.error);
+    if(fe) throw fe;
+  }catch(e){ const mb=$('mod-body'); if(mb) mb.innerHTML='<div class="empty" style="padding:1.5rem"><div class="ei">⚠️</div><div>Nu am putut încărca planificarea: '+esc(e.message||String(e))+'</div><button class="btn-primary" style="margin-top:.8rem" onclick="renderPlantafel()">↻ Reîncearcă</button></div>'; return; }
+  const _mb0=$('mod-body'); if(!_mb0) return; // s-a schimbat modulul între timp
   const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
   const sites=(siteR.data||[]).filter(s=>s.status!=='done'&&s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   _planEmps=emps; _planSites=sites; _planColor={}; sites.forEach((s,i)=>{ _planColor[s.id]=PLAN_PALETTE[i%PLAN_PALETTE.length]; });
