@@ -75,7 +75,7 @@ function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/
 const STATUS={draft:'Ciornă',sent:'Trimisă',paid:'Plătită',overdue:'Restantă',cancelled:'Anulată'};
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
-        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed'},
+        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null},
         lines:[], groups:[], clients:[], catalog:[], lineThumbs:{} };
 function gid(){ return 'g'+Date.now().toString(36)+Math.floor(Math.random()*1000); }
 /* ── schiță auto-salvată (factură nouă) ── */
@@ -135,7 +135,7 @@ async function loadInvoice(id){
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
-    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed' };
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null) };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
   S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
@@ -143,9 +143,9 @@ async function loadInvoice(id){
   if(!S.lines.length) S.lines=[blankLine()];
 }
 async function fromEstimate(eid){
-  const e=await sb.from('estimates').select('client_id,title,disc_mode,disc_value,vat_mode,vat_value,groups,materials_mode').eq('id',eid).single();
+  const e=await sb.from('estimates').select('client_id,title,disc_mode,disc_value,vat_mode,vat_value,groups,materials_mode,skonto_off,skonto_pct').eq('id',eid).single();
   if(e.data&&e.data.client_id) S.inv.client_id=e.data.client_id;
-  if(e.data){ S.inv.title=e.data.title||''; S.inv.disc_mode=e.data.disc_mode||'none'; S.inv.disc_value=+e.data.disc_value||0; S.inv.vat_mode=e.data.vat_mode||S.inv.vat_mode; S.inv.vat_value=+e.data.vat_value||S.inv.vat_value; S.inv.materials_mode=e.data.materials_mode||'detailed'; S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[]; }
+  if(e.data){ S.inv.title=e.data.title||''; S.inv.disc_mode=e.data.disc_mode||'none'; S.inv.disc_value=+e.data.disc_value||0; S.inv.vat_mode=e.data.vat_mode||S.inv.vat_mode; S.inv.vat_value=+e.data.vat_value||S.inv.vat_value; S.inv.materials_mode=e.data.materials_mode||'detailed'; S.inv.skonto_off=!!e.data.skonto_off; S.inv.skonto_pct=(e.data.skonto_pct!=null?+e.data.skonto_pct:null); S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[]; }
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',eid);
   const items=(it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
   if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
@@ -176,10 +176,14 @@ function totals(){
 function prepayNote(total){
   const au=(S.firm&&S.firm.automations)||{};
   if(au.prepay_show===false) return null;
-  const pct=(au.prepay_pct!=null?+au.prepay_pct:3); if(!(pct>0)||!(total>0)) return null;
+  if(S.inv.skonto_off) return null;
+  const pct=(S.inv.skonto_pct!=null && S.inv.skonto_pct!=='') ? +S.inv.skonto_pct : (au.prepay_pct!=null?+au.prepay_pct:3);
+  if(!(pct>0)||!(total>0)) return null;
   const save=Math.round(total*pct/100*100)/100;
   return { pct:pct, save:save, after:Math.round((total-save)*100)/100 };
 }
+function skontoToggle(off){ S.inv.skonto_off=!!off; render(); }
+function skontoPct(v){ S.inv.skonto_pct=(v===''?null:+v); }
 
 function render(){
   $('hd-num').textContent=S.inv.number||'';
@@ -352,8 +356,16 @@ function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
   if(t.disc>0.005) h+='<div class="totrow"><span class="sub">Reducere</span><b style="color:var(--green)">−'+money(t.disc)+'</b></div>';
   if(vm!=='none') h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
   h+='<div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
-  const pn=prepayNote(t.total);
-  if(pn) h+='<div style="margin-top:.55rem;padding:.5rem .6rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:.76rem;color:#065f46;line-height:1.45">💸 La achitarea 100% în avans: <b>−'+num2(pn.pct)+'%</b> (economisiți <b>'+money(pn.save)+'</b>). Total cu avans: <b>'+money(pn.after)+'</b></div>';
+  const au=(S.firm&&S.firm.automations)||{};
+  if(au.prepay_show!==false && S.inv.status!=='paid'){
+    if(S.inv.skonto_off){ h+='<div style="margin-top:.55rem;font-size:.74rem;color:var(--muted)">💸 Skonto dezactivat pe acest document · <a onclick="skontoToggle(false)" style="cursor:pointer;color:var(--primary)">reactivează</a></div>'; }
+    else { const pn=prepayNote(t.total); const cur=(S.inv.skonto_pct!=null&&S.inv.skonto_pct!=='')?S.inv.skonto_pct:(au.prepay_pct!=null?au.prepay_pct:3);
+      h+='<div style="position:relative;margin-top:.55rem;padding:.5rem 1.3rem .5rem .6rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:.76rem;color:#065f46;line-height:1.55">'
+        +'<span onclick="skontoToggle(true)" title="Exclude pe acest document" style="position:absolute;top:.2rem;right:.35rem;cursor:pointer;font-weight:800;opacity:.55;font-size:.95rem">×</span>'
+        +'💸 La plata 100% în avans: −<input type="number" step="any" value="'+esc(cur)+'" oninput="skontoPct(this.value)" onchange="renderSummary()" onfocus="this.select()" style="width:48px;padding:.05rem .2rem;font-size:.76rem;border:1px solid #a7f3d0;border-radius:5px;text-align:right"/>%'
+        +(pn?' <span style="white-space:nowrap">(−<b>'+money(pn.save)+'</b> → <b>'+money(pn.after)+'</b>)</span>':'')
+        +'</div>'; }
+  }
   $('sum').innerHTML=h; scheduleDraft();
 }
 function refreshLineTotal(i){ const el=$('tt-'+i); if(el) el.value=num2(lineNet(S.lines[i])); }
@@ -467,7 +479,7 @@ async function save(thenPdf){
   const rec={ tenant_id:S.tenant, client_id:S.inv.client_id||null, number:S.inv.number, status:S.inv.status, title:S.inv.title||null,
     issue_date:S.inv.issue_date||null, due_date:S.inv.due_date||null, estimate_id:S._fromEstimate||null,
     groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
-    disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0, materials_mode:S.inv.materials_mode||'detailed',
+    disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0, materials_mode:S.inv.materials_mode||'detailed', skonto_off:!!S.inv.skonto_off, skonto_pct:(S.inv.skonto_pct!=null&&S.inv.skonto_pct!==''?+S.inv.skonto_pct:null),
     subtotal:t.sub, vat_total:t.vat, total:t.total };
   try{
     if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }

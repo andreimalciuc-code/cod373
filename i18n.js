@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Skonto dezactivat pe acest document · ':{ru:'Skonto отключён для этого документа · ',de:'Skonto für dieses Dokument deaktiviert · ',en:'Skonto disabled for this document · '},
+    'reactivează':{ru:'включить снова',de:'reaktivieren',en:'re-enable'},
+    'Exclude pe acest document':{ru:'Исключить для этого документа',de:'Für dieses Dokument ausschließen',en:'Exclude on this document'},
+    'La plata 100% în avans: −':{ru:'При оплате 100% авансом: −',de:'Bei 100% Vorauszahlung: −',en:'On 100% prepayment: −'},
     '📊 Raport':{ru:'📊 Отчёт',de:'📊 Bericht',en:'📊 Report'},
     '🖨 PDF':{ru:'🖨 PDF',de:'🖨 PDF',en:'🖨 PDF'},
     'Deschide planificarea întâi.':{ru:'Сначала откройте планирование.',de:'Öffnen Sie zuerst die Planung.',en:'Open the planner first.'},
