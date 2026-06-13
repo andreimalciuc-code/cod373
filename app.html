@@ -1040,7 +1040,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v47';
+const APP_VERSION='cod373-v48';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1643,8 +1643,15 @@ async function planSetSlot(empId,date,siteId,note,slot){
   if(full){ const other=slot==='am'?'pm':'am'; await planDelQ(empId,date,'full'); if(full.site_id||full.note) await planIns(empId,date,full.site_id,full.note,other); }
   await planDelQ(empId,date,slot); if(siteId||note){ const r=await planIns(empId,date,siteId,note,slot); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); } }
 }
-async function planAssign(empId,date,siteId,note,slot){ closePlMenu(); await planSetSlot(empId,date,siteId,note,slot||'full'); toast('✅ Salvat.'); renderPlantafel(); }
-async function planAssignTeam(teamId,date,siteId,note){ closePlMenu(); const t=_planTeams.find(x=>x.id===teamId); if(!t) return; for(const m of t.members){ await planSetSlot(m,date,siteId,note,'full'); } toast((siteId||note)?'✅ Brigadă planificată.':'✅ Șters.'); renderPlantafel(); }
+function planAbsWarn(empId,date){ const slots=['full','am','pm']; for(let i=0;i<slots.length;i++){ const r=_planData[empId+'|'+date+'|'+slots[i]]; if(r&&r.note){ const a=planAbs(r.note); const e=_planEmps.find(x=>x.id===empId); return '⚠️ '+(e?e.full_name:'')+' e marcat '+(a?a[1]:r.note)+' în ziua asta.'; } } return ''; }
+async function planAssign(empId,date,siteId,note,slot){ closePlMenu(); const warn=siteId?planAbsWarn(empId,date):''; await planSetSlot(empId,date,siteId,note,slot||'full'); toast('✅ Salvat.'); if(warn) toast(warn); renderPlantafel(); }
+async function planAssignTeam(teamId,date,siteId,note){ closePlMenu(); const t=_planTeams.find(x=>x.id===teamId); if(!t) return;
+  const conflicts=[];
+  if(siteId){ t.members.forEach(m=>{ const f=_planData[m+'|'+date+'|full']||_planData[m+'|'+date+'|am']||_planData[m+'|'+date+'|pm']; if(f){ const e=_planEmps.find(x=>x.id===m); const nm=e?e.full_name:'?'; if(f.note){ const a=planAbs(f.note); conflicts.push(nm+' ('+(a?a[1]:f.note)+')'); } else if(f.site_id && f.site_id!==siteId){ const s=_planSites.find(x=>x.id===f.site_id); conflicts.push(nm+(s?' (era pe '+s.name+')':'')); } } }); }
+  for(const m of t.members){ await planSetSlot(m,date,siteId,note,'full'); }
+  toast((siteId||note)?'✅ Brigadă planificată.':'✅ Șters.');
+  if(conflicts.length) toast('⚠️ Suprascris/conflict: '+conflicts.slice(0,4).join(', ')+(conflicts.length>4?'…':''));
+  renderPlantafel(); }
 async function planMoveK(se,sd,ss,kind,id,date,slot,src){ closePlMenu();
   if(kind==='team'){ const t=_planTeams.find(x=>x.id===id); if(t){ for(const m of t.members) await planSetSlot(m,date,src.site_id,src.note,'full'); } }
   else { await planSetSlot(id,date,src.site_id,src.note,slot); }
@@ -1664,6 +1671,7 @@ function planCellMenu(ev,kind,id,date,slot){
   html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div>';
   html+=PLAN_ABS.map(a=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,\''+a[0]+'\',\''+slot+'\')"><span class="pldot" style="background:'+a[2]+'"></span>'+a[1]+'</div>').join('');
   html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div><div class="plopt" style="color:var(--red)" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">🗑 Șterge</div>';
+  html+='<div class="plopt" style="color:var(--primary)" onclick="closePlMenu();go(\'gantt\')">📅 Vezi graficul Gantt</div>';
   const m=document.createElement('div'); m.id='plmenu'; m.innerHTML=html; document.body.appendChild(m);
   const x=Math.min(ev.clientX, window.innerWidth-m.offsetWidth-12), y=Math.min(ev.clientY, window.innerHeight-m.offsetHeight-12);
   m.style.left=Math.max(8,x)+'px'; m.style.top=Math.max(8,y)+'px';
@@ -2072,27 +2080,168 @@ function renderNormeList(q){
   $('norm-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cod</th><th>Denumire</th><th>UM</th><th>Categorie</th><th>Preț orient.</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 
-/* ════ GANTT ════ */
+/* ════ GANTT — pe etape, interactiv (drag/resize, zoom, azi, dependențe, încărcare echipă) ════ */
+let _gZoom=localStorage.getItem('c373_gantt_zoom')||'month';
+const G_PX={week:34,month:11,quarter:4};
+const G_LBL=200, G_ROW=34, G_HEAD=44;
+let _gMin=null, _gPx=11, _gStages={}, _gDrag=null, _gCrew={};
+const G_STCOLOR={plan:'#94a3b8',active:'#2f6bff',done:'#16b364',delayed:'#f04338'};
+function gDay(n){ const d=new Date(_gMin); d.setDate(d.getDate()+n); return d; }
+function gOff(dstr){ return Math.round((new Date(dstr)-_gMin)/86400000); }
+function gISO(d){ return new Date(d).toISOString().slice(0,10); }
+function ganttSetZoom(z){ _gZoom=z; try{localStorage.setItem('c373_gantt_zoom',z);}catch(e){} renderGantt(); }
 async function renderGantt(){
-  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>📅 '+( LANG==='ru'?'График Ганта — объекты':'Grafic Gantt — șantiere')+'</h3></div><div id="gantt-body"><div class="loading">Se încarcă…</div></div></div>';
-  const { data:sites }=await sb.from('sites').select('id,name,status,progress,start_date,deadline,created_at');
-  let rows=(sites||[]).map(s=>({ name:s.name, status:s.status, progress:s.progress||0, start:s.start_date||((s.created_at||'').slice(0,10)), end:s.deadline }));
-  rows=rows.filter(r=>r.start);
-  rows.forEach(r=>{ if(!r.end){ const d=new Date(r.start); d.setDate(d.getDate()+90); r.end=d.toISOString().slice(0,10); } });
-  if(!rows.length){ $('gantt-body').innerHTML='<div class="empty"><div class="ei">📅</div><div>Adaugă „Început" și „Termen" pe șantiere ca să apară în grafic.</div></div>'; return; }
-  const ds=rows.flatMap(r=>[new Date(r.start),new Date(r.end)]);
-  let min=new Date(Math.min(...ds)), max=new Date(Math.max(...ds));
-  min=new Date(min.getFullYear(),min.getMonth(),1); max=new Date(max.getFullYear(),max.getMonth()+1,0);
-  const total=(max-min)||1; const months=[]; let cur=new Date(min);
-  while(cur<=max){ months.push(new Date(cur)); cur=new Date(cur.getFullYear(),cur.getMonth()+1,1); }
-  const monthHdr=months.map(m=>'<div style="flex:1;text-align:center;font-size:.7rem;color:var(--muted);border-left:1px solid var(--line)">'+m.toLocaleDateString('ro-RO',{month:'short'})+' \''+String(m.getFullYear()).slice(2)+'</div>').join('');
-  const cls={planned:'#94a3b8',active:'#2f6bff',paused:'#f7a325',done:'#16b364',cancelled:'#cbd5e1'};
-  const bars=rows.map(r=>{ const s=new Date(r.start),e=new Date(r.end);
-    const left=Math.max(0,(s-min)/total*100), width=Math.max(2,(e-s)/total*100); const c=cls[r.status]||'#2f6bff';
-    return '<div style="display:flex;align-items:center;border-top:1px solid var(--line);padding:.45rem 0"><div style="width:160px;font-size:.82rem;font-weight:600;padding-right:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.name)+'</div>'
-      +'<div style="flex:1;position:relative;height:22px"><div title="'+esc(r.start)+' → '+esc(r.end)+'" style="position:absolute;left:'+left+'%;width:'+width+'%;height:100%;background:'+c+';border-radius:6px;color:#fff;font-size:.68rem;display:flex;align-items:center;justify-content:center;overflow:hidden">'+r.progress+'%</div></div></div>'; }).join('');
-  $('gantt-body').innerHTML='<div style="padding:1rem;overflow-x:auto"><div style="min-width:680px"><div style="display:flex;padding-bottom:.3rem"><div style="width:160px"></div><div style="flex:1;display:flex">'+monthHdr+'</div></div>'+bars+'</div></div>';
+  const z=(zz,lbl)=>'<button class="btn-ghost" onclick="ganttSetZoom(\''+zz+'\')" style="'+(_gZoom===zz?'background:var(--primary-soft,#e8f0ff);color:#1d4ed8;font-weight:700':'')+'">'+lbl+'</button>';
+  $('content').innerHTML='<div class="seg"><b style="margin-right:.4rem">📅 Grafic Gantt — etape</b><span style="flex:1"></span>'+z('week','Săptămână')+z('month','Lună')+z('quarter','Trimestru')+'<button class="btn-ghost" onclick="renderGantt()">↻</button></div>'
+    +'<div class="panel"><div id="gantt-body"><div class="loading">Se încarcă…</div></div></div>';
+  let siteR,stageR,cpR;
+  try{
+    [siteR,stageR]=await Promise.all([
+      sb.from('sites').select('id,name,status,start_date,deadline'),
+      sb.from('site_stages').select('id,site_id,name,status,progress,start_date,end_date,depends_on,executor_name,position')
+    ]);
+    if(siteR.error) throw siteR.error; if(stageR.error) throw stageR.error;
+  }catch(e){ const b=$('gantt-body'); if(b) b.innerHTML='<div class="empty" style="padding:1.5rem"><div class="ei">⚠️</div>Eroare: '+esc(e.message||e)+' <button class="btn-primary" style="margin-top:.6rem" onclick="renderGantt()">↻ Reîncearcă</button></div>'; return; }
+  const sites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const stagesBySite={}; (stageR.data||[]).forEach(st=>{ (stagesBySite[st.site_id]=stagesBySite[st.site_id]||[]).push(st); });
+  _gStages={}; (stageR.data||[]).forEach(st=>{ _gStages[st.id]=st; });
+  // interval: din etape + datele șantierelor
+  let lo=null,hi=null; const push=(d)=>{ if(!d) return; const x=new Date(d); if(isNaN(x)) return; if(!lo||x<lo)lo=x; if(!hi||x>hi)hi=x; };
+  (stageR.data||[]).forEach(st=>{ push(st.start_date); push(st.end_date); });
+  sites.forEach(s=>{ push(s.start_date); push(s.deadline); });
+  const today=new Date(); today.setHours(0,0,0,0);
+  if(!lo){ lo=new Date(today); lo.setDate(lo.getDate()-7); } if(!hi){ hi=new Date(today); hi.setDate(hi.getDate()+60); }
+  push(today);
+  // marje + aliniere la luni
+  lo=new Date(lo.getFullYear(),lo.getMonth(),1); hi=new Date(hi.getFullYear(),hi.getMonth()+1,0);
+  _gMin=lo; _gPx=G_PX[_gZoom]||11;
+  const totalDays=Math.round((hi-lo)/86400000)+1; const timelineW=Math.max(640,totalDays*_gPx);
+  // încărcare echipă (om-zile pe șantier în interval)
+  _gCrew={};
+  try{ cpR=await sb.from('crew_plan').select('employee_id,site_id,plan_date,slot').gte('plan_date',gISO(lo)).lte('plan_date',gISO(hi)); (cpR.data||[]).forEach(p=>{ if(!p.site_id) return; const k=p.site_id+'|'+p.plan_date; (_gCrew[k]=_gCrew[k]||new Set()).add(p.employee_id); }); }catch(e){}
+  // ── antet (luni) ──
+  let head=''; let m=new Date(lo);
+  while(m<=hi){ const next=new Date(m.getFullYear(),m.getMonth()+1,1); const segEnd=(next>hi)?new Date(hi.getTime()+86400000):next; const days=Math.round((segEnd-m)/86400000); const left=Math.round((m-lo)/86400000)*_gPx;
+    head+='<div class="ghmonth" style="left:'+left+'px;width:'+(days*_gPx)+'px">'+m.toLocaleDateString('ro-RO',{month:'short'})+' \''+String(m.getFullYear()).slice(2)+'</div>'; m=next; }
+  // ── rânduri ──
+  let rowsHtml=''; let ri=0; const yOf={};
+  if(!sites.length){ $('gantt-body').innerHTML='<div class="empty" style="padding:1.5rem"><div class="ei">📅</div>Niciun șantier. Creează un șantier și adaugă-i etape.</div>'; return; }
+  sites.forEach(s=>{
+    const sts=(stagesBySite[s.id]||[]).slice().sort((a,b)=>((a.position||0)-(b.position||0))||String(a.start_date||'').localeCompare(String(b.start_date||'')));
+    // rând șantier (sumar)
+    let sumBar=''; const sd=sts.filter(x=>x.start_date&&x.end_date);
+    let smin=null,smax=null; sd.forEach(x=>{ const a=new Date(x.start_date),b=new Date(x.end_date); if(!smin||a<smin)smin=a; if(!smax||b>smax)smax=b; });
+    if(!smin && s.start_date){ smin=new Date(s.start_date); smax=s.deadline?new Date(s.deadline):new Date(new Date(s.start_date).getTime()+86400000*30); }
+    if(smin&&smax){ const l=gOff(gISO(smin))*_gPx, w=Math.max(_gPx,(Math.round((smax-smin)/86400000)+1)*_gPx); sumBar='<div class="gsum" style="left:'+l+'px;width:'+w+'px"></div>'; }
+    rowsHtml+='<div class="grow gsiterow"><div class="glabel" style="font-weight:700">'+pill(s.status)+' '+esc(s.name)+'<span class="gacts"><button class="iconbtn" title="Adaugă etapă" onclick="ganttAddStage(\''+s.id+'\')">＋</button><button class="iconbtn" title="Planifică echipa" onclick="ganttPlanCrew(\''+(smin?gISO(smin):gISO(today))+'\')">👷</button></span></div><div class="gtrack">'+sumBar+'</div></div>';
+    ri++;
+    sts.forEach(st=>{
+      yOf[st.id]=G_HEAD+ri*G_ROW+G_ROW/2;
+      const hasD=st.start_date&&st.end_date;
+      let bar='';
+      if(hasD){ const l=gOff(st.start_date)*_gPx, w=Math.max(_gPx,(Math.round((new Date(st.end_date)-new Date(st.start_date))/86400000)+1)*_gPx); const c=G_STCOLOR[st.status]||'#2f6bff';
+        // încărcare echipă pe durata etapei
+        const crew=new Set(); for(let d=new Date(st.start_date); d<=new Date(st.end_date); d.setDate(d.getDate()+1)){ const set=_gCrew[st.site_id+'|'+gISO(d)]; if(set) set.forEach(e=>crew.add(e)); }
+        const badge=crew.size?'<span class="gcrew" title="oameni planificați pe această etapă">👷 '+crew.size+'</span>':'';
+        // avertisment dependență (începe înainte ca predecesorul să se termine)
+        let warn=''; if(st.depends_on && _gStages[st.depends_on] && _gStages[st.depends_on].end_date){ if(new Date(st.start_date) < new Date(_gStages[st.depends_on].end_date)){ warn='<span class="gwarn" title="Începe înainte să se termine etapa anterioară">⚠</span>'; } }
+        bar='<div class="gbar" style="left:'+l+'px;width:'+w+'px;background:'+c+'" onmousedown="ganttDown(event,\''+st.id+'\',\'move\')" title="'+esc(st.name)+': '+esc(st.start_date)+' → '+esc(st.end_date)+'">'
+          +'<span class="gh ghl" onmousedown="event.stopPropagation();ganttDown(event,\''+st.id+'\',\'l\')"></span>'
+          +'<span class="gbartxt">'+esc(st.name)+' · '+(st.progress||0)+'%'+warn+'</span>'+badge
+          +'<span class="gprog" style="width:'+(st.progress||0)+'%"></span>'
+          +'<span class="gh ghr" onmousedown="event.stopPropagation();ganttDown(event,\''+st.id+'\',\'r\')"></span></div>';
+      } else {
+        bar='<div class="gbar gbarnod" style="left:'+(gOff(gISO(today))*_gPx)+'px;width:'+(7*_gPx)+'px" onmousedown="ganttDown(event,\''+st.id+'\',\'move\')" title="Fără date — trage ca să setezi">'+esc(st.name)+' · pune datele</div>';
+      }
+      const dep=(st.depends_on&&_gStages[st.depends_on])?'<span class="gdep" title="după: '+esc(_gStages[st.depends_on].name)+'">🔗</span>':'';
+      rowsHtml+='<div class="grow"><div class="glabel gstagelbl">↳ '+esc(st.name)+dep+'</div><div class="gtrack">'+bar+'</div></div>';
+      ri++;
+    });
+    if(!sts.length){ rowsHtml+='<div class="grow"><div class="glabel gstagelbl" style="color:var(--muted)">— nicio etapă — <a onclick="ganttAddStage(\''+s.id+'\')" style="cursor:pointer;color:var(--primary)">adaugă</a></div><div class="gtrack"></div></div>'; ri++; }
+  });
+  const totalH=G_HEAD+ri*G_ROW;
+  // linie azi
+  const todayX=G_LBL+gOff(gISO(today))*_gPx;
+  const todayLine='<div class="gtoday" style="left:'+todayX+'px;height:'+totalH+'px"><span>azi</span></div>';
+  // conexiuni dependențe (SVG)
+  let lines='';
+  Object.keys(_gStages).forEach(id=>{ const st=_gStages[id]; if(!st.depends_on) return; const p=_gStages[st.depends_on]; if(!p) return; if(!st.start_date||!p.end_date) return; if(yOf[id]==null||yOf[p.id]==null) return;
+    const x1=G_LBL+(gOff(p.end_date)+1)*_gPx, y1=yOf[p.id]; const x2=G_LBL+gOff(st.start_date)*_gPx, y2=yOf[id]; const midx=Math.max(x1+8,x2-8);
+    lines+='<path d="M'+x1+','+y1+' H'+midx+' V'+y2+' H'+x2+'" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#garrow)"/>'; });
+  const svg='<svg class="gsvg" width="'+(G_LBL+timelineW)+'" height="'+totalH+'"><defs><marker id="garrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker></defs>'+lines+'</svg>';
+  const legend='<div class="glegend">'+Object.keys(G_STCOLOR).map(k=>'<span><i style="background:'+G_STCOLOR[k]+'"></i>'+({plan:'planificat',active:'în lucru',done:'finalizat',delayed:'întârziat'}[k])+'</span>').join('')+'<span style="margin-left:auto;color:var(--muted)">Trage barele ca să schimbi datele · clic = editezi · 👷 = oameni planificați</span></div>';
+  $('gantt-body').innerHTML=ganttStyle()
+    +'<div class="gwrap"><div class="ginner" style="width:'+(G_LBL+timelineW)+'px;min-height:'+totalH+'px">'
+    +svg+todayLine
+    +'<div class="grow ghead"><div class="glabel"></div><div class="gtrack" style="position:relative">'+head+'</div></div>'
+    +rowsHtml+'</div></div>'+legend;
 }
+function ganttStyle(){ if(document.getElementById('gantt-style')) return ''; return '<style id="gantt-style">'
+  +'.gwrap{overflow:auto;max-height:72vh;border-top:1px solid var(--line)}'
+  +'.ginner{position:relative}'
+  +'.grow{display:flex;height:'+G_ROW+'px;align-items:center;border-bottom:1px solid #eef1f6}'
+  +'.gsiterow{background:#f7f9fc} .ghead{height:'+G_HEAD+'px;position:sticky;top:0;background:#fff;z-index:6;border-bottom:1px solid var(--line)}'
+  +'.glabel{width:'+G_LBL+'px;flex:none;position:sticky;left:0;background:inherit;z-index:5;padding:0 .5rem;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:1px 0 0 var(--line);display:flex;align-items:center;gap:.35rem;height:100%}'
+  +'.gsiterow .glabel{background:#f7f9fc} .ghead .glabel{background:#fff}'
+  +'.gstagelbl{color:#334155;font-size:.8rem}'
+  +'.gacts{margin-left:auto;display:flex;gap:.1rem} .gacts .iconbtn{padding:.1rem .3rem}'
+  +'.gtrack{position:relative;flex:1;height:100%}'
+  +'.ghmonth{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:flex-start;padding-left:.4rem;font-size:.72rem;color:var(--muted);border-left:1px solid var(--line);box-sizing:border-box}'
+  +'.gsum{position:absolute;top:50%;transform:translateY(-50%);height:6px;background:#dbe3ef;border-radius:3px}'
+  +'.gbar{position:absolute;top:50%;transform:translateY(-50%);height:22px;border-radius:6px;color:#fff;font-size:.7rem;display:flex;align-items:center;padding:0 .4rem;cursor:grab;overflow:visible;user-select:none;box-shadow:0 1px 2px rgba(0,0,0,.15)}'
+  +'.gbar:active{cursor:grabbing} .gbarnod{background:#cbd5e1!important;color:#475569;font-style:italic}'
+  +'.gbartxt{position:relative;z-index:2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  +'.gprog{position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,.28);border-radius:6px 0 0 6px;z-index:1}'
+  +'.gh{position:absolute;top:0;height:100%;width:7px;cursor:ew-resize;z-index:3} .ghl{left:0} .ghr{right:0}'
+  +'.gcrew{margin-left:.35rem;background:rgba(0,0,0,.22);border-radius:10px;padding:0 .35rem;font-size:.66rem;white-space:nowrap;z-index:2}'
+  +'.gwarn{margin-left:.25rem} .gdep{margin-left:.3rem;font-size:.72rem}'
+  +'.gtoday{position:absolute;top:0;width:2px;background:#f04338;z-index:4;pointer-events:none} .gtoday span{position:absolute;top:0;left:3px;font-size:.62rem;color:#f04338;background:#fff;padding:0 2px}'
+  +'.gsvg{position:absolute;top:0;left:0;z-index:1;pointer-events:none}'
+  +'.glegend{display:flex;flex-wrap:wrap;gap:.8rem;align-items:center;padding:.6rem 1rem;font-size:.76rem} .glegend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:.3rem;vertical-align:-1px}'
+  +'</style>'; }
+function ganttDown(ev,id,mode){ ev.preventDefault(); const bar=ev.currentTarget.closest('.gbar'); if(!bar) return;
+  _gDrag={id,mode,x0:ev.clientX,moved:false,el:bar,origLeft:parseFloat(bar.style.left)||0,origWidth:parseFloat(bar.style.width)||_gPx};
+  document.addEventListener('mousemove',ganttMove); document.addEventListener('mouseup',ganttUp); }
+function ganttMove(ev){ const d=_gDrag; if(!d) return; const dx=ev.clientX-d.x0; if(Math.abs(dx)>3) d.moved=true;
+  if(d.mode==='move'){ d.el.style.left=(d.origLeft+dx)+'px'; }
+  else if(d.mode==='l'){ const nl=Math.min(d.origLeft+dx,d.origLeft+d.origWidth-_gPx); d.el.style.left=nl+'px'; d.el.style.width=(d.origLeft+d.origWidth-nl)+'px'; }
+  else { d.el.style.width=Math.max(_gPx,d.origWidth+dx)+'px'; } }
+async function ganttUp(){ const d=_gDrag; _gDrag=null; document.removeEventListener('mousemove',ganttMove); document.removeEventListener('mouseup',ganttUp); if(!d) return;
+  if(!d.moved){ ganttEditStage(d.id); return; }
+  const startOff=Math.round((parseFloat(d.el.style.left)||0)/_gPx); const lenDays=Math.max(1,Math.round((parseFloat(d.el.style.width)||_gPx)/_gPx));
+  const ns=gISO(gDay(startOff)), ne=gISO(gDay(startOff+lenDays-1));
+  const r=await sbRetry(()=>sb.from('site_stages').update({start_date:ns,end_date:ne}).eq('id',d.id));
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); } else { const st=_gStages[d.id]; if(st){ st.start_date=ns; st.end_date=ne; } toast('✅ Date actualizate.');
+    // avertisment dacă altă etapă depinde de asta și acum se suprapune
+    Object.values(_gStages).forEach(x=>{ if(x.depends_on===d.id && x.start_date && new Date(x.start_date)<new Date(ne)){ toast('⚠️ „'+esc(x.name)+'" începe înainte să termini această etapă.'); } });
+  }
+  renderGantt();
+}
+function ganttPlanCrew(dstr){ try{ _planMon=mondayOf(new Date(dstr)); }catch(e){} go('plantafel'); }
+async function ganttAddStage(siteId){ const n=(prompt('Numele etapei (ex. Fundație, Zidărie, Acoperiș):')||'').trim(); if(!n) return;
+  const cnt=Object.values(_gStages).filter(s=>s.site_id===siteId).length;
+  const t=new Date(); const ns=gISO(t); const e=new Date(t); e.setDate(e.getDate()+6); const ne=gISO(e);
+  const r=await sbRetry(()=>sb.from('site_stages').insert({tenant_id:state.tenant,site_id:siteId,name:n,position:cnt+1,status:'plan',progress:0,start_date:ns,end_date:ne}));
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('✅ Etapă adăugată.'); renderGantt(); }
+async function ganttEditStage(id){ const st=_gStages[id]; if(!st) return;
+  const sib=Object.values(_gStages).filter(x=>x.site_id===st.site_id && x.id!==id);
+  const opt='<option value="">— fără —</option>'+sib.map(x=>'<option value="'+x.id+'" '+(st.depends_on===x.id?'selected':'')+'>'+esc(x.name)+'</option>').join('');
+  const stt=(v,l)=>'<option value="'+v+'" '+(st.status===v?'selected':'')+'>'+l+'</option>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px"><div class="modal-head"><h3>🪜 Etapă: '+esc(st.name)+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div id="ge-msg"></div>'
+    +'<div class="field"><label>Denumire</label><input id="ge-name" value="'+esc(st.name||'')+'"/></div>'
+    +'<div class="row-2" style="display:flex;gap:.6rem"><div class="field" style="flex:1"><label>Început</label><input id="ge-start" type="date" value="'+esc(st.start_date||'')+'"/></div><div class="field" style="flex:1"><label>Sfârșit</label><input id="ge-end" type="date" value="'+esc(st.end_date||'')+'"/></div></div>'
+    +'<div class="row-2" style="display:flex;gap:.6rem"><div class="field" style="flex:1"><label>Stare</label><select id="ge-status">'+stt('plan','Planificat')+stt('active','În lucru')+stt('done','Finalizat')+stt('delayed','Întârziat')+'</select></div><div class="field" style="flex:1"><label>Progres %</label><input id="ge-prog" type="number" min="0" max="100" value="'+(st.progress||0)+'"/></div></div>'
+    +'<div class="field"><label>Executant</label><input id="ge-exec" value="'+esc(st.executor_name||'')+'" placeholder="echipă / subcontractant"/></div>'
+    +'<div class="field"><label>După etapa (dependență)</label><select id="ge-dep">'+opt+'</select></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" style="color:var(--red);margin-right:auto" onclick="ganttDelStage(\''+id+'\')">🗑 Șterge</button><button class="btn-ghost" onclick="closeModal()">Anulează</button><button class="btn-primary" onclick="ganttSaveStage(\''+id+'\')">Salvează</button></div></div></div>';
+}
+async function ganttSaveStage(id){ const name=($('ge-name').value||'').trim(); if(!name){ showMsg('ge-msg','Denumirea e obligatorie.'); return; }
+  const rec={ name, start_date:$('ge-start').value||null, end_date:$('ge-end').value||null, status:$('ge-status').value, progress:Math.max(0,Math.min(100,+$('ge-prog').value||0)), executor_name:($('ge-exec').value||'').trim()||null, depends_on:$('ge-dep').value||null };
+  if(rec.start_date && rec.end_date && rec.end_date<rec.start_date){ showMsg('ge-msg','Sfârșitul e înainte de început.'); return; }
+  const r=await sbRetry(()=>sb.from('site_stages').update(rec).eq('id',id)); if(r.error){ showMsg('ge-msg','Eroare: '+esc(r.error.message)); return; }
+  closeModal(); toast('✅ Etapă salvată.'); renderGantt(); }
+async function ganttDelStage(id){ if(!confirm('Ștergi această etapă?')) return; const r=await sb.from('site_stages').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } closeModal(); toast('Etapă ștearsă.'); renderGantt(); }
 
 /* ════ HARTĂ FLOTĂ (Leaflet) ════ */
 let _leaflet=false;

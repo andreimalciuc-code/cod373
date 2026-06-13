@@ -13,6 +13,20 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    '📅 Grafic Gantt — etape':{ru:'📅 График Ганта — этапы',de:'📅 Gantt-Diagramm — Phasen',en:'📅 Gantt chart — phases'},
+    'Săptămână':{ru:'Неделя',de:'Woche',en:'Week'},
+    'Trimestru':{ru:'Квартал',de:'Quartal',en:'Quarter'},
+    'Trage barele ca să schimbi datele · clic = editezi · 👷 = oameni planificați':{ru:'Тяните полосы, чтобы менять даты · клик = редактировать · 👷 = запланированные люди',de:'Balken ziehen, um Daten zu ändern · Klick = bearbeiten · 👷 = eingeplante Personen',en:'Drag bars to change dates · click = edit · 👷 = people scheduled'},
+    'Numele etapei (ex. Fundație, Zidărie, Acoperiș):':{ru:'Название этапа (напр. Фундамент, Кладка, Кровля):',de:'Name der Phase (z.B. Fundament, Mauerwerk, Dach):',en:'Phase name (e.g. Foundation, Masonry, Roof):'},
+    'Etapă adăugată.':{ru:'Этап добавлен.',de:'Phase hinzugefügt.',en:'Phase added.'},
+    'Date actualizate.':{ru:'Даты обновлены.',de:'Daten aktualisiert.',en:'Dates updated.'},
+    'Etapă salvată.':{ru:'Этап сохранён.',de:'Phase gespeichert.',en:'Phase saved.'},
+    'Niciun șantier. Creează un șantier și adaugă-i etape.':{ru:'Нет объектов. Создайте объект и добавьте этапы.',de:'Keine Baustelle. Erstellen Sie eine Baustelle und fügen Sie Phasen hinzu.',en:'No site. Create a site and add phases.'},
+    'După etapa (dependență)':{ru:'После этапа (зависимость)',de:'Nach Phase (Abhängigkeit)',en:'After phase (dependency)'},
+    'Progres %':{ru:'Прогресс %',de:'Fortschritt %',en:'Progress %'},
+    '📅 Vezi graficul Gantt':{ru:'📅 Открыть график Ганта',de:'📅 Gantt-Diagramm öffnen',en:'📅 Open Gantt chart'},
+    'Sfârșitul e înainte de început.':{ru:'Конец раньше начала.',de:'Ende liegt vor dem Beginn.',en:'End is before start.'},
+    'pune datele':{ru:'задайте даты',de:'Daten setzen',en:'set dates'},
     '½ Jumătăți de zi':{ru:'½ Полдня',de:'½ Halbe Tage',en:'½ Half-days'},
     '👥 Pe echipe':{ru:'👥 По бригадам',de:'👥 Nach Teams',en:'👥 By team'},
     '👷 Echipe':{ru:'👷 Бригады',de:'👷 Teams',en:'👷 Teams'},
