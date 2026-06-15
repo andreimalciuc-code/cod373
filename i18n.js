@@ -13,6 +13,9 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Avans':{ru:'Аванс',de:'Abschlag',en:'Advance'},
+    'Reținere garanție':{ru:'Гарантийное удержание',de:'Sicherheitseinbehalt',en:'Retention'},
+    'De plată acum':{ru:'К оплате сейчас',de:'Zahlbetrag',en:'Amount due now'},
     'Toți furnizorii':{ru:'Все поставщики',de:'Alle Lieferanten',en:'All suppliers'},
     '🏭 Prețuri pe furnizori (același material la mai multe furnizore)':{ru:'🏭 Цены по поставщикам (один материал у нескольких поставщиков)',de:'🏭 Preise je Lieferant (gleiches Material bei mehreren Lieferanten)',en:'🏭 Prices per supplier (same material from several suppliers)'},
     '＋ adaugă furnizor':{ru:'＋ добавить поставщика',de:'＋ Lieferant hinzufügen',en:'＋ add supplier'},
