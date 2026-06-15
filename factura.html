@@ -137,7 +137,7 @@ async function loadInvoice(id){
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
     disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null) };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
-  if(S.inv.inv_type==='schluss') loadAbschlaege();
+  if(S.inv.inv_type!=='normal') loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
   S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
   reorderLinesBySection();
@@ -186,8 +186,8 @@ function prepayNote(total){
 function skontoToggle(off){ S.inv.skonto_off=!!off; render(); }
 function skontoPct(v){ S.inv.skonto_pct=(v===''?null:+v); }
 /* ── facturare pe stadii (DE): Abschlag / Schluss + reținere garanție ── */
-function setInvType(v){ S.inv.inv_type=v; if(v==='schluss') loadAbschlaege(); render(); }
-function setInvSite(v){ S.inv.site_id=v||null; if(S.inv.inv_type==='schluss') loadAbschlaege(); renderSummary(); }
+function setInvType(v){ S.inv.inv_type=v; if(v!=='normal') loadAbschlaege(); render(); }
+function setInvSite(v){ S.inv.site_id=v||null; if(S.inv.inv_type!=='normal') loadAbschlaege(); renderSummary(); }
 function setContractTotal(v){ S.inv.contract_total=(v===''?null:+v); }
 function setRetention(v){ S.inv.retention_pct=(v===''?null:+v); renderSummary(); }
 function addContractPct(){ const p=parseFloat(prompt('Ce procent din contract facturezi acum? (%)','30')); if(!(p>0)) return;
@@ -404,6 +404,9 @@ function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
     if(d.ret>0) h+='<div class="totrow"><span class="sub">− Reținere garanție '+num2(S.inv.retention_pct)+'%</span><b style="color:#b45309">−'+money(d.ret)+'</b></div>';
     h+='<div class="totrow g" style="border-top:2px solid var(--ink,#0f1c33)"><span>De plată acum</span><span>'+money(d.payable)+'</span></div>';
     if(d.ret>0) h+='<div class="sub" style="font-size:.74rem;margin-top:.2rem">Reținerea de garanție se achită după recepție/garanție.</div>';
+    if(+S.inv.contract_total>0){ const vF=(S.firm.vat_rate!=null?+S.firm.vat_rate:20); const cg=Math.round((+S.inv.contract_total)*(1+vF/100)*100)/100;
+      const billed=(S.inv.inv_type==='schluss')?t.total:((S._absch||[]).reduce((s,x)=>s+(+x.total||0),0)+t.total); const rest=Math.round((cg-billed)*100)/100;
+      h+='<div class="sub" style="font-size:.76rem;margin-top:.45rem;border-top:1px dashed var(--line);padding-top:.4rem">📋 Contract (cu TVA): <b>'+money(cg)+'</b><br>Facturat (cu această factură): <b>'+money(billed)+'</b> · Rest de facturat: <b>'+money(Math.max(0,rest))+'</b></div>'; }
   }
   const au=(S.firm&&S.firm.automations)||{};
   if(au.prepay_show!==false && S.inv.status!=='paid' && S.inv.inv_type==='normal'){

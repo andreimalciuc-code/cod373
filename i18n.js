@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Toate tipurile':{ru:'Все типы',de:'Alle Typen',en:'All types'},
     'Avans':{ru:'Аванс',de:'Abschlag',en:'Advance'},
     'Reținere garanție':{ru:'Гарантийное удержание',de:'Sicherheitseinbehalt',en:'Retention'},
     'De plată acum':{ru:'К оплате сейчас',de:'Zahlbetrag',en:'Amount due now'},
