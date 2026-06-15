@@ -13,6 +13,11 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    '❓ Ghid':{ru:'❓ Гид',de:'❓ Anleitung',en:'❓ Guide'},
+    'Ghid pentru acest modul':{ru:'Руководство по этому модулю',de:'Anleitung zu diesem Modul',en:'Guide for this module'},
+    'Ghid de utilizare':{ru:'Руководство пользователя',de:'Bedienungsanleitung',en:'User guide'},
+    'Se deschide devizul cu pozițiile alese…':{ru:'Открывается смета с выбранными позициями…',de:'Angebot mit den gewählten Positionen wird geöffnet…',en:'Opening the estimate with the chosen items…'},
+    'Creează deviz':{ru:'Создать смету',de:'Angebot erstellen',en:'Create estimate'},
     'Creează comandă':{ru:'Создать заказ',de:'Bestellung erstellen',en:'Create order'},
     'Selectează cel puțin o poziție.':{ru:'Выберите хотя бы одну позицию.',de:'Wählen Sie mindestens eine Position.',en:'Select at least one item.'},
     '👉 Bifează poziții și apasă „🛒 Creează comandă" sus, sau apasă pe un rând pentru opțiuni.':{ru:'👉 Отметьте позиции и нажмите «🛒 Создать заказ» вверху, или нажмите на строку для опций.',de:'👉 Positionen ankreuzen und oben „🛒 Bestellung erstellen" drücken, oder auf eine Zeile für Optionen klicken.',en:'👉 Tick items and press "🛒 Create order" above, or click a row for options.'},
