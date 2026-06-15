@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Toate magazinele':{ru:'Все магазины',de:'Alle Geschäfte',en:'All stores'},
     'Magazine':{ru:'Магазины',de:'Geschäfte',en:'Stores'},
     'Magazine de unde cumperi materiale.':{ru:'Магазины, где покупаете материалы.',de:'Geschäfte, in denen du Material kaufst.',en:'Stores where you buy materials.'},
     'Magazin nou':{ru:'Новый магазин',de:'Neues Geschäft',en:'New store'},

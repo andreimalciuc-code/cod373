@@ -493,16 +493,16 @@ const MODULES = {
       {key:'stage',label:'Etapă',type:'select',options:opts(['lead','contacted','offer','won','lost','active']),default:'lead'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
-  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'purchase_price'}, catFilter:true,
+  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'purchase_price'}, catFilter:true, storeFilter:true,
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
-    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier_id,store_price,store_id,vat_rate,description,photo_url',
+    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier_id,store_price,store_id,stores(name),vat_rate,description,photo_url',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Categorie',get:r=>esc(r.category||'—')},
+      {label:'Magazin',get:r=>esc((r.stores&&r.stores.name)||'—')},
       {label:'Achiziție',get:r=>r.purchase_price!=null?money(r.purchase_price):'—'},
-      {label:'Magazin',get:r=>r.store_price!=null?money(r.store_price):'—'},
       {label:'Preț client',get:r=>money(r.last_price)},
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
     fields:[
@@ -1066,7 +1066,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v63';
+const APP_VERSION='cod373-v64';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2999,8 +2999,10 @@ async function delDoc(id,encPath){
 }
 
 /* ════ GENERIC LIST (cu căutare + filtru pe stare) ════ */
-let listState={ key:null, m:null, rows:[], q:'', status:'', cat:'', statusField:null };
+let listState={ key:null, m:null, rows:[], q:'', status:'', cat:'', store:'', statusField:null };
 function onListCat(v){ listState.cat=v||''; renderList(); }
+function onListStore(v){ listState.store=v||''; renderList(); }
+function rowStoreName(r){ return (r.stores&&r.stores.name)||''; }
 
 async function renderModule(key){
   const m=MODULES[key]; _bulkSel={};
@@ -3010,6 +3012,7 @@ async function renderModule(key){
     +'<button class="btn-ghost" title="Ghid pentru acest modul" onclick="openModuleGuide(\''+key+'\')">❓ Ghid</button>';
   if(statusField){ bar+='<select id="list-status" onchange="onListStatus(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:#fff"><option value="">'+TR('toate')+'</option>'+statusField.options.map(o=>'<option value="'+o.value+'">'+esc(LANG==='ru'&&STATUS_RU[o.value]?STATUS_RU[o.value]:o.label)+'</option>').join('')+'</select>'; }
   if(m.catFilter){ bar+='<select id="list-cat" onchange="onListCat(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:#fff"><option value="">Toate categoriile</option></select>'; }
+  if(m.storeFilter){ bar+='<select id="list-store" onchange="onListStore(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:#fff"><option value="">Toate magazinele</option></select>'; }
   const canAdd=canDo(key,'c');
   bar+=(!canAdd?'<span style="margin-left:auto"></span>'
     :m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
@@ -3049,6 +3052,7 @@ function renderList(){
   }
   let data=rows;
   if(m.catFilter){ const sel=$('list-cat'); if(sel){ const cats=Array.from(new Set(rows.map(r=>r.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate categoriile</option>'+cats.map(c=>'<option value="'+esc(c)+'"'+(listState.cat===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.cat) data=data.filter(r=>String(r.category||'')===listState.cat); }
+  if(m.storeFilter){ const sel=$('list-store'); if(sel){ const sts=Array.from(new Set(rows.map(rowStoreName).filter(Boolean))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate magazinele</option>'+sts.map(c=>'<option value="'+esc(c)+'"'+(listState.store===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.store) data=data.filter(r=>rowStoreName(r)===listState.store); }
   if(status&&statusField) data=data.filter(r=>String(r[statusField.key])===status);
   if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q));
   if($('list-count')) $('list-count').textContent=data.length+' '+(data.length===1?TR('rez1'):TR('rezN'));
