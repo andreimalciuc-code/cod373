@@ -493,41 +493,50 @@ const MODULES = {
       {key:'stage',label:'Etapă',type:'select',options:opts(['lead','contacted','offer','won','lost','active']),default:'lead'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
-  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'last_price'}, catFilter:true,
+  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'purchase_price'}, catFilter:true,
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
-    select:'id,name,sku,unit,category,last_price,vat_rate,description,photo_url',
+    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier,store_price,store_name,vat_rate,description,photo_url',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Categorie',get:r=>esc(r.category||'—')},
-      {label:'Ultim preț',get:r=>money(r.last_price)},
+      {label:'Preț client',get:r=>money(r.last_price)},
+      {label:'Achiziție',get:r=>r.purchase_price!=null?money(r.purchase_price):'—'},
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
       {key:'sku',label:'Cod intern (SKU) — generat automat',type:'text'},
       {key:'unit',label:'Unitate de măsură',type:'unit',default:'buc'},
       {key:'category',label:'Categorie',type:'category'},
-      {key:'last_price',label:'Preț (MDL)',type:'price2'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
+      {key:'last_price',label:'Preț client (MDL)',type:'price2',hint:'Prețul cu care vinzi clientului. Apare implicit în oferte/facturi.'},
+      {key:'purchase_price',label:'Preț achiziție (MDL)',type:'price2',hint:'Cât plătești tu pe material. Apare implicit în comenzile către furnizor.'},
+      {key:'purchase_supplier',label:'Furnizor (achiziție)',type:'text'},
+      {key:'store_price',label:'Preț magazin (MDL)',type:'price2'},
+      {key:'store_name',label:'Magazin',type:'text'},
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
 
-  servicii:{ title:'Servicii', sub:'Manoperă și lucrări — cu rețetă de materiale.', icon:'🧰', group:'Catalog', table:'services', bulkOrder:{target:'deviz',label:'Creează deviz',price:'price'},
+  servicii:{ title:'Servicii', sub:'Manoperă și lucrări — cu rețetă de materiale.', icon:'🧰', group:'Catalog', table:'services', bulkOrder:{target:'deviz',label:'Creează deviz',price:'price'}, catFilter:true,
     newLabel:'Serviciu nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'SRV'}, recipe:true,
-    select:'id,name,sku,unit,price,vat_rate,description,photo_url',
+    select:'id,name,sku,unit,price,cost_price,category,vat_rate,description,photo_url',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
-      {label:'Tarif',get:r=>money(r.price)},
+      {label:'Categorie',get:r=>esc(r.category||'—')},
+      {label:'Preț client',get:r=>money(r.price)},
+      {label:'Cost',get:r=>r.cost_price!=null?money(r.cost_price):'—'},
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
       {key:'sku',label:'Cod intern (SKU) — generat automat',type:'text'},
       {key:'unit',label:'Unitate de măsură',type:'unit',default:'m2'},
-      {key:'price',label:'Preț (MDL)',type:'price2'},
+      {key:'category',label:'Categorie',type:'category'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
+      {key:'price',label:'Preț client (MDL)',type:'price2',hint:'Prețul cu care vinzi clientului. Apare implicit în oferte/facturi.'},
+      {key:'cost_price',label:'Preț cost / intern (MDL)',type:'price2',hint:'Costul tău real (manoperă/subcontractant) — pentru calculul marjei.'},
       {key:'description',label:'Descriere (compactă)',type:'textarea',hint:'Ce include serviciul, condiții, observații. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză serviciu',type:'photo',hint:'Fotografie ilustrativă (exemplu de lucrare). Se încarcă în Documente.'} ] },
 
@@ -1044,7 +1053,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v60';
+const APP_VERSION='cod373-v61';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3264,8 +3273,8 @@ async function openForm(key,row,preset){
         +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">fără TVA</div><input id="'+netId+'" data-p2="'+f.key+'" data-role="net" type="number" step="any" value="'+esc(net)+'" oninput="price2Sync(\''+f.key+'\',\'net\')"/></div>'
         +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">cu TVA</div><input id="'+grossId+'" data-p2="'+f.key+'" data-role="gross" type="number" step="any" value="'+esc(gross)+'" oninput="price2Sync(\''+f.key+'\',\'gross\')"/></div>'
         +'</div>'; }
-    else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'" onfocus="this.select()"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
-    else if(f.type==='category'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie o categorie')+'"/><datalist id="dl-'+f.key+'">'+((window.CAT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join(''))+'</datalist>'; }
+    else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'" onfocus="umFx(this)" onblur="umBl(this)"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
+    else if(f.type==='category'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie o categorie')+'" onfocus="umFx(this)" onblur="umBl(this)"/><datalist id="dl-'+f.key+'">'+((window.CAT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join(''))+'</datalist>'; }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
@@ -3672,6 +3681,8 @@ function fieldValue(f){
   if(f.type==='number'||f.type==='price2') return Number(v);
   return v;
 }
+function umFx(el){ el.dataset.prev=el.value; el.value=''; } // golește la focus → apar toate sugestiile chiar dacă e deja o valoare
+function umBl(el){ if(!el.value && el.dataset.prev!=null) el.value=el.dataset.prev; } // restaurează dacă n-ai ales nimic
 function price2Sync(key,edited){
   const vrEl=$('f-vat_rate'); const vr=vrEl?(+vrEl.value||0):0;
   const ins=document.querySelectorAll('[data-p2="'+key+'"]'); let netEl,grossEl;

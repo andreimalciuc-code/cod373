@@ -303,7 +303,7 @@ function lineRowHtml(i,inGroup){
     +(l.description?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita" style="cursor:pointer;margin-top:5px;font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
     +'</td>'
     +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
-    +'<td><input list="uom-list" onfocus="this.select()" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
+    +'<td><input list="uom-list" onfocus="umFx(this)" onblur="umBl(this)" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
     +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
     +(showVat?'<td><input id="vt-'+i+'" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>':'')
@@ -447,6 +447,8 @@ function lineRemovePhoto(i){ S.lines[i].photo_url=null; lineDetails(i); }
 function ldSync(which){ const vr=+($('ld-vat').value)||0, ne=$('ld-net'), ge=$('ld-gross'); if(!ne||!ge) return;
   if(which==='net'){ ge.value = ne.value===''?'':Math.round((+ne.value||0)*(1+vr/100)*100)/100; }
   else { ne.value = ge.value===''?'':(vr?Math.round((+ge.value||0)/(1+vr/100)*100)/100:(+ge.value||0)); } }
+function umFx(el){ el.dataset.prev=el.value; el.value=""; }
+function umBl(el){ if(!el.value && el.dataset.prev!=null) el.value=el.dataset.prev; }
 function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
 async function saveLineDetails(i){
   const l=S.lines[i]; l.description=($('ld-desc').value||'').trim()||'';
@@ -521,7 +523,7 @@ function quickAddService(i){
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Adaugă în catalog</h3><div id="qa-msg" style="color:var(--red);font-size:.82rem"></div>'
     +'<div class="field"><label>Tip</label><select id="qa-type"><option value="service">🧰 Serviciu / manoperă</option><option value="material">📦 Material</option></select></div>'
     +'<div class="field"><label>Denumire *</label><input id="qa-name" value="'+esc(name)+'"/></div>'
-    +'<div class="row2"><div class="field"><label>UM</label><input id="qa-unit" list="qa-units" value="buc"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div><div class="field"><label>Preț (MDL)</label><input id="qa-price" type="number" step="any" value="0"/></div></div>'
+    +'<div class="row2"><div class="field"><label>UM</label><input id="qa-unit" list="qa-units" onfocus="umFx(this)" onblur="umBl(this)" value="buc"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div><div class="field"><label>Preț (MDL)</label><input id="qa-price" type="number" step="any" value="0"/></div></div>'
     +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="qa-save" onclick="saveQuickService('+i+')">Creează și adaugă</button></div></div></div>';
   setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
 }

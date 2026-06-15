@@ -13,6 +13,14 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Preț client (MDL)':{ru:'Цена клиента (MDL)',de:'Kundenpreis (MDL)',en:'Client price (MDL)'},
+    'Preț achiziție (MDL)':{ru:'Цена закупки (MDL)',de:'Einkaufspreis (MDL)',en:'Purchase price (MDL)'},
+    'Furnizor (achiziție)':{ru:'Поставщик (закупка)',de:'Lieferant (Einkauf)',en:'Supplier (purchase)'},
+    'Preț magazin (MDL)':{ru:'Цена магазина (MDL)',de:'Ladenpreis (MDL)',en:'Store price (MDL)'},
+    'Magazin':{ru:'Магазин',de:'Geschäft',en:'Store'},
+    'Preț cost / intern (MDL)':{ru:'Себестоимость (MDL)',de:'Kostenpreis (MDL)',en:'Cost price (MDL)'},
+    'Preț client':{ru:'Цена клиента',de:'Kundenpreis',en:'Client price'},
+    'Achiziție':{ru:'Закупка',de:'Einkauf',en:'Purchase'},
     'Toate categoriile':{ru:'Все категории',de:'Alle Kategorien',en:'All categories'},
     'alege sau scrie o categorie':{ru:'выберите или впишите категорию',de:'Kategorie wählen oder eingeben',en:'pick or type a category'},
     'Preț fără TVA':{ru:'Цена без НДС',de:'Preis ohne MwSt',en:'Price excl. VAT'},
