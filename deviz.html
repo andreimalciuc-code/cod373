@@ -104,7 +104,8 @@ async function boot(){
   if(id){ await loadEstimate(id); }
   else { S.est.number=await genNumber(); if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()];
     S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none');
-    if(!param('survey')){ const dr=getDraftDz(); if(dr && dr.lines && dr.lines.length){ if(dr.est) S.est=Object.assign(S.est,dr.est); S.lines=dr.lines; if(Array.isArray(dr.groups)) S.groups=dr.groups; reorderLinesBySection(); S._restored=true; } } }
+    if(param('prefill')){ try{ const pf=JSON.parse(localStorage.getItem('c373_offer_prefill')||'null'); if(pf && pf.lines && pf.lines.length){ S.lines=pf.lines.map(l=>Object.assign(blankLine(),{name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20))})); S._restored=true; } localStorage.removeItem('c373_offer_prefill'); }catch(e){} }
+    else if(!param('survey')){ const dr=getDraftDz(); if(dr && dr.lines && dr.lines.length){ if(dr.est) S.est=Object.assign(S.est,dr.est); S.lines=dr.lines; if(Array.isArray(dr.groups)) S.groups=dr.groups; reorderLinesBySection(); S._restored=true; } } }
   // din fisa de previzualizare
   if(param('survey')) await fromSurvey(param('survey'));
   if(param('print')){ await pdf(param('doctype')||'oferta', true); return; }
