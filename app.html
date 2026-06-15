@@ -495,14 +495,15 @@ const MODULES = {
 
   materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'purchase_price'}, catFilter:true,
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
-    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier,store_price,store_name,vat_rate,description,photo_url',
+    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier_id,store_price,store_supplier_id,vat_rate,description,photo_url',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Categorie',get:r=>esc(r.category||'—')},
-      {label:'Preț client',get:r=>money(r.last_price)},
       {label:'Achiziție',get:r=>r.purchase_price!=null?money(r.purchase_price):'—'},
+      {label:'Magazin',get:r=>r.store_price!=null?money(r.store_price):'—'},
+      {label:'Preț client',get:r=>money(r.last_price)},
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
@@ -510,11 +511,11 @@ const MODULES = {
       {key:'unit',label:'Unitate de măsură',type:'unit',default:'buc'},
       {key:'category',label:'Categorie',type:'category'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
-      {key:'last_price',label:'Preț client (MDL)',type:'price2',hint:'Prețul cu care vinzi clientului. Apare implicit în oferte/facturi.'},
       {key:'purchase_price',label:'Preț achiziție (MDL)',type:'price2',hint:'Cât plătești tu pe material. Apare implicit în comenzile către furnizor.'},
-      {key:'purchase_supplier',label:'Furnizor (achiziție)',type:'text'},
+      {key:'purchase_supplier_id',label:'Furnizor (achiziție)',type:'ref',ref:'suppliers'},
       {key:'store_price',label:'Preț magazin (MDL)',type:'price2'},
-      {key:'store_name',label:'Magazin',type:'text'},
+      {key:'store_supplier_id',label:'Magazin',type:'ref',ref:'suppliers'},
+      {key:'last_price',label:'Preț client (MDL)',type:'price2',hint:'Prețul cu care vinzi clientului. Apare implicit în oferte/facturi.'},
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
 
@@ -1053,7 +1054,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v61';
+const APP_VERSION='cod373-v62';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3098,10 +3099,12 @@ async function recordPreview(key,id){
   if(!r){ try{ r=(await sb.from(m.table).select('*').eq('id',id).single()).data; }catch(e){} }
   if(!r){ toast('Eroare la încărcare.'); return; }
   let ph=''; if(r.photo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(r.photo_url,600); if(data&&data.signedUrl) ph='<img src="'+data.signedUrl+'" style="max-width:100%;max-height:240px;border-radius:10px;border:1px solid var(--line);margin-bottom:.7rem;object-fit:contain;display:block">'; }catch(e){} }
+  const refMap={}; for(const f of (m.fields||[])){ if(f.type==='ref' && r[f.key] && !refMap[f.ref]){ try{ refMap[f.ref]=await loadRefOptions(f.ref); }catch(e){ refMap[f.ref]=[]; } } }
   const rows=(m.fields||[]).filter(f=>f.type!=='photo' && (!f.secure||FINANCE_ROLES.includes(state.role))).map(f=>{
     let v=r[f.key]; if(v==null||v==='') return '';
     if(f.type==='checkbox') v=v?'Da':'Nu';
     else if(f.type==='price2'){ const vr=+r.vat_rate||0, incl=priceInclVat(), st=+v||0; let net,gross; if(incl){ gross=st; net=vr?st/(1+vr/100):st; } else { net=st; gross=st*(1+vr/100); } v='fără TVA: '+money(net)+'  ·  cu TVA: '+money(gross); }
+    else if(f.type==='ref'){ const o=(refMap[f.ref]||[]).find(o=>String(o.value)===String(v)); if(o) v=o.label; }
     else if(f.type==='select'&&f.options){ const o=f.options.find(o=>String(o.value)===String(v)); if(o) v=o.label; }
     else if(f.type==='number'&&/price|pret|cost/i.test(f.key)) v=money(v);
     else if(f.key==='vat_rate') v=v+'%';
