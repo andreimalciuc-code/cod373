@@ -1041,7 +1041,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v57';
+const APP_VERSION='cod373-v58';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1729,7 +1729,7 @@ function planReport(){
 function automationsCfg(){ return (state.firm&&state.firm.automations)||{}; }
 async function saveAutomations(){
   const au=Object.assign({}, state.firm.automations||{}, { acc_site:$('au-site').checked, acc_invoice:$('au-inv').checked, acc_invoice_pct:+($('au-pct').value||30),
-    prepay_show:$('au-prepay').checked, prepay_pct:+($('au-prepay-pct').value||3) });
+    prepay_show:$('au-prepay').checked, prepay_pct:+($('au-prepay-pct').value||3), prices_incl_vat:($('au-incl-vat')?$('au-incl-vat').checked:!!(state.firm.automations&&state.firm.automations.prices_incl_vat)) });
   const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant));
   if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   state.firm.automations=au; toast('✅ Automatizări salvate.');
@@ -2432,6 +2432,7 @@ async function renderSetari(){
     +'<hr style="border:none;border-top:1px solid var(--line);margin:.9rem 0">'
     +'<div class="field"><div class="chk"><input type="checkbox" id="au-prepay" '+(au.prepay_show!==false?'checked':'')+'/> <span>Pe oferte și facturi → afișează <b>reducerea la plata 100% în avans</b> (Skonto)</span></div></div>'
     +'<div class="field" style="max-width:200px"><label>Reducere la plata în avans (%)</label><input id="au-prepay-pct" type="number" step="any" value="'+(au.prepay_pct!=null?au.prepay_pct:3)+'"/></div>'
+    +'<div class="field"><div class="chk"><input type="checkbox" id="au-incl-vat" '+(au.prices_incl_vat?'checked':'')+'/> <span>Prețurile din catalog (materiale/servicii) <b>includ deja TVA</b> — în comenzi/acte nu se mai adaugă TVA peste preț (totalul rămâne prețul introdus, TVA-ul se arată ca inclus)</span></div></div>'
     +'<button class="btn-primary" onclick="saveAutomations()">Salvează automatizările</button>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>📏 Unități de măsură</h3></div><div class="modal-body">'
@@ -3621,19 +3622,22 @@ async function stageDropPhoto(stageId, siteId, idx){
 }
 
 /* line items */
+function priceInclVat(){ return !!(state.firm&&state.firm.automations&&state.firm.automations.prices_incl_vat); }
+function lineNetVat(l){ const q=+l.qty||0,p=+l.unit_price||0,vr=+l.vat_rate||0,g=q*p; if(priceInclVat()){ const n=vr?g/(1+vr/100):g; return {net:n,vat:g-n,gross:g}; } return {net:g,vat:g*vr/100,gross:g*(1+vr/100)}; }
 function renderLines(){
   const el=$('lines-mount'); if(!el) return;
-  let sub=0,vat=0;
-  formCtx.lines.forEach(l=>{ const t=(+l.qty||0)*(+l.unit_price||0); sub+=t; vat+=t*(+l.vat_rate||0)/100; });
-  el.innerHTML='<div class="lines"><table><thead><tr><th>Denumire</th><th>Cant.</th><th>UM</th><th>Preț</th><th>TVA%</th><th></th></tr></thead><tbody>'
+  let sub=0,vat=0; const incl=priceInclVat();
+  formCtx.lines.forEach(l=>{ const c=lineNetVat(l); sub+=c.net; vat+=c.vat; });
+  el.innerHTML='<div class="lines"><table><thead><tr><th>Denumire</th><th>Cant.</th><th>UM</th><th>Preț'+(incl?' <small style="font-weight:400">(cu TVA)</small>':'')+'</th><th>TVA%</th><th class="r">Total</th><th></th></tr></thead><tbody>'
     +formCtx.lines.map((l,i)=>'<tr>'
       +'<td class="li-name"><input value="'+esc(l.name)+'" oninput="lineEdit('+i+',\'name\',this.value)"/></td>'
       +'<td><input type="number" step="any" style="width:70px" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
       +'<td><input style="width:60px" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
       +'<td><input type="number" step="any" style="width:90px" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
       +'<td><input type="number" step="any" style="width:60px" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>'
+      +'<td class="r" style="white-space:nowrap;font-weight:600">'+money(lineNetVat(l).gross)+'</td>'
       +'<td><button type="button" class="li-del" onclick="delLine('+i+')">×</button></td></tr>').join('')
-    +'</tbody></table><div class="lines-foot"><span>Subtotal: <b>'+money(sub)+'</b> · TVA: <b>'+money(vat)+'</b></span><span>Total: <b>'+money(sub+vat)+'</b></span></div></div>';
+    +'</tbody></table><div class="lines-foot"><span>Subtotal'+(incl?' (fără TVA)':'')+': <b>'+money(sub)+'</b> · TVA'+(incl?' (inclus)':'')+': <b>'+money(vat)+'</b></span><span>Total: <b>'+money(sub+vat)+'</b></span></div></div>';
   if(formCtx.bom && $('form-bom')) $('form-bom').innerHTML=bomTable(formCtx.lines);
 }
 function addLine(){ formCtx.lines.push({name:'',qty:1,unit:'buc',unit_price:0,vat_rate:20}); renderLines(); }
@@ -3663,7 +3667,7 @@ async function saveRecord(){
   let lineRows=null;
   if(m.lineItems){
     const items=formCtx.lines.filter(l=>l.name&&String(l.name).trim());
-    let sub=0,vat=0; items.forEach(l=>{ const t=(+l.qty||0)*(+l.unit_price||0); sub+=t; vat+=t*(+l.vat_rate||0)/100; });
+    let sub=0,vat=0; items.forEach(l=>{ const c=lineNetVat(l); sub+=c.net; vat+=c.vat; });
     if(m.lineItems.totals.includes('subtotal')) payload.subtotal=sub;
     if(m.lineItems.totals.includes('vat_total')) payload.vat_total=vat;
     payload.total=sub+vat;
@@ -3905,8 +3909,8 @@ async function printDoc(key,id){
   const f=state.firm||{};
   let logoTag=''; { const _lu=await firmLogoUrl(600); if(_lu) logoTag='<img src="'+_lu+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }
   let sub=0,vat=0;
-  const rows=(items||[]).map((l,i)=>{ const lt=(+l.qty||0)*(+l.unit_price||0); const lv=lt*(+l.vat_rate||0)/100; sub+=lt; vat+=lv;
-    return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+'</td><td class="r">'+esc(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td><td class="r">'+esc(l.vat_rate)+'%</td><td class="r">'+money(lt+lv)+'</td></tr>'; }).join('');
+  const rows=(items||[]).map((l,i)=>{ const c=lineNetVat(l); sub+=c.net; vat+=c.vat;
+    return '<tr><td>'+(i+1)+'</td><td>'+esc(l.name)+'</td><td class="r">'+esc(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td><td class="r">'+esc(l.vat_rate)+'%</td><td class="r">'+money(c.gross)+'</td></tr>'; }).join('');
   const total=sub+vat;
   const cl=p.clients||{};
   const doc='<!DOCTYPE html><html lang="ro"><head><meta charset="utf-8"><title>'+esc(m.printable)+' '+esc(p.number||'')+'</title><style>'
