@@ -528,7 +528,7 @@ const MODULES = {
       {key:'description',label:'Descriere (compactă)',type:'textarea',hint:'Ce include serviciul, condiții, observații. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză serviciu',type:'photo',hint:'Fotografie ilustrativă (exemplu de lucrare). Se încarcă în Documente.'} ] },
 
-  instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true,
+  instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
     select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,sites(name)',
     columns:[
@@ -542,7 +542,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['available','in_use','maintenance','lost']),default:'available'},
       {key:'assigned_site',label:'Atribuit șantierului',type:'ref',ref:'sites'} ] },
 
-  flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles',
+  flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'},
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
     select:'id,label,plate,status',
     columns:[
@@ -1041,7 +1041,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v56';
+const APP_VERSION='cod373-v57';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3007,8 +3007,8 @@ function bulkToggleAll(ck){ const data=bulkVisibleRows(); data.forEach(r=>{ if(c
 function bulkVisibleRows(){ const {rows,q,status,statusField}=listState; let data=rows; if(status&&statusField) data=data.filter(r=>String(r[statusField.key])===status); if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q)); return data; }
 function updateBulkBtn(){ const n=Object.keys(_bulkSel).length; const b=$('bulk-order-btn'); if(b){ b.style.display=n?'inline-flex':'none'; const c=$('bulk-n'); if(c) c.textContent=n; } const all=$('bulk-all'); if(all){ const data=bulkVisibleRows(); all.checked=data.length>0 && data.every(r=>_bulkSel[r.id]); } }
 function bulkCreateOrder(){ const m=listState.m; if(!m.bulkOrder) return; const rows=listState.rows.filter(r=>_bulkSel[r.id]); if(!rows.length){ toast('Selectează cel puțin o poziție.'); return; }
-  const pk=m.bulkOrder.price||'last_price'; const target=m.bulkOrder.target||'comenzi';
-  const lines=rows.map(r=>({ name:r.name, qty:1, unit:r.unit||'buc', unit_price:+(r[pk]!=null?r[pk]:(r.last_price!=null?r.last_price:r.price))||0, vat_rate:+r.vat_rate||20 }));
+  const pk=m.bulkOrder.price||'last_price'; const target=m.bulkOrder.target||'comenzi'; const nf=m.bulkOrder.nameField||'name';
+  const lines=rows.map(r=>({ name:r[nf]||r.name||r.label||'', qty:1, unit:r.unit||'buc', unit_price:+(r[pk]!=null?r[pk]:(r.last_price!=null?r.last_price:r.price))||0, vat_rate:+r.vat_rate||20 }));
   _bulkSel={}; updateBulkBtn();
   if(target==='deviz'){ try{ localStorage.setItem('c373_offer_prefill', JSON.stringify({lines})); }catch(e){} toast('Se deschide devizul cu pozițiile alese…'); window.open('deviz.html?prefill=1','_blank'); return; }
   openForm(target, null, { lines }); }
