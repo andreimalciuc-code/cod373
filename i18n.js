@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Toți furnizorii':{ru:'Все поставщики',de:'Alle Lieferanten',en:'All suppliers'},
+    '🏭 Prețuri pe furnizori (același material la mai multe furnizore)':{ru:'🏭 Цены по поставщикам (один материал у нескольких поставщиков)',de:'🏭 Preise je Lieferant (gleiches Material bei mehreren Lieferanten)',en:'🏭 Prices per supplier (same material from several suppliers)'},
+    '＋ adaugă furnizor':{ru:'＋ добавить поставщика',de:'＋ Lieferant hinzufügen',en:'＋ add supplier'},
+    'Alegi furnizorul din baza Furnizori și pui prețul lui. Cumperi de unde e mai avantajos.':{ru:'Выбираете поставщика из базы и ставите его цену. Покупаете там, где выгоднее.',de:'Du wählst den Lieferanten aus der Basis und trägst seinen Preis ein. Du kaufst, wo es günstiger ist.',en:'Pick the supplier from the base and set its price. Buy where it is cheaper.'},
     '🏪 Prețuri pe magazine (același material la mai multe magazine)':{ru:'🏪 Цены по магазинам (один материал в нескольких магазинах)',de:'🏪 Preise je Geschäft (gleiches Material in mehreren Geschäften)',en:'🏪 Prices per store (same material in several stores)'},
     '＋ adaugă magazin':{ru:'＋ добавить магазин',de:'＋ Geschäft hinzufügen',en:'＋ add store'},
     'Niciun magazin încă — apasă „＋ adaugă magazin".':{ru:'Пока нет магазинов — нажмите «＋ добавить магазин».',de:'Noch keine Geschäfte — „＋ Geschäft hinzufügen" drücken.',en:'No stores yet — press "＋ add store".'},
