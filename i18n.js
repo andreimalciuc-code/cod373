@@ -13,6 +13,9 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'fără TVA':{ru:'без НДС',de:'ohne MwSt',en:'excl. VAT'},
+    'cu TVA':{ru:'с НДС',de:'inkl. MwSt',en:'incl. VAT'},
+    'Total cu TVA — scrii suma și se calculează prețul':{ru:'Итог с НДС — введите сумму, цена рассчитается',de:'Summe inkl. MwSt — Betrag eingeben, Preis wird berechnet',en:'Total incl. VAT — type the amount, price is computed'},
     'Prețurile din catalog (materiale/servicii) <b>includ deja TVA</b> — în comenzi/acte nu se mai adaugă TVA peste preț (totalul rămâne prețul introdus, TVA-ul se arată ca inclus)':{ru:'Цены в каталоге (материалы/услуги) <b>уже включают НДС</b> — в заказах/документах НДС не добавляется сверх цены (итог остаётся введённой ценой, НДС показывается как включённый)',de:'Katalogpreise (Material/Leistungen) <b>enthalten bereits MwSt</b> — in Bestellungen/Belegen wird keine MwSt aufgeschlagen (die Summe bleibt der eingegebene Preis, die MwSt wird als enthalten ausgewiesen)',en:'Catalog prices (materials/services) <b>already include VAT</b> — in orders/documents VAT is not added on top (the total stays the entered price, VAT is shown as included)'},
     '(cu TVA)':{ru:'(с НДС)',de:'(inkl. MwSt)',en:'(incl. VAT)'},
     '❓ Ghid':{ru:'❓ Гид',de:'❓ Anleitung',en:'❓ Guide'},

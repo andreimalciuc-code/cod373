@@ -505,7 +505,7 @@ const MODULES = {
       {key:'sku',label:'Cod intern (SKU) — generat automat',type:'text'},
       {key:'unit',label:'Unitate de măsură',type:'unit',default:'buc'},
       {key:'category',label:'Categorie',type:'text'},
-      {key:'last_price',label:'Ultim preț (MDL)',type:'number'},
+      {key:'last_price',label:'Preț (MDL)',type:'price2'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
@@ -523,7 +523,7 @@ const MODULES = {
       {key:'name',label:'Denumire',type:'text',required:true},
       {key:'sku',label:'Cod intern (SKU) — generat automat',type:'text'},
       {key:'unit',label:'Unitate de măsură',type:'unit',default:'m2'},
-      {key:'price',label:'Tarif standard (MDL)',type:'number'},
+      {key:'price',label:'Preț (MDL)',type:'price2'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
       {key:'description',label:'Descriere (compactă)',type:'textarea',hint:'Ce include serviciul, condiții, observații. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză serviciu',type:'photo',hint:'Fotografie ilustrativă (exemplu de lucrare). Se încarcă în Documente.'} ] },
@@ -1041,7 +1041,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v58';
+const APP_VERSION='cod373-v59';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3249,6 +3249,13 @@ async function openForm(key,row,preset){
     else if(f.type==='select'){ body+='<select id="f-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
     else if(f.type==='photo'){ body+=(v?'<img class="lazimg" data-p="'+encodeURIComponent(v)+'" onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="display:block;max-width:100%;max-height:180px;border-radius:9px;border:1px solid var(--line);margin-bottom:.5rem;object-fit:contain;background:#f1f5f9;cursor:zoom-in">':'')+'<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a înlocui poza.</div>':''); }
+    else if(f.type==='price2'){ const incl=priceInclVat(); const vr=(row&&row.vat_rate!=null)?(+row.vat_rate):20; const stored=(v===''||v==null)?'':+v; let net='',gross='';
+      if(stored!==''){ if(incl){ gross=stored; net=vr?Math.round(stored/(1+vr/100)*100)/100:stored; } else { net=stored; gross=Math.round(stored*(1+vr/100)*100)/100; } }
+      const netId=incl?('f-'+f.key+'-alt'):('f-'+f.key), grossId=incl?('f-'+f.key):('f-'+f.key+'-alt');
+      body+='<div style="display:flex;gap:.6rem">'
+        +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">fără TVA</div><input id="'+netId+'" data-p2="'+f.key+'" data-role="net" type="number" step="any" value="'+esc(net)+'" oninput="price2Sync(\''+f.key+'\',\'net\')"/></div>'
+        +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">cu TVA</div><input id="'+grossId+'" data-p2="'+f.key+'" data-role="gross" type="number" step="any" value="'+esc(gross)+'" oninput="price2Sync(\''+f.key+'\',\'gross\')"/></div>'
+        +'</div>'; }
     else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" autocomplete="off" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
@@ -3269,6 +3276,7 @@ async function openForm(key,row,preset){
     renderLines();
   }
   if(m.recipe) renderRecipe();
+  if(m.fields.some(f=>f.type==='price2')){ const ve=$('f-vat_rate'); if(ve) ve.addEventListener('input',function(){ m.fields.forEach(f=>{ if(f.type==='price2') price2Sync(f.key,'net'); }); }); }
   geoScan($('modal-mount'));
   signThumbs();
   // restaurează schița nesalvată (doar la adăugare nouă, nu când venim cu poziții preselectate)
@@ -3635,11 +3643,14 @@ function renderLines(){
       +'<td><input style="width:60px" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
       +'<td><input type="number" step="any" style="width:90px" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
       +'<td><input type="number" step="any" style="width:60px" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>'
-      +'<td class="r" style="white-space:nowrap;font-weight:600">'+money(lineNetVat(l).gross)+'</td>'
+      +'<td><input type="number" step="any" style="width:96px;font-weight:600" title="Total cu TVA — scrii suma și se calculează prețul" value="'+esc(Math.round(lineNetVat(l).gross*100)/100)+'" onchange="lineSetTotal('+i+',this.value)" onfocus="this.select()"/></td>'
       +'<td><button type="button" class="li-del" onclick="delLine('+i+')">×</button></td></tr>').join('')
     +'</tbody></table><div class="lines-foot"><span>Subtotal'+(incl?' (fără TVA)':'')+': <b>'+money(sub)+'</b> · TVA'+(incl?' (inclus)':'')+': <b>'+money(vat)+'</b></span><span>Total: <b>'+money(sub+vat)+'</b></span></div></div>';
   if(formCtx.bom && $('form-bom')) $('form-bom').innerHTML=bomTable(formCtx.lines);
 }
+function lineSetTotal(i,v){ const l=formCtx.lines[i]; if(!l) return; const q=+l.qty||0, gross=+v||0, vr=+l.vat_rate||0;
+  if(q>0){ if(priceInclVat()) l.unit_price=Math.round(gross/q*100)/100; else l.unit_price=Math.round(gross/(q*(1+vr/100))*100)/100; }
+  renderLines(); }
 function addLine(){ formCtx.lines.push({name:'',qty:1,unit:'buc',unit_price:0,vat_rate:20}); renderLines(); }
 function delLine(i){ formCtx.lines.splice(i,1); if(!formCtx.lines.length) addLine(); else renderLines(); }
 function lineEdit(i,k,v){ formCtx.lines[i][k]=v; if(k!=='name'&&k!=='unit') renderLines(); }
@@ -3649,8 +3660,16 @@ function fieldValue(f){
   if(f.type==='checkbox') return el.checked;
   let v=el.value;
   if(v==='') return null;
-  if(f.type==='number') return Number(v);
+  if(f.type==='number'||f.type==='price2') return Number(v);
   return v;
+}
+function price2Sync(key,edited){
+  const vrEl=$('f-vat_rate'); const vr=vrEl?(+vrEl.value||0):0;
+  const ins=document.querySelectorAll('[data-p2="'+key+'"]'); let netEl,grossEl;
+  ins.forEach(x=>{ if(x.dataset.role==='net') netEl=x; else grossEl=x; });
+  if(!netEl||!grossEl) return;
+  if(edited==='net'){ grossEl.value = netEl.value==='' ? '' : (Math.round((+netEl.value||0)*(1+vr/100)*100)/100); }
+  else { netEl.value = grossEl.value==='' ? '' : (vr? Math.round((+grossEl.value||0)/(1+vr/100)*100)/100 : (+grossEl.value||0)); }
 }
 
 async function saveRecord(){
