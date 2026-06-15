@@ -1397,6 +1397,34 @@
     document.body.appendChild(box);
   }
 
-  function init(){ translateAll(); startObs(); injectSwitcher(); }
+  function init(){ translateAll(); startObs(); injectSwitcher(); initTips(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+
+  /* ── Tooltip instant (înlocuiește întârzierea nativă a atributului title) ── */
+  function initTips(){
+    if(window.__c373tips) return; window.__c373tips=true;
+    var tip=null, curEl=null;
+    function ensure(){ if(tip) return tip;
+      var st=document.createElement('style');
+      st.textContent='.c373tip{position:fixed;z-index:2147483647;background:#0f1c33;color:#fff;font-size:12px;line-height:1.35;padding:6px 9px;border-radius:7px;max-width:280px;box-shadow:0 6px 22px rgba(0,0,0,.28);pointer-events:none;opacity:0;transform:translateY(2px);transition:opacity .08s ease,transform .08s ease;white-space:normal}'
+        +'.c373tip.on{opacity:1;transform:translateY(0)}';
+      document.head.appendChild(st);
+      tip=document.createElement('div'); tip.className='c373tip'; document.body.appendChild(tip);
+      return tip;
+    }
+    function txtOf(el){ // mută title în data-tip (ca să suprimăm tooltipul nativ lent)
+      if(el.getAttribute){ var t=el.getAttribute('title'); if(t!=null && t!==''){ el.setAttribute('data-tip',t); el.removeAttribute('title'); } }
+      return el.dataset?el.dataset.tip:null;
+    }
+    function show(el){ var t=txtOf(el); if(!t){ hide(); return; } curEl=el; var n=ensure(); n.textContent=t; n.classList.add('on');
+      var r=el.getBoundingClientRect(); n.style.left='0px'; n.style.top='0px'; var w=n.offsetWidth, h=n.offsetHeight, m=8;
+      var x=r.left+r.width/2-w/2; x=Math.max(m,Math.min(x,window.innerWidth-w-m));
+      var y=r.top-h-6; if(y<m) y=r.bottom+6; // dacă nu încape sus, pune dedesubt
+      n.style.left=Math.round(x)+'px'; n.style.top=Math.round(y)+'px';
+    }
+    function hide(){ if(tip){ tip.classList.remove('on'); } curEl=null; }
+    document.addEventListener('mouseover',function(e){ var el=e.target.closest&&e.target.closest('[title],[data-tip]'); if(el){ if(el!==curEl) show(el); } });
+    document.addEventListener('mouseout',function(e){ if(!curEl) return; var to=e.relatedTarget; if(to && curEl.contains&&curEl.contains(to)) return; hide(); });
+    document.addEventListener('mousedown',hide); window.addEventListener('scroll',hide,true); window.addEventListener('blur',hide);
+  }
 })();
