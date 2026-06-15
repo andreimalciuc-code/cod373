@@ -303,7 +303,7 @@ function lineRowHtml(i,inGroup){
     +(l.description?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita" style="cursor:pointer;margin-top:5px;font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
     +'</td>'
     +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
-    +'<td><input list="uom-list" autocomplete="off" onfocus="this.select()" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
+    +'<td><input list="uom-list" onfocus="this.select()" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
     +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
     +(showVat?'<td><input id="vt-'+i+'" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>':'')
@@ -432,6 +432,9 @@ async function lineDetails(i){
   if(l.photo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(l.photo_url,600); if(data&&data.signedUrl) thumb='<img src="'+data.signedUrl+'" style="max-width:100%;max-height:170px;border-radius:8px;border:1px solid var(--line);margin:.4rem 0;display:block">'; }catch(e){} }
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>📝 Detalii poziție</h3>'
     +'<div style="font-weight:600;margin-bottom:.5rem">'+esc(l.name||'(fără denumire)')+'</div>'
+    +'<div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.4rem"><div class="field" style="flex:1;margin:0"><label>Preț fără TVA</label><input id="ld-net" type="number" step="any" value="'+esc(l.unit_price||0)+'" oninput="ldSync(\'net\')"/></div>'
+    +'<div class="field" style="flex:1;margin:0"><label>Preț cu TVA</label><input id="ld-gross" type="number" step="any" value="'+esc(Math.round((+l.unit_price||0)*(1+(+l.vat_rate||0)/100)*100)/100)+'" oninput="ldSync(\'gross\')"/></div>'
+    +'<div class="field" style="width:78px;margin:0"><label>TVA %</label><input id="ld-vat" type="number" step="any" value="'+esc(l.vat_rate!=null?l.vat_rate:20)+'" oninput="ldSync(\'net\')"/></div></div>'
     +'<div class="field"><label>Descriere (apare pe ofertă, sub denumire)</label><textarea id="ld-desc" rows="3" placeholder="Ex: Inclusiv pregătirea suprafeței și amorsa. Material: glet de finisaj.">'+esc(l.description||'')+'</textarea></div>'
     +'<div class="field"><label>Poză (opțional)</label>'+thumb
     +(l.photo_url?'<button class="btn" onclick="lineRemovePhoto('+i+')" style="margin-bottom:.4rem">🗑 Șterge poza</button><br>':'')
@@ -441,9 +444,13 @@ async function lineDetails(i){
   setTimeout(()=>$('ld-desc')&&$('ld-desc').focus(),50);
 }
 function lineRemovePhoto(i){ S.lines[i].photo_url=null; lineDetails(i); }
+function ldSync(which){ const vr=+($('ld-vat').value)||0, ne=$('ld-net'), ge=$('ld-gross'); if(!ne||!ge) return;
+  if(which==='net'){ ge.value = ne.value===''?'':Math.round((+ne.value||0)*(1+vr/100)*100)/100; }
+  else { ne.value = ge.value===''?'':(vr?Math.round((+ge.value||0)/(1+vr/100)*100)/100:(+ge.value||0)); } }
 function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
 async function saveLineDetails(i){
   const l=S.lines[i]; l.description=($('ld-desc').value||'').trim()||'';
+  if($('ld-net')) l.unit_price=+($('ld-net').value)||0; if($('ld-vat')) l.vat_rate=+($('ld-vat').value)||0;
   const f=$('ld-photo');
   if(f && f.files && f.files[0]){
     const btn=$('ld-save'); if(btn) btn.disabled=true; $('ld-msg').textContent='Se încarcă poza…';
@@ -514,7 +521,7 @@ function quickAddService(i){
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Adaugă în catalog</h3><div id="qa-msg" style="color:var(--red);font-size:.82rem"></div>'
     +'<div class="field"><label>Tip</label><select id="qa-type"><option value="service">🧰 Serviciu / manoperă</option><option value="material">📦 Material</option></select></div>'
     +'<div class="field"><label>Denumire *</label><input id="qa-name" value="'+esc(name)+'"/></div>'
-    +'<div class="row2"><div class="field"><label>UM</label><input id="qa-unit" list="qa-units" autocomplete="off" value="buc"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div><div class="field"><label>Preț (MDL)</label><input id="qa-price" type="number" step="any" value="0"/></div></div>'
+    +'<div class="row2"><div class="field"><label>UM</label><input id="qa-unit" list="qa-units" value="buc"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div><div class="field"><label>Preț (MDL)</label><input id="qa-price" type="number" step="any" value="0"/></div></div>'
     +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="qa-save" onclick="saveQuickService('+i+')">Creează și adaugă</button></div></div></div>';
   setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
 }

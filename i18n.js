@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Toate categoriile':{ru:'Все категории',de:'Alle Kategorien',en:'All categories'},
+    'alege sau scrie o categorie':{ru:'выберите или впишите категорию',de:'Kategorie wählen oder eingeben',en:'pick or type a category'},
+    'Preț fără TVA':{ru:'Цена без НДС',de:'Preis ohne MwSt',en:'Price excl. VAT'},
+    'Preț cu TVA':{ru:'Цена с НДС',de:'Preis inkl. MwSt',en:'Price incl. VAT'},
     'fără TVA':{ru:'без НДС',de:'ohne MwSt',en:'excl. VAT'},
     'cu TVA':{ru:'с НДС',de:'inkl. MwSt',en:'incl. VAT'},
     'Total cu TVA — scrii suma și se calculează prețul':{ru:'Итог с НДС — введите сумму, цена рассчитается',de:'Summe inkl. MwSt — Betrag eingeben, Preis wird berechnet',en:'Total incl. VAT — type the amount, price is computed'},

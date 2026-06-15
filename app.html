@@ -115,7 +115,10 @@
   .tbl tr:last-child td{border-bottom:none}
   .tbl tbody tr:hover{background:var(--bg)}
   .tbl .tname{font-weight:600}
-  .rowact{display:flex;gap:.35rem}
+  .cell-desc{color:var(--muted);font-size:.75rem;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tbl th:last-child,.tbl td:last-child{position:sticky;right:0;background:#fff;box-shadow:-6px 0 8px -6px rgba(0,0,0,.12)}
+  .tbl tbody tr:hover td:last-child{background:var(--bg)}
+  .rowact{display:flex;gap:.35rem;justify-content:flex-end}
   .iconbtn{border:1px solid var(--line);background:#fff;border-radius:7px;width:30px;height:30px;cursor:pointer;font-size:.85rem;display:inline-flex;align-items:center;justify-content:center}
   .iconbtn:hover{background:var(--bg)}
   .iconbtn.danger:hover{background:var(--red-soft);border-color:var(--red)}
@@ -490,11 +493,11 @@ const MODULES = {
       {key:'stage',label:'Etapă',type:'select',options:opts(['lead','contacted','offer','won','lost','active']),default:'lead'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
-  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'last_price'},
+  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'last_price'}, catFilter:true,
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
     select:'id,name,sku,unit,category,last_price,vat_rate,description,photo_url',
     columns:[
-      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
+      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Categorie',get:r=>esc(r.category||'—')},
@@ -504,7 +507,7 @@ const MODULES = {
       {key:'name',label:'Denumire',type:'text',required:true},
       {key:'sku',label:'Cod intern (SKU) — generat automat',type:'text'},
       {key:'unit',label:'Unitate de măsură',type:'unit',default:'buc'},
-      {key:'category',label:'Categorie',type:'text'},
+      {key:'category',label:'Categorie',type:'category'},
       {key:'last_price',label:'Preț (MDL)',type:'price2'},
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
@@ -514,7 +517,7 @@ const MODULES = {
     newLabel:'Serviciu nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'SRV'}, recipe:true,
     select:'id,name,sku,unit,price,vat_rate,description,photo_url',
     columns:[
-      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div style="color:var(--muted);font-size:.75rem">'+esc(r.description)+'</div>':'')},
+      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Tarif',get:r=>money(r.price)},
@@ -1041,7 +1044,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v59';
+const APP_VERSION='cod373-v60';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2974,7 +2977,8 @@ async function delDoc(id,encPath){
 }
 
 /* ════ GENERIC LIST (cu căutare + filtru pe stare) ════ */
-let listState={ key:null, m:null, rows:[], q:'', status:'', statusField:null };
+let listState={ key:null, m:null, rows:[], q:'', status:'', cat:'', statusField:null };
+function onListCat(v){ listState.cat=v||''; renderList(); }
 
 async function renderModule(key){
   const m=MODULES[key]; _bulkSel={};
@@ -2983,6 +2987,7 @@ async function renderModule(key){
     +'<input id="list-search" placeholder="'+TR('cauta')+'" oninput="onListSearch(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none;min-width:200px"/>'
     +'<button class="btn-ghost" title="Ghid pentru acest modul" onclick="openModuleGuide(\''+key+'\')">❓ Ghid</button>';
   if(statusField){ bar+='<select id="list-status" onchange="onListStatus(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:#fff"><option value="">'+TR('toate')+'</option>'+statusField.options.map(o=>'<option value="'+o.value+'">'+esc(LANG==='ru'&&STATUS_RU[o.value]?STATUS_RU[o.value]:o.label)+'</option>').join('')+'</select>'; }
+  if(m.catFilter){ bar+='<select id="list-cat" onchange="onListCat(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:#fff"><option value="">Toate categoriile</option></select>'; }
   const canAdd=canDo(key,'c');
   bar+=(!canAdd?'<span style="margin-left:auto"></span>'
     :m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
@@ -3021,6 +3026,7 @@ function renderList(){
     if($('list-count')) $('list-count').textContent=''; return;
   }
   let data=rows;
+  if(m.catFilter){ const sel=$('list-cat'); if(sel){ const cats=Array.from(new Set(rows.map(r=>r.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate categoriile</option>'+cats.map(c=>'<option value="'+esc(c)+'"'+(listState.cat===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.cat) data=data.filter(r=>String(r.category||'')===listState.cat); }
   if(status&&statusField) data=data.filter(r=>String(r[statusField.key])===status);
   if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q));
   if($('list-count')) $('list-count').textContent=data.length+' '+(data.length===1?TR('rez1'):TR('rezN'));
@@ -3086,6 +3092,7 @@ async function recordPreview(key,id){
   const rows=(m.fields||[]).filter(f=>f.type!=='photo' && (!f.secure||FINANCE_ROLES.includes(state.role))).map(f=>{
     let v=r[f.key]; if(v==null||v==='') return '';
     if(f.type==='checkbox') v=v?'Da':'Nu';
+    else if(f.type==='price2'){ const vr=+r.vat_rate||0, incl=priceInclVat(), st=+v||0; let net,gross; if(incl){ gross=st; net=vr?st/(1+vr/100):st; } else { net=st; gross=st*(1+vr/100); } v='fără TVA: '+money(net)+'  ·  cu TVA: '+money(gross); }
     else if(f.type==='select'&&f.options){ const o=f.options.find(o=>String(o.value)===String(v)); if(o) v=o.label; }
     else if(f.type==='number'&&/price|pret|cost/i.test(f.key)) v=money(v);
     else if(f.key==='vat_rate') v=v+'%';
@@ -3236,6 +3243,7 @@ async function openForm(key,row,preset){
   const refFields=m.fields.filter(f=>f.type==='ref');
   const refData={}; for(const f of refFields){ refData[f.key]=await loadRefOptions(f.ref); }
   if(m.fields.some(f=>f.type==='unit')) await loadUnits();
+  if(m.fields.some(f=>f.type==='category')){ try{ const cr=await sb.from(m.table).select('category'); const s=new Set(); (cr.data||[]).forEach(x=>{ if(x.category) s.add(x.category); }); window.CAT_LIST=Array.from(s).sort((a,b)=>a.localeCompare(b)); }catch(e){ window.CAT_LIST=[]; } }
   if(m.recipe){ formCtx.materials=((await sb.from('materials').select('id,name,unit,last_price').order('name')).data)||[]; formCtx.recipe=[];
     if(row){ const rr=((await sb.from('service_materials').select('*').eq('service_id',row.id).order('position')).data)||[]; const pm={}; formCtx.materials.forEach(mm=>pm[mm.id]=mm);
       formCtx.recipe=rr.map(x=>({material_id:x.material_id||null,material_name:x.material_name||(pm[x.material_id]?pm[x.material_id].name:''),unit:x.unit||'',qty_per_unit:+x.qty_per_unit||0,waste_pct:+x.waste_pct||0,_price:(x.material_id&&pm[x.material_id])?(+pm[x.material_id].last_price||0):0})); } }
@@ -3256,7 +3264,8 @@ async function openForm(key,row,preset){
         +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">fără TVA</div><input id="'+netId+'" data-p2="'+f.key+'" data-role="net" type="number" step="any" value="'+esc(net)+'" oninput="price2Sync(\''+f.key+'\',\'net\')"/></div>'
         +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">cu TVA</div><input id="'+grossId+'" data-p2="'+f.key+'" data-role="gross" type="number" step="any" value="'+esc(gross)+'" oninput="price2Sync(\''+f.key+'\',\'gross\')"/></div>'
         +'</div>'; }
-    else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" autocomplete="off" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
+    else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'" onfocus="this.select()"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
+    else if(f.type==='category'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie o categorie')+'"/><datalist id="dl-'+f.key+'">'+((window.CAT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join(''))+'</datalist>'; }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
