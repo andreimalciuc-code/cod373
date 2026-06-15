@@ -400,7 +400,7 @@ async function doCreateCompany(){
 /* ════ MODULE DEFINITIONS ════ */
 const REF = {
   clients:{table:'clients',label:'name'}, sites:{table:'sites',label:'name'},
-  suppliers:{table:'suppliers',label:'name'}, vehicles:{table:'vehicles',label:'label'},
+  suppliers:{table:'suppliers',label:'name'}, stores:{table:'stores',label:'name'}, vehicles:{table:'vehicles',label:'label'},
   orders:{table:'material_orders',label:'number'},
   materials:{table:'materials',label:'name'}, employees:{table:'employees',label:'full_name'},
   estimates:{table:'estimates',label:'number'}, stages:{table:'site_stages',label:'name'}
@@ -495,7 +495,7 @@ const MODULES = {
 
   materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'purchase_price'}, catFilter:true,
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
-    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier_id,store_price,store_supplier_id,vat_rate,description,photo_url',
+    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier_id,store_price,store_id,vat_rate,description,photo_url',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
@@ -514,7 +514,7 @@ const MODULES = {
       {key:'purchase_price',label:'Preț achiziție (MDL)',type:'price2',hint:'Cât plătești tu pe material. Apare implicit în comenzile către furnizor.'},
       {key:'purchase_supplier_id',label:'Furnizor (achiziție)',type:'ref',ref:'suppliers'},
       {key:'store_price',label:'Preț magazin (MDL)',type:'price2'},
-      {key:'store_supplier_id',label:'Magazin',type:'ref',ref:'suppliers'},
+      {key:'store_id',label:'Magazin',type:'ref',ref:'stores'},
       {key:'last_price',label:'Preț client (MDL)',type:'price2',hint:'Prețul cu care vinzi clientului. Apare implicit în oferte/facturi.'},
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
@@ -584,6 +584,18 @@ const MODULES = {
       {key:'email',label:'Email',type:'text'},
       {key:'rating',label:'Rating (0-5)',type:'number'},
       {key:'notes',label:'Note',type:'textarea'} ] },
+
+  magazine:{ title:'Magazine', sub:'Magazine de unde cumperi materiale.', icon:'🏪', group:'Catalog', table:'stores',
+    newLabel:'Magazin nou', orderBy:{col:'name',asc:true},
+    select:'id,name,phone,address',
+    columns:[
+      {label:'Nume',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
+      {label:'Telefon',get:r=>esc(r.phone||'—')},
+      {label:'Adresă',get:r=>esc(r.address||'—')} ],
+    fields:[
+      {key:'name',label:'Denumire',type:'text',required:true},
+      {key:'phone',label:'Telefon',type:'text'},
+      {key:'address',label:'Adresă',type:'text'} ] },
 
   devize:{ title:'Devize', sub:'Estimări și oferte de preț.', icon:'📋', group:'Finanțe', table:'estimates',
     newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', acceptReject:true, orderBy:{col:'created_at',asc:false},
@@ -1054,7 +1066,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v62';
+const APP_VERSION='cod373-v63';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3128,6 +3140,7 @@ const QUICK={
   employees:{ table:'employees', label:'full_name', title:'Angajat / specialist nou', fields:[{k:'full_name',l:'Nume complet',req:true},{k:'specialty',l:'Specialitate'},{k:'position',l:'Funcție'},{k:'phone',l:'Telefon'}] },
   subcontractors:{ table:'subcontractors', label:'name', title:'Subcontractant nou', fields:[{k:'name',l:'Denumire',req:true},{k:'specialties',l:'Specialități'},{k:'phone',l:'Telefon'}] },
   suppliers:{ table:'suppliers', label:'name', title:'Furnizor nou', fields:[{k:'name',l:'Denumire',req:true},{k:'phone',l:'Telefon'},{k:'email',l:'Email'}] },
+  stores:{ table:'stores', label:'name', title:'Magazin nou', fields:[{k:'name',l:'Denumire',req:true},{k:'phone',l:'Telefon'},{k:'address',l:'Adresă'}] },
   materials:{ table:'materials', label:'name', title:'Material nou', fields:[{k:'name',l:'Denumire',req:true},{k:'unit',l:'Unitate (UM)',def:'buc'},{k:'category',l:'Categorie'}] },
   vehicles:{ table:'vehicles', label:'label', title:'Vehicul nou', fields:[{k:'label',l:'Denumire / număr',req:true},{k:'plate',l:'Nr. înmatriculare'}] },
   sites:{ table:'sites', label:'name', title:'Șantier nou', fields:[{k:'name',l:'Denumire',req:true},{k:'address',l:'Adresă'}] }

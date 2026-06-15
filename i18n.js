@@ -13,6 +13,9 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Magazine':{ru:'Магазины',de:'Geschäfte',en:'Stores'},
+    'Magazine de unde cumperi materiale.':{ru:'Магазины, где покупаете материалы.',de:'Geschäfte, in denen du Material kaufst.',en:'Stores where you buy materials.'},
+    'Magazin nou':{ru:'Новый магазин',de:'Neues Geschäft',en:'New store'},
     'Preț client (MDL)':{ru:'Цена клиента (MDL)',de:'Kundenpreis (MDL)',en:'Client price (MDL)'},
     'Preț achiziție (MDL)':{ru:'Цена закупки (MDL)',de:'Einkaufspreis (MDL)',en:'Purchase price (MDL)'},
     'Furnizor (achiziție)':{ru:'Поставщик (закупка)',de:'Lieferant (Einkauf)',en:'Supplier (purchase)'},
