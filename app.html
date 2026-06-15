@@ -493,15 +493,15 @@ const MODULES = {
       {key:'stage',label:'Etapă',type:'select',options:opts(['lead','contacted','offer','won','lost','active']),default:'lead'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
-  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'purchase_price'}, catFilter:true, storeFilter:true,
+  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă',price:'purchase_price'}, catFilter:true, storeFilter:true, storePrices:true,
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
-    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier_id,store_price,store_id,stores(name),vat_rate,description,photo_url',
+    select:'id,name,sku,unit,category,last_price,purchase_price,purchase_supplier_id,vat_rate,description,photo_url,material_stores(price,stores(name))',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.description?'<div class="cell-desc" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')},
       {label:'Cod',get:r=>esc(r.sku||'—')},
       {label:'UM',get:r=>esc(r.unit)},
       {label:'Categorie',get:r=>esc(r.category||'—')},
-      {label:'Magazin',get:r=>esc((r.stores&&r.stores.name)||'—')},
+      {label:'Magazine',get:r=>{ const ms=r.material_stores||[]; if(!ms.length) return '—'; const names=ms.map(x=>x.stores&&x.stores.name).filter(Boolean); const ps=ms.map(x=>x.price).filter(p=>p!=null); const mn=ps.length?Math.min.apply(null,ps):null; return '<span class="cell-desc" title="'+esc(names.join(', '))+'">'+esc(names.join(', ')||(ms.length+' magazin'))+'</span>'+(mn!=null?'<div style="color:var(--muted);font-size:.74rem">de la '+money(mn)+'</div>':''); }},
       {label:'Achiziție',get:r=>r.purchase_price!=null?money(r.purchase_price):'—'},
       {label:'Preț client',get:r=>money(r.last_price)},
       {label:'TVA',get:r=>(r.vat_rate||0)+'%'} ],
@@ -513,8 +513,6 @@ const MODULES = {
       {key:'vat_rate',label:'TVA (%)',type:'number',default:20},
       {key:'purchase_price',label:'Preț achiziție (MDL)',type:'price2',hint:'Cât plătești tu pe material. Apare implicit în comenzile către furnizor.'},
       {key:'purchase_supplier_id',label:'Furnizor (achiziție)',type:'ref',ref:'suppliers'},
-      {key:'store_price',label:'Preț magazin (MDL)',type:'price2'},
-      {key:'store_id',label:'Magazin',type:'ref',ref:'stores'},
       {key:'last_price',label:'Preț client (MDL)',type:'price2',hint:'Prețul cu care vinzi clientului. Apare implicit în oferte/facturi.'},
       {key:'description',label:'Descriere (compactă, argumentată)',type:'textarea',hint:'Pe scurt: la ce se folosește, calitate/specificații, de ce a fost ales. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză material',type:'photo',hint:'Fotografie a materialului (ambalaj/eticheta/aspect). Se încarcă în Documente.'} ] },
@@ -1066,7 +1064,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v64';
+const APP_VERSION='cod373-v65';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3002,7 +3000,7 @@ async function delDoc(id,encPath){
 let listState={ key:null, m:null, rows:[], q:'', status:'', cat:'', store:'', statusField:null };
 function onListCat(v){ listState.cat=v||''; renderList(); }
 function onListStore(v){ listState.store=v||''; renderList(); }
-function rowStoreName(r){ return (r.stores&&r.stores.name)||''; }
+function rowStoreNames(r){ return (r.material_stores||[]).map(x=>x.stores&&x.stores.name).filter(Boolean); }
 
 async function renderModule(key){
   const m=MODULES[key]; _bulkSel={};
@@ -3052,7 +3050,7 @@ function renderList(){
   }
   let data=rows;
   if(m.catFilter){ const sel=$('list-cat'); if(sel){ const cats=Array.from(new Set(rows.map(r=>r.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate categoriile</option>'+cats.map(c=>'<option value="'+esc(c)+'"'+(listState.cat===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.cat) data=data.filter(r=>String(r.category||'')===listState.cat); }
-  if(m.storeFilter){ const sel=$('list-store'); if(sel){ const sts=Array.from(new Set(rows.map(rowStoreName).filter(Boolean))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate magazinele</option>'+sts.map(c=>'<option value="'+esc(c)+'"'+(listState.store===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.store) data=data.filter(r=>rowStoreName(r)===listState.store); }
+  if(m.storeFilter){ const sel=$('list-store'); if(sel){ const sts=Array.from(new Set([].concat.apply([],rows.map(rowStoreNames)))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate magazinele</option>'+sts.map(c=>'<option value="'+esc(c)+'"'+(listState.store===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.store) data=data.filter(r=>rowStoreNames(r).indexOf(listState.store)>-1); }
   if(status&&statusField) data=data.filter(r=>String(r[statusField.key])===status);
   if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q));
   if($('list-count')) $('list-count').textContent=data.length+' '+(data.length===1?TR('rez1'):TR('rezN'));
@@ -3126,7 +3124,9 @@ async function recordPreview(key,id){
     else if(f.key==='vat_rate') v=v+'%';
     return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.5rem 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted)">'+esc(f.label)+'</span><b style="text-align:right;white-space:pre-wrap">'+esc(v)+'</b></div>';
   }).join('');
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>👁 '+esc(r.name||r.full_name||r.label||r.number||'Detalii')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+ph+rows
+  let extra='';
+  if(m.storePrices){ try{ const ms=((await sb.from('material_stores').select('price,stores(name)').eq('material_id',id)).data)||[]; if(ms.length){ extra='<div style="margin-top:.7rem"><div style="color:var(--muted);font-size:.8rem;font-weight:600;margin-bottom:.2rem">🏪 Prețuri pe magazine</div>'+ms.slice().sort((a,b)=>(a.price||1e12)-(b.price||1e12)).map(x=>'<div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--line)"><span>'+esc((x.stores&&x.stores.name)||'—')+'</span><b>'+(x.price!=null?money(x.price):'—')+'</b></div>').join('')+'</div>'; } }catch(e){} }
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>👁 '+esc(r.name||r.full_name||r.label||r.number||'Detalii')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+ph+rows+extra
     +'<div style="margin-top:.9rem;display:flex;gap:.5rem;justify-content:flex-end">'+(canDo(key,'u')?'<button class="btn-ghost" onclick="closeModal();editRecord(\''+key+'\',\''+id+'\')">✏️ Editează</button>':'')+'<button class="btn-primary" onclick="closeModal()">Închide</button></div></div></div></div>';
 }
 
@@ -3265,6 +3265,19 @@ function renderRecipe(){ const el=$('recipe-mount'); if(!el) return; const rows=
   html+='</tbody></table></div><div style="text-align:right;font-size:.82rem;margin-top:.3rem">Cost materiale la 1 unitate de serviciu: <b id="recipe-total">'+money(0)+'</b></div>';
   el.innerHTML=html; recipeTotals();
 }
+/* ── prețuri pe magazine (un material la mai multe magazine) ── */
+function msAdd(){ formCtx.matStores=formCtx.matStores||[]; formCtx.matStores.push({store_id:'',price:''}); renderMatStores(); }
+function msDel(i){ formCtx.matStores.splice(i,1); renderMatStores(); }
+function msEdit(i,k,v){ formCtx.matStores[i][k]=v; }
+function renderMatStores(){ const el=$('mstore-mount'); if(!el) return; const rows=(formCtx.matStores||[]); const incl=priceInclVat();
+  const opt=sel=>'<option value="">— alege magazin —</option>'+(formCtx.storesList||[]).map(s=>'<option value="'+s.id+'" '+(sel===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join('');
+  if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:.82rem;padding:.3rem 0">Niciun magazin încă — apasă „＋ adaugă magazin".</div>'; return; }
+  let html='<div class="tbl-wrap"><table class="tbl" style="font-size:.82rem"><thead><tr><th>Magazin</th><th>Preț '+(incl?'(cu TVA)':'(fără TVA)')+'</th><th></th></tr></thead><tbody>';
+  rows.forEach((r,i)=>{ html+='<tr><td><select onchange="msEdit('+i+',\'store_id\',this.value)" style="min-width:170px">'+opt(r.store_id||'')+'</select></td>'
+    +'<td><input type="number" step="any" value="'+esc(r.price)+'" oninput="msEdit('+i+',\'price\',this.value)" style="width:110px"/></td>'
+    +'<td><button class="delx" onclick="msDel('+i+')" title="Șterge">×</button></td></tr>'; });
+  html+='</tbody></table></div>'; el.innerHTML=html;
+}
 async function openForm(key,row,preset){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
@@ -3276,6 +3289,8 @@ async function openForm(key,row,preset){
   if(m.recipe){ formCtx.materials=((await sb.from('materials').select('id,name,unit,last_price').order('name')).data)||[]; formCtx.recipe=[];
     if(row){ const rr=((await sb.from('service_materials').select('*').eq('service_id',row.id).order('position')).data)||[]; const pm={}; formCtx.materials.forEach(mm=>pm[mm.id]=mm);
       formCtx.recipe=rr.map(x=>({material_id:x.material_id||null,material_name:x.material_name||(pm[x.material_id]?pm[x.material_id].name:''),unit:x.unit||'',qty_per_unit:+x.qty_per_unit||0,waste_pct:+x.waste_pct||0,_price:(x.material_id&&pm[x.material_id])?(+pm[x.material_id].last_price||0):0})); } }
+  if(m.storePrices){ formCtx.storesList=((await sb.from('stores').select('id,name').order('name')).data)||[]; formCtx.matStores=[];
+    if(row){ const ms=((await sb.from('material_stores').select('store_id,price').eq('material_id',row.id)).data)||[]; formCtx.matStores=ms.map(x=>({store_id:x.store_id||'',price:(x.price!=null?x.price:'')})); } }
   let body='<div id="form-msg"></div>';
   // pack fields in pairs where short
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
@@ -3299,6 +3314,7 @@ async function openForm(key,row,preset){
     body+='</div>';
   });
   if(m.recipe){ body+='<div class="field"><label>🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)</label><datalist id="recipe-mat-list">'+(formCtx.materials||[]).map(mm=>'<option value="'+esc(mm.name)+'"></option>').join('')+'</datalist><div id="recipe-mount"></div><button type="button" class="addline" onclick="recipeAdd()">＋ adaugă material</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Consum × volumul măsurat (la previzualizare șantier) = cantitatea de material. Prețul se ia automat din Materiale.</div></div>'; }
+  if(m.storePrices){ body+='<div class="field"><label>🏪 Prețuri pe magazine (același material la mai multe magazine)</label><div id="mstore-mount"></div><button type="button" class="addline" onclick="msAdd()">＋ adaugă magazin</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Alegi magazinul din baza Magazine și pui prețul lui. Util pentru comparație — cumperi de unde e mai ieftin.</div></div>'; }
   if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Din norme</button><button type="button" class="addline" style="margin-left:1rem" onclick="openServicePicker()">🧰 Din servicii</button>':'')+'</div>'; }
   if(m.bomFromNorms){ formCtx.bom=true; body+='<div id="form-bom"></div>'; await ensureNorms(); await ensureNormMaterials(); }
   $('modal-mount').innerHTML='<div class="modal-overlay"><div class="modal">'
@@ -3314,6 +3330,7 @@ async function openForm(key,row,preset){
     renderLines();
   }
   if(m.recipe) renderRecipe();
+  if(m.storePrices) renderMatStores();
   if(m.fields.some(f=>f.type==='price2')){ const ve=$('f-vat_rate'); if(ve) ve.addEventListener('input',function(){ m.fields.forEach(f=>{ if(f.type==='price2') price2Sync(f.key,'net'); }); }); }
   geoScan($('modal-mount'));
   signThumbs();
@@ -3753,6 +3770,10 @@ async function saveRecord(){
     if(m.recipe){ await sb.from('service_materials').delete().eq('service_id',parentId);
       const rrows=(formCtx.recipe||[]).filter(r=>(r.material_name||'').trim()).map((r,idx)=>({tenant_id:state.tenant,service_id:parentId,material_id:r.material_id||null,material_name:r.material_name||null,unit:r.unit||null,qty_per_unit:+r.qty_per_unit||0,waste_pct:+r.waste_pct||0,position:idx+1}));
       if(rrows.length){ const { error }=await sb.from('service_materials').insert(rrows); if(error) throw error; }
+    }
+    if(m.storePrices){ await sb.from('material_stores').delete().eq('material_id',parentId);
+      const srows=(formCtx.matStores||[]).filter(r=>r.store_id).map(r=>({tenant_id:state.tenant,material_id:parentId,store_id:r.store_id,price:(r.price===''||r.price==null)?null:+r.price}));
+      if(srows.length){ const { error }=await sb.from('material_stores').insert(srows); if(error) throw error; }
     }
     if(m.table==='sites' && !formCtx.id){ try{ if(await seedSiteStages(parentId, payload.work_type, payload.start_date)) toast('📋 Am adăugat etape-șablon în grafic (le poți edita în Gantt).'); }catch(e){} }
     fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);

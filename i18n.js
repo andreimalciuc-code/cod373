@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    '🏪 Prețuri pe magazine (același material la mai multe magazine)':{ru:'🏪 Цены по магазинам (один материал в нескольких магазинах)',de:'🏪 Preise je Geschäft (gleiches Material in mehreren Geschäften)',en:'🏪 Prices per store (same material in several stores)'},
+    '＋ adaugă magazin':{ru:'＋ добавить магазин',de:'＋ Geschäft hinzufügen',en:'＋ add store'},
+    'Niciun magazin încă — apasă „＋ adaugă magazin".':{ru:'Пока нет магазинов — нажмите «＋ добавить магазин».',de:'Noch keine Geschäfte — „＋ Geschäft hinzufügen" drücken.',en:'No stores yet — press "＋ add store".'},
+    'Alegi magazinul din baza Magazine și pui prețul lui. Util pentru comparație — cumperi de unde e mai ieftin.':{ru:'Выбираете магазин из базы Магазины и ставите его цену. Удобно для сравнения — покупаете там, где дешевле.',de:'Du wählst das Geschäft aus der Geschäfte-Basis und trägst seinen Preis ein. Praktisch zum Vergleichen — du kaufst, wo es günstiger ist.',en:'Pick the store from the Stores base and set its price. Handy for comparison — buy where it is cheaper.'},
     'Toate magazinele':{ru:'Все магазины',de:'Alle Geschäfte',en:'All stores'},
     'Magazine':{ru:'Магазины',de:'Geschäfte',en:'Stores'},
     'Magazine de unde cumperi materiale.':{ru:'Магазины, где покупаете материалы.',de:'Geschäfte, in denen du Material kaufst.',en:'Stores where you buy materials.'},
