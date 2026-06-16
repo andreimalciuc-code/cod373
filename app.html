@@ -272,6 +272,7 @@
       <button class="menu-toggle" onclick="openNav()">☰</button>
       <div class="page-title"><span id="ptitle">Tablou de bord</span><small id="psub"></small></div>
       <div class="top-actions">
+        <div id="topclock" class="noi18n" title="Data și ora" style="font-size:.78rem;color:var(--muted);font-weight:600;white-space:nowrap;margin-right:.3rem"></div>
         <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
         <button class="btn-ghost" id="guide-btn" onclick="openModuleGuide(curModuleKey())" title="Ghid de utilizare">❓</button>
         <button class="btn-ghost" id="support-btn" onclick="openSupport()" title="Suport / Ajutor">🛟</button>
@@ -1041,6 +1042,7 @@ async function boot(){
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
   let _lv; try{ _lv=localStorage.getItem('c373_last_view'); }catch(e){}
   go(_lv && MODULES[_lv] && canSee(_lv) ? _lv : 'dashboard');
+  startClock();
   hideSplash();
 }
 
@@ -1146,7 +1148,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v91';
+const APP_VERSION='cod373-v92';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1772,6 +1774,8 @@ function isoLocal(d){ d=new Date(d); return d.getFullYear()+'-'+String(d.getMont
 function coToday(){ const tz=coTz(); if(tz){ try{ return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }catch(e){} } return isoLocal(new Date()); }
 function fmtDate(iso){ if(!iso) return ''; const s=String(iso).slice(0,10); const p=s.split('-'); if(p.length<3) return s; const y=p[0],m=p[1],d=p[2]; const f=coDateFmt(); return f==='YYYY-MM-DD'?s : f==='DD/MM/YYYY'?(d+'/'+m+'/'+y) : f==='MM/DD/YYYY'?(m+'/'+d+'/'+y) : (d+'.'+m+'.'+y); }
 function coWork(){ const a=(state.firm&&state.firm.automations)||{}; return { start:a.work_start||'08:00', end:a.work_end||'17:00', brk:(a.work_break!=null?+a.work_break:60) }; }
+function clockText(){ const tz=coTz(); let time; try{ time=new Intl.DateTimeFormat('ro-RO',Object.assign({hour:'2-digit',minute:'2-digit'}, tz?{timeZone:tz}:{})).format(new Date()); }catch(e){ const n=new Date(); time=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); } const iso=coToday(); const dn=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm'][new Date(iso+'T12:00:00').getDay()]; return '🕐 '+dn+' '+fmtDate(iso)+' · '+time; }
+function startClock(){ const el=document.getElementById('topclock'); if(el) el.textContent=clockText(); clearInterval(window._clockT); window._clockT=setInterval(function(){ const e=document.getElementById('topclock'); if(e) e.textContent=clockText(); }, 15000); }
 function planAbs(n){ return PLAN_ABS.find(a=>a[0]===n); }
 function planChipHtml(rec, id, date, slot){
   if(!rec) return '';
