@@ -1077,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v73';
+const APP_VERSION='cod373-v74';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1754,10 +1754,12 @@ async function planTeamsModal(){
   const blk=t=>'<div style="border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;margin-bottom:.6rem">'
     +'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem"><b style="flex:1">👥 '+esc(t.name)+'</b><button class="btn-ghost" style="color:var(--red)" onclick="planDelTeam(\''+t.id+'\')">🗑 Șterge</button></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(emps.length?emps.map(e=>{ const ck=mem[t.id]&&mem[t.id][e.id]; return '<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.84rem;background:var(--bg,#f1f5f9);border-radius:8px;padding:.25rem .55rem;cursor:pointer"><input type="checkbox" '+(ck?'checked':'')+' onchange="planToggleMember(\''+t.id+'\',\''+e.id+'\',this.checked)"/> '+esc(e.full_name)+'</label>'; }).join(''):'<span style="color:var(--muted);font-size:.83rem">Niciun angajat activ.</span>')+'</div></div>';
-  const body=(teams.length?teams.map(blk).join(''):'<div style="color:var(--muted);padding:.4rem 0 .7rem">Nicio echipă încă. Creează o brigadă și bifează membrii.</div>')
+  const hint='<div style="background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.7rem">ℹ️ Pașii: <b>1)</b> apasă „＋ Echipă nouă" și dă-i un nume → <b>2)</b> bifează membrii (se salvează automat) → <b>3)</b> „Gata". Echipa apare apoi în planșă (pornim automat vederea „👥 Pe echipe").</div>';
+  const body=hint+(teams.length?teams.map(blk).join(''):'<div style="color:var(--muted);padding:.4rem 0 .7rem">Nicio echipă încă. Creează o brigadă și bifează membrii.</div>')
     +'<button class="btn-primary" onclick="planNewTeam()">＋ Echipă nouă</button>';
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this){closeModal();renderPlantafel();}"><div class="modal" style="max-width:580px"><div class="modal-head"><h3>👷 Echipe / brigăzi</h3><button class="x" onclick="closeModal();renderPlantafel()">×</button></div><div class="modal-body">'+body+'</div><div class="modal-foot"><button class="btn-primary" onclick="closeModal();renderPlantafel()">Gata</button></div></div></div>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this){planTeamsDone();}"><div class="modal" style="max-width:580px"><div class="modal-head"><h3>👷 Echipe / brigăzi</h3><button class="x" onclick="planTeamsDone()">×</button></div><div class="modal-body">'+body+'</div><div class="modal-foot"><button class="btn-primary" onclick="planTeamsDone()">Gata</button></div></div></div>';
 }
+function planTeamsDone(){ _planGroup=true; try{localStorage.setItem('c373_plan_teams','1');}catch(e){} closeModal(); renderPlantafel(); }
 async function planNewTeam(){ const n=(prompt('Numele echipei / brigăzii:')||'').trim(); if(!n) return; const r=await sbRetry(()=>sb.from('crew_teams').insert({tenant_id:state.tenant,name:n})); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
 async function planToggleMember(teamId,empId,ck){ if(ck){ const r=await sbRetry(()=>sb.from('crew_team_members').insert({tenant_id:state.tenant,team_id:teamId,employee_id:empId})); if(r.error) toast('Eroare: '+esc(r.error.message)); } else { await sb.from('crew_team_members').delete().eq('team_id',teamId).eq('employee_id',empId); } }
 async function planDelTeam(teamId){ if(!confirm('Ștergi echipa? (planificările individuale rămân neatinse)')) return; const r=await sb.from('crew_teams').delete().eq('id',teamId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
