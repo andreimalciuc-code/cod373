@@ -1162,7 +1162,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v95';
+const APP_VERSION='cod373-v96';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2742,17 +2742,46 @@ function loadLeaflet(){ return new Promise(res=>{ if(window.L){ res(); return; }
   const c=document.createElement('link'); c.rel='stylesheet'; c.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(c);
   const j=document.createElement('script'); j.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; j.onload=()=>res(); j.onerror=()=>res(); document.head.appendChild(j);
 }); }
+/* ── integrare GPS Wialon (Remote API cu token) ── */
+function wialonHost(){ const h=(state.firm&&state.firm.automations&&state.firm.automations.wialon_host)||'hst-api.wialon.com'; return String(h).replace(/^https?:\/\//,'').replace(/\/+$/,''); }
+function wialonToken(){ return (state.firm&&state.firm.automations&&state.firm.automations.wialon_token)||''; }
+async function wialonCall(svc, params, sid){ const u='https://'+wialonHost()+'/wialon/ajax.html?svc='+encodeURIComponent(svc)+'&params='+encodeURIComponent(JSON.stringify(params||{}))+(sid?'&sid='+encodeURIComponent(sid):''); const r=await fetch(u); const j=await r.json(); if(j&&j.error){ throw new Error('cod '+j.error); } return j; }
+async function wialonLogin(){ const tok=wialonToken(); if(!tok) throw new Error('fără token'); const j=await wialonCall('token/login',{token:tok}); return j.eid; }
+async function wialonTest(){ const tok=($('set-wialon-token').value||'').trim(); const host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,'');
+  if(!tok){ toast('Pune întâi token-ul Wialon.'); return; }
+  toast('⏳ Testez conexiunea Wialon…');
+  try{ const base='https://'+host+'/wialon/ajax.html';
+    const lr=await fetch(base+'?svc=token/login&params='+encodeURIComponent(JSON.stringify({token:tok}))); const lj=await lr.json();
+    if(lj.error){ toast('❌ Token respins de Wialon (eroare '+lj.error+').'); return; }
+    const sid=lj.eid;
+    const ur=await fetch(base+'?svc=core/search_items&params='+encodeURIComponent(JSON.stringify({spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1,from:0,to:0}))+'&sid='+sid); const uj=await ur.json();
+    const n=(uj&&uj.items)?uj.items.length:0;
+    try{ await fetch(base+'?svc=core/logout&params=%7B%7D&sid='+sid); }catch(e){}
+    toast('✅ Conectat la Wialon — '+n+' vehicule găsite. Salvează setările ca să apară pe hartă.');
+  }catch(e){ toast('❌ Conectare eșuată (posibil host greșit sau blocare CORS): '+(e.message||e)); }
+}
 async function renderHarta(){
-  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>🗺️ '+(LANG==='ru'?'Карта автопарка':'Hartă flotă')+'</h3><span style="font-size:.78rem;color:var(--muted)">Locația vehiculelor (din aplicația șoferului)</span></div><div id="map" style="height:520px;background:var(--bg)"></div><div id="map-note"></div></div>';
+  const live=!!wialonToken();
+  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>🗺️ '+(LANG==='ru'?'Карта автопарка':'Hartă flotă')+'</h3><span style="font-size:.78rem;color:var(--muted)">'+(live?'🛰️ GPS live din Wialon':'Locația vehiculelor (din aplicația șoferului)')+'</span></div><div id="map" style="height:520px;background:var(--bg)"></div><div id="map-note"></div></div>';
   await loadLeaflet();
   if(!window.L){ $('map').innerHTML='<div class="empty">Harta nu s-a putut încărca (verifică internetul).</div>'; return; }
   const { data:veh }=await sb.from('vehicles').select('label,plate,status,last_lat,last_lng,last_seen_at');
   const map=L.map('map').setView([47.01,28.86],11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-  const wc=(veh||[]).filter(v=>v.last_lat!=null&&v.last_lng!=null);
-  wc.forEach(v=>{ L.marker([v.last_lat,v.last_lng]).addTo(map).bindPopup('<b>'+esc(v.label)+'</b><br>'+esc(v.plate||'')+' · '+esc(v.status||'')+(v.last_seen_at?'<br><small>'+esc(String(v.last_seen_at).slice(0,16).replace('T',' '))+'</small>':'')); });
-  if(wc.length){ map.setView([wc[0].last_lat,wc[0].last_lng],12); }
-  else { $('map-note').innerHTML='<div style="padding:1rem;color:var(--muted);font-size:.85rem">Niciun vehicul nu și-a trimis încă locația. Șoferii o trimit din aplicația de teren (📍 Trimite locația).</div>'; }
+  let plotted=0, note='';
+  if(live){
+    try{ const sid=await wialonLogin();
+      const j=await wialonCall('core/search_items',{spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1025,from:0,to:0}, sid);
+      const units=(j&&j.items)||[];
+      units.forEach(u=>{ const p=u.pos; if(p&&p.y!=null&&p.x!=null){ const t=p.t?new Date(p.t*1000):null; const tm=t?(' · '+isoLocal(t)+' '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')):''; L.marker([p.y,p.x]).addTo(map).bindPopup('<b>🛰️ '+esc(u.nm||'')+'</b>'+(p.s!=null?'<br>'+p.s+' km/h':'')+(tm?'<br><small>'+esc(tm.slice(3))+'</small>':'')); plotted++; if(plotted===1) map.setView([p.y,p.x],12); } });
+      try{ await wialonCall('core/logout',{},sid); }catch(e){}
+      note='🛰️ '+plotted+' vehicule cu poziție din Wialon.';
+    }catch(e){ note='⚠️ Wialon: '+(e.message||e)+'. Arăt pozițiile din aplicația șoferului. (Verifică token-ul în Setări.)'; }
+  }
+  if(!plotted){ const wc=(veh||[]).filter(v=>v.last_lat!=null&&v.last_lng!=null);
+    wc.forEach(v=>{ L.marker([v.last_lat,v.last_lng]).addTo(map).bindPopup('<b>'+esc(v.label)+'</b><br>'+esc(v.plate||'')+' · '+esc(v.status||'')+(v.last_seen_at?'<br><small>'+esc(String(v.last_seen_at).slice(0,16).replace('T',' '))+'</small>':'')); });
+    if(wc.length){ map.setView([wc[0].last_lat,wc[0].last_lng],12); plotted=wc.length; if(!note) note='Locații din aplicația șoferului.'; } }
+  $('map-note').innerHTML = plotted? '<div style="padding:.6rem 1.2rem;color:var(--muted);font-size:.82rem">'+esc(note)+'</div>' : '<div style="padding:1rem;color:var(--muted);font-size:.85rem">'+(live?esc(note||''):'Niciun vehicul cu locație. Conectează GPS Wialon în Setări sau trimite locația din aplicația de teren.')+'</div>';
   setTimeout(()=>map.invalidateSize(),200);
 }
 
@@ -2784,6 +2813,13 @@ async function renderSetari(){
       +'<div><div style="font-size:.74rem;color:var(--muted)">Pauză de masă</div><select id="set-wbreak" style="width:130px">'+[[0,'Fără pauză'],[30,'30 min'],[60,'1 oră'],[90,'1 oră 30']].map(o=>'<option value="'+o[0]+'"'+(((au.work_break!=null?+au.work_break:60)===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div></div>'
       +'<div style="font-size:.78rem;color:var(--muted);margin-top:.3rem">Ex: 08:30–17:30 cu pauză 1h. Apare automat la Pontaj; îl editezi la nevoie pe fiecare angajat.</div></div>'
     +'<button class="btn-primary" onclick="saveSetari()">Salvează setările</button>'
+    +'</div></div>'
+    +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🛰️ Integrare GPS (Wialon)</h3></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Leagă contul tău Wialon ca să vezi pozițiile reale ale vehiculelor pe „Hartă flotă". Ai nevoie de un <b>token</b> generat în Wialon (nu parola). În Wialon: <i>cont → Aplicații / Acces prin token</i> — creează un token (recomandat: drepturi de citire, durată limitată) și lipește-l aici.</p>'
+    +'<div class="field"><label>Token Wialon</label><input id="set-wialon-token" type="text" autocomplete="off" value="'+esc(au.wialon_token||'')+'" placeholder="ex: 5dce19710...c3f"/></div>'
+    +'<div class="field"><label>Server (host) <span class="hint-i" title="Implicit hst-api.wialon.com (Wialon Hosting). Pentru Wialon Local pune adresa serverului tău.">ⓘ</span></label><input id="set-wialon-host" type="text" autocomplete="off" value="'+esc(au.wialon_host||'hst-api.wialon.com')+'" placeholder="hst-api.wialon.com"/></div>'
+    +'<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn-ghost" onclick="wialonTest()">🔌 Testează conexiunea</button><button class="btn-primary" onclick="saveSetari()">Salvează</button></div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După salvare, deschide <a onclick="go(\'harta\')" style="cursor:pointer;color:var(--primary)">Hartă flotă</a> — pozițiile vin live din Wialon.</div>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🔒 Confidențialitate &amp; date</h3></div><div class="modal-body">'
     +'<p style="color:var(--muted);margin-bottom:1rem">Conform legislației privind datele cu caracter personal, ai control deplin asupra datelor firmei.</p>'
@@ -2872,6 +2908,8 @@ async function saveSetari(){
   if($('set-wstart')) au.work_start=$('set-wstart').value||null;
   if($('set-wend')) au.work_end=$('set-wend').value||null;
   if($('set-wbreak')) au.work_break=+$('set-wbreak').value;
+  if($('set-wialon-token')) au.wialon_token=($('set-wialon-token').value||'').trim()||null;
+  if($('set-wialon-host')) au.wialon_host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com');
   patch.automations=au;
   const { error }=await sb.from('tenants').update(patch).eq('id',state.tenant);
   if(error){ showMsg('set-msg', error.message); return; }
