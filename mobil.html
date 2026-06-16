@@ -100,6 +100,11 @@
   .bub .bt{font-size:.65rem;opacity:.6;margin-top:.2rem;text-align:right}
   .chat-bar{display:flex;gap:.5rem;position:sticky;bottom:0;background:var(--bg);padding:.6rem 0 .2rem}
   .chat-bar input{flex:1;padding:.8rem .9rem;border:1px solid var(--line);border-radius:14px;font-size:1rem;outline:none}
+  #chat-rec{transition:background .15s}
+  #chat-rec.rec{background:var(--red)!important;color:#fff;animation:recpulse 1s infinite}
+  @keyframes recpulse{0%,100%{opacity:1}50%{opacity:.65}}
+  .bub audio{display:block;margin-top:.35rem;width:210px;max-width:62vw;height:40px}
+  .bub.me audio{filter:invert(0)}
   #toast{position:fixed;bottom:5rem;left:50%;transform:translateX(-50%) translateY(10px);background:var(--ink);color:#fff;padding:.8rem 1.1rem;border-radius:12px;font-size:.85rem;opacity:0;transition:all .25s;z-index:60;max-width:90%;text-align:center;pointer-events:none}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
@@ -699,24 +704,58 @@ async function openChat(){
   S.view='chat';
   document.querySelectorAll('#bottom button').forEach(b=>b.classList.remove('on'));
   $('screen').innerHTML='<div class="scr-title">💬 Chat echipă</div><div id="chat-list" class="chat-list"><div class="loading">Se încarcă…</div></div>'
-    +'<div class="chat-bar"><input id="chat-input" placeholder="Scrie un mesaj…" onkeydown="if(event.key===\'Enter\')sendMsg()"/><button class="btn" style="width:auto;padding:.8rem 1.1rem" onclick="sendMsg()">➤</button></div>';
+    +'<div class="chat-bar"><button id="chat-rec" class="btn" style="width:auto;padding:.8rem 1rem" title="Mesaj vocal — apasă ca să începi, apasă din nou ca să trimiți" onclick="chatRec()">🎤</button><input id="chat-input" placeholder="Scrie un mesaj…" onkeydown="if(event.key===\'Enter\')sendMsg()"/><button class="btn" style="width:auto;padding:.8rem 1.1rem" onclick="sendMsg()">➤</button></div>';
   await loadMsgs(true);
   clearInterval(window._chatPoll);
   window._chatPoll=setInterval(()=>{ if(S.view==='chat'&&$('chat-list')) loadMsgs(false); else clearInterval(window._chatPoll); }, 4000);
 }
+function chatAttHtml(p,url){ if(!url) return ''; const isAudio=/\.(webm|m4a|mp3|ogg|wav|aac)$/i.test(p);
+  if(isAudio) return '<audio controls preload="none" src="'+url+'"></audio>';
+  const nm=(p||'').split('/').pop().replace(/^\d+_/,''); return '<a href="'+url+'" target="_blank" rel="noopener" style="display:inline-block;margin-top:.35rem;font-size:.82rem;text-decoration:underline">📎 '+esc(nm)+'</a>'; }
 async function loadMsgs(scroll){
-  const {data}=await sb.from('messages').select('id,user_id,sender_name,body,created_at');
+  const {data}=await sb.from('messages').select('id,user_id,sender_name,body,created_at,attachments');
   const msgs=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?-1:(a.created_at>b.created_at?1:0))).slice(-60);
   const el=$('chat-list'); if(!el)return;
   if(!msgs.length){ el.innerHTML='<div class="empty"><div class="ei">💬</div>Niciun mesaj încă. Scrie primul!</div>'; return; }
+  const paths=[]; msgs.forEach(m=>(m.attachments||[]).forEach(p=>paths.push(p)));
+  const urlMap={}; if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((x,i)=>{ if(x&&x.signedUrl) urlMap[paths[i]]=x.signedUrl; }); }catch(e){} }
   const me=S.session.user.id;
   el.innerHTML=msgs.map(m=>{ const mine=m.user_id===me; const t=(m.created_at||'').slice(11,16);
-    return '<div class="bub '+(mine?'me':'them')+'">'+(mine?'':'<div class="bn">'+esc(m.sender_name||'Coleg')+'</div>')+esc(m.body)+'<div class="bt">'+esc(t)+'</div></div>'; }).join('');
+    const atts=(m.attachments||[]).map(p=>chatAttHtml(p,urlMap[p])).join('');
+    return '<div class="bub '+(mine?'me':'them')+'">'+(mine?'':'<div class="bn">'+esc(m.sender_name||'Coleg')+'</div>')+esc(m.body||'')+atts+'<div class="bt">'+esc(t)+'</div></div>'; }).join('');
   if(scroll){ const sc=$('screen'); sc.scrollTop=sc.scrollHeight; }
 }
 async function sendMsg(){
   const inp=$('chat-input'); const v=(inp.value||'').trim(); if(!v)return; inp.value='';
   const {error}=await sb.from('messages').insert({tenant_id:S.tenant,user_id:S.session.user.id,sender_name:S.uname||S.email,body:v});
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  await loadMsgs(true);
+}
+/* ── mesaje vocale ── */
+let _rec=null,_recChunks=[],_recStart=0,_recTimer=null,_recStream=null;
+function chatRecUI(on){ const b=$('chat-rec'); if(b){ b.classList.toggle('rec',on); if(!on) b.textContent='🎤'; } const inp=$('chat-input'); if(inp) inp.disabled=on; }
+async function chatRec(){
+  if(_rec && _rec.state==='recording'){ try{ _rec.stop(); }catch(e){} return; }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){ toast('Înregistrarea audio nu e suportată pe acest dispozitiv/browser.'); return; }
+  try{ _recStream=await navigator.mediaDevices.getUserMedia({audio:true}); }catch(e){ toast('Nu am acces la microfon. Permite accesul din setările browserului.'); return; }
+  _recChunks=[]; let mime=''; ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/aac','audio/ogg'].some(function(m){ if(window.MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m)){ mime=m; return true; } return false; });
+  try{ _rec=mime?new MediaRecorder(_recStream,{mimeType:mime}):new MediaRecorder(_recStream); }catch(e){ try{ _rec=new MediaRecorder(_recStream); }catch(e2){ toast('Înregistrare indisponibilă.'); _recStream.getTracks().forEach(t=>t.stop()); return; } }
+  _rec.ondataavailable=function(e){ if(e.data&&e.data.size) _recChunks.push(e.data); };
+  _rec.onstop=async function(){ try{ _recStream.getTracks().forEach(t=>t.stop()); }catch(e){} clearInterval(_recTimer); chatRecUI(false);
+    const type=(_rec&&_rec.mimeType)||'audio/webm'; const blob=new Blob(_recChunks,{type:type});
+    if(blob.size<700){ toast('Mesaj prea scurt.'); return; }
+    await chatSendVoice(blob,type); };
+  try{ _rec.start(); }catch(e){ toast('Nu pot porni înregistrarea.'); _recStream.getTracks().forEach(t=>t.stop()); return; }
+  _recStart=Date.now(); chatRecUI(true);
+  _recTimer=setInterval(function(){ const b=$('chat-rec'); if(b){ const s=Math.floor((Date.now()-_recStart)/1000); b.textContent='⏹ '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); } if(Date.now()-_recStart>180000){ try{ _rec.stop(); }catch(e){} } }, 300);
+}
+async function chatSendVoice(blob,type){
+  const ext=(type.indexOf('mp4')>=0||type.indexOf('aac')>=0)?'m4a':(type.indexOf('ogg')>=0?'ogg':'webm');
+  const path=S.tenant+'/chat/voice_'+Date.now()+'.'+ext;
+  toast('⏳ Se trimite mesajul vocal…');
+  const up=await sb.storage.from('docs').upload(path,blob,{contentType:type||'audio/webm'});
+  if(up.error){ toast('Eroare la încărcare: '+esc(up.error.message)); return; }
+  const {error}=await sb.from('messages').insert({tenant_id:S.tenant,user_id:S.session.user.id,sender_name:S.uname||S.email,body:'',attachments:[path]});
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   await loadMsgs(true);
 }
@@ -765,7 +804,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v87', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v88', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
