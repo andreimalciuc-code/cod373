@@ -89,7 +89,7 @@ function scheduleDraft(){ if(S.id) return; clearTimeout(_dzT); _dzT=setTimeout(s
 async function boot(){
   const { data:{ session } }=await sb.auth.getSession();
   if(!session){ $('root').innerHTML='<div class="center">🔒 Trebuie să fii autentificat.<br><br><a class="btn primary" href="app.html">Deschide aplicația</a></div>'; return; }
-  const mem=await sb.from('memberships').select('tenant_id, role, tenants(name,idno,address,phone,vat_rate,currency,logo_url,automations)').eq('active',true).limit(1).maybeSingle();
+  const mem=await sb.from('memberships').select('tenant_id, role, tenants(name,idno,address,phone,vat_rate,currency,logo_url,automations,bank_accounts)').eq('active',true).limit(1).maybeSingle();
   S.role=mem.data?mem.data.role:null; S.tenant=mem.data?mem.data.tenant_id:null; S.firm=(mem.data&&mem.data.tenants)||{}; S.canEdit=FIN.includes(S.role); CUR=(S.firm.currency||'MDL').toUpperCase();
   if(!S.canEdit){ $('root').innerHTML='<div class="center">🔒 Doar proprietar/administrator/manager/contabil pot emite facturi.</div>'; return; }
   await loadCatalog();
@@ -596,6 +596,7 @@ async function pdf(inPlace){
       +(de?(((S.inv.inv_type==='schluss')?(S._absch||[]).map(function(x){return '<div><span>− '+T('Avans')+' '+esc(x.number||'')+'</span><b>−'+money(x.total)+'</b></div>';}).join(''):'')+(de.ret>0?'<div><span>− '+T('Reținere garanție')+' '+num2(S.inv.retention_pct)+'%</span><b>−'+money(de.ret)+'</b></div>':'')+'<div class="g"><span>'+(S.inv.inv_type==='schluss'?'Restbetrag / '+T('De plată acum'):T('De plată acum'))+':</span><span>'+money(de.payable)+'</span></div>'):'')
       +'</div>'
     +(()=>{ const pn=prepayNote(t.total); return (pn&&S.inv.status!=='paid')?'<div style="margin-top:12px;margin-left:auto;width:380px;padding:11px 13px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:12px;color:#065f46;line-height:1.5">💸 '+T('La achitarea 100% în avans beneficiați de o reducere suplimentară de')+' <b>'+num2(pn.pct)+'%</b> '+T('din suma finală')+' ('+T('economisiți')+' <b>'+money(pn.save)+'</b>). '+T('Total cu avans:')+' <b>'+money(pn.after)+'</b></div>':''; })()
+    +(f.bank_accounts?'<div style="margin-top:14px;font-size:12px;color:#0f1c33"><b>'+T('Date pentru plată:')+'</b><br>'+esc(f.bank_accounts).replace(/\n/g,'<br>')+'</div>':'')
     +'<div class="ft">'+T('Factură generată cu Cod373.')+' '+(S.inv.status==='paid'?T('ACHITATĂ.'):T('Vă rugăm achitați până la scadență.'))+'</div>'
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
     +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'

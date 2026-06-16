@@ -644,7 +644,7 @@ const MODULES = {
 
   angajati:{ title:'Angajați', sub:'Personalul firmei.', icon:'👷', group:'Echipă', table:'employees', subEquip:true,
     newLabel:'Angajat nou', invitable:'employee', orderBy:{col:'full_name',asc:true},
-    select:'id,full_name,position,specialty,idnp,address,birth_date,has_license,license_categories,hourly_rate,monthly_rate,net_salary,photo_url,active',
+    select:'id,full_name,position,specialty,idnp,address,birth_date,has_license,license_categories,hourly_rate,monthly_rate,net_salary,bank_accounts,photo_url,active',
     columns:[
       {label:'Nume',get:r=>'<span class="tname">'+esc(r.full_name)+'</span>'},
       {label:'Funcție',get:r=>esc(r.position||'—')},
@@ -664,6 +664,7 @@ const MODULES = {
       {key:'hourly_rate',label:'Tarif orar brut (MDL)',type:'number',secure:true,hint:'Doar pentru proprietar/contabil. Folosit la calculul salariilor din pontaj.'},
       {key:'monthly_rate',label:'Salariu lunar brut (MDL)',type:'number',secure:true,hint:'Alternativ la tariful orar. Doar proprietar/contabil.'},
       {key:'net_salary',label:'Salariu net (MDL)',type:'number',secure:true,hint:'Salariul net de plată. Vizibil doar proprietarului/contabilului.'},
+      {key:'bank_accounts',label:'Conturi bancare (pentru transfer salariu)',type:'textarea',secure:true,hint:'IBAN-ul / contul / banca pentru transferul salariului. Un cont pe rând. Vizibil doar proprietarului/contabilului.'},
       {key:'photo_url',label:'Poză angajat',type:'photo',hint:'O fotografie a angajatului (opțional).'},
       {key:'active',label:'Activ',type:'checkbox',default:true} ] },
 
@@ -1014,7 +1015,7 @@ async function boot(){
   state.session = session;
   const tok=getInviteToken();
   if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK') toast('✅ Acces activat la firmă.'); if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
-  const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations)').eq('active',true).limit(1).maybeSingle();
+  const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations,bank_accounts)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
   CUR = (state.firm.currency||'MDL').toUpperCase();
@@ -1077,7 +1078,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v79';
+const APP_VERSION='cod373-v80';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1180,6 +1181,8 @@ async function emailCompose(prefill){
 }
 function emailPickClient(){ const c=(window._emailClients||{})[$('em-client').value]; if(!c) return; if(c.email) $('em-to').value=c.email; $('em-name').value=c.name||''; }
 async function emailUpload(input){ const out=[]; const files=(input&&input.files)?[...input.files]:[]; for(const f of files){ const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/email/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'application/octet-stream'}); if(!up.error) out.push(path); } return out; }
+function attName(p){ return (p||'').split('/').pop().replace(/^\d+_/,''); }
+function attLinks(arr){ if(!arr||!arr.length) return ''; return '<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.35rem">'+arr.map(function(p){ return '<a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary);font-size:.78rem;background:#fff;border:1px solid var(--line);border-radius:7px;padding:.15rem .45rem" title="Deschide / salvează">📎 '+esc(attName(p))+'</a>'; }).join('')+'</div>'; }
 async function emailCreateThread(){
   const to=($('em-to').value||'').trim(); if(!to){ showMsg('em-msg','Scrie adresa destinatarului.'); return; }
   const body=($('em-body').value||'').trim(); if(!body){ showMsg('em-msg','Scrie mesajul.'); return; }
@@ -1197,7 +1200,7 @@ async function emailCreateThread(){
 async function openEmailThread(id){
   const t=(await sb.from('email_threads').select('*').eq('id',id).single()).data; if(!t){ toast('Eroare.'); return; }
   const { data:msgs }=await sb.from('email_messages').select('*').eq('thread_id',id).order('created_at',{ascending:true});
-  const rows=(msgs||[]).map(m=>{ const out=m.direction==='out'; return '<div style="margin:.5rem 0;padding:.6rem .8rem;border-radius:10px;background:'+(out?'#eff4ff':'#f4f6fb')+'"><div style="font-size:.74rem;color:var(--muted)">'+(out?'➡️ Trimis':'⬅️ Primit')+' · '+esc((m.created_at||'').slice(0,16).replace('T',' '))+(m.status==='queued'?' · ⏳ în așteptare':'')+'</div><div style="white-space:pre-wrap;margin-top:.3rem">'+esc(m.body||'')+'</div>'+((m.attachments&&m.attachments.length)?'<div style="font-size:.78rem;color:var(--muted);margin-top:.3rem">📎 '+m.attachments.length+' atașament(e)</div>':'')+'</div>'; }).join('')||'<div style="color:var(--muted)">Niciun mesaj.</div>';
+  const rows=(msgs||[]).map(m=>{ const out=m.direction==='out'; return '<div style="margin:.5rem 0;padding:.6rem .8rem;border-radius:10px;background:'+(out?'#eff4ff':'#f4f6fb')+'"><div style="font-size:.74rem;color:var(--muted)">'+(out?'➡️ Trimis':'⬅️ Primit')+' · '+esc((m.created_at||'').slice(0,16).replace('T',' '))+(m.status==='queued'?' · ⏳ în așteptare':'')+'</div><div style="white-space:pre-wrap;margin-top:.3rem">'+esc(m.body||'')+'</div>'+attLinks(m.attachments)+'</div>'; }).join('')||'<div style="color:var(--muted)">Niciun mesaj.</div>';
   const replyAddr=t.reply_key?(t.reply_key+'@'+(MAIL_DOMAIN||'(domeniul platformei)')):'';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px">'
     +'<div class="modal-head"><h3>📨 '+esc(t.subject||'(fără subiect)')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
@@ -1205,13 +1208,15 @@ async function openEmailThread(id){
     +(replyAddr?'<div style="font-size:.72rem;color:var(--muted);margin:.2rem 0 .6rem">Clientul răspunde la: <code>'+esc(replyAddr)+'</code></div>':'')
     +'<div id="em-thread">'+rows+'</div><div id="em-rmsg"></div>'
     +'<div class="field" style="margin-top:.6rem"><label>Răspunde</label><textarea id="em-reply" rows="3"></textarea></div>'
+    +'<div class="field"><label>Atașamente (orice tip)</label><input id="em-rfiles" type="file" multiple/></div>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="emailCloseThread(\''+id+'\','+(t.status==='closed'?'true':'false')+')">'+(t.status==='closed'?'Redeschide':'Închide')+'</button><button class="btn-primary" id="em-reply-btn" onclick="emailReply(\''+id+'\',\''+esc(t.to_email||'').replace(/\x27/g,'')+'\')">Trimite răspuns</button></div></div></div>';
 }
 async function emailReply(id,to){
   const body=($('em-reply').value||'').trim(); if(!body){ showMsg('em-rmsg','Scrie un răspuns.'); return; }
   const btn=$('em-reply-btn'); if(btn) btn.disabled=true;
   try{
-    const msg=await sbRetry(()=>sb.from('email_messages').insert({tenant_id:state.tenant, thread_id:id, direction:'out', to_email:to||null, from_name:(state.firm&&state.firm.name)||null, body, status:'queued'}));
+    const atts=await emailUpload($('em-rfiles'));
+    const msg=await sbRetry(()=>sb.from('email_messages').insert({tenant_id:state.tenant, thread_id:id, direction:'out', to_email:to||null, from_name:(state.firm&&state.firm.name)||null, body, attachments:atts.length?atts:null, status:'queued'}));
     if(msg.error) throw msg.error;
     await sb.from('email_threads').update({last_message_at:new Date().toISOString()}).eq('id',id);
     toast('✅ Răspuns salvat.'); openEmailThread(id);
@@ -2550,6 +2555,7 @@ async function renderSetari(){
     +'<div class="row-2"><div class="field"><label>Cotă TVA (%)</label><input id="set-vat" type="number" value="'+esc(f.vat_rate!=null?f.vat_rate:20)+'"/></div>'
     +'<div class="field"><label>Monedă</label><input id="set-cur" value="'+esc(f.currency||'MDL')+'"/></div></div>'
     +'<div class="field"><div class="chk"><input type="checkbox" id="set-vatp" '+((f.vat_payer!==false)?'checked':'')+'/> <span>Plătitor de TVA</span></div></div>'
+    +'<div class="field"><label>🏦 Conturi bancare ale companiei</label><textarea id="set-bank" rows="3" placeholder="Ex: IBAN MD24AG0000... · Banca de Economii · SWIFT ...">'+esc(f.bank_accounts||'')+'</textarea><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Pre-setate aici; apar pe facturi (pentru plata clientului). Un cont pe rând.</div></div>'
     +'<button class="btn-primary" onclick="saveSetari()">Salvează setările</button>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🔒 Confidențialitate &amp; date</h3></div><div class="modal-body">'
@@ -2631,7 +2637,8 @@ async function deleteFirm(){
 async function saveSetari(){
   const name=$('set-name').value.trim(); if(!name){ showMsg('set-msg','Denumirea e obligatorie.'); return; }
   const patch={ name, idno:$('set-idno').value.trim()||null, phone:$('set-phone').value.trim()||null, address:$('set-addr').value.trim()||null,
-    vat_rate:Number($('set-vat').value)||20, currency:($('set-cur').value||'MDL').toUpperCase().slice(0,3), country:($('set-country')?$('set-country').value:null), vat_payer:$('set-vatp').checked };
+    vat_rate:Number($('set-vat').value)||20, currency:($('set-cur').value||'MDL').toUpperCase().slice(0,3), country:($('set-country')?$('set-country').value:null), vat_payer:$('set-vatp').checked, bank_accounts:($('set-bank')?($('set-bank').value||'').trim()||null:undefined) };
+  if(patch.bank_accounts===undefined) delete patch.bank_accounts;
   const { error }=await sb.from('tenants').update(patch).eq('id',state.tenant);
   if(error){ showMsg('set-msg', error.message); return; }
   state.firm={ ...state.firm, ...patch }; CUR=(patch.currency||'MDL').toUpperCase();

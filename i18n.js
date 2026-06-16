@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Conturi bancare (pentru transfer salariu)':{ru:'Банковские счета (для перевода зарплаты)',de:'Bankkonten (für Lohnüberweisung)',en:'Bank accounts (for salary transfer)'},
+    '🏦 Conturi bancare ale companiei':{ru:'🏦 Банковские счета компании',de:'🏦 Firmen-Bankkonten',en:'🏦 Company bank accounts'},
+    'Date pentru plată:':{ru:'Реквизиты для оплаты:',de:'Zahlungsdaten:',en:'Payment details:'},
+    'Atașamente (orice tip)':{ru:'Вложения (любой тип)',de:'Anhänge (jeder Typ)',en:'Attachments (any type)'},
     'Ore lucrate per angajat — tabel zilnic.':{ru:'Отработанные часы — дневная таблица.',de:'Arbeitsstunden — Tagesliste.',en:'Hours worked — daily sheet.'},
     'Total ore':{ru:'Всего часов',de:'Stunden gesamt',en:'Total hours'},
     'comentariu (opțional)':{ru:'комментарий (необязательно)',de:'Kommentar (optional)',en:'comment (optional)'},
