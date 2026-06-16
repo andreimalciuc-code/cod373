@@ -75,7 +75,7 @@ function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/
 const STATUS={draft:'Ciornă',sent:'Trimisă',paid:'Plătită',overdue:'Restantă',cancelled:'Anulată'};
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
-        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null,inv_type:'normal',contract_total:null,retention_pct:null,site_id:null},
+        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null,inv_type:'normal',contract_total:null,retention_pct:null,site_id:null,bank_choice:''},
         lines:[], groups:[], clients:[], catalog:[], lineThumbs:{} };
 function gid(){ return 'g'+Date.now().toString(36)+Math.floor(Math.random()*1000); }
 /* ── schiță auto-salvată (factură nouă) ── */
@@ -135,7 +135,7 @@ async function loadInvoice(id){
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
-    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null) };
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:(function(){ try{ return localStorage.getItem('c373_bnk_'+id)||''; }catch(x){ return ''; } })() };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   if(S.inv.inv_type!=='normal') loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
@@ -183,6 +183,9 @@ function prepayNote(total){
   const save=Math.round(total*pct/100*100)/100;
   return { pct:pct, save:save, after:Math.round((total-save)*100)/100 };
 }
+function firmBankLines(){ return ((S.firm&&S.firm.bank_accounts)||'').split(/\n+/).map(function(x){return x.trim();}).filter(Boolean); }
+function setInvBank(v){ S.inv.bank_choice=v; if(S.id){ try{ localStorage.setItem('c373_bnk_'+S.id, v); }catch(e){} } }
+function bankTextForPdf(){ var lines=firmBankLines(); var ch=S.inv.bank_choice||''; if(ch==='__off') return ''; if(ch && lines.indexOf(ch)>-1) return ch; return lines.join('\n'); }
 function skontoToggle(off){ S.inv.skonto_off=!!off; render(); }
 function skontoPct(v){ S.inv.skonto_pct=(v===''?null:+v); }
 /* ── facturare pe stadii (DE): Abschlag / Schluss + reținere garanție ── */
@@ -217,6 +220,13 @@ function render(){
       +'<div class="field"><label>Stare</label><select id="f-status" onchange="S.inv.status=this.value;render()">'+Object.keys(STATUS).map(k=>'<option value="'+k+'" '+(S.inv.status===k?'selected':'')+'>'+STATUS[k]+'</option>').join('')+'</select></div></div>'
       +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.inv.issue_date||'')+'" oninput="S.inv.issue_date=this.value"/></div>'
       +'<div class="field"><label>Scadență</label><input type="date" id="f-due" value="'+esc(S.inv.due_date||'')+'" oninput="S.inv.due_date=this.value"/></div></div>'
+      +(firmBankLines().length?(
+        '<div class="field"><label>🏦 Cont bancar pe factură</label><select id="f-bank" onchange="setInvBank(this.value)">'
+          +'<option value="">Toate conturile companiei</option>'
+          +firmBankLines().map(function(b){ return '<option value="'+esc(b)+'"'+(S.inv.bank_choice===b?' selected':'')+'>'+esc(b)+'</option>'; }).join('')
+          +'<option value="__off"'+(S.inv.bank_choice==='__off'?' selected':'')+'>✕ Nu afișa niciun cont</option>'
+        +'</select></div>'
+      ):'')
       +'<div style="border-top:1px dashed var(--line);margin-top:.5rem;padding-top:.6rem">'
         +'<div class="field"><label>🇩🇪 Tip factură (decontare pe stadii)</label><select id="f-invtype" onchange="setInvType(this.value)">'
           +'<option value="normal"'+(S.inv.inv_type==='normal'?' selected':'')+'>Factură normală</option>'
@@ -537,6 +547,7 @@ async function save(thenPdf){
   try{
     if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('invoices').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
+    try{ if(S.id) localStorage.setItem('c373_bnk_'+S.id, S.inv.bank_choice||''); }catch(e){}
     await sb.from('invoice_items').delete().eq('invoice_id',S.id);
     const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,kind:l.kind||'service',position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('invoice_items').insert(items); if(im.error) throw im.error;
@@ -596,7 +607,7 @@ async function pdf(inPlace){
       +(de?(((S.inv.inv_type==='schluss')?(S._absch||[]).map(function(x){return '<div><span>− '+T('Avans')+' '+esc(x.number||'')+'</span><b>−'+money(x.total)+'</b></div>';}).join(''):'')+(de.ret>0?'<div><span>− '+T('Reținere garanție')+' '+num2(S.inv.retention_pct)+'%</span><b>−'+money(de.ret)+'</b></div>':'')+'<div class="g"><span>'+(S.inv.inv_type==='schluss'?'Restbetrag / '+T('De plată acum'):T('De plată acum'))+':</span><span>'+money(de.payable)+'</span></div>'):'')
       +'</div>'
     +(()=>{ const pn=prepayNote(t.total); return (pn&&S.inv.status!=='paid')?'<div style="margin-top:12px;margin-left:auto;width:380px;padding:11px 13px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:12px;color:#065f46;line-height:1.5">💸 '+T('La achitarea 100% în avans beneficiați de o reducere suplimentară de')+' <b>'+num2(pn.pct)+'%</b> '+T('din suma finală')+' ('+T('economisiți')+' <b>'+money(pn.save)+'</b>). '+T('Total cu avans:')+' <b>'+money(pn.after)+'</b></div>':''; })()
-    +(f.bank_accounts?'<div style="margin-top:14px;font-size:12px;color:#0f1c33"><b>'+T('Date pentru plată:')+'</b><br>'+esc(f.bank_accounts).replace(/\n/g,'<br>')+'</div>':'')
+    +(function(){ var bt=bankTextForPdf(); return bt?'<div style="margin-top:14px;font-size:12px;color:#0f1c33"><b>'+T('Date pentru plată:')+'</b><br>'+esc(bt).replace(/\n/g,'<br>')+'</div>':''; })()
     +'<div class="ft">'+T('Factură generată cu Cod373.')+' '+(S.inv.status==='paid'?T('ACHITATĂ.'):T('Vă rugăm achitați până la scadență.'))+'</div>'
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
     +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'
