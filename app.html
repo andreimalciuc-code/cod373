@@ -1077,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v74';
+const APP_VERSION='cod373-v75';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1610,7 +1610,7 @@ function planTeamTd(teamId,date,we,td){
   else if(sids.length){ chip='<span style="font-size:.72rem;color:var(--muted)">'+sids.length+'/'+mem.length+'</span>'; }
   return '<td class="plcelltd plteamcell'+(we?' plwe':'')+(td?' pltoday':'')+'"><div class="plzone" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')" onclick="planCellMenu(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')">'+chip+'</div></td>';
 }
-function planEmpRow(e,indent,dates,today){ const sp=e.specialty||e.position; return '<tr><td class="plsticky tname"'+(indent?' style="padding-left:1.5rem"':'')+'>'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'+dates.map((d,i)=>planCellTd(e.id,d,i>=5,d===today)).join('')+'</tr>'; }
+function planEmpRow(e,indent,dates,today,tc){ const sp=e.specialty||e.position; const st=indent?('padding-left:1.4rem'+(tc?';border-left:3px solid '+tc:'')):''; return '<tr'+(tc?' class="plmemberrow"':'')+'><td class="plsticky tname"'+(st?' style="'+st+'"':'')+'>'+(tc?'<span style="color:'+tc+';font-weight:700;margin-right:.2rem">↳</span>':'')+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'+dates.map((d,i)=>planCellTd(e.id,d,i>=5,d===today)).join('')+'</tr>'; }
 async function renderPlantafel(){
   if(!_planMon) _planMon=mondayOf(new Date());
   const start=new Date(_planMon); const dates=[]; for(let i=0;i<7;i++){ const d=new Date(start); d.setDate(start.getDate()+i); dates.push(isoD(d)); }
@@ -1654,8 +1654,9 @@ async function renderPlantafel(){
   if(!emps.length){ body='<tr><td colspan="8" style="color:var(--muted);padding:1rem">Niciun angajat activ. Adaugă întâi angajați.</td></tr>'; }
   else if(_planGroup && _planTeams.length){
     const seen=new Set();
-    _planTeams.forEach(t=>{ body+='<tr class="plteamrow"><td class="plsticky" style="font-weight:700;background:#eef2f7">👥 '+esc(t.name)+' <span style="color:var(--muted);font-weight:400;font-size:.72rem">('+t.members.length+')</span></td>'+dates.map((d,i)=>planTeamTd(t.id,d,i>=5,d===today)).join('')+'</tr>';
-      t.members.forEach(id=>{ const e=emps.find(x=>x.id===id); if(e){ seen.add(id); body+=planEmpRow(e,true,dates,today); } }); });
+    _planTeams.forEach((t,ti)=>{ const tc=PLAN_PALETTE[ti%PLAN_PALETTE.length];
+      body+='<tr class="plteamrow"><td class="plsticky plteamlbl" style="border-left:6px solid '+tc+'"><span style="background:'+tc+';color:#fff;border-radius:8px;padding:.18rem .55rem;font-weight:700;font-size:.84rem;white-space:nowrap">👥 '+esc(t.name)+'</span> <span style="background:#fff;border:1.5px solid '+tc+';color:'+tc+';border-radius:11px;padding:.02rem .5rem;font-size:.74rem;font-weight:800">'+t.members.length+'</span></td>'+dates.map((d,i)=>planTeamTd(t.id,d,i>=5,d===today)).join('')+'</tr>';
+      t.members.forEach(id=>{ const e=emps.find(x=>x.id===id); if(e){ seen.add(id); body+=planEmpRow(e,true,dates,today,tc); } }); });
     const rest=emps.filter(e=>!seen.has(e.id));
     if(rest.length){ body+='<tr><td class="plsticky" style="font-weight:600;color:var(--muted);background:#f8fafc">Fără echipă</td>'+dates.map((d,i)=>'<td class="plcelltd'+(i>=5?' plwe':'')+(d===today?' pltoday':'')+'" style="background:#f8fafc"></td>').join('')+'</tr>'; rest.forEach(e=>body+=planEmpRow(e,false,dates,today)); }
   } else { body=emps.map(e=>planEmpRow(e,false,dates,today)).join(''); }
@@ -1678,7 +1679,10 @@ function planStyle(){ if(document.getElementById('plan-style')) return ''; retur
   +'.plzone{min-height:42px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;border:1px solid transparent}'
   +'.plzone:hover{background:var(--primary-soft,#eef4ff)} .plzone.plover{outline:2px dashed var(--primary,#2f6bff);outline-offset:-2px;background:var(--primary-soft,#eef4ff)}'
   +'.plhalf{min-height:20px} .plhalf+.plhalf{margin-top:2px}'
-  +'.plteamcell .plzone{min-height:28px} .plteamrow td{background:#f7f9fc}'
+  +'.plteamcell .plzone{min-height:28px}'
+  +'.plteamrow td{background:#eef2fb;border-top:2px solid #c7d2e8;border-bottom:1px solid #dbe3f2} .plteamrow .plsticky{background:#eef2fb}'
+  +'.plteamlbl{display:flex;align-items:center;gap:.45rem;height:100%}'
+  +'.plmemberrow .plsticky{background:#fbfcff}'
   +'.plwe{background:#f8fafc} .pltoday{background:#fffbeb}'
   +'.pladd{color:#cbd5e1;font-size:1.05rem;font-weight:700}'
   +'.plsticky{position:sticky;left:0;background:#fff;z-index:2;text-align:left;white-space:nowrap;box-shadow:1px 0 0 var(--line)}'
