@@ -1086,7 +1086,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v84';
+const APP_VERSION='cod373-v85';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1520,7 +1520,7 @@ function ptShowH(empId){ const st=$('pt-s-'+empId).value, en=$('pt-e-'+empId).va
 async function renderPontaj(){
   if(!_ptDate) _ptDate=new Date(); _ptISO=isoD(_ptDate);
   const dn=['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'][new Date(_ptISO).getDay()];
-  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="ptDay(-1)">←</button><b style="margin:0 .5rem">'+dn+' '+_ptISO.split("-").reverse().join(".")+'</b><button class="btn-ghost" onclick="ptDay(1)">→</button><button class="btn-ghost" onclick="ptDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="ptFillPlanned()" title="Pune program 08:00–17:00 (pauză 1h = 8h) celor planificați azi în Planificare echipe">⏱️ 8h celor planificați</button></div>'
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="ptDay(-1)">←</button><b style="margin:0 .5rem">'+dn+' '+_ptISO.split("-").reverse().join(".")+'</b><button class="btn-ghost" onclick="ptDay(1)">→</button><button class="btn-ghost" onclick="ptDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="ptFillPlanned()" title="Pune program 08:00–17:00 (pauză 1h = 8h) celor planificați azi în Planificare echipe">⏱️ 8h celor planificați</button><button class="btn-ghost" onclick="ptReport()" title="Generează un raport pe săptămână / lună, pentru toți sau pentru un angajat">📄 Raport</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>⏱️ Pontaj — '+_ptISO.split("-").reverse().join(".")+'</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
   const [empR,siteR,tsR,cpR]=await Promise.all([
     sb.from('employees').select('id,full_name,active,specialty,position'),
@@ -1558,6 +1558,66 @@ async function ptFillPlanned(){
   const plan={}; cp.forEach(p=>{ if(p.site_id && (p.slot==='full'||!plan[p.employee_id])) plan[p.employee_id]=p.site_id; });
   let n=0; Object.keys(plan).forEach(id=>{ const se=$('pt-site-'+id), ss=$('pt-s-'+id), ee=$('pt-e-'+id), bb=$('pt-b-'+id); if(se&&ss&&ee){ if(!ss.value&&!ee.value){ se.value=plan[id]; ss.value='08:00'; ee.value='17:00'; if(bb) bb.value='60'; ptSet(id); n++; } } });
   toast(n?('✅ Completat 08:00–17:00 (8h) pentru '+n+' angajați planificați.'):'Toți cei planificați au deja program.'); }
+/* ── Raport pontaj pe perioadă (săptămână / lună), per angajat ── */
+async function ptReport(){
+  const empR=await sb.from('employees').select('id,full_name,active').order('full_name');
+  const emps=(empR.data||[]).filter(e=>e.active!==false);
+  const opts='<option value="">Toți angajații</option>'+emps.map(e=>'<option value="'+e.id+'">'+esc(e.full_name)+'</option>').join('');
+  const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); const d=new Date();
+  const mFrom=iso(new Date(d.getFullYear(),d.getMonth(),1)), mTo=iso(new Date(d.getFullYear(),d.getMonth()+1,0));
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>📄 Raport pontaj</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div class="field"><label>Perioadă</label><select id="pt-rep-period" onchange="ptRepPreset(this.value)"><option value="month">Luna curentă</option><option value="week">Săptămâna curentă</option><option value="lastmonth">Luna trecută</option><option value="custom">Interval personalizat</option></select></div>'
+    +'<div style="display:flex;gap:.6rem"><div class="field" style="flex:1"><label>De la</label><input type="date" id="pt-rep-from" value="'+mFrom+'"/></div><div class="field" style="flex:1"><label>Până la</label><input type="date" id="pt-rep-to" value="'+mTo+'"/></div></div>'
+    +'<div class="field"><label>Angajat</label><select id="pt-rep-emp">'+opts+'</select></div>'
+    +'<button class="btn-primary" style="width:100%;margin-top:.4rem" onclick="ptReportRun()">📄 Generează raport</button>'
+    +'</div></div></div>';
+}
+function ptRepPreset(v){ const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); const d=new Date(); let f,t;
+  if(v==='week'){ const day=(d.getDay()+6)%7; const mon=new Date(d); mon.setDate(d.getDate()-day); const sun=new Date(mon); sun.setDate(mon.getDate()+6); f=iso(mon); t=iso(sun); }
+  else if(v==='month'){ f=iso(new Date(d.getFullYear(),d.getMonth(),1)); t=iso(new Date(d.getFullYear(),d.getMonth()+1,0)); }
+  else if(v==='lastmonth'){ f=iso(new Date(d.getFullYear(),d.getMonth()-1,1)); t=iso(new Date(d.getFullYear(),d.getMonth(),0)); }
+  else return;
+  if($('pt-rep-from')) $('pt-rep-from').value=f; if($('pt-rep-to')) $('pt-rep-to').value=t;
+}
+async function ptReportRun(){
+  const from=$('pt-rep-from').value, to=$('pt-rep-to').value, empId=$('pt-rep-emp').value;
+  if(!from||!to){ toast('Alege perioada.'); return; }
+  if(from>to){ toast('„De la" trebuie să fie înainte de „Până la".'); return; }
+  toast('⏳ Generez raportul…');
+  let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,employees!employee_id(full_name),sites!site_id(name)').gte('work_date',from).lte('work_date',to);
+  if(empId) q=q.eq('employee_id',empId);
+  const { data, error }=await q;
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const rows=(data||[]); if(!rows.length){ toast('Nicio înregistrare în perioada aleasă.'); return; }
+  closeModal();
+  const byEmp={}; rows.forEach(r=>{ const k=r.employee_id; const e=(byEmp[k]=byEmp[k]||{name:(r.employees&&r.employees.full_name)||'—',rows:[],total:0,sites:{}}); e.rows.push(r); e.total+=+r.hours||0; const sn=(r.sites&&r.sites.name)||'— fără șantier —'; e.sites[sn]=(e.sites[sn]||0)+(+r.hours||0); });
+  const dn=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; const fmt=h=>Math.round((+h||0)*100)/100; const hm=t=>(t||'').slice(0,5); const ro=s=>s.split('-').reverse().join('.');
+  let grand=0, gDays=0, body='';
+  Object.keys(byEmp).sort((a,b)=>byEmp[a].name.localeCompare(byEmp[b].name)).forEach(k=>{
+    const e=byEmp[k]; grand+=e.total; gDays+=e.rows.length;
+    const trs=e.rows.sort((a,b)=>(a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0)).map(r=>{ const dt=new Date(r.work_date);
+      return '<tr><td>'+ro(r.work_date)+'</td><td>'+dn[dt.getDay()]+'</td><td>'+esc((r.sites&&r.sites.name)||'—')+'</td><td>'+esc(hm(r.start_time))+'</td><td>'+esc(hm(r.end_time))+'</td><td>'+(r.break_min!=null?(r.break_min+' min'):'')+'</td><td style="text-align:right">'+fmt(r.hours)+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('');
+    const siteSum=Object.keys(e.sites).sort().map(sn=>esc(sn)+': <b>'+fmt(e.sites[sn])+'h</b>').join(' · ');
+    body+='<div class="emp"><h2>'+esc(e.name)+'</h2>'
+      +'<table><thead><tr><th>Data</th><th>Zi</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+trs+'</tbody></table>'
+      +'<div class="esum">Pe șantiere: '+siteSum+'</div>'
+      +'<div class="etot">'+e.rows.length+' zile · Total: <b>'+fmt(e.total)+' ore</b></div></div>'; });
+  const doc='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Raport pontaj</title><style>'
+    +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:24px;margin:0}'
+    +'h1{font-size:19px;color:#2f6bff;margin:0 0 2px}h2{font-size:14px;margin:16px 0 6px}'
+    +'.muted{color:#6b7793;font-size:12px;margin-bottom:10px}'
+    +'table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #e5e9f2;padding:4px 6px;text-align:left}th{background:#f1f5f9}'
+    +'.emp{page-break-inside:avoid;margin-bottom:14px}.etot{font-size:12px;margin-top:4px;text-align:right}.esum{font-size:11px;color:#6b7793;margin-top:4px}'
+    +'.grand{margin-top:16px;font-size:14px;font-weight:700;border-top:2px solid #0f1c33;padding-top:8px}'
+    +'@media print{.noprint{display:none}}</style></head><body>'
+    +'<h1>'+esc(state.firm.name||'Firma')+' — Raport pontaj</h1>'
+    +'<div class="muted">Perioadă: '+ro(from)+' → '+ro(to)+''+(empId&&byEmp[empId]?(' · '+esc(byEmp[empId].name)):' · toți angajații')+' · generat '+new Date().toLocaleDateString('ro-RO')+'</div>'
+    +body
+    +'<div class="grand">TOTAL GENERAL: '+fmt(grand)+' ore · '+gDays+' zile-om</div>'
+    +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div>'
+    +'</body></html>';
+  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
+}
 /* ════ PLĂȚI FURNIZORI — scadențar (de plătit) ════ */
 async function renderPlatibil(){
   $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>💸 Plăți furnizori — scadențar</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';

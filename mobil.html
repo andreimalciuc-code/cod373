@@ -24,6 +24,11 @@
   .phone{max-width:460px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;position:relative}
 
   /* LOGIN */
+  @keyframes c373spin{to{transform:rotate(360deg)}}
+  #splash{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#0f1c33,#1a2b4a);transition:opacity .25s ease}
+  #splash .nm{font-size:1.9rem;font-weight:800;letter-spacing:.5px;color:#eaf0fb}
+  #splash .nm span{color:#2f6bff}
+  #splash .sp{margin:1.1rem auto 0;width:26px;height:26px;border:3px solid rgba(255,255,255,.18);border-top-color:#2f6bff;border-radius:50%;animation:c373spin .8s linear infinite}
   .login{flex:1;display:flex;flex-direction:column;justify-content:center;padding:2rem 1.5rem;background:linear-gradient(160deg,#0f1c33,#1a2b4a);min-height:100vh}
   .login .logo{display:flex;align-items:center;gap:.6rem;margin-bottom:2rem;justify-content:center}
   .login .lg{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.8rem}
@@ -102,8 +107,10 @@
 <body>
 <div class="phone">
 
+  <div id="splash"><div style="text-align:center"><div class="nm noi18n" translate="no">Cod<span>373</span></div><div class="sp"></div></div></div>
+
   <!-- LOGIN -->
-  <div id="login" class="login">
+  <div id="login" class="login hidden">
     <div class="logo"><div class="lg">C373</div><div class="nm noi18n">Cod<span>373</span></div></div>
     <div class="card">
       <div id="cfg-warn" class="cfg-warn hidden"></div>
@@ -174,7 +181,8 @@ async function mForgot(){ const email=($('l-email').value||'').trim(); if(!email
   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:mBase()+'mobil.html'}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de resetare a parolei. Deschide emailul.','ok'); }
 async function mMagic(){ const email=($('l-email').value||'').trim(); if(!email){ lmsg('Scrie întâi emailul.'); return; } lmsg('Se trimite…','ok');
   const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:mBase()+'mobil.html',shouldCreateUser:false}}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de logare. Dă click pe el și intri fără parolă.','ok'); }
-function mShowReset(){ $('app').classList.add('hidden'); $('login').classList.remove('hidden');
+function hideSplash(){ var s=document.getElementById('splash'); if(!s) return; s.style.opacity='0'; setTimeout(function(){ if(s&&s.parentNode) s.parentNode.removeChild(s); },280); }
+function mShowReset(){ $('app').classList.add('hidden'); $('login').classList.remove('hidden'); hideSplash();
   document.querySelector('#login .card').innerHTML='<h2>Parolă nouă</h2><p class="sub">Setează o parolă nouă pentru cont.</p><div id="lmsg"></div>'
     +'<div class="fld"><label>Parolă nouă (min. 6)</label><input id="rp1" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
     +'<div class="fld"><label>Confirmă</label><input id="rp2" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
@@ -184,10 +192,10 @@ async function mSetPass(){ const p=$('rp1').value,p2=$('rp2').value; if(p.length
 
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
-  if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
+  if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');hideSplash();return;}
   S.session=session;
   const {data:mem}=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url,currency)').eq('active',true).limit(1).maybeSingle();
-  if(!mem){lmsg('Contul tău nu e legat de nicio firmă. Cere administratorului să te adauge.','err');await sb.auth.signOut();$('app').classList.add('hidden');$('login').classList.remove('hidden');return;}
+  if(!mem){lmsg('Contul tău nu e legat de nicio firmă. Cere administratorului să te adauge.','err');await sb.auth.signOut();$('app').classList.add('hidden');$('login').classList.remove('hidden');hideSplash();return;}
   S.tenant=mem.tenant_id; S.memberRole=mem.role;
   const email=session.user.email||'';
   S.email=email; S.uname=email;
@@ -202,7 +210,7 @@ async function boot(){
   else { S.role='worker'; }
   document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
   $('login').classList.add('hidden');$('app').classList.remove('hidden');
-  render();
+  render(); hideSplash();
   // scanare QR: link de forma mobil.html?tool=ID deschide direct scula
   try{ const tp=new URLSearchParams(location.search).get('tool'); if(tp){ history.replaceState(null,'',location.pathname); openToolById(tp); } }catch(e){}
 }
@@ -757,7 +765,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v84', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v85', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
@@ -844,10 +852,11 @@ closeSheet=function(){ if(window._qr){ try{ window._qr.stop(); }catch(e){} windo
 /* START */
 (async function(){
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
-  if(!cfgOk()){$('cfg-warn').classList.remove('hidden');$('cfg-warn').innerHTML='⚙️ Configurare incompletă (cheia publishable).';$('l-btn').disabled=true;return;}
+  if(!cfgOk()){$('login').classList.remove('hidden');hideSplash();$('cfg-warn').classList.remove('hidden');$('cfg-warn').innerHTML='⚙️ Configurare incompletă (cheia publishable).';$('l-btn').disabled=true;return;}
   sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   sb.auth.onAuthStateChange((evt)=>{ if(evt==='PASSWORD_RECOVERY'){ mShowReset(); return; } if(evt==='SIGNED_IN' && !S.tenant) boot(); });
-  await boot();
+  setTimeout(function(){ if(document.getElementById('splash')){ var a=$('app'); if(a&&a.classList.contains('hidden')) $('login').classList.remove('hidden'); hideSplash(); } }, 9000);
+  try{ await boot(); }catch(e){ $('login').classList.remove('hidden'); hideSplash(); }
 })();
 </script>
 <script src="i18n.js"></script>
