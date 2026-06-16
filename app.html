@@ -491,6 +491,7 @@ const MODULES = {
       {key:'email',label:'Email',type:'text'},
       {key:'address',label:'Adresă',type:'text'},
       {key:'stage',label:'Etapă',type:'select',options:opts(['lead','contacted','offer','won','lost','active']),default:'lead'},
+      {key:'contract_url',label:'Contract (fișier PDF/scan)',type:'file',hint:'Atașează contractul cu clientul. Se stochează securizat în Documente.'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
   materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă'}, catFilter:true, supplierFilter:true, storeFilter:true, priceSrc:['suppliers','stores'],
@@ -680,6 +681,7 @@ const MODULES = {
       {key:'phone',label:'Telefon',type:'text',hint:'Numărul de contact al subcontractantului.'},
       {key:'rating',label:'Rating (0-5)',type:'number',hint:'Cât de bine au lucrat (0–5). Te ajută să-i compari.'},
       {key:'price_list',label:'Listă de prețuri',type:'textarea',hint:'Prețurile lor pe lucrări. Ex: „Priză montată — 350 lei; Punct lumină — 300 lei; m² gresie — 180 lei".'},
+      {key:'contract_url',label:'Contract (fișier PDF/scan)',type:'file',hint:'Atașează contractul cu subcontractantul.'},
       {key:'logo_url',label:'Logo / poză',type:'photo',hint:'Logo-ul sau o poză a firmei subcontractante (opțional).'} ] },
 
   echipament:{ title:'Echipament angajați', sub:'Haine, scule, EIP predate fiecărui angajat.', icon:'🦺', group:'Echipă', table:'employee_equipment', hidden:true,
@@ -729,19 +731,21 @@ const MODULES = {
       {key:'qty',label:'Cantitate',type:'number',default:0},
       {key:'min_qty',label:'Prag minim',type:'number',default:0} ] },
 
-  achizitii:{ title:'Achiziții', sub:'Facturi de la furnizori.', icon:'📥', group:'Finanțe', table:'supplier_invoices',
+  achizitii:{ title:'Achiziții', sub:'Facturi de la furnizori.', icon:'📥', group:'Finanțe', table:'supplier_invoices', dueFromSupplier:true,
     newLabel:'Factură furnizor', orderBy:{col:'created_at',asc:false},
-    select:'id,number,issue_date,total,vat_total,status,suppliers(name)',
+    select:'id,number,issue_date,due_date,total,vat_total,status,suppliers(name)',
     columns:[
       {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'},
       {label:'Furnizor',get:r=>esc(r.suppliers?r.suppliers.name:'—')},
       {label:'Data',get:r=>dt(r.issue_date)},
+      {label:'Scadență',get:r=>dt(r.due_date)},
       {label:'Total',get:r=>money(r.total)},
       {label:'Stare',get:r=>pill(r.status)} ],
     fields:[
       {key:'number',label:'Număr factură',type:'text'},
       {key:'supplier_id',label:'Furnizor',type:'ref',ref:'suppliers'},
       {key:'issue_date',label:'Data facturii',type:'date'},
+      {key:'due_date',label:'Scadență (auto din termenul furnizorului)',type:'date'},
       {key:'total',label:'Total (MDL)',type:'number'},
       {key:'vat_total',label:'din care TVA (MDL)',type:'number'},
       {key:'status',label:'Stare',type:'select',options:opts(['pending','confirmed','paid']),default:'pending'} ] },
@@ -1072,7 +1076,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v69';
+const APP_VERSION='cod373-v70';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3360,6 +3364,10 @@ async function openForm(key,row,preset){
   if(m.recipe) renderRecipe();
   if(m.priceSrc) m.priceSrc.forEach(sk=>renderSrc(sk));
   if(m.fields.some(f=>f.type==='price2')){ const ve=$('f-vat_rate'); if(ve) ve.addEventListener('input',function(){ m.fields.forEach(f=>{ if(f.type==='price2') price2Sync(f.key,'net'); }); }); }
+  if(m.dueFromSupplier){ const mb=document.querySelector('.modal-body'); if(mb && !$('credit-msg')){ const d=document.createElement('div'); d.id='credit-msg'; const fm=$('form-msg'); if(fm&&fm.after) fm.after(d); else mb.insertBefore(d,mb.firstChild); }
+    const ss=$('f-supplier_id'), ii=$('f-issue_date'), tt=$('f-total');
+    if(ss) ss.addEventListener('change',achiziDue); if(ii) ii.addEventListener('change',achiziDue); if(tt) tt.addEventListener('input',achiziDue);
+    achiziDue(); }
   geoScan($('modal-mount'));
   signThumbs();
   // restaurează schița nesalvată (doar la adăugare nouă, nu când venim cu poziții preselectate)
@@ -3748,6 +3756,21 @@ function fieldValue(f){
 }
 function umFx(el){ el.dataset.prev=el.value; el.value=''; } // golește la focus → apar toate sugestiile chiar dacă e deja o valoare
 function umBl(el){ if(!el.value && el.dataset.prev!=null) el.value=el.dataset.prev; } // restaurează dacă n-ai ales nimic
+async function achiziDue(){
+  const ss=$('f-supplier_id'); if(!ss) return; const sid=ss.value; const box=$('credit-msg'); if(box) box.innerHTML=''; if(!sid) return;
+  let s; try{ s=(await sb.from('suppliers').select('payment_term_days,credit_limit,name').eq('id',sid).single()).data; }catch(e){ return; } if(!s) return;
+  const iss=$('f-issue_date'), due=$('f-due_date');
+  if(s.payment_term_days!=null && iss && iss.value && due && !due.value){ const d=new Date(iss.value); if(!isNaN(d)){ d.setDate(d.getDate()+(+s.payment_term_days||0)); due.value=d.toISOString().slice(0,10); } }
+  if(s.credit_limit!=null && box){
+    let inv=[]; try{ inv=((await sb.from('supplier_invoices').select('total,status,id').eq('supplier_id',sid)).data)||[]; }catch(e){}
+    const out=inv.filter(x=>x.status!=='paid' && x.id!==formCtx.id).reduce((t,x)=>t+(+x.total||0),0);
+    const cur=+(($('f-total')&&$('f-total').value)||0); const proj=out+cur, lim=+s.credit_limit;
+    let msg='', col='';
+    if(lim>0 && proj>lim){ msg='⚠️ Limită de credit DEPĂȘITĂ la '+esc(s.name)+': datorezi '+money(out)+(cur?' + '+money(cur)+' (această factură)':'')+' = '+money(proj)+' / limită '+money(lim)+'.'; col='background:#fef2f2;border-color:#fecaca;color:#991b1b'; }
+    else if(lim>0 && proj>lim*0.8){ msg='⚠️ Aproape de limita de credit la '+esc(s.name)+': '+money(proj)+' din '+money(lim)+'.'; col='background:#fff7ed;border-color:#fed7aa;color:#9a3412'; }
+    if(msg) box.innerHTML='<div style="border:1px solid;border-radius:8px;padding:.45rem .6rem;font-size:.82rem;margin-top:.3rem;'+col+'">'+msg+'</div>';
+  }
+}
 function price2Sync(key,edited){
   const vrEl=$('f-vat_rate'); const vr=vrEl?(+vrEl.value||0):0;
   const ins=document.querySelectorAll('[data-p2="'+key+'"]'); let netEl,grossEl;

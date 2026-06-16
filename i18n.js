@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Scadență (auto din termenul furnizorului)':{ru:'Срок оплаты (авто из условий поставщика)',de:'Fälligkeit (auto aus Zahlungsziel des Lieferanten)',en:'Due date (auto from supplier term)'},
     'Agent / persoană de contact':{ru:'Агент / контактное лицо',de:'Ansprechpartner',en:'Agent / contact person'},
     'Telefon agent':{ru:'Телефон агента',de:'Telefon Ansprechpartner',en:'Agent phone'},
     'Email agent':{ru:'Email агента',de:'E-Mail Ansprechpartner',en:'Agent email'},
