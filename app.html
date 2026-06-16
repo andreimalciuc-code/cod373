@@ -565,12 +565,14 @@ const MODULES = {
 
   furnizori:{ title:'Furnizori', sub:'Parteneri și furnizori.', icon:'🏭', group:'Catalog', table:'suppliers',
     newLabel:'Furnizor nou', orderBy:{col:'name',asc:true},
-    select:'id,name,category,phone,email,rating',
+    select:'id,name,category,phone,email,rating,agent_name,agent_phone,payment_term_days,credit_limit,contract_url',
     columns:[
-      {label:'Nume',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
+      {label:'Nume',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.agent_name?'<div style="color:var(--muted);font-size:.75rem">👤 '+esc(r.agent_name)+(r.agent_phone?' · '+esc(r.agent_phone):'')+'</div>':'')},
       {label:'Categorie',get:r=>esc(r.category||'—')},
       {label:'Telefon',get:r=>esc(r.phone||'—')},
-      {label:'Email',get:r=>esc(r.email||'—')},
+      {label:'Termen plată',get:r=>r.payment_term_days!=null?(r.payment_term_days+' zile'):'—'},
+      {label:'Limită credit',get:r=>r.credit_limit!=null?money(r.credit_limit):'—'},
+      {label:'Contract',get:r=>r.contract_url?'<a onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(r.contract_url)+'\')" style="cursor:pointer;color:var(--primary)">📎</a>':'<span style="color:var(--muted)">—</span>'},
       {label:'Rating',get:r=>r.rating?('⭐ '+r.rating):'—'} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
@@ -578,6 +580,12 @@ const MODULES = {
       {key:'category',label:'Categorie',type:'text'},
       {key:'phone',label:'Telefon',type:'text'},
       {key:'email',label:'Email',type:'text'},
+      {key:'agent_name',label:'Agent / persoană de contact',type:'text'},
+      {key:'agent_phone',label:'Telefon agent',type:'text'},
+      {key:'agent_email',label:'Email agent',type:'text'},
+      {key:'payment_term_days',label:'Termen de plată (zile)',type:'number'},
+      {key:'credit_limit',label:'Limită de credit (MDL)',type:'number'},
+      {key:'contract_url',label:'Contract (fișier PDF/scan)',type:'file',hint:'Atașează contractul cu furnizorul. Se stochează securizat în Documente.'},
       {key:'rating',label:'Rating (0-5)',type:'number'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
@@ -1064,7 +1072,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v68';
+const APP_VERSION='cod373-v69';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3125,6 +3133,7 @@ async function recordPreview(key,id){
   const refMap={}; for(const f of (m.fields||[])){ if(f.type==='ref' && r[f.key] && !refMap[f.ref]){ try{ refMap[f.ref]=await loadRefOptions(f.ref); }catch(e){ refMap[f.ref]=[]; } } }
   const rows=(m.fields||[]).filter(f=>f.type!=='photo' && (!f.secure||FINANCE_ROLES.includes(state.role))).map(f=>{
     let v=r[f.key]; if(v==null||v==='') return '';
+    if(f.type==='file'){ return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.5rem 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted)">'+esc(f.label)+'</span><a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">📎 Deschide</a></div>'; }
     if(f.type==='checkbox') v=v?'Da':'Nu';
     else if(f.type==='price2'){ const vr=+r.vat_rate||0, incl=priceInclVat(), st=+v||0; let net,gross; if(incl){ gross=st; net=vr?st/(1+vr/100):st; } else { net=st; gross=st*(1+vr/100); } v='fără TVA: '+money(net)+'  ·  cu TVA: '+money(gross); }
     else if(f.type==='ref'){ const o=(refMap[f.ref]||[]).find(o=>String(o.value)===String(v)); if(o) v=o.label; }
@@ -3319,6 +3328,7 @@ async function openForm(key,row,preset){
     else if(f.type==='select'){ body+='<select id="f-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
     else if(f.type==='photo'){ body+=(v?'<img class="lazimg" data-p="'+encodeURIComponent(v)+'" onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="display:block;max-width:100%;max-height:180px;border-radius:9px;border:1px solid var(--line);margin-bottom:.5rem;object-fit:contain;background:#f1f5f9;cursor:zoom-in">':'')+'<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a înlocui poza.</div>':''); }
+    else if(f.type==='file'){ body+=(v?'<div style="margin-bottom:.4rem"><a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">📎 Deschide fișierul atașat</a></div>':'')+'<input id="f-'+f.key+'" type="file"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a-l înlocui.</div>':''); }
     else if(f.type==='price2'){ const incl=priceInclVat(); const vr=(row&&row.vat_rate!=null)?(+row.vat_rate):20; const stored=(v===''||v==null)?'':+v; let net='',gross='';
       if(stored!==''){ if(incl){ gross=stored; net=vr?Math.round(stored/(1+vr/100)*100)/100:stored; } else { net=stored; gross=Math.round(stored*(1+vr/100)*100)/100; } }
       const netId=incl?('f-'+f.key+'-alt'):('f-'+f.key), grossId=incl?('f-'+f.key):('f-'+f.key+'-alt');
@@ -3751,7 +3761,7 @@ async function saveRecord(){
   const key=formCtx.key, m=MODULES[key];
   const payload={ tenant_id: state.tenant };
   for(const f of m.fields){
-    if(f.type==='photo'){ const el=$('f-'+f.key); if(el && el.files && el.files[0]){ const file=el.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/'+Date.now()+'_'+safe; showMsg('form-msg',''); const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'}); if(up.error){ showMsg('form-msg','Eroare la încărcarea pozei: '+up.error.message); return; } payload[f.key]=path; } continue; }
+    if(f.type==='photo'||f.type==='file'){ const el=$('f-'+f.key); if(el && el.files && el.files[0]){ const file=el.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/'+Date.now()+'_'+safe; showMsg('form-msg',''); const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'}); if(up.error){ showMsg('form-msg','Eroare la încărcarea fișierului: '+up.error.message); return; } payload[f.key]=path; } continue; }
     if($('f-'+f.key)===null) continue; // câmp ascuns (ex. rol fără acces) — nu-l atinge
     const v=fieldValue(f); if(v!==null) payload[f.key]=v; else if(f.type==='checkbox') payload[f.key]=false;
   }

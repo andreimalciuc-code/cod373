@@ -13,6 +13,16 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Agent / persoană de contact':{ru:'Агент / контактное лицо',de:'Ansprechpartner',en:'Agent / contact person'},
+    'Telefon agent':{ru:'Телефон агента',de:'Telefon Ansprechpartner',en:'Agent phone'},
+    'Email agent':{ru:'Email агента',de:'E-Mail Ansprechpartner',en:'Agent email'},
+    'Termen de plată (zile)':{ru:'Срок оплаты (дней)',de:'Zahlungsziel (Tage)',en:'Payment term (days)'},
+    'Limită de credit (MDL)':{ru:'Кредитный лимит (MDL)',de:'Kreditlimit (MDL)',en:'Credit limit (MDL)'},
+    'Contract (fișier PDF/scan)':{ru:'Договор (PDF/скан)',de:'Vertrag (PDF/Scan)',en:'Contract (PDF/scan)'},
+    'Termen plată':{ru:'Срок оплаты',de:'Zahlungsziel',en:'Payment term'},
+    'Limită credit':{ru:'Кредитный лимит',de:'Kreditlimit',en:'Credit limit'},
+    'Contract':{ru:'Договор',de:'Vertrag',en:'Contract'},
+    '📎 Deschide fișierul atașat':{ru:'📎 Открыть прикреплённый файл',de:'📎 Angehängte Datei öffnen',en:'📎 Open attached file'},
     'Toate tipurile':{ru:'Все типы',de:'Alle Typen',en:'All types'},
     'Avans':{ru:'Аванс',de:'Abschlag',en:'Advance'},
     'Reținere garanție':{ru:'Гарантийное удержание',de:'Sicherheitseinbehalt',en:'Retention'},
