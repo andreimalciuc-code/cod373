@@ -1077,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v77';
+const APP_VERSION='cod373-v78';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1605,10 +1605,10 @@ function planCellTd(empId,date,we,td){
 function planTeamTd(teamId,date,we,td,tint){
   const t=_planTeams.find(x=>x.id===teamId), mem=t?t.members:[];
   const sids=mem.map(e=>{ const f=_planData[e+'|'+date+'|full']; return f?f.site_id:null; }).filter(Boolean);
-  let chip='<span class="pladd" style="font-size:.72rem">＋ brigadă</span>';
+  let chip='<span class="plteamadd">👥 ＋ toată echipa</span>';
   if(mem.length && sids.length===mem.length && sids.every(s=>s===sids[0])){ const c=_planColor[sids[0]]||'#475569'; const s=_planSites.find(x=>x.id===sids[0]); chip='<span class="plchip plsm" style="background:'+c+'">'+esc(s?s.name:'')+'</span>'; }
-  else if(sids.length){ chip='<span style="font-size:.72rem;color:var(--muted)">'+sids.length+'/'+mem.length+'</span>'; }
-  return '<td class="plcelltd plteamcell'+(we?' plwe':'')+(td?' pltoday':'')+'"'+(tint?' style="background:'+tint+'"':'')+'><div class="plzone" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')" onclick="planCellMenu(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')">'+chip+'</div></td>';
+  else if(sids.length){ chip='<span style="font-size:.72rem;color:var(--muted)">'+sids.length+'/'+mem.length+' · <b style="color:#1d4ed8">👥 pune toți</b></span>'; }
+  return '<td class="plcelltd plteamcell'+(we?' plwe':'')+(td?' pltoday':'')+'"'+(tint?' style="background:'+tint+'"':'')+'><div class="plzone" title="Pune TOATĂ brigada pe un șantier dintr-o singură mișcare — trage un proiect aici sau dă clic" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')" onclick="planCellMenu(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')">'+chip+'</div></td>';
 }
 function planEmpRow(e,indent,dates,today,tc){ const sp=e.specialty||e.position; const st=indent?('padding-left:1.4rem'+(tc?';border-left:3px solid '+tc:'')):''; return '<tr'+(tc?' class="plmemberrow"':'')+'><td class="plsticky tname"'+(st?' style="'+st+'"':'')+'>'+(tc?'<span style="color:'+tc+';font-weight:700;margin-right:.2rem">↳</span>':'')+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'+dates.map((d,i)=>planCellTd(e.id,d,i>=5,d===today)).join('')+'</tr>'; }
 async function renderPlantafel(){
@@ -1671,7 +1671,7 @@ async function renderPlantafel(){
     teamSum='<div class="plsum"><span class="pllbl">Pe echipe (om-zile):</span>'+tparts.join('')+'</div>';
   }
   $('mod-body').innerHTML=planStyle()+palette+'<div class="tbl-wrap plwrap"><table class="tbl pltbl">'+head+'<tbody>'+body+'</tbody></table></div>'+summary+teamSum
-    +'<div style="padding:.5rem 1.2rem .8rem;font-size:.76rem;color:var(--muted)">Trage un proiect din paletă pe o zi (sau pe rândul echipei = toată brigada), mută între celule, ori dă clic pentru meniu. „½ Jumătăți de zi" = dimineața/după-amiaza pe șantiere diferite. Se salvează automat.</div>';
+    +'<div style="padding:.5rem 1.2rem .8rem;font-size:.76rem;color:var(--muted)"><b>💡 O singură acțiune pentru toată echipa:</b> trage un proiect (sau dă clic) pe <b>rândul colorat al echipei</b> (👥) și TOȚI membrii primesc acel șantier în ziua respectivă. Pe rândul unui singur om planifici doar acel om. „½ Jumătăți de zi" = dimineața/după-amiaza pe șantiere diferite. Se salvează automat.</div>';
 }
 function planStyle(){ if(document.getElementById('plan-style')) return ''; var css=''
   +'.plpalette{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;padding:.6rem 1.2rem;border-bottom:1px solid var(--line)}'
@@ -1685,7 +1685,9 @@ function planStyle(){ if(document.getElementById('plan-style')) return ''; var c
   +'.plzone{min-height:42px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;border:1px solid transparent}'
   +'.plzone:hover{background:var(--primary-soft,#eef4ff)} .plzone.plover{outline:2px dashed var(--primary,#2f6bff);outline-offset:-2px;background:var(--primary-soft,#eef4ff)}'
   +'.plhalf{min-height:20px} .plhalf+.plhalf{margin-top:2px}'
-  +'.plteamcell .plzone{min-height:28px}'
+  +'.plteamcell .plzone{min-height:30px}'
+  +'.plteamadd{font-size:.72rem;font-weight:700;color:#1d4ed8;border:1px dashed #93b4ff;border-radius:7px;padding:.12rem .5rem;background:rgba(255,255,255,.65);white-space:nowrap}'
+  +'.plteamcell .plzone:hover .plteamadd{background:#1d4ed8;color:#fff;border-color:#1d4ed8}'
   +'.plteamrow td{background:#eef2fb;border-top:2px solid #c7d2e8;border-bottom:1px solid #dbe3f2} .plteamrow .plsticky{background:#eef2fb}'
   +'.plteamlbl{display:flex;align-items:center;gap:.45rem;height:100%}'
   +'.plmemberrow .plsticky{background:#fbfcff}'
