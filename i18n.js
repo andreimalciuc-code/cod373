@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Pe echipe (om-zile):':{ru:'По бригадам (чел.-дни):',de:'Nach Teams (Manntage):',en:'By team (man-days):'},
     '💰 Cash pe termen scurt':{ru:'💰 Денежный поток (кратко)',de:'💰 Liquidität (kurzfristig)',en:'💰 Short-term cash'},
     '💵 De încasat':{ru:'💵 К получению',de:'💵 Forderungen',en:'💵 To receive'},
     '💸 De plătit':{ru:'💸 К оплате',de:'💸 Verbindlichkeiten',en:'💸 To pay'},
