@@ -13,6 +13,12 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    '💰 Cash pe termen scurt':{ru:'💰 Денежный поток (кратко)',de:'💰 Liquidität (kurzfristig)',en:'💰 Short-term cash'},
+    '💵 De încasat':{ru:'💵 К получению',de:'💵 Forderungen',en:'💵 To receive'},
+    '💸 De plătit':{ru:'💸 К оплате',de:'💸 Verbindlichkeiten',en:'💸 To pay'},
+    'Net (sold)':{ru:'Нетто (сальдо)',de:'Netto (Saldo)',en:'Net (balance)'},
+    '≤ 7 zile':{ru:'≤ 7 дней',de:'≤ 7 Tage',en:'≤ 7 days'},
+    '≤ 30 zile':{ru:'≤ 30 дней',de:'≤ 30 Tage',en:'≤ 30 days'},
     'Plăți furnizori':{ru:'Платежи поставщикам',de:'Lieferantenzahlungen',en:'Supplier payments'},
     'Scadențar — facturi de la furnizori de plătit.':{ru:'График платежей — счета от поставщиков к оплате.',de:'Zahlungsplan — offene Lieferantenrechnungen.',en:'Payment schedule — supplier invoices to pay.'},
     '💸 Plăți furnizori — scadențar':{ru:'💸 Платежи поставщикам — график',de:'💸 Lieferantenzahlungen — Plan',en:'💸 Supplier payments — schedule'},

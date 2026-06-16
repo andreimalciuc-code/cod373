@@ -1077,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v71';
+const APP_VERSION='cod373-v72';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1862,15 +1862,32 @@ async function renderDashboard(){
       +kpiCard(TR('kpiRestant'),money(restant),'facturi','var(--red)');
     chartHtml=dashCharts(inv||[], facturat, incasat);
   }
+  let cashHtml=''; if(fin){ try{ cashHtml=await cashWidget(); }catch(e){} }
   const kLbl={sites:TR('kSantiere'),clients:TR('kClienti'),materials:TR('kMateriale'),employees:TR('kAngajati')};
   kpis+=defs.map((d,i)=>kpiCard(kLbl[d[1]]||d[0],counts[i],d[2])).join('');
   const { data:recent } = await sb.from('sites').select('name,status,budget,progress,deadline,created_at');
   const recentSorted=sortRows(recent||[],'created_at',false).slice(0,5);
   let rows=recentSorted.map(s=>'<tr><td class="tname">'+esc(s.name)+'</td><td>'+(fin?money(s.budget):'—')+'</td><td>'+progressCell(s.progress)+'</td><td>'+dt(s.deadline)+'</td><td>'+pill(s.status)+'</td></tr>').join('');
   if(!rows) rows='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.5rem">Niciun șantier încă.</td></tr>';
-  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+chartHtml
+  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+cashHtml+chartHtml
     +'<div class="panel"><div class="panel-head"><h3>'+TR('ultimeleSantiere')+'</h3></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+TR('thProiect')+'</th><th>'+TR('thBuget')+'</th><th>'+TR('thProgres')+'</th><th>'+TR('thTermen')+'</th><th>'+TR('thStare')+'</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+async function cashWidget(){
+  const today=new Date(); today.setHours(0,0,0,0); const iso=d=>new Date(d).toISOString().slice(0,10);
+  const t0=iso(today), t7=iso(new Date(today.getTime()+7*86400000)), t30=iso(new Date(today.getTime()+30*86400000));
+  let ir,sr; try{ [ir,sr]=await Promise.all([ sb.from('invoices').select('total,status,due_date'), sb.from('supplier_invoices').select('total,status,due_date') ]); }catch(e){ return ''; }
+  const buck=list=>{ const o={overdue:0,d7:0,d30:0,total:0}; (list||[]).filter(x=>x.status!=='paid').forEach(x=>{ const v=+x.total||0; o.total+=v; const d=x.due_date; if(!d) return; if(d<t0) o.overdue+=v; if(d>=t0&&d<=t7) o.d7+=v; if(d>=t0&&d<=t30) o.d30+=v; }); return o; };
+  const rec=buck(ir&&ir.data), pay=buck(sr&&sr.data);
+  const cell=(v,col)=>'<td class="r" style="white-space:nowrap'+(col?';color:'+col:'')+'">'+money(v)+'</td>';
+  const netRow=['overdue','d7','d30','total'].map(k=>{ const v=rec[k]-pay[k]; return '<td class="r" style="color:'+(v>=0?'#16a34a':'#dc2626')+'">'+money(v)+'</td>'; }).join('');
+  return '<div class="panel" style="margin-bottom:1.4rem"><div class="panel-head"><h3>💰 Cash pe termen scurt</h3></div>'
+   +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th class="r">Restant</th><th class="r">≤ 7 zile</th><th class="r">≤ 30 zile</th><th class="r">Total</th></tr></thead><tbody>'
+   +'<tr><td class="tname" style="color:#16a34a">💵 De încasat</td>'+cell(rec.overdue,'#dc2626')+cell(rec.d7)+cell(rec.d30)+cell(rec.total)+'</tr>'
+   +'<tr><td class="tname" style="color:#dc2626">💸 De plătit</td>'+cell(pay.overdue,'#dc2626')+cell(pay.d7)+cell(pay.d30)+cell(pay.total)+'</tr>'
+   +'<tr style="font-weight:700;border-top:2px solid var(--line)"><td>Net (sold)</td>'+netRow+'</tr>'
+   +'</tbody></table></div>'
+   +'<div style="padding:.4rem 1.2rem .7rem;font-size:.78rem;color:var(--muted)">„Restant" = depășit scadența. Detalii: <a onclick="go(\'restante\')" style="cursor:pointer;color:var(--primary)">Restanțe</a> · <a onclick="go(\'platibil\')" style="cursor:pointer;color:var(--primary)">Plăți furnizori</a>.</div></div>';
 }
 function dashCharts(inv, facturat, incasat){
   // bara încasat vs neîncasat
