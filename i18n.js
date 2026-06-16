@@ -13,6 +13,11 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Ore lucrate per angajat — tabel zilnic.':{ru:'Отработанные часы — дневная таблица.',de:'Arbeitsstunden — Tagesliste.',en:'Hours worked — daily sheet.'},
+    'Total ore':{ru:'Всего часов',de:'Stunden gesamt',en:'Total hours'},
+    'comentariu (opțional)':{ru:'комментарий (необязательно)',de:'Kommentar (optional)',en:'comment (optional)'},
+    '— fără / liber —':{ru:'— без / выходной —',de:'— ohne / frei —',en:'— none / off —'},
+    '✅ Pontaj salvat.':{ru:'✅ Учёт сохранён.',de:'✅ Zeit gespeichert.',en:'✅ Timesheet saved.'},
     'Pe echipe (om-zile):':{ru:'По бригадам (чел.-дни):',de:'Nach Teams (Manntage):',en:'By team (man-days):'},
     '💰 Cash pe termen scurt':{ru:'💰 Денежный поток (кратко)',de:'💰 Liquidität (kurzfristig)',en:'💰 Short-term cash'},
     '💵 De încasat':{ru:'💵 К получению',de:'💵 Forderungen',en:'💵 To receive'},

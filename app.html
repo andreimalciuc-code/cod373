@@ -751,7 +751,7 @@ const MODULES = {
       {key:'vat_total',label:'din care TVA (MDL)',type:'number'},
       {key:'status',label:'Stare',type:'select',options:opts(['pending','confirmed','paid']),default:'pending'} ] },
 
-  pontaj:{ title:'Pontaj', sub:'Ore lucrate per angajat.', icon:'⏱️', group:'Echipă', table:'timesheets',
+  pontaj:{ title:'Pontaj', sub:'Ore lucrate per angajat — tabel zilnic.', icon:'⏱️', group:'Echipă', table:'timesheets', custom:true,
     newLabel:'Pontaj nou', orderBy:{col:'work_date',asc:false},
     select:'id,work_date,hours,approved,employees!employee_id(full_name),sites!site_id(name)',
     columns:[
@@ -1052,7 +1052,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1077,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v78';
+const APP_VERSION='cod373-v79';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1496,6 +1496,46 @@ function invoiceReminder(id){
   emailCompose({ client_id:i.client_id, to:cl.email||'', name:cl.name||'', subject, body });
 }
 
+/* ════ PONTAJ — tabel zilnic (șantier + ore + comentariu per angajat) ════ */
+let _ptDate=null, _ptSites=[], _ptISO='';
+function ptDay(delta){ if(!_ptDate) _ptDate=new Date(); if(delta===0) _ptDate=new Date(); else { _ptDate=new Date(_ptDate); _ptDate.setDate(_ptDate.getDate()+delta); } renderPontaj(); }
+function ptSiteOpts(sel){ return '<option value="">— fără / liber —</option>'+_ptSites.map(s=>'<option value="'+s.id+'" '+(sel===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join(''); }
+function ptRecalcTotal(){ let t=0; document.querySelectorAll('.pt-h').forEach(i=>t+=+i.value||0); const el=$('pt-total'); if(el) el.textContent=t; }
+async function renderPontaj(){
+  if(!_ptDate) _ptDate=new Date(); _ptISO=isoD(_ptDate);
+  const dn=['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'][new Date(_ptISO).getDay()];
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="ptDay(-1)">←</button><b style="margin:0 .5rem">'+dn+' '+_ptISO.split("-").reverse().join(".")+'</b><button class="btn-ghost" onclick="ptDay(1)">→</button><button class="btn-ghost" onclick="ptDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="ptFillPlanned()" title="Pune 8h celor care sunt planificați azi în Planificare echipe">⏱️ 8h celor planificați</button></div>'
+    +'<div class="panel"><div class="panel-head"><h3>⏱️ Pontaj — '+_ptISO.split("-").reverse().join(".")+'</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  const [empR,siteR,tsR,cpR]=await Promise.all([
+    sb.from('employees').select('id,full_name,active,specialty,position'),
+    sb.from('sites').select('id,name,status'),
+    sb.from('timesheets').select('employee_id,site_id,hours,note').eq('work_date',_ptISO),
+    sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO)
+  ]);
+  const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
+  _ptSites=(siteR.data||[]).filter(s=>s.status!=='done'&&s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const ts={}; (tsR.data||[]).forEach(t=>{ if(!ts[t.employee_id]) ts[t.employee_id]={site_id:t.site_id,hours:t.hours,note:t.note}; });
+  const plan={}; (cpR.data||[]).forEach(p=>{ if(p.site_id && (p.slot==='full'||!plan[p.employee_id])) plan[p.employee_id]=p.site_id; });
+  if(!emps.length){ $('mod-body').innerHTML='<div class="empty">Niciun angajat activ.</div>'; return; }
+  const rows=emps.map(e=>{ const t=ts[e.id]||{}; const sel=(t.site_id!=null?t.site_id:(plan[e.id]||'')); const sp=e.specialty||e.position;
+    return '<tr><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'
+      +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:150px">'+ptSiteOpts(sel)+'</select></td>'
+      +'<td><input id="pt-h-'+e.id+'" class="pt-h" type="number" step="any" min="0" style="width:74px" value="'+esc(t.hours!=null?t.hours:'')+'" placeholder="ore" onchange="ptSet(\''+e.id+'\')"/></td>'
+      +'<td><input id="pt-n-'+e.id+'" value="'+esc(t.note||'')+'" placeholder="comentariu (opțional)" style="min-width:200px;width:100%" onchange="ptSet(\''+e.id+'\')"/></td></tr>'; }).join('');
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">Alege șantierul, scrie orele și (opțional) un comentariu pentru fiecare. Se salvează automat. „⏱️ 8h celor planificați" completează rapid din Planificare echipe.</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Angajat</th><th>Șantier</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td>Total ore</td><td></td><td><span id="pt-total">0</span></td><td></td></tr></tfoot></table></div>';
+  ptRecalcTotal();
+}
+async function ptSet(empId){ const site=$('pt-site-'+empId).value, h=+($('pt-h-'+empId).value||0), note=($('pt-n-'+empId).value||'').trim();
+  await sb.from('timesheets').delete().eq('employee_id',empId).eq('work_date',_ptISO);
+  if(h>0||site||note){ const r=await sbRetry(()=>sb.from('timesheets').insert({tenant_id:state.tenant,employee_id:empId,site_id:site||null,work_date:_ptISO,hours:h,note:note||null,approved:false})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
+  toast('✅ Pontaj salvat.'); ptRecalcTotal(); }
+async function ptFillPlanned(){
+  const cp=((await sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO)).data)||[];
+  const plan={}; cp.forEach(p=>{ if(p.site_id && (p.slot==='full'||!plan[p.employee_id])) plan[p.employee_id]=p.site_id; });
+  let n=0; Object.keys(plan).forEach(id=>{ const se=$('pt-site-'+id), he=$('pt-h-'+id); if(se&&he){ if(!he.value||+he.value===0){ se.value=plan[id]; he.value=8; ptSet(id); n++; } } });
+  toast(n?('✅ Completat 8h pentru '+n+' angajați planificați.'):'Toți cei planificați au deja ore.'); }
 /* ════ PLĂȚI FURNIZORI — scadențar (de plătit) ════ */
 async function renderPlatibil(){
   $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>💸 Plăți furnizori — scadențar</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
