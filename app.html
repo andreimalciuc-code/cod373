@@ -562,17 +562,29 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['available','in_use','maintenance','lost']),default:'available'},
       {key:'assigned_site',label:'Atribuit șantierului',type:'ref',ref:'sites'} ] },
 
-  flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'},
+  flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'}, vehicleLog:true,
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
-    select:'id,label,plate,status',
+    select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,insurance_date',
     columns:[
-      {label:'Vehicul',get:r=>'<span class="tname">'+esc(r.label)+'</span>'},
+      {label:'Vehicul',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" style="width:34px;height:34px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:.45rem;background:#f1f5f9"> ':'')+'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')},
       {label:'Nr. înmatriculare',get:r=>esc(r.plate||'—')},
+      {label:'Km actuali',get:r=>r.km_current!=null?((+r.km_current).toLocaleString('ro-RO')+' km'):'—'},
+      {label:'ITP',get:r=>r.itp_date?dt(r.itp_date):'<span style="color:var(--muted)">—</span>'},
+      {label:'Asigurare',get:r=>r.insurance_date?dt(r.insurance_date):'<span style="color:var(--muted)">—</span>'},
+      {label:'Contract',get:r=>r.contract_url?'<a onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(r.contract_url)+'\')" style="cursor:pointer;color:var(--primary)">📎</a>':'<span style="color:var(--muted)">—</span>'},
       {label:'Stare',get:r=>pill(r.status)} ],
     fields:[
       {key:'label',label:'Denumire',type:'text',required:true},
       {key:'plate',label:'Nr. înmatriculare',type:'text'},
-      {key:'status',label:'Stare',type:'select',options:opts(['idle','en_route','loading','maintenance']),default:'idle'} ] },
+      {key:'status',label:'Stare',type:'select',options:opts(['idle','en_route','loading','maintenance']),default:'idle'},
+      {key:'acq_condition',label:'La achiziție',type:'select',options:[{value:'nou',label:'Nou'},{value:'second',label:'Second-hand'}],default:'nou',hint:'A fost cumpărat nou sau second-hand.'},
+      {key:'acq_type',label:'Mod de dobândire',type:'select',options:[{value:'cumparat',label:'Cumpărat (vânzare)'},{value:'locatiune',label:'Locațiune / leasing'}],default:'cumparat'},
+      {key:'km_purchase',label:'Km la achiziție',type:'number'},
+      {key:'km_current',label:'Km actuali',type:'number'},
+      {key:'itp_date',label:'Inspecție tehnică (ITP) — data',type:'date',hint:'Când a fost făcută ultima inspecție tehnică.'},
+      {key:'insurance_date',label:'Asigurare — data',type:'date',hint:'Când a fost încheiată / reînnoită asigurarea.'},
+      {key:'photo_url',label:'Poză vehicul',type:'photo',hint:'O fotografie a automobilului.'},
+      {key:'contract_url',label:'Contract (vânzare / locațiune)',type:'file',hint:'Atașează contractul de cumpărare sau de locațiune/leasing (PDF/scan).'} ] },
 
   furnizori:{ title:'Furnizori', sub:'Parteneri și furnizori.', icon:'🏭', group:'Catalog', table:'suppliers',
     newLabel:'Furnizor nou', orderBy:{col:'name',asc:true},
@@ -1148,7 +1160,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v93';
+const APP_VERSION='cod373-v94';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1357,6 +1369,41 @@ async function empPontajAdd(empId, empName){
   toast('✅ Pontaj adăugat.'); empPontaj(empId, empName);
 }
 async function empPontajDel(id, empId, empName){ if(!confirm('Ștergi acest pontaj?')) return; const { error }=await sb.from('timesheets').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empPontaj(empId, empName); }
+/* ── Fișa mașinii: service / mentenanță / spălătorie + documente ── */
+const VLOG_KIND={service:'🔧 Service',mentenanta:'🛠️ Mentenanță',spalatorie:'🧼 Spălătorie',reparatie:'🔩 Reparație',itp:'📋 ITP / inspecție',asigurare:'🛡️ Asigurare',alta:'• Altă cheltuială'};
+async function vehicleLog(vid, vlabel){
+  const canU=canDo('flota','u'), canD=canDo('flota','d');
+  const lr=await sb.from('vehicle_logs').select('id,log_date,kind,description,cost,odometer,doc_url').eq('vehicle_id',vid).order('log_date',{ascending:false}).limit(300);
+  const logs=lr.data||[]; const total=logs.reduce((s,r)=>s+(+r.cost||0),0);
+  const rows=logs.length?logs.map(r=>'<tr><td style="white-space:nowrap">'+dt(r.log_date)+'</td><td style="white-space:nowrap">'+esc(VLOG_KIND[r.kind]||r.kind||'—')+'</td><td>'+esc(r.description||'')+'</td><td style="white-space:nowrap">'+(r.odometer!=null?((+r.odometer).toLocaleString('ro-RO')+' km'):'')+'</td><td style="text-align:right;white-space:nowrap">'+(r.cost!=null&&r.cost!==''?money(r.cost):'')+'</td><td>'+(r.doc_url?'<a onclick="openDoc(\''+encodeURIComponent(r.doc_url)+'\')" style="cursor:pointer;color:var(--primary)">📎</a>':'')+'</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="vehicleLogDel(\''+r.id+'\',\''+vid+'\',\''+jsArg(vlabel)+'\')">🗑</button>':'')+'</td></tr>').join(''):'<tr><td colspan="7" style="color:var(--muted);padding:1rem">Nicio înregistrare încă.</td></tr>';
+  const kindOpts=Object.keys(VLOG_KIND).map(k=>'<option value="'+k+'">'+esc(VLOG_KIND[k])+'</option>').join('');
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Adaugă lucrare</div>'
+    +'<div class="row-2"><div class="field"><label>Data</label><input id="vl-date" type="date" value="'+coToday()+'"/></div><div class="field"><label>Tip</label><select id="vl-kind">'+kindOpts+'</select></div></div>'
+    +'<div class="field"><label>Descriere</label><input id="vl-desc" placeholder="ex: schimb ulei + filtre, spălare exterior…"/></div>'
+    +'<div class="row-2"><div class="field"><label>Km (opțional)</label><input id="vl-odo" type="number"/></div><div class="field"><label>Cost (opțional)</label><input id="vl-cost" type="number" step="any"/></div></div>'
+    +'<div class="field"><label>Document confirmativ (factură / bon / raport)</label><input id="vl-doc" type="file"/></div>'
+    +'<button class="btn-primary" id="vl-add" onclick="vehicleLogAdd(\''+vid+'\',\''+jsArg(vlabel)+'\')">Adaugă în fișă</button></div>'):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:780px">'
+    +'<div class="modal-head"><h3>🩺 Fișa mașinii — '+esc(vlabel||'vehicul')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="vl-msg"></div>'
+    +'<div style="margin-bottom:.5rem;font-size:.88rem">Total cheltuieli înregistrate: <b>'+money(total)+'</b></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Tip</th><th>Descriere</th><th>Km</th><th>Cost</th><th>Doc</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +addForm+'</div></div></div>';
+}
+async function vehicleLogAdd(vid, vlabel){
+  const desc=($('vl-desc').value||'').trim(); const kind=$('vl-kind').value; const date=$('vl-date').value||null;
+  if(!date&&!desc){ showMsg('vl-msg','Completează măcar data și descrierea.'); return; }
+  const btn=$('vl-add'); if(btn) btn.disabled=true;
+  let doc_url=null; const fi=$('vl-doc');
+  if(fi && fi.files && fi.files[0]){ const file=fi.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/fleet/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'}); if(up.error){ if(btn) btn.disabled=false; showMsg('vl-msg','Eroare la încărcarea documentului: '+esc(up.error.message)); return; } doc_url=path; }
+  const odo=$('vl-odo').value;
+  const rec={tenant_id:state.tenant, vehicle_id:vid, log_date:date, kind:kind||null, description:desc||null, cost:($('vl-cost').value!==''?+$('vl-cost').value:null), odometer:(odo!==''?+odo:null), doc_url:doc_url};
+  const r=await sbRetry(()=>sb.from('vehicle_logs').insert(rec));
+  if(r.error){ if(btn) btn.disabled=false; showMsg('vl-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  if(odo!==''){ try{ const cur=await sb.from('vehicles').select('km_current').eq('id',vid).maybeSingle(); const c=cur.data&&cur.data.km_current; if(c==null || +odo>+c) await sb.from('vehicles').update({km_current:+odo}).eq('id',vid); }catch(e){} }
+  toast('✅ Adăugat în fișă.'); vehicleLog(vid, vlabel);
+}
+async function vehicleLogDel(id, vid, vlabel){ if(!confirm('Ștergi această înregistrare?')) return; const { error }=await sb.from('vehicle_logs').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); vehicleLog(vid, vlabel); }
 /* ── SSM / Securitate angajat (submodul) ── */
 const SSM_KIND={instructaj:'Instructaj',eip:'EIP',incident:'Incident'};
 async function empSSM(empId, empName){
@@ -3395,6 +3442,7 @@ function rowActions(key,m,r){
   if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
+  if(m.vehicleLog) a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"});
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
   return a;
