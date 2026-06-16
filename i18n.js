@@ -13,6 +13,12 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Plăți furnizori':{ru:'Платежи поставщикам',de:'Lieferantenzahlungen',en:'Supplier payments'},
+    'Scadențar — facturi de la furnizori de plătit.':{ru:'График платежей — счета от поставщиков к оплате.',de:'Zahlungsplan — offene Lieferantenrechnungen.',en:'Payment schedule — supplier invoices to pay.'},
+    '💸 Plăți furnizori — scadențar':{ru:'💸 Платежи поставщикам — график',de:'💸 Lieferantenzahlungen — Plan',en:'💸 Supplier payments — schedule'},
+    'Nimic de plătit către furnizori.':{ru:'Нет платежей поставщикам.',de:'Keine Lieferantenzahlungen offen.',en:'Nothing to pay to suppliers.'},
+    'Total de plătit:':{ru:'Всего к оплате:',de:'Gesamt zu zahlen:',en:'Total to pay:'},
+    'din care restant:':{ru:'из них просрочено:',de:'davon überfällig:',en:'of which overdue:'},
     'Scadență (auto din termenul furnizorului)':{ru:'Срок оплаты (авто из условий поставщика)',de:'Fälligkeit (auto aus Zahlungsziel des Lieferanten)',en:'Due date (auto from supplier term)'},
     'Agent / persoană de contact':{ru:'Агент / контактное лицо',de:'Ansprechpartner',en:'Agent / contact person'},
     'Telefon agent':{ru:'Телефон агента',de:'Telefon Ansprechpartner',en:'Agent phone'},

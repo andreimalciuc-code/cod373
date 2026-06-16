@@ -436,6 +436,7 @@ const MODULES = {
   plantafel:{ title:'Planificare echipe', sub:'Cine, pe ce șantier, în ce zi — pe săptămână.', icon:'🗓️', group:'Operațional', custom:true },
   postcalc:{ title:'Postcalculație (marjă)', sub:'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.', icon:'📈', group:'Rapoarte', custom:true },
   restante:{ title:'Restanțe & remindere', sub:'Facturi neîncasate scadente — trimite remindere.', icon:'⏰', group:'Rapoarte', custom:true },
+  platibil:{ title:'Plăți furnizori', sub:'Scadențar — facturi de la furnizori de plătit.', icon:'💸', group:'Rapoarte', custom:true },
   reconciliere:{ title:'Reconciliere plăți', sub:'Importă extrasul bancar și potrivește încasările cu facturile.', icon:'🏦', group:'Rapoarte', custom:true },
 
   comenzi:{ title:'Comenzi materiale', sub:'Comenzi către furnizori.', icon:'🛒', group:'Operațional', table:'material_orders',
@@ -1051,7 +1052,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, reconciliere:renderReconciliere, plantafel:renderPlantafel}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1076,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v70';
+const APP_VERSION='cod373-v71';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1494,6 +1495,32 @@ function invoiceReminder(id){
   const body='Bună ziua'+(cl.name?', '+cl.name:'')+',\n\nVă reamintim că factura '+(i.number||'')+' în valoare de '+money(i.total)+', scadentă la '+dt(i.due_date)+', este restantă de '+d+' zile.\n\nVă rugăm să efectuați plata. Dacă ați achitat deja, vă rugăm să ignorați acest mesaj.\n\nCu respect,\n'+firm;
   emailCompose({ client_id:i.client_id, to:cl.email||'', name:cl.name||'', subject, body });
 }
+
+/* ════ PLĂȚI FURNIZORI — scadențar (de plătit) ════ */
+async function renderPlatibil(){
+  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>💸 Plăți furnizori — scadențar</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  const { data, error }=await sb.from('supplier_invoices').select('id,number,total,issue_date,due_date,status,supplier_id,suppliers(name)');
+  if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
+  const today=new Date().toISOString().slice(0,10);
+  const unpaid=(data||[]).filter(i=>i.status!=='paid').sort((a,b)=>{ const da=a.due_date||'9999', db=b.due_date||'9999'; return da<db?-1:da>db?1:0; });
+  if(!unpaid.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">✅</div>Nimic de plătit către furnizori.</div>'; return; }
+  const days=d=>Math.floor((new Date(d)-new Date(today))/86400000);
+  const tot=unpaid.reduce((s,i)=>s+(+i.total||0),0);
+  const overdueTot=unpaid.filter(i=>i.due_date&&i.due_date<today).reduce((s,i)=>s+(+i.total||0),0);
+  const soon=unpaid.filter(i=>i.due_date&&i.due_date>=today&&days(i.due_date)<=7).reduce((s,i)=>s+(+i.total||0),0);
+  const rows=unpaid.map(i=>{ let st;
+    if(!i.due_date){ st='<span style="color:var(--muted)">fără scadență</span>'; }
+    else { const d=days(i.due_date); if(d<0){ const dd=-d; st='<span style="color:'+(dd>30?'#dc2626':(dd>7?'#d97706':'#dc2626'))+';font-weight:700">restant '+dd+' zile</span>'; } else if(d===0){ st='<span style="color:#d97706;font-weight:700">scadent azi</span>'; } else { st='<span style="color:'+(d<=7?'#d97706':'#16a34a')+'">în '+d+' zile</span>'; } }
+    return '<tr><td class="tname">'+esc(i.suppliers?i.suppliers.name:'—')+'</td><td>'+esc(i.number||'—')+'</td><td>'+money(i.total)+'</td><td>'+dt(i.due_date)+'</td><td>'+st+'</td>'
+      +'<td><div class="rowact"><button class="iconbtn" title="Marchează plătită" onclick="supInvoicePaid(\''+i.id+'\')" style="color:#16a34a">✅</button></div></td></tr>'; }).join('');
+  $('mod-body').innerHTML='<div style="padding:.5rem 1.2rem;font-size:.9rem;display:flex;gap:1.4rem;flex-wrap:wrap">'
+      +'<span>Total de plătit: <b>'+money(tot)+'</b></span>'
+      +'<span>din care restant: <b style="color:#dc2626">'+money(overdueTot)+'</b></span>'
+      +'<span>scadent ≤7 zile: <b style="color:#d97706">'+money(soon)+'</b></span>'
+      +'<span style="color:var(--muted)">'+unpaid.length+' facturi</span></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Furnizor</th><th>Factură</th><th>Sumă</th><th>Scadență</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+async function supInvoicePaid(id){ if(!confirm('Marchezi factura furnizor ca plătită?')) return; const r=await sbRetry(()=>sb.from('supplier_invoices').update({status:'paid'}).eq('id',id)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } toast('✅ Plată înregistrată.'); renderPlatibil(); }
 
 /* ════ RECONCILIERE PLĂȚI (import extras bancar CSV) ════ */
 let _reconInv=[];
