@@ -1077,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v75';
+const APP_VERSION='cod373-v76';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1602,13 +1602,13 @@ function planCellTd(empId,date,we,td){
   else { inner=planZone(empId,date,'full',null,false); }
   return '<td class="plcelltd'+(we?' plwe':'')+(td?' pltoday':'')+'">'+inner+'</td>';
 }
-function planTeamTd(teamId,date,we,td){
+function planTeamTd(teamId,date,we,td,tint){
   const t=_planTeams.find(x=>x.id===teamId), mem=t?t.members:[];
   const sids=mem.map(e=>{ const f=_planData[e+'|'+date+'|full']; return f?f.site_id:null; }).filter(Boolean);
   let chip='<span class="pladd" style="font-size:.72rem">＋ brigadă</span>';
   if(mem.length && sids.length===mem.length && sids.every(s=>s===sids[0])){ const c=_planColor[sids[0]]||'#475569'; const s=_planSites.find(x=>x.id===sids[0]); chip='<span class="plchip plsm" style="background:'+c+'">'+esc(s?s.name:'')+'</span>'; }
   else if(sids.length){ chip='<span style="font-size:.72rem;color:var(--muted)">'+sids.length+'/'+mem.length+'</span>'; }
-  return '<td class="plcelltd plteamcell'+(we?' plwe':'')+(td?' pltoday':'')+'"><div class="plzone" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')" onclick="planCellMenu(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')">'+chip+'</div></td>';
+  return '<td class="plcelltd plteamcell'+(we?' plwe':'')+(td?' pltoday':'')+'"'+(tint?' style="background:'+tint+'"':'')+'><div class="plzone" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')" onclick="planCellMenu(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')">'+chip+'</div></td>';
 }
 function planEmpRow(e,indent,dates,today,tc){ const sp=e.specialty||e.position; const st=indent?('padding-left:1.4rem'+(tc?';border-left:3px solid '+tc:'')):''; return '<tr'+(tc?' class="plmemberrow"':'')+'><td class="plsticky tname"'+(st?' style="'+st+'"':'')+'>'+(tc?'<span style="color:'+tc+';font-weight:700;margin-right:.2rem">↳</span>':'')+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'+dates.map((d,i)=>planCellTd(e.id,d,i>=5,d===today)).join('')+'</tr>'; }
 async function renderPlantafel(){
@@ -1630,7 +1630,7 @@ async function renderPlantafel(){
       sb.from('employees').select('id,full_name,active,specialty,position'),
       sb.from('sites').select('id,name,status'),
       sb.from('crew_plan').select('employee_id,site_id,plan_date,note,slot').gte('plan_date',dates[0]).lte('plan_date',dates[6]),
-      safe(sb.from('crew_teams').select('id,name,position')),
+      safe(sb.from('crew_teams').select('id,name,position,color')),
       safe(sb.from('crew_team_members').select('team_id,employee_id'))
     ]);
     const fe=(empR&&empR.error)||(siteR&&siteR.error)||(planR&&planR.error);
@@ -1642,7 +1642,7 @@ async function renderPlantafel(){
   _planEmps=emps; _planSites=sites; _planColor={}; sites.forEach((s,i)=>{ _planColor[s.id]=PLAN_PALETTE[i%PLAN_PALETTE.length]; });
   _planData={}; (planR.data||[]).forEach(p=>{ _planData[p.employee_id+'|'+p.plan_date+'|'+(p.slot||'full')]={site_id:p.site_id,note:p.note}; });
   const memByTeam={}; (tmR.data||[]).forEach(m=>{ (memByTeam[m.team_id]=memByTeam[m.team_id]||[]).push(m.employee_id); });
-  _planTeams=(teamR.data||[]).sort((a,b)=>(a.position||0)-(b.position||0)||(a.name||'').localeCompare(b.name||'')).map(t=>({id:t.id,name:t.name,members:(memByTeam[t.id]||[]).filter(id=>emps.some(e=>e.id===id))}));
+  _planTeams=(teamR.data||[]).sort((a,b)=>(a.position||0)-(b.position||0)||(a.name||'').localeCompare(b.name||'')).map(t=>({id:t.id,name:t.name,color:t.color||null,members:(memByTeam[t.id]||[]).filter(id=>emps.some(e=>e.id===id))}));
   const dn=['Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă','Duminică'];
   const palette='<div class="plpalette"><span class="pllbl">Trage pe zi:</span>'
     +(sites.length?sites.map(s=>'<div class="plchip plpal" draggable="true" ondragstart="planDragStart(event,\'site:'+s.id+'\')" style="background:'+_planColor[s.id]+'">'+esc(s.name)+'</div>').join(''):'<span style="color:var(--muted);font-size:.8rem">— niciun șantier activ —</span>')
@@ -1654,8 +1654,8 @@ async function renderPlantafel(){
   if(!emps.length){ body='<tr><td colspan="8" style="color:var(--muted);padding:1rem">Niciun angajat activ. Adaugă întâi angajați.</td></tr>'; }
   else if(_planGroup && _planTeams.length){
     const seen=new Set();
-    _planTeams.forEach((t,ti)=>{ const tc=PLAN_PALETTE[ti%PLAN_PALETTE.length];
-      body+='<tr class="plteamrow"><td class="plsticky plteamlbl" style="border-left:6px solid '+tc+'"><span style="background:'+tc+';color:#fff;border-radius:8px;padding:.18rem .55rem;font-weight:700;font-size:.84rem;white-space:nowrap">👥 '+esc(t.name)+'</span> <span style="background:#fff;border:1.5px solid '+tc+';color:'+tc+';border-radius:11px;padding:.02rem .5rem;font-size:.74rem;font-weight:800">'+t.members.length+'</span></td>'+dates.map((d,i)=>planTeamTd(t.id,d,i>=5,d===today)).join('')+'</tr>';
+    _planTeams.forEach((t,ti)=>{ const tc=t.color||PLAN_PALETTE[ti%PLAN_PALETTE.length]; const tint=tc+'1f';
+      body+='<tr class="plteamrow"><td class="plsticky plteamlbl" style="border-left:6px solid '+tc+';background:'+tint+'"><span style="background:'+tc+';color:#fff;border-radius:8px;padding:.18rem .55rem;font-weight:700;font-size:.84rem;white-space:nowrap">👥 '+esc(t.name)+'</span> <span style="background:#fff;border:1.5px solid '+tc+';color:'+tc+';border-radius:11px;padding:.02rem .5rem;font-size:.74rem;font-weight:800">'+t.members.length+'</span></td>'+dates.map((d,i)=>planTeamTd(t.id,d,i>=5,d===today,tint)).join('')+'</tr>';
       t.members.forEach(id=>{ const e=emps.find(x=>x.id===id); if(e){ seen.add(id); body+=planEmpRow(e,true,dates,today,tc); } }); });
     const rest=emps.filter(e=>!seen.has(e.id));
     if(rest.length){ body+='<tr><td class="plsticky" style="font-weight:600;color:var(--muted);background:#f8fafc">Fără echipă</td>'+dates.map((d,i)=>'<td class="plcelltd'+(i>=5?' plwe':'')+(d===today?' pltoday':'')+'" style="background:#f8fafc"></td>').join('')+'</tr>'; rest.forEach(e=>body+=planEmpRow(e,false,dates,today)); }
@@ -1748,22 +1748,25 @@ function planCellMenu(ev,kind,id,date,slot){
 /* ── gestionare echipe / brigăzi ── */
 async function planTeamsModal(){
   const [teamR,tmR,empR]=await Promise.all([
-    sb.from('crew_teams').select('id,name'),
+    sb.from('crew_teams').select('id,name,color'),
     sb.from('crew_team_members').select('team_id,employee_id'),
     sb.from('employees').select('id,full_name,active')
   ]);
   const teams=(teamR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
   const mem={}; (tmR.data||[]).forEach(m=>{ (mem[m.team_id]=mem[m.team_id]||{})[m.employee_id]=1; });
-  const blk=t=>'<div style="border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;margin-bottom:.6rem">'
-    +'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem"><b style="flex:1">👥 '+esc(t.name)+'</b><button class="btn-ghost" style="color:var(--red)" onclick="planDelTeam(\''+t.id+'\')">🗑 Șterge</button></div>'
-    +'<div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(emps.length?emps.map(e=>{ const ck=mem[t.id]&&mem[t.id][e.id]; return '<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.84rem;background:var(--bg,#f1f5f9);border-radius:8px;padding:.25rem .55rem;cursor:pointer"><input type="checkbox" '+(ck?'checked':'')+' onchange="planToggleMember(\''+t.id+'\',\''+e.id+'\',this.checked)"/> '+esc(e.full_name)+'</label>'; }).join(''):'<span style="color:var(--muted);font-size:.83rem">Niciun angajat activ.</span>')+'</div></div>';
+  const blk=t=>{ const tc=t.color||'#2f6bff'; return '<div style="border:1px solid var(--line);border-left:5px solid '+tc+';border-radius:10px;padding:.6rem .8rem;margin-bottom:.6rem">'
+    +'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem"><b style="flex:1">👥 '+esc(t.name)+'</b>'
+    +'<span style="display:inline-flex;gap:.2rem;align-items:center;margin-right:.3rem">'+PLAN_PALETTE.map(c=>'<span onclick="planSetTeamColor(\''+t.id+'\',\''+c+'\')" title="culoare" style="width:16px;height:16px;border-radius:4px;background:'+c+';cursor:pointer;'+(((t.color||'#2f6bff')===c)?'outline:2px solid #0f1c33;outline-offset:1px':'')+'"></span>').join('')+'</span>'
+    +'<button class="btn-ghost" style="color:var(--red)" onclick="planDelTeam(\''+t.id+'\')">🗑 Șterge</button></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(emps.length?emps.map(e=>{ const ck=mem[t.id]&&mem[t.id][e.id]; return '<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.84rem;background:var(--bg,#f1f5f9);border-radius:8px;padding:.25rem .55rem;cursor:pointer"><input type="checkbox" '+(ck?'checked':'')+' onchange="planToggleMember(\''+t.id+'\',\''+e.id+'\',this.checked)"/> '+esc(e.full_name)+'</label>'; }).join(''):'<span style="color:var(--muted);font-size:.83rem">Niciun angajat activ.</span>')+'</div></div>'; };
   const hint='<div style="background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.7rem">ℹ️ Pașii: <b>1)</b> apasă „＋ Echipă nouă" și dă-i un nume → <b>2)</b> bifează membrii (se salvează automat) → <b>3)</b> „Gata". Echipa apare apoi în planșă (pornim automat vederea „👥 Pe echipe").</div>';
   const body=hint+(teams.length?teams.map(blk).join(''):'<div style="color:var(--muted);padding:.4rem 0 .7rem">Nicio echipă încă. Creează o brigadă și bifează membrii.</div>')
     +'<button class="btn-primary" onclick="planNewTeam()">＋ Echipă nouă</button>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this){planTeamsDone();}"><div class="modal" style="max-width:580px"><div class="modal-head"><h3>👷 Echipe / brigăzi</h3><button class="x" onclick="planTeamsDone()">×</button></div><div class="modal-body">'+body+'</div><div class="modal-foot"><button class="btn-primary" onclick="planTeamsDone()">Gata</button></div></div></div>';
 }
 function planTeamsDone(){ _planGroup=true; try{localStorage.setItem('c373_plan_teams','1');}catch(e){} closeModal(); renderPlantafel(); }
+async function planSetTeamColor(teamId,color){ const r=await sbRetry(()=>sb.from('crew_teams').update({color:color}).eq('id',teamId)); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
 async function planNewTeam(){ const n=(prompt('Numele echipei / brigăzii:')||'').trim(); if(!n) return; const r=await sbRetry(()=>sb.from('crew_teams').insert({tenant_id:state.tenant,name:n})); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
 async function planToggleMember(teamId,empId,ck){ if(ck){ const r=await sbRetry(()=>sb.from('crew_team_members').insert({tenant_id:state.tenant,team_id:teamId,employee_id:empId})); if(r.error) toast('Eroare: '+esc(r.error.message)); } else { await sb.from('crew_team_members').delete().eq('team_id',teamId).eq('employee_id',empId); } }
 async function planDelTeam(teamId){ if(!confirm('Ștergi echipa? (planificările individuale rămân neatinse)')) return; const r=await sb.from('crew_teams').delete().eq('id',teamId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
