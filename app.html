@@ -258,7 +258,7 @@
 <div id="app" class="app hidden">
   <div class="overlay-nav" id="overlay-nav" onclick="closeNav()"></div>
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="brand-logo">C373</div><div class="brand-name noi18n">Cod<span>373</span></div></div>
+    <div class="brand" onclick="go('dashboard')" style="cursor:pointer" title="Pagina de pornire"><div class="brand-logo">C373</div><div class="brand-name noi18n">Cod<span>373</span></div></div>
     <div class="company-switch">
       <div class="company-avatar" id="co-avatar">D</div>
       <img id="co-logo" alt="" style="display:none;width:40px;height:40px;object-fit:contain;border-radius:8px;background:#fff;padding:2px"/>
@@ -1146,7 +1146,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v90';
+const APP_VERSION='cod373-v91';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
