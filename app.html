@@ -1162,7 +1162,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v96';
+const APP_VERSION='cod373-v97';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2747,6 +2747,8 @@ function wialonHost(){ const h=(state.firm&&state.firm.automations&&state.firm.a
 function wialonToken(){ return (state.firm&&state.firm.automations&&state.firm.automations.wialon_token)||''; }
 async function wialonCall(svc, params, sid){ const u='https://'+wialonHost()+'/wialon/ajax.html?svc='+encodeURIComponent(svc)+'&params='+encodeURIComponent(JSON.stringify(params||{}))+(sid?'&sid='+encodeURIComponent(sid):''); const r=await fetch(u); const j=await r.json(); if(j&&j.error){ throw new Error('cod '+j.error); } return j; }
 async function wialonLogin(){ const tok=wialonToken(); if(!tok) throw new Error('fără token'); const j=await wialonCall('token/login',{token:tok}); return j.eid; }
+function wialonWebHost(){ const h=(($('set-wialon-host')&&$('set-wialon-host').value)||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,''); return h.replace('hst-api','hosting'); }
+function wialonOpenGen(){ const web=wialonWebHost(); const u='https://'+web+'/login.html?client_id=Cod373&access_type=-1&activation_time=0&duration=0&flags=0x1&redirect_uri=https://'+web+'/post_token.html&response_type=token'; window.open(u,'_blank','noopener'); toast('În fila nouă: loghează-te în Wialon, aprobă accesul, apoi copiază token-ul afișat și lipește-l aici.'); }
 async function wialonTest(){ const tok=($('set-wialon-token').value||'').trim(); const host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,'');
   if(!tok){ toast('Pune întâi token-ul Wialon.'); return; }
   toast('⏳ Testez conexiunea Wialon…');
@@ -2815,9 +2817,10 @@ async function renderSetari(){
     +'<button class="btn-primary" onclick="saveSetari()">Salvează setările</button>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🛰️ Integrare GPS (Wialon)</h3></div><div class="modal-body">'
-    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Leagă contul tău Wialon ca să vezi pozițiile reale ale vehiculelor pe „Hartă flotă". Ai nevoie de un <b>token</b> generat în Wialon (nu parola). În Wialon: <i>cont → Aplicații / Acces prin token</i> — creează un token (recomandat: drepturi de citire, durată limitată) și lipește-l aici.</p>'
-    +'<div class="field"><label>Token Wialon</label><input id="set-wialon-token" type="text" autocomplete="off" value="'+esc(au.wialon_token||'')+'" placeholder="ex: 5dce19710...c3f"/></div>'
-    +'<div class="field"><label>Server (host) <span class="hint-i" title="Implicit hst-api.wialon.com (Wialon Hosting). Pentru Wialon Local pune adresa serverului tău.">ⓘ</span></label><input id="set-wialon-host" type="text" autocomplete="off" value="'+esc(au.wialon_host||'hst-api.wialon.com')+'" placeholder="hst-api.wialon.com"/></div>'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Leagă contul tău Wialon ca să vezi pozițiile reale ale vehiculelor pe „Hartă flotă". Ai nevoie de un <b>token</b> (nu parola). <b>Atenție:</b> token-ul se face în <b>versiunea web Wialon</b>, nu în aplicația de telefon. Apasă butonul de mai jos — se deschide pagina oficială Wialon, te loghezi acolo, aprobi accesul, apoi copiezi token-ul afișat și îl lipești aici.</p>'
+    +'<div style="margin-bottom:.6rem"><button class="btn-ghost" onclick="wialonOpenGen()">🔑 Generează token în Wialon (se deschide Wialon)</button></div>'
+    +'<div class="field"><label>Token Wialon</label><input id="set-wialon-token" type="text" autocomplete="off" value="'+esc(au.wialon_token||'')+'" placeholder="lipește aici token-ul copiat din Wialon"/></div>'
+    +'<div class="field"><label>Server (host) <span class="hint-i" title="Implicit hst-api.wialon.com (Wialon Hosting). Dacă providerul tău folosește alt domeniu (ex. de la dealer), pune-l aici. Butonul de generare folosește versiunea web a aceluiași server.">ⓘ</span></label><input id="set-wialon-host" type="text" autocomplete="off" value="'+esc(au.wialon_host||'hst-api.wialon.com')+'" placeholder="hst-api.wialon.com"/></div>'
     +'<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn-ghost" onclick="wialonTest()">🔌 Testează conexiunea</button><button class="btn-primary" onclick="saveSetari()">Salvează</button></div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După salvare, deschide <a onclick="go(\'harta\')" style="cursor:pointer;color:var(--primary)">Hartă flotă</a> — pozițiile vin live din Wialon.</div>'
     +'</div></div>'
