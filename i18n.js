@@ -38,6 +38,8 @@
     'Luna trecută':{ru:'Прошлый месяц',de:'Letzter Monat',en:'Last month'},
     'Interval personalizat':{ru:'Произвольный период',de:'Eigener Zeitraum',en:'Custom range'},
     'Toți angajații':{ru:'Все сотрудники',de:'Alle Mitarbeiter',en:'All employees'},
+    '🌍 Fus orar':{ru:'🌍 Часовой пояс',de:'🌍 Zeitzone',en:'🌍 Time zone'},
+    '📅 Format dată':{ru:'📅 Формат даты',de:'📅 Datumsformat',en:'📅 Date format'},
     'Pe echipe (om-zile):':{ru:'По бригадам (чел.-дни):',de:'Nach Teams (Manntage):',en:'By team (man-days):'},
     '💰 Cash pe termen scurt':{ru:'💰 Денежный поток (кратко)',de:'💰 Liquidität (kurzfristig)',en:'💰 Short-term cash'},
     '💵 De încasat':{ru:'💵 К получению',de:'💵 Forderungen',en:'💵 To receive'},
