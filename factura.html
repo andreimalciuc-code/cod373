@@ -135,7 +135,7 @@ async function loadInvoice(id){
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
-    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:(function(){ try{ return localStorage.getItem('c373_bnk_'+id)||''; }catch(x){ return ''; } })() };
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:e.data.bank_choice||'' };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   if(S.inv.inv_type!=='normal') loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
@@ -184,7 +184,7 @@ function prepayNote(total){
   return { pct:pct, save:save, after:Math.round((total-save)*100)/100 };
 }
 function firmBankLines(){ return ((S.firm&&S.firm.bank_accounts)||'').split(/\n+/).map(function(x){return x.trim();}).filter(Boolean); }
-function setInvBank(v){ S.inv.bank_choice=v; if(S.id){ try{ localStorage.setItem('c373_bnk_'+S.id, v); }catch(e){} } }
+function setInvBank(v){ S.inv.bank_choice=v; }
 function bankTextForPdf(){ var lines=firmBankLines(); var ch=S.inv.bank_choice||''; if(ch==='__off') return ''; if(ch && lines.indexOf(ch)>-1) return ch; return lines.join('\n'); }
 function skontoToggle(off){ S.inv.skonto_off=!!off; render(); }
 function skontoPct(v){ S.inv.skonto_pct=(v===''?null:+v); }
@@ -540,14 +540,13 @@ async function save(thenPdf){
   const t=totals();
   const rec={ tenant_id:S.tenant, client_id:S.inv.client_id||null, number:S.inv.number, status:S.inv.status, title:S.inv.title||null,
     issue_date:S.inv.issue_date||null, due_date:S.inv.due_date||null, estimate_id:S._fromEstimate||null, site_id:S.inv.site_id||null,
-    inv_type:S.inv.inv_type||'normal', contract_total:(S.inv.contract_total!=null&&S.inv.contract_total!==''?+S.inv.contract_total:null), retention_pct:(S.inv.retention_pct!=null&&S.inv.retention_pct!==''?+S.inv.retention_pct:null),
+    inv_type:S.inv.inv_type||'normal', contract_total:(S.inv.contract_total!=null&&S.inv.contract_total!==''?+S.inv.contract_total:null), retention_pct:(S.inv.retention_pct!=null&&S.inv.retention_pct!==''?+S.inv.retention_pct:null), bank_choice:(S.inv.bank_choice||null),
     groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
     disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0, materials_mode:S.inv.materials_mode||'detailed', skonto_off:!!S.inv.skonto_off, skonto_pct:(S.inv.skonto_pct!=null&&S.inv.skonto_pct!==''?+S.inv.skonto_pct:null),
     subtotal:t.sub, vat_total:t.vat, total:t.total };
   try{
     if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('invoices').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
-    try{ if(S.id) localStorage.setItem('c373_bnk_'+S.id, S.inv.bank_choice||''); }catch(e){}
     await sb.from('invoice_items').delete().eq('invoice_id',S.id);
     const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,kind:l.kind||'service',position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('invoice_items').insert(items); if(im.error) throw im.error;
