@@ -24,6 +24,11 @@
   .hidden{display:none!important}
 
   /* AUTH / ONBOARDING */
+  @keyframes c373spin{to{transform:rotate(360deg)}}
+  #splash{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0c1730,#13243f);transition:opacity .25s ease}
+  #splash .nm{font-size:2rem;font-weight:800;letter-spacing:.5px;color:#eaf0fb}
+  #splash .nm span{color:#2f6bff}
+  #splash .sp{margin:1.1rem auto 0;width:28px;height:28px;border:3px solid rgba(255,255,255,.18);border-top-color:#2f6bff;border-radius:50%;animation:c373spin .8s linear infinite}
   .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(1200px 600px at 15% -10%,#22386a 0%,transparent 55%),radial-gradient(1000px 500px at 110% 110%,#1c4d99 0%,transparent 50%),linear-gradient(135deg,#0c1730,#13243f)}
   .gate-wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:3.2rem;max-width:1060px;width:100%;align-items:center}
   .gate-hero{color:#eaf0fb}
@@ -181,7 +186,8 @@
 <body>
 
 <!-- ══ AUTH GATE ══ -->
-<div id="gate" class="gate">
+<div id="splash"><div style="text-align:center"><div class="nm noi18n" translate="no">Cod<span>373</span></div><div class="sp"></div></div></div>
+<div id="gate" class="gate hidden">
  <div class="gate-wrap">
   <div class="gate-hero">
     <div class="gate-logo" style="margin-bottom:1.1rem"><div class="lg">C373</div><div class="nm noi18n" style="color:#fff">Cod<span>373</span></div></div>
@@ -305,6 +311,7 @@ function money(n){ return n==null||n===''?'—':Number(n).toLocaleString('ro-RO'
 function dt(d){ return d?esc(d):'—'; }
 function sortRows(rows,col,asc){ return rows.slice().sort((a,b)=>{ let x=a[col],y=b[col]; if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1; if(x<y)return asc?-1:1; if(x>y)return asc?1:-1; return 0; }); }
 function showScreen(n){ ['login','signup','onboard'].forEach(s=>$('screen-'+s).classList.toggle('hidden',s!==n)); }
+function hideSplash(){ var s=document.getElementById('splash'); if(!s) return; s.style.opacity='0'; setTimeout(function(){ if(s&&s.parentNode) s.parentNode.removeChild(s); },280); }
 function openNav(){ $('sidebar').classList.add('open'); $('overlay-nav').classList.add('show'); }
 function closeNav(){ $('sidebar').classList.remove('open'); $('overlay-nav').classList.remove('show'); }
 
@@ -370,7 +377,7 @@ async function doMagicLogin(){
   showMsg('login-msg','📧 Ți-am trimis un link de logare pe email. Dă click pe el și intri direct, fără parolă.','ok');
 }
 function showResetPasswordForm(){
-  $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login');
+  $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login'); hideSplash();
   $('screen-login').innerHTML='<h2>Setează o parolă nouă</h2><p class="sub">Alege o parolă nouă pentru contul tău.</p><div id="rp-msg"></div>'
     +'<div class="field"><label>Parolă nouă (min. 6 caractere)</label><input id="rp-pass" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
     +'<div class="field"><label>Confirmă parola</label><input id="rp-pass2" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
@@ -1011,12 +1018,12 @@ async function maybeShowInvite(){
 }
 async function boot(){
   const { data:{ session } } = await sb.auth.getSession();
-  if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login'); maybeShowInvite(); return; }
+  if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login'); maybeShowInvite(); hideSplash(); return; }
   state.session = session;
   const tok=getInviteToken();
   if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK') toast('✅ Acces activat la firmă.'); if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
   const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations,bank_accounts)').eq('active',true).limit(1).maybeSingle();
-  if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); return; }
+  if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); hideSplash(); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
   CUR = (state.firm.currency||'MDL').toUpperCase();
   // personele de teren (muncitor/sofer/subcontractant/client) folosesc aplicatia mobila
@@ -1033,6 +1040,7 @@ async function boot(){
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
   let _lv; try{ _lv=localStorage.getItem('c373_last_view'); }catch(e){}
   go(_lv && MODULES[_lv] && canSee(_lv) ? _lv : 'dashboard');
+  hideSplash();
 }
 
 function buildNav(){
@@ -1078,7 +1086,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v83';
+const APP_VERSION='cod373-v84';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -4198,6 +4206,7 @@ async function printDoc(key,id){
 (async function init(){
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
   if(!cfgOk()){
+    $('gate').classList.remove('hidden'); hideSplash();
     $('cfg-warn').classList.remove('hidden');
     $('cfg-warn').innerHTML='⚙️ <b>Configurare incompletă.</b> Pune cheia <code>publishable</code> în <code>SUPABASE_KEY</code>.';
     $('btn-login').disabled=$('btn-signup').disabled=true; return;
@@ -4205,7 +4214,9 @@ async function printDoc(key,id){
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   // daca sesiunea soseste dupa load (ex. magic link din email), pornim boot-ul
   sb.auth.onAuthStateChange((evt)=>{ if(evt==='PASSWORD_RECOVERY'){ showResetPasswordForm(); return; } if(evt==='SIGNED_IN' && !state.tenant) boot(); });
-  await boot();
+  // plasă de siguranță: dacă boot-ul se blochează, arătăm pagina de start după 9s ca să nu rămână splash-ul
+  setTimeout(function(){ if(document.getElementById('splash')){ var a=$('app'); if(a&&a.classList.contains('hidden')) $('gate').classList.remove('hidden'); hideSplash(); } }, 9000);
+  try{ await boot(); }catch(e){ $('gate').classList.remove('hidden'); showScreen('login'); hideSplash(); }
   try{ geoScan(document); }catch(e){}
 })();
 </script>
