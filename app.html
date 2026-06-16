@@ -1077,7 +1077,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v72';
+const APP_VERSION='cod373-v73';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1610,7 +1610,7 @@ function planTeamTd(teamId,date,we,td){
   else if(sids.length){ chip='<span style="font-size:.72rem;color:var(--muted)">'+sids.length+'/'+mem.length+'</span>'; }
   return '<td class="plcelltd plteamcell'+(we?' plwe':'')+(td?' pltoday':'')+'"><div class="plzone" ondragover="event.preventDefault();this.classList.add(\'plover\')" ondragleave="this.classList.remove(\'plover\')" ondrop="planDrop(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')" onclick="planCellMenu(event,\'team\',\''+teamId+'\',\''+date+'\',\'full\')">'+chip+'</div></td>';
 }
-function planEmpRow(e,indent,dates,today){ return '<tr><td class="plsticky tname"'+(indent?' style="padding-left:1.5rem"':'')+'>'+esc(e.full_name)+'</td>'+dates.map((d,i)=>planCellTd(e.id,d,i>=5,d===today)).join('')+'</tr>'; }
+function planEmpRow(e,indent,dates,today){ const sp=e.specialty||e.position; return '<tr><td class="plsticky tname"'+(indent?' style="padding-left:1.5rem"':'')+'>'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'+dates.map((d,i)=>planCellTd(e.id,d,i>=5,d===today)).join('')+'</tr>'; }
 async function renderPlantafel(){
   if(!_planMon) _planMon=mondayOf(new Date());
   const start=new Date(_planMon); const dates=[]; for(let i=0;i<7;i++){ const d=new Date(start); d.setDate(start.getDate()+i); dates.push(isoD(d)); }
@@ -1627,7 +1627,7 @@ async function renderPlantafel(){
     // angajați + șantiere + plan = esențiale; echipele sunt opționale (dacă tabelele lipsesc, mergem mai departe)
     const safe=p=>p.then(r=>r).catch(()=>({data:[]}));
     [empR,siteR,planR,teamR,tmR]=await Promise.all([
-      sb.from('employees').select('id,full_name,active'),
+      sb.from('employees').select('id,full_name,active,specialty,position'),
       sb.from('sites').select('id,name,status'),
       sb.from('crew_plan').select('employee_id,site_id,plan_date,note,slot').gte('plan_date',dates[0]).lte('plan_date',dates[6]),
       safe(sb.from('crew_teams').select('id,name,position')),
