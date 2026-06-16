@@ -1076,7 +1076,8 @@ async function loadNotifCount(){
   }catch(e){}
 }
 /* ════ CHAT DE ECHIPĂ (birou) — aceeași tabelă messages ca aplicația de teren ════ */
-function tcName(){ return (state.session&&state.session.user&&state.session.user.email)||'Coleg'; }
+function tcName(){ const u=state.session&&state.session.user; const meta=u&&u.user_metadata; return state.uname || (meta&&meta.full_name) || (u&&u.email) || 'Coleg'; }
+async function tcEnsureName(){ if(state.uname) return; try{ const u=state.session&&state.session.user; const meta=u&&u.user_metadata; if(meta&&meta.full_name){ state.uname=meta.full_name; return; } const { data }=await sb.from('profiles').select('full_name').eq('id',u.id).maybeSingle(); if(data&&data.full_name) state.uname=data.full_name; }catch(e){} }
 function tcAttHtml(p,url){ if(!url) return ''; const isAudio=/\.(webm|m4a|mp3|ogg|wav|aac)$/i.test(p);
   if(isAudio) return '<audio controls preload="none" src="'+url+'" style="display:block;margin-top:.35rem;width:230px;max-width:100%;height:40px"></audio>';
   const nm=(p||'').split('/').pop().replace(/^\d+_/,''); return '<a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;display:inline-block;margin-top:.35rem;font-size:.82rem;color:inherit;text-decoration:underline">📎 '+esc(nm)+'</a>'; }
@@ -1085,7 +1086,7 @@ function openTeamChat(){
     +'<div id="tc-list" style="flex:1;overflow:auto;padding:.5rem .2rem;display:flex;flex-direction:column;gap:.45rem"><div class="loading">Se încarcă…</div></div>'
     +'<div style="display:flex;gap:.4rem;align-items:center;padding-top:.55rem;border-top:1px solid var(--line)"><button class="btn-ghost" id="tc-rec" onclick="tcRec()" title="Mesaj vocal — apasă ca să începi, apasă din nou ca să trimiți" style="padding:.55rem .7rem">🎤</button><input id="tc-input" placeholder="Scrie un mesaj…" style="flex:1;padding:.6rem .8rem;border:1px solid var(--line);border-radius:10px;outline:none" onkeydown="if(event.key===\'Enter\')tcSend()"/><button class="btn-primary" onclick="tcSend()" style="padding:.55rem .9rem">➤</button></div>'
     +'</div></div>';
-  tcLoad(true);
+  tcEnsureName(); tcLoad(true);
   clearInterval(window._tcPoll);
   window._tcPoll=setInterval(()=>{ if($('tc-list')) tcLoad(false); else clearInterval(window._tcPoll); }, 4000);
 }
@@ -1145,7 +1146,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v89';
+const APP_VERSION='cod373-v90';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
