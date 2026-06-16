@@ -168,8 +168,8 @@
   .lines-foot{display:flex;justify-content:space-between;align-items:center;padding:.6rem .8rem;background:var(--bg);font-size:.85rem}
   .addline{margin-top:.5rem;font-size:.82rem;color:var(--primary);font-weight:600;cursor:pointer;background:none;border:none}
 
-  #toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--text);color:#fff;padding:.9rem 1.2rem;border-radius:11px;font-size:.86rem;max-width:360px;box-shadow:0 12px 30px rgba(0,0,0,.25);opacity:0;transform:translateY(12px);pointer-events:none;transition:all .25s;z-index:80}
-  #toast.show{opacity:1;transform:none}
+  #toast{position:fixed;top:72px;left:50%;background:var(--text);color:#fff;padding:.9rem 1.3rem;border-radius:11px;font-size:.9rem;font-weight:600;max-width:90vw;box-shadow:0 12px 34px rgba(0,0,0,.28);opacity:0;transform:translateX(-50%) translateY(-14px);pointer-events:none;transition:all .25s;z-index:200;text-align:center}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
   .overlay-nav{display:none}
   @media(max-width:860px){
@@ -564,7 +564,7 @@ const MODULES = {
 
   flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'}, vehicleLog:true,
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
-    select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,insurance_date',
+    select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,itp_until,insurance_date,insurance_until',
     columns:[
       {label:'Vehicul',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" style="width:34px;height:34px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:.45rem;background:#f1f5f9"> ':'')+'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')},
       {label:'Nr. înmatriculare',get:r=>esc(r.plate||'—')},
@@ -582,7 +582,9 @@ const MODULES = {
       {key:'km_purchase',label:'Km la achiziție',type:'number'},
       {key:'km_current',label:'Km actuali',type:'number'},
       {key:'itp_date',label:'Inspecție tehnică (ITP) — data',type:'date',hint:'Când a fost făcută ultima inspecție tehnică.'},
+      {key:'itp_until',label:'ITP — valabil până la',type:'date',hint:'Data expirării inspecției tehnice (pentru avertismente pe pagina principală).'},
       {key:'insurance_date',label:'Asigurare — data',type:'date',hint:'Când a fost încheiată / reînnoită asigurarea.'},
+      {key:'insurance_until',label:'Asigurare — valabilă până la',type:'date',hint:'Data expirării asigurării (pentru avertismente pe pagina principală).'},
       {key:'photo_url',label:'Poză vehicul',type:'photo',hint:'O fotografie a automobilului.'},
       {key:'contract_url',label:'Contract (vânzare / locațiune)',type:'file',hint:'Atașează contractul de cumpărare sau de locațiune/leasing (PDF/scan).'} ] },
 
@@ -1160,7 +1162,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v94';
+const APP_VERSION='cod373-v95';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2130,13 +2132,14 @@ async function renderDashboard(){
     chartHtml=dashCharts(inv||[], facturat, incasat);
   }
   let cashHtml=''; if(fin){ try{ cashHtml=await cashWidget(); }catch(e){} }
+  let fleetHtml=''; try{ fleetHtml=await fleetAlert(); }catch(e){}
   const kLbl={sites:TR('kSantiere'),clients:TR('kClienti'),materials:TR('kMateriale'),employees:TR('kAngajati')};
   kpis+=defs.map((d,i)=>kpiCard(kLbl[d[1]]||d[0],counts[i],d[2])).join('');
   const { data:recent } = await sb.from('sites').select('name,status,budget,progress,deadline,created_at');
   const recentSorted=sortRows(recent||[],'created_at',false).slice(0,5);
   let rows=recentSorted.map(s=>'<tr><td class="tname">'+esc(s.name)+'</td><td>'+(fin?money(s.budget):'—')+'</td><td>'+progressCell(s.progress)+'</td><td>'+dt(s.deadline)+'</td><td>'+pill(s.status)+'</td></tr>').join('');
   if(!rows) rows='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.5rem">Niciun șantier încă.</td></tr>';
-  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+cashHtml+chartHtml
+  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+fleetHtml+cashHtml+chartHtml
     +'<div class="panel"><div class="panel-head"><h3>'+TR('ultimeleSantiere')+'</h3></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+TR('thProiect')+'</th><th>'+TR('thBuget')+'</th><th>'+TR('thProgres')+'</th><th>'+TR('thTermen')+'</th><th>'+TR('thStare')+'</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
@@ -2155,6 +2158,19 @@ async function cashWidget(){
    +'<tr style="font-weight:700;border-top:2px solid var(--line)"><td>Net (sold)</td>'+netRow+'</tr>'
    +'</tbody></table></div>'
    +'<div style="padding:.4rem 1.2rem .7rem;font-size:.78rem;color:var(--muted)">„Restant" = depășit scadența. Detalii: <a onclick="go(\'restante\')" style="cursor:pointer;color:var(--primary)">Restanțe</a> · <a onclick="go(\'platibil\')" style="cursor:pointer;color:var(--primary)">Plăți furnizori</a>.</div></div>';
+}
+async function fleetAlert(){
+  if(typeof canSee==='function' && !canSee('flota')) return '';
+  let vr; try{ vr=await sb.from('vehicles').select('id,label,itp_date,itp_until,insurance_date,insurance_until'); }catch(e){ return ''; }
+  const list=vr&&vr.data||[]; if(!list.length) return '';
+  const today=new Date(); today.setHours(0,0,0,0);
+  const addYear=d=>{ const x=new Date(d+'T12:00:00'); x.setFullYear(x.getFullYear()+1); return x; };
+  const items=[];
+  list.forEach(v=>{ [['ITP',v.itp_until,v.itp_date],['Asigurare',v.insurance_until,v.insurance_date]].forEach(pair=>{ const lbl=pair[0],until=pair[1],done=pair[2]; let exp=null; if(until) exp=new Date(until+'T12:00:00'); else if(done) exp=addYear(done); if(!exp) return; const days=Math.floor((exp-today)/86400000); if(days<=30) items.push({label:v.label,type:lbl,days:days,exp:exp,est:!until}); }); });
+  if(!items.length) return '';
+  items.sort((a,b)=>a.days-b.days);
+  const rows=items.map(it=>{ const expired=it.days<0; const col=expired?'#dc2626':(it.days<=7?'#d97706':'#6b7793'); const when=expired?('expirat de '+(-it.days)+' zile'):(it.days===0?'expiră azi':('în '+it.days+' zile')); return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:1px solid var(--line)"><span>🚗 <b>'+esc(it.label)+'</b> · '+it.type+(it.est?' <span style="color:var(--muted);font-size:.74rem">(estimat +1 an)</span>':'')+'</span><span style="color:'+col+';font-weight:700;white-space:nowrap">'+esc(fmtDate(isoLocal(it.exp)))+' · '+when+'</span></div>'; }).join('');
+  return '<div class="panel" style="margin-bottom:1.4rem;border-left:4px solid var(--amber)"><div class="panel-head"><h3>⚠️ ITP / asigurare — de reînnoit</h3></div><div style="padding:.3rem 1.2rem 1rem">'+rows+'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">Actualizează documentele și datele în <a onclick="go(\'flota\')" style="cursor:pointer;color:var(--primary)">Flotă</a>.</div></div></div>';
 }
 function dashCharts(inv, facturat, incasat){
   // bara încasat vs neîncasat
