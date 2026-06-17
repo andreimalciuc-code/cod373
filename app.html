@@ -674,12 +674,13 @@ const MODULES = {
 
   angajati:{ title:'Angajați', sub:'Personalul firmei.', icon:'👷', group:'Echipă', table:'employees', subEquip:true,
     newLabel:'Angajat nou', invitable:'employee', orderBy:{col:'full_name',asc:true},
-    select:'id,full_name,position,specialty,idnp,address,birth_date,has_license,license_categories,hourly_rate,monthly_rate,net_salary,bank_accounts,photo_url,active',
+    select:'id,full_name,position,specialty,idnp,address,birth_date,has_license,license_categories,hourly_rate,monthly_rate,net_salary,bank_accounts,photo_url,active,vehicle_drivers(vehicles(label,plate))',
     columns:[
       {label:'Nume',get:r=>'<span class="tname">'+esc(r.full_name)+'</span>'},
       {label:'Funcție',get:r=>esc(r.position||'—')},
       {label:'Specialitate',get:r=>esc(r.specialty||'—')},
       {label:'Permis',get:r=>r.has_license?('🚗 '+esc(r.license_categories||'')):'—'},
+      {label:'Conduce',get:r=>{ const vs=(r.vehicle_drivers||[]).map(x=>x.vehicles&&(x.vehicles.label||x.vehicles.plate)).filter(Boolean); return vs.length?('🚗 '+vs.map(esc).join(', ')):'<span style="color:var(--muted)">—</span>'; }},
       {label:'Salariu net',secure:true,get:r=>money(r.net_salary)},
       {label:'Activ',get:r=>r.active?'<span class="pill active">Da</span>':'<span class="pill cancelled">Nu</span>'} ],
     fields:[
@@ -1170,7 +1171,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v106';
+const APP_VERSION='cod373-v107';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1451,6 +1452,34 @@ async function vehDriversSave(vid, vlabel){
   toast('✅ Șoferi salvați ('+ids.length+').'); closeModal();
   const a=document.querySelector('.nav-item.active'); if(a&&a.dataset.view==='flota') go('flota');
 }
+/* stoc instrument pe locații (șantier / depozit) */
+async function toolStock(tid, tname){
+  const [locR,siteR,storeR]=await Promise.all([
+    sb.from('tool_locations').select('id,site_id,store_id,qty,sites(name),stores(name)').eq('tool_id',tid),
+    sb.from('sites').select('id,name,status'),
+    sb.from('stores').select('id,name')
+  ]);
+  const locs=locR.data||[]; const total=locs.reduce((s,r)=>s+(+r.qty||0),0);
+  const sites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const stores=(storeR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const canU=canDo('instrumente','u'), canD=canDo('instrumente','d');
+  const rows=locs.length?locs.map(l=>{ const where=l.site_id?('🏗️ '+esc((l.sites&&l.sites.name)||'șantier')):(l.store_id?('🏬 '+esc((l.stores&&l.stores.name)||'depozit')):'—'); return '<tr><td>'+where+'</td><td style="text-align:right"><b>'+(+l.qty||0)+'</b> buc</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="toolStockDel(\''+l.id+'\',\''+tid+'\',\''+jsArg(tname)+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="3" style="color:var(--muted);padding:1rem">Nicio locație înregistrată. Adaugă mai jos.</td></tr>';
+  const locOpts='<option value="">— alege locația —</option>'+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>'<option value="site:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'')+(stores.length?'<optgroup label="Depozite">'+stores.map(s=>'<option value="store:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'');
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.8rem;padding-top:.7rem"><div style="font-weight:700;margin-bottom:.45rem">＋ Adaugă la o locație</div><div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:170px;margin:0"><label>Locație (șantier sau depozit)</label><select id="ts-loc">'+locOpts+'</select></div><div class="field" style="width:90px;margin:0"><label>Câte</label><input id="ts-qty" type="number" min="0" value="1"/></div><button class="btn-primary" id="ts-add" onclick="toolStockAdd(\''+tid+'\',\''+jsArg(tname)+'\')">Adaugă</button></div></div>'):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>📦 Stoc pe locații — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="ts-msg"></div><div style="margin-bottom:.5rem;font-size:.9rem">Total în stoc: <b>'+total+' buc</b></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Locație</th><th style="text-align:right">Câte</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+addForm+'</div></div></div>';
+}
+async function toolStockAdd(tid, tname){
+  const loc=$('ts-loc').value; const qty=+($('ts-qty').value||0);
+  if(!loc){ showMsg('ts-msg','Alege locația.'); return; }
+  if(!(qty>0)){ showMsg('ts-msg','Pune o cantitate mai mare ca 0.'); return; }
+  const parts=loc.split(':'); const kind=parts[0], lid=parts[1];
+  const rec={tenant_id:state.tenant,tool_id:tid,qty:qty, site_id:(kind==='site'?lid:null), store_id:(kind==='store'?lid:null)};
+  const btn=$('ts-add'); if(btn) btn.disabled=true;
+  const r=await sbRetry(()=>sb.from('tool_locations').insert(rec)); if(r.error){ if(btn) btn.disabled=false; showMsg('ts-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  await toolStockSync(tid); toast('✅ Adăugat la locație.'); toolStock(tid, tname);
+}
+async function toolStockDel(id, tid, tname){ if(!confirm('Ștergi această locație din stoc?')) return; const { error }=await sb.from('tool_locations').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } await toolStockSync(tid); toast('🗑 Șters.'); toolStock(tid, tname); }
+async function toolStockSync(tid){ try{ const r=await sb.from('tool_locations').select('qty').eq('tool_id',tid); const total=(r.data||[]).reduce((s,x)=>s+(+x.qty||0),0); await sb.from('tools').update({qty:total}).eq('id',tid); }catch(e){} }
 /* ── SSM / Securitate angajat (submodul) ── */
 const SSM_KIND={instructaj:'Instructaj',eip:'EIP',incident:'Incident'};
 async function empSSM(empId, empName){
@@ -2862,10 +2891,12 @@ function injectHartaStyle(){ if(document.getElementById('harta-style')) return; 
 function vehDivIcon(emoji,moving,course,sel,over){ const rot=(course!=null&&moving)?course:null;
   const html='<div class="veh-mk'+(moving?'':' idle')+(sel?' sel':'')+(over?' over':'')+'">'+(rot!=null?'<div class="hd" style="--rot:'+rot+'deg"></div>':'')+'<div class="b"><span>'+emoji+'</span></div></div>';
   return L.divIcon({html:html,className:'veh-divicon',iconSize:[40,40],iconAnchor:[20,20],popupAnchor:[0,-18]}); }
+function hDrivers(v){ return (v&&v.vehicle_drivers||[]).map(x=>x.employees&&x.employees.full_name).filter(Boolean); }
 function hPopup(pt){ const t=pt.time?(' · '+fmtDate(isoLocal(pt.time))+' '+String(pt.time.getHours()).padStart(2,'0')+':'+String(pt.time.getMinutes()).padStart(2,'0')):'';
+  const drv=(pt.drivers&&pt.drivers.length)?'<div style="font-size:.8rem;margin-top:.25rem">🧑‍✈️ '+pt.drivers.map(esc).join(', ')+'</div>':'';
   const head=pt.over?('🔴 Peste limită · '+Math.round(pt.speed)+' km/h'):(pt.moving?('🟢 În mișcare · '+Math.round(pt.speed)+' km/h'):'⚪ Oprit');
   const trk=pt.uid?('<div style="margin-top:.45rem;display:flex;gap:.3rem;flex-wrap:wrap"><span style="font-size:.74rem;color:#6b7793">Traseu:</span><a onclick="hTrack(\''+pt.uid+'\',\''+jsArg(pt.name)+'\',0)" style="cursor:pointer;color:var(--primary);font-size:.78rem">azi</a> · <a onclick="hTrack(\''+pt.uid+'\',\''+jsArg(pt.name)+'\',1)" style="cursor:pointer;color:var(--primary);font-size:.78rem">ieri</a>'+(_hTrackLine?' · <a onclick="hClearTrack()" style="cursor:pointer;color:#dc2626;font-size:.78rem">șterge traseul</a>':'')+'</div>'):'';
-  return '<div style="min-width:170px"><b>'+esc(pt.name)+'</b><div style="font-size:.8rem;color:'+(pt.over?'#dc2626':'#6b7793')+';margin-top:.2rem">'+head+t+'</div>'+trk+(pt.vid?'<a onclick="closeMapPopupGo(\''+pt.vid+'\',\''+jsArg(pt.name)+'\')" style="display:inline-block;margin-top:.4rem;color:var(--primary);cursor:pointer;font-size:.8rem">🩺 Fișa mașinii</a>':'')+'</div>'; }
+  return '<div style="min-width:170px"><b>'+esc(pt.name)+'</b><div style="font-size:.8rem;color:'+(pt.over?'#dc2626':'#6b7793')+';margin-top:.2rem">'+head+t+'</div>'+drv+trk+(pt.vid?'<a onclick="closeMapPopupGo(\''+pt.vid+'\',\''+jsArg(pt.name)+'\')" style="display:inline-block;margin-top:.4rem;color:var(--primary);cursor:pointer;font-size:.8rem">🩺 Fișa mașinii</a>':'')+'</div>'; }
 function closeMapPopupGo(vid,nm){ if(_hMap) _hMap.closePopup(); vehicleLog(vid,nm); }
 async function hWialonUnits(){ const sid=await wialonLogin(); const j=await wialonCall('core/search_items',{spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1025,from:0,to:0}, sid); return (j&&j.items)||[]; }
 async function renderHarta(){
@@ -2888,7 +2919,7 @@ async function renderHarta(){
   L.control.layers({'🗺️ Stradă':street,'🛰️ Satelit':sat},null,{position:'topright'}).addTo(_hMap);
   _hCluster=(window.L&&L.markerClusterGroup)?L.markerClusterGroup({maxClusterRadius:48,showCoverageOnHover:false}):null;
   _hLayer=_hCluster||L.layerGroup(); _hLayer.addTo(_hMap);
-  const vr=await sb.from('vehicles').select('id,label,plate,status,map_icon,last_lat,last_lng,last_seen_at'); _hVeh=vr.data||[];
+  const vr=await sb.from('vehicles').select('id,label,plate,status,map_icon,last_lat,last_lng,last_seen_at,vehicle_drivers(employees(full_name))'); _hVeh=vr.data||[];
   await hartaRefresh(true);
   setTimeout(()=>{ if(_hMap) _hMap.invalidateSize(); },200);
   clearInterval(_hTimer); _hTimer=setInterval(()=>{ if(document.getElementById('map')&&_hMap){ hartaRefresh(false); } else { clearInterval(_hTimer); } }, 20000);
@@ -2898,11 +2929,11 @@ async function hartaRefresh(fit){
   const live=!!wialonToken(); let pts=[], note='';
   if(live){
     try{ const units=await hWialonUnits();
-      units.forEach(u=>{ const p=u.pos; if(p&&p.y!=null&&p.x!=null){ const v=hMatchVeh(u.nm); pts.push({key:'w'+u.id,uid:u.id,name:u.nm||(v&&v.label)||'—',lat:p.y,lng:p.x,speed:+p.s||0,course:(p.c!=null?+p.c:null),time:p.t?new Date(p.t*1000):null,moving:(+p.s||0)>2,emoji:VEH_EMOJI[(v&&v.map_icon)||'car']||'🚗',vid:v&&v.id||null}); } });
+      units.forEach(u=>{ const p=u.pos; if(p&&p.y!=null&&p.x!=null){ const v=hMatchVeh(u.nm); pts.push({key:'w'+u.id,uid:u.id,name:u.nm||(v&&v.label)||'—',lat:p.y,lng:p.x,speed:+p.s||0,course:(p.c!=null?+p.c:null),time:p.t?new Date(p.t*1000):null,moving:(+p.s||0)>2,emoji:VEH_EMOJI[(v&&v.map_icon)||'car']||'🚗',vid:v&&v.id||null,drivers:hDrivers(v)}); } });
       note='🛰️ '+pts.length+' vehicule · Wialon';
     }catch(e){ note='⚠️ Wialon: '+(e.message||e); }
   }
-  if(!pts.length && !live){ (_hVeh||[]).filter(v=>v.last_lat!=null&&v.last_lng!=null).forEach(v=>{ pts.push({key:'v'+v.id,name:v.label,lat:v.last_lat,lng:v.last_lng,speed:0,course:null,time:v.last_seen_at?new Date(v.last_seen_at):null,moving:false,emoji:VEH_EMOJI[v.map_icon||'car']||'🚗',vid:v.id}); }); if(pts.length&&!note) note='Locații din aplicația șoferului'; }
+  if(!pts.length && !live){ (_hVeh||[]).filter(v=>v.last_lat!=null&&v.last_lng!=null).forEach(v=>{ pts.push({key:'v'+v.id,name:v.label,lat:v.last_lat,lng:v.last_lng,speed:0,course:null,time:v.last_seen_at?new Date(v.last_seen_at):null,moving:false,emoji:VEH_EMOJI[v.map_icon||'car']||'🚗',vid:v.id,drivers:hDrivers(v)}); }); if(pts.length&&!note) note='Locații din aplicația șoferului'; }
   pts.forEach(pt=>{ pt.over = _hSpeed>0 && pt.speed>_hSpeed; });
   _hPts=pts;
   const seen={};
@@ -3680,7 +3711,7 @@ function rowActions(key,m,r){
   if(m.efactura) a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"});
   if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
-  if(m.toolActions){ a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
+  if(m.toolActions){ a.push({i:'📦',l:'Stoc pe locații (șantiere/depozit)',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(m.vehicleLog){ a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
