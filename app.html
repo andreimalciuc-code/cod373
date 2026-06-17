@@ -306,8 +306,18 @@ function showMsg(el,t,type='err'){ $(el).innerHTML = t ? '<div class="msg '+type
 function toast(m){ const t=$('toast'); $('toast-msg').innerHTML=m; t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),4000); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'};
-const COUNTRY_PRESETS={ MD:{label:'🇲🇩 Moldova',currency:'MDL',vat:20}, DE:{label:'🇩🇪 Germania',currency:'EUR',vat:19}, RO:{label:'🇷🇴 România',currency:'RON',vat:19}, AT:{label:'🇦🇹 Austria',currency:'EUR',vat:20}, FR:{label:'🇫🇷 Franța',currency:'EUR',vat:20}, IT:{label:'🇮🇹 Italia',currency:'EUR',vat:22}, UA:{label:'🇺🇦 Ucraina',currency:'UAH',vat:20}, GB:{label:'🇬🇧 Marea Britanie',currency:'GBP',vat:20} };
-function applyCountryPreset(c){ const p=COUNTRY_PRESETS[c]; if(!p)return; if($('set-cur'))$('set-cur').value=p.currency; if($('set-vat'))$('set-vat').value=p.vat; }
+const COUNTRY_PRESETS={
+  MD:{label:'🇲🇩 Moldova',currency:'MDL',vat:20,vatRates:[20,8,0],idLabel:'IDNO',einvoice:'SFS (e-Factura)',legal:'Factură fiscală conform Codului fiscal al RM.'},
+  RO:{label:'🇷🇴 România',currency:'RON',vat:19,vatRates:[19,9,5,0],idLabel:'CUI / CIF',einvoice:'RO e-Factura (ANAF / SPV)',legal:'Factură conform Legii 227/2015 (Cod fiscal); transmisă prin RO e-Factura (SPV).'},
+  DE:{label:'🇩🇪 Germania',currency:'EUR',vat:19,vatRates:[19,7,0],idLabel:'USt-IdNr / Steuernr.',einvoice:'XRechnung / ZUGFeRD',legal:'Rechnung gemäß §14 UStG.'},
+  AT:{label:'🇦🇹 Austria',currency:'EUR',vat:20,vatRates:[20,13,10,0],idLabel:'UID-Nr.',einvoice:'ebInterface / XRechnung',legal:'Rechnung gemäß §11 UStG.'},
+  FR:{label:'🇫🇷 Franța',currency:'EUR',vat:20,vatRates:[20,10,5.5,0],idLabel:'SIRET / N° TVA',einvoice:'Factur-X (Chorus Pro)',legal:'Facture conforme au Code général des impôts.'},
+  IT:{label:'🇮🇹 Italia',currency:'EUR',vat:22,vatRates:[22,10,4,0],idLabel:'P.IVA / CF',einvoice:'FatturaPA (SdI)',legal:'Fattura conforme alla normativa IVA.'},
+  UA:{label:'🇺🇦 Ucraina',currency:'UAH',vat:20,vatRates:[20,7,0],idLabel:'ЄДРПОУ / ІПН',einvoice:'—',legal:''},
+  GB:{label:'🇬🇧 Marea Britanie',currency:'GBP',vat:20,vatRates:[20,5,0],idLabel:'VAT No.',einvoice:'—',legal:'VAT invoice as per HMRC rules.'} };
+function applyCountryPreset(c){ const p=COUNTRY_PRESETS[c]; if(!p)return; if($('set-cur'))$('set-cur').value=p.currency; if($('set-vat'))$('set-vat').value=p.vat;
+  if($('set-idno-lbl')) $('set-idno-lbl').textContent=p.idLabel||'Cod fiscal';
+  if($('country-note')) $('country-note').innerHTML='Configurat pentru '+esc(p.label)+': monedă <b>'+esc(p.currency)+'</b> · TVA <b>'+(p.vatRates||[p.vat]).join('% / ')+'%</b> · cod fiscal <b>'+esc(p.idLabel)+'</b> · e-factură <b>'+esc(p.einvoice||'—')+'</b>'+(p.legal?'<br>📄 '+esc(p.legal):''); }
 let CUR='MDL'; function curUnit(){ return CURSYM[CUR]||CUR; }
 function money(n){ return n==null||n===''?'—':Number(n).toLocaleString('ro-RO',{minimumFractionDigits:0,maximumFractionDigits:2})+' '+curUnit(); }
 function dt(d){ if(!d) return '—'; const s=String(d); return /^\d{4}-\d{2}-\d{2}/.test(s)? esc(fmtDate(s)) : esc(s); }
@@ -1171,7 +1181,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v113';
+const APP_VERSION='cod373-v114';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3011,11 +3021,12 @@ async function renderSetari(){
       +(f.logo_url?'<button class="btn-ghost" style="color:var(--red)" onclick="removeFirmLogo()">🗑 Elimină</button>':'')+'</div></div>'
     +'<div class="field"><label>Denumirea firmei (persoana juridică) *</label><input id="set-name" value="'+esc(f.name||'')+'"/></div>'
     +'<div class="field"><label>Marcă comercială (opțional) <span class="hint-i" title="Denumirea comercială sub care lucrezi. Pe facturi/devize apare mare, cu mențiunea „marca comercială a [denumirea juridică]".">ⓘ</span></label><input id="set-brand" value="'+esc(au.brand_name||'')+'" placeholder="ex: BuildPro"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Dacă o completezi, pe documente apare marca, urmată de „marca comercială a '+esc(f.name||'persoana juridică')+'".</div></div>'
-    +'<div class="row-2"><div class="field"><label>IDNO / Cod fiscal</label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
+    +'<div class="row-2"><div class="field"><label><span id="set-idno-lbl">'+esc((COUNTRY_PRESETS[f.country||'MD']||{}).idLabel||'IDNO / Cod fiscal')+'</span></label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
     +'<div class="field"><label>Telefon</label><input id="set-phone" value="'+esc(f.phone||'')+'"/></div></div>'
     +'<div class="field"><label>Adresă</label><input id="set-addr" value="'+esc(f.address||'')+'"/></div>'
-    +'<div class="field"><label>Țară / piață <span class="hint-i" title="Setează automat moneda și TVA-ul implicit pentru documentele firmei. Independent de limba interfeței.">ⓘ</span></label>'
-      +'<select id="set-country" onchange="applyCountryPreset(this.value)">'+Object.keys(COUNTRY_PRESETS).map(c=>'<option value="'+c+'" '+((f.country||'MD')===c?'selected':'')+'>'+COUNTRY_PRESETS[c].label+'</option>').join('')+'</select></div>'
+    +'<div class="field"><label>Țară / piață <span class="hint-i" title="Configurează automat moneda, TVA, eticheta codului fiscal, tipul de e-factură și mențiunea legală de pe documente, după regulile țării.">ⓘ</span></label>'
+      +'<select id="set-country" onchange="applyCountryPreset(this.value)">'+Object.keys(COUNTRY_PRESETS).map(c=>'<option value="'+c+'" '+((f.country||'MD')===c?'selected':'')+'>'+COUNTRY_PRESETS[c].label+'</option>').join('')+'</select>'
+      +'<div id="country-note" style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+(function(){ const p=COUNTRY_PRESETS[f.country||'MD']; return p?('Configurat pentru '+esc(p.label)+': monedă <b>'+esc(p.currency)+'</b> · TVA <b>'+(p.vatRates||[p.vat]).join('% / ')+'%</b> · cod fiscal <b>'+esc(p.idLabel)+'</b> · e-factură <b>'+esc(p.einvoice||'—')+'</b>'+(p.legal?'<br>📄 '+esc(p.legal):'')):''; })()+'</div></div>'
     +'<div class="row-2"><div class="field"><label>Cotă TVA (%)</label><input id="set-vat" type="number" value="'+esc(f.vat_rate!=null?f.vat_rate:20)+'"/></div>'
     +'<div class="field"><label>Monedă</label><input id="set-cur" value="'+esc(f.currency||'MDL')+'"/></div></div>'
     +'<div class="field"><div class="chk"><input type="checkbox" id="set-vatp" '+((f.vat_payer!==false)?'checked':'')+'/> <span>Plătitor de TVA</span></div></div>'
@@ -3136,6 +3147,7 @@ async function saveSetari(){
   if($('set-wstart')) au.work_start=$('set-wstart').value||null;
   if($('set-wend')) au.work_end=$('set-wend').value||null;
   if($('set-wbreak')) au.work_break=+$('set-wbreak').value;
+  { const cp=COUNTRY_PRESETS[($('set-country')?$('set-country').value:'')||'']; if(cp){ au.id_label=cp.idLabel||null; au.legal_note=cp.legal||null; au.vat_rates=cp.vatRates||null; au.einvoice=cp.einvoice||null; } }
   if($('set-lexoffice')) au.lexoffice_key=($('set-lexoffice').value||'').trim()||null;
   if($('set-sevdesk')) au.sevdesk_key=($('set-sevdesk').value||'').trim()||null;
   if($('set-wialon-token')) au.wialon_token=($('set-wialon-token').value||'').trim()||null;
