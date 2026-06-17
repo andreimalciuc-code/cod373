@@ -564,7 +564,7 @@ const MODULES = {
 
   flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'}, vehicleLog:true,
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
-    select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,itp_until,insurance_date,insurance_until',
+    select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,itp_until,insurance_date,insurance_until,map_icon',
     columns:[
       {label:'Vehicul',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" style="width:34px;height:34px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:.45rem;background:#f1f5f9"> ':'')+'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')},
       {label:'Nr. înmatriculare',get:r=>esc(r.plate||'—')},
@@ -586,7 +586,8 @@ const MODULES = {
       {key:'insurance_date',label:'Asigurare — data',type:'date',hint:'Când a fost încheiată / reînnoită asigurarea.'},
       {key:'insurance_until',label:'Asigurare — valabilă până la',type:'date',hint:'Data expirării asigurării (pentru avertismente pe pagina principală).'},
       {key:'photo_url',label:'Poză vehicul',type:'photo',hint:'O fotografie a automobilului.'},
-      {key:'contract_url',label:'Contract (vânzare / locațiune)',type:'file',hint:'Atașează contractul de cumpărare sau de locațiune/leasing (PDF/scan).'} ] },
+      {key:'contract_url',label:'Contract (vânzare / locațiune)',type:'file',hint:'Atașează contractul de cumpărare sau de locațiune/leasing (PDF/scan).'},
+      {key:'map_icon',label:'Iconiță pe hartă',type:'select',options:[{value:'car',label:'🚗 Mașină'},{value:'van',label:'🚐 Dubă'},{value:'pickup',label:'🛻 Pickup'},{value:'truck',label:'🚚 Camion'},{value:'mixer',label:'🚛 Camion greu / beton'},{value:'bus',label:'🚌 Autobuz'},{value:'moto',label:'🏍️ Motocicletă'},{value:'excavator',label:'🚜 Utilaj / excavator'},{value:'crane',label:'🏗️ Macara'},{value:'pin',label:'📍 Punct'}],default:'car',hint:'Cum apare vehiculul pe „Hartă flotă".'} ] },
 
   furnizori:{ title:'Furnizori', sub:'Parteneri și furnizori.', icon:'🏭', group:'Catalog', table:'suppliers',
     newLabel:'Furnizor nou', orderBy:{col:'name',asc:true},
@@ -1163,7 +1164,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v100';
+const APP_VERSION='cod373-v101';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2781,30 +2782,92 @@ async function wialonTest(){ const tok=($('set-wialon-token').value||'').trim();
     toast('✅ Conectat la Wialon — '+n+' vehicule găsite. Salvează setările ca să apară pe hartă.');
   }catch(e){ toast('❌ Conectare eșuată: '+(e.message||e)); }
 }
+/* ════ HARTĂ FLOTĂ — versiune live (Wialon) cu iconițe, listă, urmărire ════ */
+let _hMap=null,_hMarkers={},_hTimer=null,_hFollow=null,_hVeh=[],_hPts=[],_hSel=null,_hQuery='';
+const VEH_EMOJI={car:'🚗',van:'🚐',pickup:'🛻',truck:'🚚',mixer:'🚛',bus:'🚌',moto:'🏍️',excavator:'🚜',crane:'🏗️',pin:'📍'};
+function hNorm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function hMatchVeh(name){ const n=hNorm(name); if(!n) return null; return _hVeh.find(v=>(v.plate&&hNorm(v.plate).length>=4&&n.indexOf(hNorm(v.plate))>=0)) || _hVeh.find(v=>v.label&&hNorm(v.label)===n) || _hVeh.find(v=>v.label&&hNorm(v.label).length>=3&&n.indexOf(hNorm(v.label))>=0) || null; }
+function injectHartaStyle(){ if(document.getElementById('harta-style')) return; const css=
+  '.harta-wrap{display:flex;height:620px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}'
+ +'.harta-side{width:290px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}'
+ +'.harta-side .hs-top{padding:.55rem .7rem;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:.45rem}'
+ +'.harta-side .hs-top input{width:100%;padding:.5rem .6rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none}'
+ +'.hs-list{flex:1;overflow:auto}'
+ +'.hs-item{display:flex;align-items:center;gap:.55rem;padding:.5rem .7rem;border-bottom:1px solid var(--line);cursor:pointer}'
+ +'.hs-item:hover{background:var(--bg)} .hs-item.sel{background:var(--primary-soft)}'
+ +'.hs-em{font-size:1.25rem;flex:none}.hs-nm{font-weight:600;font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+ +'.hs-meta{font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+ +'.hs-dot{width:9px;height:9px;border-radius:50%;flex:none;margin-left:auto}'
+ +'#map{flex:1;min-height:320px;background:var(--bg)}'
+ +'.veh-mk{position:relative;width:40px;display:flex;flex-direction:column;align-items:center}'
+ +'.veh-mk .b{width:34px;height:34px;border-radius:50% 50% 50% 4px;background:#fff;border:3px solid #16a34a;display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 2px 6px rgba(0,0,0,.35);transform:rotate(45deg)}'
+ +'.veh-mk .b span{transform:rotate(-45deg)}'
+ +'.veh-mk.idle .b{border-color:#9ca3af}'
+ +'.veh-mk.sel .b{border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.35),0 2px 6px rgba(0,0,0,.35)}'
+ +'.veh-mk .lbl{margin-top:3px;background:rgba(15,28,51,.85);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:5px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}'
+ +'.veh-mk .hd{position:absolute;left:50%;top:17px;width:0;height:0;transform:translate(-50%,-50%) rotate(var(--rot,0deg))}'
+ +'.veh-mk .hd::before{content:"";position:absolute;left:-5px;top:-30px;border:5px solid transparent;border-bottom-color:#16a34a}'
+ +'.harta-bar{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.7rem}'
+ +'@media(max-width:760px){.harta-wrap{flex-direction:column;height:auto}.harta-side{width:auto;max-height:210px;border-right:none;border-bottom:1px solid var(--line)}#map{height:400px}}';
+  const st=document.createElement('style'); st.id='harta-style'; st.textContent=css; document.head.appendChild(st); }
+function vehDivIcon(emoji,moving,course,sel){ const rot=(course!=null&&moving)?course:null;
+  const html='<div class="veh-mk'+(moving?'':' idle')+(sel?' sel':'')+'">'+(rot!=null?'<div class="hd" style="--rot:'+rot+'deg"></div>':'')+'<div class="b"><span>'+emoji+'</span></div></div>';
+  return L.divIcon({html:html,className:'veh-divicon',iconSize:[40,40],iconAnchor:[20,20],popupAnchor:[0,-18]}); }
+function hPopup(pt){ const t=pt.time?(' · '+fmtDate(isoLocal(pt.time))+' '+String(pt.time.getHours()).padStart(2,'0')+':'+String(pt.time.getMinutes()).padStart(2,'0')):'';
+  return '<div style="min-width:160px"><b>'+esc(pt.name)+'</b><div style="font-size:.8rem;color:#6b7793;margin-top:.2rem">'+(pt.moving?('🟢 În mișcare · '+Math.round(pt.speed)+' km/h'):'⚪ Oprit')+t+'</div>'+(pt.vid?'<a onclick="closeMapPopupGo(\''+pt.vid+'\',\''+jsArg(pt.name)+'\')" style="display:inline-block;margin-top:.4rem;color:var(--primary);cursor:pointer;font-size:.8rem">🩺 Fișa mașinii</a>':'')+'</div>'; }
+function closeMapPopupGo(vid,nm){ if(_hMap) _hMap.closePopup(); vehicleLog(vid,nm); }
+async function hWialonUnits(){ const sid=await wialonLogin(); const j=await wialonCall('core/search_items',{spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1025,from:0,to:0}, sid); return (j&&j.items)||[]; }
 async function renderHarta(){
   const live=!!wialonToken();
-  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>🗺️ '+(LANG==='ru'?'Карта автопарка':'Hartă flotă')+'</h3><span style="font-size:.78rem;color:var(--muted)">'+(live?'🛰️ GPS live din Wialon':'Locația vehiculelor (din aplicația șoferului)')+'</span></div><div id="map" style="height:520px;background:var(--bg)"></div><div id="map-note"></div></div>';
+  clearInterval(_hTimer); _hMap=null; _hMarkers={};
+  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>🗺️ '+(LANG==='ru'?'Карта автопарка':'Hartă flotă')+'</h3><span id="harta-sub" style="font-size:.78rem;color:var(--muted)">'+(live?'🛰️ GPS live din Wialon':'Locația din aplicația șoferului')+'</span></div>'
+    +'<div style="padding:0 1.2rem 1.2rem">'
+    +'<div class="harta-bar"><button class="btn-ghost" onclick="hartaRefresh(true)">🔄 Reîmprospătează</button><button class="btn-ghost" onclick="hartaFitAll()">🔭 Vezi tot</button>'+(_hFollow?'<button class="btn-ghost" onclick="hartaUnfollow()">🎯 Nu mai urmări</button>':'')+'<span id="harta-status" style="font-size:.78rem;color:var(--muted);margin-left:auto"></span></div>'
+    +'<div class="harta-wrap"><div class="harta-side"><div class="hs-top"><input id="harta-search" placeholder="🔎 Caută vehicul…" oninput="_hQuery=this.value;hartaRenderList()"/></div><div class="hs-list" id="harta-list"><div style="padding:1rem;color:var(--muted);font-size:.85rem">Se încarcă…</div></div></div><div id="map"></div></div>'
+    +'</div></div>';
   await loadLeaflet();
   if(!window.L){ $('map').innerHTML='<div class="empty">Harta nu s-a putut încărca (verifică internetul).</div>'; return; }
-  const { data:veh }=await sb.from('vehicles').select('label,plate,status,last_lat,last_lng,last_seen_at');
-  const map=L.map('map').setView([47.01,28.86],11);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-  let plotted=0, note='';
-  if(live){
-    try{ const sid=await wialonLogin();
-      const j=await wialonCall('core/search_items',{spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1025,from:0,to:0}, sid);
-      const units=(j&&j.items)||[];
-      units.forEach(u=>{ const p=u.pos; if(p&&p.y!=null&&p.x!=null){ const t=p.t?new Date(p.t*1000):null; const tm=t?(' · '+isoLocal(t)+' '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')):''; L.marker([p.y,p.x]).addTo(map).bindPopup('<b>🛰️ '+esc(u.nm||'')+'</b>'+(p.s!=null?'<br>'+p.s+' km/h':'')+(tm?'<br><small>'+esc(tm.slice(3))+'</small>':'')); plotted++; if(plotted===1) map.setView([p.y,p.x],12); } });
-      try{ await wialonCall('core/logout',{},sid); }catch(e){}
-      note='🛰️ '+plotted+' vehicule cu poziție din Wialon.';
-    }catch(e){ note='⚠️ Wialon: '+(e.message||e)+'. Arăt pozițiile din aplicația șoferului. (Verifică token-ul în Setări.)'; }
-  }
-  if(!plotted){ const wc=(veh||[]).filter(v=>v.last_lat!=null&&v.last_lng!=null);
-    wc.forEach(v=>{ L.marker([v.last_lat,v.last_lng]).addTo(map).bindPopup('<b>'+esc(v.label)+'</b><br>'+esc(v.plate||'')+' · '+esc(v.status||'')+(v.last_seen_at?'<br><small>'+esc(String(v.last_seen_at).slice(0,16).replace('T',' '))+'</small>':'')); });
-    if(wc.length){ map.setView([wc[0].last_lat,wc[0].last_lng],12); plotted=wc.length; if(!note) note='Locații din aplicația șoferului.'; } }
-  $('map-note').innerHTML = plotted? '<div style="padding:.6rem 1.2rem;color:var(--muted);font-size:.82rem">'+esc(note)+'</div>' : '<div style="padding:1rem;color:var(--muted);font-size:.85rem">'+(live?esc(note||''):'Niciun vehicul cu locație. Conectează GPS Wialon în Setări sau trimite locația din aplicația de teren.')+'</div>';
-  setTimeout(()=>map.invalidateSize(),200);
+  injectHartaStyle();
+  _hMap=L.map('map',{zoomControl:true}).setView([47.01,28.86],11);
+  const street=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_hMap);
+  const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'© Esri'});
+  L.control.layers({'🗺️ Stradă':street,'🛰️ Satelit':sat},null,{position:'topright'}).addTo(_hMap);
+  const vr=await sb.from('vehicles').select('id,label,plate,status,map_icon,last_lat,last_lng,last_seen_at'); _hVeh=vr.data||[];
+  await hartaRefresh(true);
+  setTimeout(()=>{ if(_hMap) _hMap.invalidateSize(); },200);
+  clearInterval(_hTimer); _hTimer=setInterval(()=>{ if(document.getElementById('map')&&_hMap){ hartaRefresh(false); } else { clearInterval(_hTimer); } }, 20000);
 }
+async function hartaRefresh(fit){
+  if(!_hMap) return;
+  const live=!!wialonToken(); let pts=[], note='';
+  if(live){
+    try{ const units=await hWialonUnits();
+      units.forEach(u=>{ const p=u.pos; if(p&&p.y!=null&&p.x!=null){ const v=hMatchVeh(u.nm); pts.push({key:'w'+u.id,name:u.nm||(v&&v.label)||'—',lat:p.y,lng:p.x,speed:+p.s||0,course:(p.c!=null?+p.c:null),time:p.t?new Date(p.t*1000):null,moving:(+p.s||0)>2,emoji:VEH_EMOJI[(v&&v.map_icon)||'car']||'🚗',vid:v&&v.id||null}); } });
+      note='🛰️ '+pts.length+' vehicule · Wialon';
+    }catch(e){ note='⚠️ Wialon: '+(e.message||e); }
+  }
+  if(!pts.length && !live){ (_hVeh||[]).filter(v=>v.last_lat!=null&&v.last_lng!=null).forEach(v=>{ pts.push({key:'v'+v.id,name:v.label,lat:v.last_lat,lng:v.last_lng,speed:0,course:null,time:v.last_seen_at?new Date(v.last_seen_at):null,moving:false,emoji:VEH_EMOJI[v.map_icon||'car']||'🚗',vid:v.id}); }); if(pts.length&&!note) note='Locații din aplicația șoferului'; }
+  _hPts=pts;
+  const seen={};
+  pts.forEach(pt=>{ seen[pt.key]=1; const ic=vehDivIcon(pt.emoji,pt.moving,pt.course,_hSel===pt.key);
+    if(_hMarkers[pt.key]){ _hMarkers[pt.key].setLatLng([pt.lat,pt.lng]).setIcon(ic).setPopupContent(hPopup(pt)); }
+    else { const m=L.marker([pt.lat,pt.lng],{icon:ic}).addTo(_hMap).bindPopup(hPopup(pt)); m.on('click',()=>{ _hSel=pt.key; hartaRenderList(); }); _hMarkers[pt.key]=m; } });
+  Object.keys(_hMarkers).forEach(k=>{ if(!seen[k]){ _hMap.removeLayer(_hMarkers[k]); delete _hMarkers[k]; } });
+  if(fit) hartaFitAll();
+  if(_hFollow && _hMarkers[_hFollow]){ const pt=pts.find(p=>p.key===_hFollow); if(pt) _hMap.panTo([pt.lat,pt.lng]); }
+  const now=new Date(); const st=$('harta-status'); if(st) st.textContent=(note?note+' · ':'')+'actualizat '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+  hartaRenderList();
+}
+function hartaRenderList(){
+  const el=$('harta-list'); if(!el) return;
+  let pts=_hPts.slice().sort((a,b)=>(b.moving-a.moving)||a.name.localeCompare(b.name));
+  const q=hNorm(_hQuery); if(q) pts=pts.filter(p=>hNorm(p.name).indexOf(q)>=0);
+  if(!pts.length){ el.innerHTML='<div style="padding:1rem;color:var(--muted);font-size:.85rem">'+(_hPts.length?'Niciun rezultat.':'Niciun vehicul cu poziție. Conectează Wialon în Setări.')+'</div>'; return; }
+  el.innerHTML=pts.map(p=>'<div class="hs-item'+(_hSel===p.key?' sel':'')+'" onclick="hartaFocus(\''+p.key+'\')"><span class="hs-em">'+p.emoji+'</span><div style="min-width:0;flex:1"><div class="hs-nm">'+esc(p.name)+'</div><div class="hs-meta">'+(p.moving?(Math.round(p.speed)+' km/h'):'oprit')+(p.time?' · '+String(p.time.getHours()).padStart(2,'0')+':'+String(p.time.getMinutes()).padStart(2,'0'):'')+'</div></div><span class="hs-dot" style="background:'+(p.moving?'#16a34a':'#9ca3af')+'"></span></div>').join('');
+}
+function hartaFocus(key){ _hSel=key; _hFollow=key; const pt=_hPts.find(p=>p.key===key); if(pt&&_hMap){ _hMap.setView([pt.lat,pt.lng], Math.max(_hMap.getZoom(),15)); const m=_hMarkers[key]; if(m){ m.setIcon(vehDivIcon(pt.emoji,pt.moving,pt.course,true)); m.openPopup(); } } hartaRenderList(); }
+function hartaFitAll(){ if(!_hMap||!_hPts.length) return; if(_hPts.length===1){ _hMap.setView([_hPts[0].lat,_hPts[0].lng],14); return; } const b=L.latLngBounds(_hPts.map(p=>[p.lat,p.lng])); _hMap.fitBounds(b,{padding:[40,40],maxZoom:15}); }
+function hartaUnfollow(){ _hFollow=null; const b=$('harta-status'); renderHarta(); }
 
 /* ════ SETĂRI FIRMĂ ════ */
 async function renderSetari(){
