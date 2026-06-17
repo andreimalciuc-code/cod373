@@ -1164,7 +1164,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v102';
+const APP_VERSION='cod373-v103';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2791,7 +2791,7 @@ const VEH_EMOJI={car:'🚗',van:'🚐',pickup:'🛻',truck:'🚚',mixer:'🚛',b
 function hNorm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function hMatchVeh(name){ const n=hNorm(name); if(!n) return null; return _hVeh.find(v=>(v.plate&&hNorm(v.plate).length>=4&&n.indexOf(hNorm(v.plate))>=0)) || _hVeh.find(v=>v.label&&hNorm(v.label)===n) || _hVeh.find(v=>v.label&&hNorm(v.label).length>=3&&n.indexOf(hNorm(v.label))>=0) || null; }
 function injectHartaStyle(){ if(document.getElementById('harta-style')) return; const css=
-  '.harta-wrap{display:flex;height:620px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}'
+  '.harta-wrap{display:flex;height:620px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);isolation:isolate}'
  +'.harta-side{width:290px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}'
  +'.harta-side .hs-top{padding:.55rem .7rem;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:.45rem}'
  +'.harta-side .hs-top input{width:100%;padding:.5rem .6rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none}'
