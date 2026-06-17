@@ -1171,7 +1171,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v111';
+const APP_VERSION='cod373-v112';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3038,6 +3038,16 @@ async function renderSetari(){
     +'<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn-ghost" onclick="wialonTest()">🔌 Testează conexiunea</button><button class="btn-primary" onclick="saveSetari()">Salvează</button></div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După salvare, deschide <a onclick="go(\'harta\')" style="cursor:pointer;color:var(--primary)">Hartă flotă</a> — pozițiile vin live din Wialon.</div>'
     +'</div></div>'
+    +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🔌 Integrări contabilitate</h3></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Conectează programul de contabilitate folosit (de tine sau de clienții tăi). Două căi: <b>fișiere de export</b> (merg pentru orice) și <b>conectare live prin API</b> (lexoffice / sevdesk).</p>'
+    +'<div style="font-weight:700;font-size:.86rem;margin:.3rem 0 .4rem">📤 Export (pentru contabil / orice program)</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem"><button class="btn-ghost" onclick="exportContabil()">📊 Export 1C / CSV (Moldova)</button><button class="btn-ghost" onclick="exportDATEV()">🇩🇪 Export DATEV (Buchungsstapel)</button><span style="font-size:.78rem;color:var(--muted);align-self:center">e-Factura <b>XRechnung</b> (acceptată de lexoffice/sevdesk/DATEV) se descarcă din fiecare factură → opțiunea „🇩🇪 e-Factură DE".</span></div>'
+    +'<div style="font-weight:700;font-size:.86rem;margin:.3rem 0 .4rem;border-top:1px solid var(--line);padding-top:.7rem">🔗 Conectare live (API)</div>'
+    +'<div class="field"><label>lexoffice — cheie API (Public API) <span class="hint-i" title="O generezi în lexoffice: Setări → Extensii / Public API. Necesită un abonament lexoffice care permite API.">ⓘ</span></label><div style="display:flex;gap:.5rem"><input id="set-lexoffice" type="text" autocomplete="off" style="flex:1" value="'+esc(au.lexoffice_key||'')+'" placeholder="cheia API lexoffice"/><button class="btn-ghost" onclick="acctTest(\'lexoffice\')">🔌 Testează</button></div></div>'
+    +'<div class="field"><label>sevdesk — token API <span class="hint-i" title="Îl găsești în sevdesk: Setări → Utilizator → Token API.">ⓘ</span></label><div style="display:flex;gap:.5rem"><input id="set-sevdesk" type="text" autocomplete="off" style="flex:1" value="'+esc(au.sevdesk_key||'')+'" placeholder="token-ul API sevdesk"/><button class="btn-ghost" onclick="acctTest(\'sevdesk\')">🔌 Testează</button></div></div>'
+    +'<button class="btn-primary" onclick="saveSetari()">Salvează integrările</button>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După „Testează" reușit și „Salvează", din fiecare factură vei putea trimite direct în programul conectat (în lucru — îți activez butonul după ce confirmi conexiunea).</div>'
+    +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🔒 Confidențialitate &amp; date</h3></div><div class="modal-body">'
     +'<p style="color:var(--muted);margin-bottom:1rem">Conform legislației privind datele cu caracter personal, ai control deplin asupra datelor firmei.</p>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.6rem">'
@@ -3126,6 +3136,8 @@ async function saveSetari(){
   if($('set-wstart')) au.work_start=$('set-wstart').value||null;
   if($('set-wend')) au.work_end=$('set-wend').value||null;
   if($('set-wbreak')) au.work_break=+$('set-wbreak').value;
+  if($('set-lexoffice')) au.lexoffice_key=($('set-lexoffice').value||'').trim()||null;
+  if($('set-sevdesk')) au.sevdesk_key=($('set-sevdesk').value||'').trim()||null;
   if($('set-wialon-token')) au.wialon_token=($('set-wialon-token').value||'').trim()||null;
   if($('set-wialon-host')) au.wialon_host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com');
   patch.automations=au;
@@ -4492,6 +4504,22 @@ async function genEfactura(id){
   renderModule('facturi');
 }
 
+/* ════ INTEGRĂRI CONTABILITATE (lexoffice / sevdesk via proxy acct) ════ */
+async function acctTest(provider){
+  const el=$('set-'+provider); const key=(el&&el.value||'').trim();
+  if(!key){ toast('Pune întâi cheia/token-ul.'); return; }
+  toast('⏳ Testez conexiunea '+provider+'…');
+  try{
+    const path=provider==='lexoffice'?'/v1/profile':'/v1/SevUser';
+    const { data, error }=await sb.functions.invoke('acct',{body:{provider:provider,path:path,method:'GET',key:key}});
+    if(error) throw new Error(error.message||'proxy');
+    if(data&&data.error){ toast('❌ Proxy: '+esc(data.error)); return; }
+    const st=data&&data.status, body=data&&data.body;
+    if(!(st>=200&&st<300)){ toast('❌ Cheie/token respins (cod '+st+'). Verifică valoarea.'); return; }
+    if(provider==='lexoffice'){ toast('✅ lexoffice conectat'+(body&&body.companyName?': '+esc(body.companyName):'')+'.'); }
+    else { const u=body&&body.objects&&body.objects[0]; toast('✅ sevdesk conectat'+(u&&u.fullname?': '+esc(u.fullname):'')+'.'); }
+  }catch(e){ toast('❌ Conectare eșuată: '+(e.message||e)); }
+}
 /* ════ EXPORT CONTABIL (CSV pentru 1C/contabil) ════ */
 async function exportContabil(){
   toast('⏳ Pregătesc exportul…');
