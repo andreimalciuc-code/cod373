@@ -79,6 +79,8 @@
     'Șoferi atribuiți':{ru:'Назначенные водители',de:'Zugewiesene Fahrer',en:'Assigned drivers'},
     'Salvează șoferii':{ru:'Сохранить водителей',de:'Fahrer speichern',en:'Save drivers'},
     'Conduce':{ru:'Управляет',de:'Fährt',en:'Drives'},
+    'Marca comercială a':{ru:'Торговая марка',de:'Handelsmarke von',en:'Trademark of'},
+    'Marcă comercială (opțional)':{ru:'Торговая марка (необязательно)',de:'Handelsmarke (optional)',en:'Trademark (optional)'},
     'Stoc pe locații (șantiere/depozit)':{ru:'Запас по локациям (объекты/склад)',de:'Bestand nach Standort (Baustelle/Lager)',en:'Stock by location (sites/warehouse)'},
     'Total în stoc:':{ru:'Всего на складе:',de:'Bestand gesamt:',en:'Total in stock:'},
     '＋ Adaugă la o locație':{ru:'＋ Добавить на локацию',de:'＋ Zu Standort hinzufügen',en:'＋ Add to a location'},

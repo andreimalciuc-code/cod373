@@ -1171,7 +1171,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v107';
+const APP_VERSION='cod373-v108';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3009,7 +3009,8 @@ async function renderSetari(){
       +'<div style="display:flex;align-items:center;gap:1rem"><div id="set-logo-prev" style="width:64px;height:64px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;color:var(--muted);font-size:.7rem">logo</div>'
       +'<label class="btn-ghost" style="cursor:pointer">📤 Încarcă logo<input type="file" id="set-logo" accept="image/*" style="display:none" onchange="uploadFirmLogo(this)"/></label>'
       +(f.logo_url?'<button class="btn-ghost" style="color:var(--red)" onclick="removeFirmLogo()">🗑 Elimină</button>':'')+'</div></div>'
-    +'<div class="field"><label>Denumirea firmei *</label><input id="set-name" value="'+esc(f.name||'')+'"/></div>'
+    +'<div class="field"><label>Denumirea firmei (persoana juridică) *</label><input id="set-name" value="'+esc(f.name||'')+'"/></div>'
+    +'<div class="field"><label>Marcă comercială (opțional) <span class="hint-i" title="Denumirea comercială sub care lucrezi. Pe facturi/devize apare mare, cu mențiunea „marca comercială a [denumirea juridică]".">ⓘ</span></label><input id="set-brand" value="'+esc(au.brand_name||'')+'" placeholder="ex: BuildPro"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Dacă o completezi, pe documente apare marca, urmată de „marca comercială a '+esc(f.name||'persoana juridică')+'".</div></div>'
     +'<div class="row-2"><div class="field"><label>IDNO / Cod fiscal</label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
     +'<div class="field"><label>Telefon</label><input id="set-phone" value="'+esc(f.phone||'')+'"/></div></div>'
     +'<div class="field"><label>Adresă</label><input id="set-addr" value="'+esc(f.address||'')+'"/></div>'
@@ -3119,6 +3120,7 @@ async function saveSetari(){
     vat_rate:Number($('set-vat').value)||20, currency:($('set-cur').value||'MDL').toUpperCase().slice(0,3), country:($('set-country')?$('set-country').value:null), vat_payer:$('set-vatp').checked, bank_accounts:($('set-bank')?($('set-bank').value||'').trim()||null:undefined) };
   if(patch.bank_accounts===undefined) delete patch.bank_accounts;
   const au=Object.assign({}, state.firm.automations||{});
+  if($('set-brand')) au.brand_name=($('set-brand').value||'').trim()||null;
   if($('set-tz')) au.tz=$('set-tz').value||null;
   if($('set-datefmt')) au.date_fmt=$('set-datefmt').value||null;
   if($('set-wstart')) au.work_start=$('set-wstart').value||null;
