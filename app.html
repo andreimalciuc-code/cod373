@@ -1164,7 +1164,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v103';
+const APP_VERSION='cod373-v104';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2831,7 +2831,7 @@ async function renderHarta(){
   _hSpeed=+((state.firm&&state.firm.automations&&state.firm.automations.speed_limit))||0;
   $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>🗺️ '+(LANG==='ru'?'Карта автопарка':'Hartă flotă')+'</h3><span id="harta-sub" style="font-size:.78rem;color:var(--muted)">'+(live?'🛰️ GPS live din Wialon':'Locația din aplicația șoferului')+'</span></div>'
     +'<div style="padding:0 1.2rem 1.2rem">'
-    +'<div class="harta-bar"><button class="btn-ghost" onclick="hartaRefresh(true)">🔄 Reîmprospătează</button><button class="btn-ghost" onclick="hartaFitAll()">🔭 Vezi tot</button>'+(live?'<button class="btn-ghost" id="harta-zones-btn" onclick="hZonesToggle()">🚧 Zone (geofence)</button>':'')+(_hFollow?'<button class="btn-ghost" onclick="hartaUnfollow()">🎯 Nu mai urmări</button>':'')+'<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)">🚨 Limită <input class="spd" id="harta-speed" type="number" min="0" value="'+(_hSpeed||'')+'" placeholder="km/h" onchange="hSetSpeed(this.value)"/> km/h</span><span id="harta-status" style="font-size:.78rem;color:var(--muted);margin-left:auto"></span></div>'
+    +'<div class="harta-bar"><button class="btn-ghost" onclick="hartaManualRefresh()">🔄 Reîmprospătează</button><button class="btn-ghost" onclick="hartaFitAll(true)">🔭 Vezi tot</button>'+(live?'<button class="btn-ghost" id="harta-zones-btn" onclick="hZonesToggle()">🚧 Zone (geofence)</button>':'')+(_hFollow?'<button class="btn-ghost" onclick="hartaUnfollow()">🎯 Nu mai urmări</button>':'')+'<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)">🚨 Limită <input class="spd" id="harta-speed" type="number" min="0" value="'+(_hSpeed||'')+'" placeholder="km/h" onchange="hSetSpeed(this.value)"/> km/h</span><span id="harta-status" style="font-size:.78rem;color:var(--muted);margin-left:auto"></span></div>'
     +'<div id="harta-warn"></div>'
     +'<div class="harta-wrap"><div class="harta-side"><div class="hs-top"><input id="harta-search" placeholder="🔎 Caută vehicul…" oninput="_hQuery=this.value;hartaRenderList()"/></div><div class="hs-list" id="harta-list"><div style="padding:1rem;color:var(--muted);font-size:.85rem">Se încarcă…</div></div></div><div id="map"></div></div>'
     +'</div></div>';
@@ -2882,7 +2882,8 @@ function hartaRenderList(){
   el.innerHTML=pts.map(p=>'<div class="hs-item'+(_hSel===p.key?' sel':'')+'" onclick="hartaFocus(\''+p.key+'\')"><span class="hs-em">'+p.emoji+'</span><div style="min-width:0;flex:1"><div class="hs-nm">'+(p.over?'🚨 ':'')+esc(p.name)+'</div><div class="hs-meta"'+(p.over?' style="color:#dc2626;font-weight:600"':'')+'>'+(p.moving?(Math.round(p.speed)+' km/h'):'oprit')+(p.time?' · '+String(p.time.getHours()).padStart(2,'0')+':'+String(p.time.getMinutes()).padStart(2,'0'):'')+'</div></div><span class="hs-dot" style="background:'+(p.over?'#dc2626':(p.moving?'#16a34a':'#9ca3af'))+'"></span></div>').join('');
 }
 function hartaFocus(key){ _hSel=key; _hFollow=key; const pt=_hPts.find(p=>p.key===key); if(pt&&_hMap){ _hMap.setView([pt.lat,pt.lng], Math.max(_hMap.getZoom(),15)); const m=_hMarkers[key]; if(m){ m.setIcon(vehDivIcon(pt.emoji,pt.moving,pt.course,true,pt.over)); m.openPopup(); } } hartaRenderList(); }
-function hartaFitAll(){ if(!_hMap||!_hPts.length) return; if(_hPts.length===1){ _hMap.setView([_hPts[0].lat,_hPts[0].lng],14); return; } const b=L.latLngBounds(_hPts.map(p=>[p.lat,p.lng])); _hMap.fitBounds(b,{padding:[40,40],maxZoom:15}); }
+async function hartaManualRefresh(){ toast('🔄 Reîmprospătez…'); try{ await hartaRefresh(true); }catch(e){} toast(_hPts.length?('🔄 Reîmprospătat — '+_hPts.length+' vehicule pe hartă'):(wialonToken()?'Reîmprospătat — niciun vehicul cu poziție în Wialon acum.':'Niciun vehicul cu locație. Conectează Wialon în Setări.')); }
+function hartaFitAll(manual){ if(!_hMap) return; if(!_hPts.length){ if(manual) toast('Niciun vehicul cu poziție pe hartă acum.'); return; } if(_hPts.length===1){ _hMap.setView([_hPts[0].lat,_hPts[0].lng],14); } else { const b=L.latLngBounds(_hPts.map(p=>[p.lat,p.lng])); _hMap.fitBounds(b,{padding:[40,40],maxZoom:15}); } if(manual) toast('🔭 '+_hPts.length+' vehicule în cadru.'); }
 function hartaUnfollow(){ _hFollow=null; renderHarta(); }
 /* alertă viteză — pragul se salvează pe firmă */
 async function hSetSpeed(v){ _hSpeed=+v||0; try{ const au=Object.assign({}, state.firm.automations||{}); au.speed_limit=_hSpeed||null; await sb.from('tenants').update({automations:au}).eq('id',state.tenant); state.firm.automations=au; }catch(e){} hartaRefresh(false); }
