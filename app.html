@@ -550,23 +550,28 @@ const MODULES = {
 
   instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
-    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,sites(name)',
+    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,qty,photo_url,store_id,sites(name),stores!store_id(name)',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">·'+esc(r.code)+'</small>':'')},
+      {label:'Depozit',get:r=>r.stores?('🏬 '+esc(r.stores.name)):'<span style="color:var(--muted)">—</span>'},
+      {label:'În stoc',get:r=>r.qty!=null?('<b>'+(+r.qty).toLocaleString('ro-RO')+'</b> buc'):'<span style="color:var(--muted)">—</span>'},
       {label:'Cine o are acum',get:r=>'📍 '+esc(r.holder_label||'—')},
       {label:'Stare fizică',get:r=>toolCondBadge(r.condition,r.condition_note)},
       {label:'Stare',get:r=>pill(r.status)} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
       {key:'inventory_no',label:'Nr. inventar',type:'text'},
+      {key:'qty',label:'Câte avem (cantitate în stoc)',type:'number',hint:'Numărul de bucăți deținute.'},
+      {key:'store_id',label:'Depozit (unde se află)',type:'ref',ref:'stores',hint:'Depozitul/magazinul unde e păstrat instrumentul. Se administrează în modulul Magazine.'},
       {key:'status',label:'Stare',type:'select',options:opts(['available','in_use','maintenance','lost']),default:'available'},
-      {key:'assigned_site',label:'Atribuit șantierului',type:'ref',ref:'sites'} ] },
+      {key:'assigned_site',label:'Atribuit șantierului',type:'ref',ref:'sites'},
+      {key:'photo_url',label:'Poză instrument',type:'photo',hint:'O fotografie a sculei / utilajului.'} ] },
 
   flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'}, vehicleLog:true,
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
     select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,itp_until,insurance_date,insurance_until,map_icon',
     columns:[
-      {label:'Vehicul',get:r=>(r.photo_url?'<img class="lazimg" data-p="'+encodeURIComponent(r.photo_url)+'" style="width:34px;height:34px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:.45rem;background:#f1f5f9"> ':'')+'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')},
+      {label:'Vehicul',get:r=>'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')},
       {label:'Nr. înmatriculare',get:r=>esc(r.plate||'—')},
       {label:'Km actuali',get:r=>r.km_current!=null?((+r.km_current).toLocaleString('ro-RO')+' km'):'—'},
       {label:'ITP',get:r=>r.itp_date?dt(r.itp_date):'<span style="color:var(--muted)">—</span>'},
@@ -1164,7 +1169,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v104';
+const APP_VERSION='cod373-v105';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1380,6 +1385,12 @@ async function vehicleLog(vid, vlabel){
   const lr=await sb.from('vehicle_logs').select('id,log_date,kind,description,cost,odometer,doc_url').eq('vehicle_id',vid).order('log_date',{ascending:false}).limit(300);
   const logs=lr.data||[]; const total=logs.reduce((s,r)=>s+(+r.cost||0),0);
   const rows=logs.length?logs.map(r=>'<tr><td style="white-space:nowrap">'+dt(r.log_date)+'</td><td style="white-space:nowrap">'+esc(VLOG_KIND[r.kind]||r.kind||'—')+'</td><td>'+esc(r.description||'')+'</td><td style="white-space:nowrap">'+(r.odometer!=null?((+r.odometer).toLocaleString('ro-RO')+' km'):'')+'</td><td style="text-align:right;white-space:nowrap">'+(r.cost!=null&&r.cost!==''?money(r.cost):'')+'</td><td>'+(r.doc_url?'<a onclick="openDoc(\''+encodeURIComponent(r.doc_url)+'\')" style="cursor:pointer;color:var(--primary)">📎</a>':'')+'</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="vehicleLogDel(\''+r.id+'\',\''+vid+'\',\''+jsArg(vlabel)+'\')">🗑</button>':'')+'</td></tr>').join(''):'<tr><td colspan="7" style="color:var(--muted);padding:1rem">Nicio înregistrare încă.</td></tr>';
+  const vr=await sb.from('vehicles').select('photos,photo_url').eq('id',vid).maybeSingle();
+  const cover=vr.data&&vr.data.photo_url; const photos=((vr.data&&vr.data.photos)||[]).slice();
+  const allP=(cover?[cover]:[]).concat(photos); const urlMap={};
+  if(allP.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(allP,3600); (su.data||[]).forEach((x,i)=>{ if(x&&x.signedUrl) urlMap[allP[i]]=x.signedUrl; }); }catch(e){} }
+  const galThumb=(p,isCover)=>'<div style="position:relative;width:88px;height:88px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#f1f5f9">'+(urlMap[p]?'<img src="'+urlMap[p]+'" onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in">':'')+(isCover?'<span style="position:absolute;left:3px;top:3px;background:#2f6bff;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">principală</span>':'')+((canD&&!isCover)?'<button onclick="vehPhotoDel(\''+vid+'\',\''+encodeURIComponent(p)+'\',\''+jsArg(vlabel)+'\')" title="Șterge poza" style="position:absolute;right:2px;top:2px;background:rgba(220,38,38,.92);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:13px;line-height:1">×</button>':'')+'</div>';
+  const galHtml='<div style="margin-bottom:.9rem"><div style="font-weight:700;margin-bottom:.45rem">📷 Poze vehicul</div><div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(cover?galThumb(cover,true):'')+photos.map(p=>galThumb(p,false)).join('')+(canU?'<label class="btn-ghost" style="cursor:pointer;display:flex;align-items:center;justify-content:center;width:88px;height:88px;border:1px dashed var(--line);border-radius:9px;font-size:1.3rem">📤<input type="file" accept="image/*" multiple style="display:none" onchange="vehPhotoAdd(\''+vid+'\',\''+jsArg(vlabel)+'\',this)"/></label>':'')+((!cover&&!photos.length&&!canU)?'<span style="color:var(--muted);font-size:.85rem">Nicio poză.</span>':'')+'</div></div>';
   const kindOpts=Object.keys(VLOG_KIND).map(k=>'<option value="'+k+'">'+esc(VLOG_KIND[k])+'</option>').join('');
   const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Adaugă lucrare</div>'
     +'<div class="row-2"><div class="field"><label>Data</label><input id="vl-date" type="date" value="'+coToday()+'"/></div><div class="field"><label>Tip</label><select id="vl-kind">'+kindOpts+'</select></div></div>'
@@ -1390,6 +1401,7 @@ async function vehicleLog(vid, vlabel){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:780px">'
     +'<div class="modal-head"><h3>🩺 Fișa mașinii — '+esc(vlabel||'vehicul')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div id="vl-msg"></div>'
+    +galHtml
     +'<div style="margin-bottom:.5rem;font-size:.88rem">Total cheltuieli înregistrate: <b>'+money(total)+'</b></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Tip</th><th>Descriere</th><th>Km</th><th>Cost</th><th>Doc</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +addForm+'</div></div></div>';
@@ -1408,6 +1420,16 @@ async function vehicleLogAdd(vid, vlabel){
   toast('✅ Adăugat în fișă.'); vehicleLog(vid, vlabel);
 }
 async function vehicleLogDel(id, vid, vlabel){ if(!confirm('Ștergi această înregistrare?')) return; const { error }=await sb.from('vehicle_logs').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); vehicleLog(vid, vlabel); }
+async function vehPhotoAdd(vid, vlabel, input){ const files=input&&input.files?[...input.files]:[]; if(!files.length) return;
+  toast('⏳ Încarc '+files.length+' poză(e)…');
+  const cur=await sb.from('vehicles').select('photos').eq('id',vid).maybeSingle(); const arr=((cur.data&&cur.data.photos)||[]).slice();
+  for(const f of files){ if(f.size>8*1024*1024){ toast('O poză depășește 8 MB — sărită.'); continue; } const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/fleet/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) arr.push(path); }
+  const r=await sbRetry(()=>sb.from('vehicles').update({photos:arr}).eq('id',vid)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  toast('✅ Poze adăugate.'); vehicleLog(vid, vlabel); }
+async function vehPhotoDel(vid, encPath, vlabel){ if(!confirm('Ștergi această poză?')) return; const path=decodeURIComponent(encPath);
+  const cur=await sb.from('vehicles').select('photos').eq('id',vid).maybeSingle(); const arr=((cur.data&&cur.data.photos)||[]).filter(p=>p!==path);
+  const r=await sbRetry(()=>sb.from('vehicles').update({photos:arr}).eq('id',vid)); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+  toast('🗑 Poză ștearsă.'); vehicleLog(vid, vlabel); }
 /* ── SSM / Securitate angajat (submodul) ── */
 const SSM_KIND={instructaj:'Instructaj',eip:'EIP',incident:'Incident'};
 async function empSSM(empId, empName){
