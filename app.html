@@ -569,9 +569,10 @@ const MODULES = {
 
   flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'}, vehicleLog:true,
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
-    select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,itp_until,insurance_date,insurance_until,map_icon',
+    select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,itp_until,insurance_date,insurance_until,map_icon,vehicle_drivers(employee_id,employees(full_name))',
     columns:[
       {label:'Vehicul',get:r=>'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')},
+      {label:'Șoferi',get:r=>{ const ds=(r.vehicle_drivers||[]).map(x=>x.employees&&x.employees.full_name).filter(Boolean); return ds.length?('🧑‍✈️ '+ds.map(esc).join(', ')):'<span style="color:var(--muted)">—</span>'; }},
       {label:'Nr. înmatriculare',get:r=>esc(r.plate||'—')},
       {label:'Km actuali',get:r=>r.km_current!=null?((+r.km_current).toLocaleString('ro-RO')+' km'):'—'},
       {label:'ITP',get:r=>r.itp_date?dt(r.itp_date):'<span style="color:var(--muted)">—</span>'},
@@ -1169,7 +1170,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v105';
+const APP_VERSION='cod373-v106';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1430,6 +1431,26 @@ async function vehPhotoDel(vid, encPath, vlabel){ if(!confirm('Ștergi această 
   const cur=await sb.from('vehicles').select('photos').eq('id',vid).maybeSingle(); const arr=((cur.data&&cur.data.photos)||[]).filter(p=>p!==path);
   const r=await sbRetry(()=>sb.from('vehicles').update({photos:arr}).eq('id',vid)); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
   toast('🗑 Poză ștearsă.'); vehicleLog(vid, vlabel); }
+async function vehDrivers(vid, vlabel){
+  const [empR,dR]=await Promise.all([
+    sb.from('employees').select('id,full_name,active,has_license,license_categories,position,specialty'),
+    sb.from('vehicle_drivers').select('employee_id').eq('vehicle_id',vid)
+  ]);
+  const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
+  const assigned=new Set((dR.data||[]).map(x=>x.employee_id));
+  const rows=emps.length?emps.map(e=>{ const sp=e.specialty||e.position; return '<label style="display:flex;align-items:center;gap:.55rem;padding:.5rem .2rem;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" class="vd-cb" value="'+e.id+'" '+(assigned.has(e.id)?'checked':'')+'><span style="flex:1">'+esc(e.full_name)+(e.has_license?' <span title="Are permis de conducere" style="font-size:.82rem">🪪'+(e.license_categories?' '+esc(e.license_categories):'')+'</span>':'')+(sp?'<span style="color:var(--muted);font-size:.75rem"> · '+esc(sp)+'</span>':'')+'</span></label>'; }).join(''):'<div style="color:var(--muted);padding:1rem">Niciun angajat activ.</div>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><div class="modal-head"><h3>🧑‍✈️ Șoferi — '+esc(vlabel||'vehicul')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="vd-msg"></div><div style="font-size:.82rem;color:var(--muted);margin-bottom:.4rem">Bifează angajații care conduc acest vehicul (poți alege mai mulți). 🪪 = are permis.</div>'
+    +'<div style="max-height:50vh;overflow:auto">'+rows+'</div>'
+    +'<button class="btn-primary" style="width:100%;margin-top:.8rem" onclick="vehDriversSave(\''+vid+'\',\''+jsArg(vlabel)+'\')">Salvează șoferii</button></div></div></div>';
+}
+async function vehDriversSave(vid, vlabel){
+  const ids=[...document.querySelectorAll('.vd-cb:checked')].map(c=>c.value);
+  const del=await sb.from('vehicle_drivers').delete().eq('vehicle_id',vid); if(del.error){ showMsg('vd-msg', isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return; }
+  if(ids.length){ const rows=ids.map(eid=>({tenant_id:state.tenant,vehicle_id:vid,employee_id:eid})); const r=await sbRetry(()=>sb.from('vehicle_drivers').insert(rows)); if(r.error){ showMsg('vd-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
+  toast('✅ Șoferi salvați ('+ids.length+').'); closeModal();
+  const a=document.querySelector('.nav-item.active'); if(a&&a.dataset.view==='flota') go('flota');
+}
 /* ── SSM / Securitate angajat (submodul) ── */
 const SSM_KIND={instructaj:'Instructaj',eip:'EIP',incident:'Incident'};
 async function empSSM(empId, empName){
@@ -3660,7 +3681,7 @@ function rowActions(key,m,r){
   if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
-  if(m.vehicleLog) a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"});
+  if(m.vehicleLog){ a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
   return a;
