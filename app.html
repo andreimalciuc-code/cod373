@@ -1181,7 +1181,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v115';
+const APP_VERSION='cod373-v116';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3030,6 +3030,13 @@ async function renderSetari(){
     +'<div class="row-2"><div class="field"><label>Cotă TVA (%)</label><input id="set-vat" type="number" value="'+esc(f.vat_rate!=null?f.vat_rate:20)+'"/></div>'
     +'<div class="field"><label>Monedă</label><input id="set-cur" value="'+esc(f.currency||'MDL')+'"/></div></div>'
     +'<div class="field"><div class="chk"><input type="checkbox" id="set-vatp" '+((f.vat_payer!==false)?'checked':'')+'/> <span>Plătitor de TVA</span></div></div>'
+    +'<div style="border-top:1px dashed var(--line);margin:.4rem 0 .6rem;padding-top:.5rem;font-weight:700;font-size:.86rem">📑 Date pentru e-factură (necesare la XRechnung / e-Factura)</div>'
+    +'<div class="row-2"><div class="field"><label>Cod TVA (USt-IdNr / VAT ID)</label><input id="set-vatid" value="'+esc(au.vat_id||'')+'" placeholder="ex: DE123456789"/></div>'
+    +'<div class="field"><label>Email firmă</label><input id="set-email" type="email" value="'+esc(au.email||'')+'" placeholder="contact@firma.de"/></div></div>'
+    +'<div class="row-2"><div class="field"><label>Oraș</label><input id="set-city" value="'+esc(au.city||'')+'" placeholder="ex: Berlin"/></div>'
+    +'<div class="field"><label>Cod poștal</label><input id="set-zip" value="'+esc(au.zip||'')+'" placeholder="ex: 10115"/></div></div>'
+    +'<div class="row-2"><div class="field"><label>IBAN</label><input id="set-iban" value="'+esc(au.iban||'')+'" placeholder="DE.. / MD.."/></div>'
+    +'<div class="field"><label>BIC / SWIFT</label><input id="set-bic" value="'+esc(au.bic||'')+'"/></div></div>'
     +'<div class="field"><label>🏦 Conturi bancare ale companiei</label><textarea id="set-bank" rows="3" placeholder="Ex: IBAN MD24AG0000... · Banca de Economii · SWIFT ...">'+esc(f.bank_accounts||'')+'</textarea><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Pre-setate aici; apar pe facturi (pentru plata clientului). Un cont pe rând.</div></div>'
     +'<div class="row-2"><div class="field"><label>🌍 Fus orar <span class="hint-i" title="Folosit pentru „azi", calcule pe lună/săptămână și rapoarte — ca să nu depindă de fusul calculatorului fiecărui utilizator.">ⓘ</span></label>'
       +'<select id="set-tz">'+(function(){ const tzs=['Europe/Chisinau','Europe/Bucharest','Europe/Berlin','Europe/Vienna','Europe/Kyiv','Europe/Paris','Europe/Rome','Europe/Moscow','Europe/London','Europe/Madrid','Europe/Warsaw','UTC']; const cur=au.tz||'Europe/Chisinau'; const list=tzs.includes(cur)?tzs:[cur].concat(tzs); return list.map(z=>'<option value="'+z+'"'+(cur===z?' selected':'')+'>'+z.replace('Europe/','').replace('_',' ')+'</option>').join(''); })()+'</select></div>'
@@ -3148,6 +3155,12 @@ async function saveSetari(){
   if($('set-wend')) au.work_end=$('set-wend').value||null;
   if($('set-wbreak')) au.work_break=+$('set-wbreak').value;
   { const cp=COUNTRY_PRESETS[($('set-country')?$('set-country').value:'')||'']; if(cp){ au.id_label=cp.idLabel||null; au.legal_note=cp.legal||null; au.vat_rates=cp.vatRates||null; au.einvoice=cp.einvoice||null; } }
+  if($('set-vatid')) au.vat_id=($('set-vatid').value||'').trim()||null;
+  if($('set-email')) au.email=($('set-email').value||'').trim()||null;
+  if($('set-city')) au.city=($('set-city').value||'').trim()||null;
+  if($('set-zip')) au.zip=($('set-zip').value||'').trim()||null;
+  if($('set-iban')) au.iban=($('set-iban').value||'').trim()||null;
+  if($('set-bic')) au.bic=($('set-bic').value||'').trim()||null;
   if($('set-lexoffice')) au.lexoffice_key=($('set-lexoffice').value||'').trim()||null;
   if($('set-sevdesk')) au.sevdesk_key=($('set-sevdesk').value||'').trim()||null;
   if($('set-wialon-token')) au.wialon_token=($('set-wialon-token').value||'').trim()||null;
@@ -4590,28 +4603,51 @@ async function genUBL(id, kind){
   kind=kind||'de'; const RO=(kind==='ro');
   toast('⏳ Generez e-Factura…');
   const inv=(await sb.from('invoices').select('*, clients!client_id(name,idno,address,email)').eq('id',id).single()).data; if(!inv){ toast('Eroare.'); return; }
-  const items=(await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[];
-  const f=state.firm||{}, cl=inv.clients||{}; const cur=RO?'RON':((f.currency||'EUR').toUpperCase()); const ccode=RO?'RO':((f.country)||'DE');
+  const items=((await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[]).filter(it=>(it.name||'').trim());
+  const f=state.firm||{}, au=f.automations||{}, cl=inv.clients||{}; const cur=RO?'RON':((f.currency||'EUR').toUpperCase()); const ccode=RO?'RO':((f.country)||'DE');
   const custID=RO?'urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1':'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0';
   const X=s=>(''+(s==null?'':s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   const n2=v=>(+v||0).toFixed(2);
-  const supTax=(RO&&f.vat_payer!==false?'RO':'')+(f.idno||'');
-  const lineXml=items.map((it,i)=>{ const net=(+it.qty||0)*(+it.unit_price||0);
-    return '  <cac:InvoiceLine>\n    <cbc:ID>'+(i+1)+'</cbc:ID>\n    <cbc:InvoicedQuantity unitCode="C62">'+(+it.qty||0)+'</cbc:InvoicedQuantity>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(net)+'</cbc:LineExtensionAmount>\n    <cac:Item>\n      <cbc:Name>'+X(it.name)+'</cbc:Name>\n      <cac:ClassifiedTaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>'+n2(it.vat_rate)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>\n    </cac:Item>\n    <cac:Price><cbc:PriceAmount currencyID="'+cur+'">'+n2(it.unit_price)+'</cbc:PriceAmount></cac:Price>\n  </cac:InvoiceLine>';
+  const vatNo=au.vat_id || ((RO&&f.vat_payer!==false?'RO':'')+(f.idno||''));
+  /* totaluri și defalcare TVA pe cote — calculate din linii, ca XML-ul să fie intern consistent */
+  let lineSum=0; const groups={};
+  items.forEach(it=>{ const net=Math.round((+it.qty||0)*(+it.unit_price||0)*100)/100; lineSum+=net; const r=+it.vat_rate||0; (groups[r]=groups[r]||{base:0,rate:r}).base+=net; });
+  lineSum=Math.round(lineSum*100)/100;
+  let taxAmt=0; const taxSub=Object.keys(groups).sort((a,b)=>b-a).map(k=>{ const g=groups[k]; const tx=Math.round(g.base*g.rate)/100; taxAmt+=tx; return '    <cac:TaxSubtotal>\n      <cbc:TaxableAmount currencyID="'+cur+'">'+n2(g.base)+'</cbc:TaxableAmount>\n      <cbc:TaxAmount currencyID="'+cur+'">'+n2(tx)+'</cbc:TaxAmount>\n      <cac:TaxCategory><cbc:ID>'+(g.rate>0?'S':'Z')+'</cbc:ID><cbc:Percent>'+n2(g.rate)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>\n    </cac:TaxSubtotal>'; }).join('\n');
+  taxAmt=Math.round(taxAmt*100)/100; const grand=Math.round((lineSum+taxAmt)*100)/100;
+  const lineXml=items.map((it,i)=>{ const net=Math.round((+it.qty||0)*(+it.unit_price||0)*100)/100;
+    return '  <cac:InvoiceLine>\n    <cbc:ID>'+(i+1)+'</cbc:ID>\n    <cbc:InvoicedQuantity unitCode="C62">'+(+it.qty||0)+'</cbc:InvoicedQuantity>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(net)+'</cbc:LineExtensionAmount>\n    <cac:Item>\n      <cbc:Name>'+X(it.name)+'</cbc:Name>\n      <cac:ClassifiedTaxCategory><cbc:ID>'+((+it.vat_rate||0)>0?'S':'Z')+'</cbc:ID><cbc:Percent>'+n2(it.vat_rate)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>\n    </cac:Item>\n    <cac:Price><cbc:PriceAmount currencyID="'+cur+'">'+n2(it.unit_price)+'</cbc:PriceAmount></cac:Price>\n  </cac:InvoiceLine>';
   }).join('\n');
+  const sellerParty='  <cac:AccountingSupplierParty><cac:Party>\n'
+    +(au.email?'    <cbc:EndpointID schemeID="EM">'+X(au.email)+'</cbc:EndpointID>\n':'')
+    +'    <cac:PartyName><cbc:Name>'+X(f.name)+'</cbc:Name></cac:PartyName>\n'
+    +'    <cac:PostalAddress><cbc:StreetName>'+X(f.address||'')+'</cbc:StreetName><cbc:CityName>'+X(au.city||'')+'</cbc:CityName><cbc:PostalZone>'+X(au.zip||'')+'</cbc:PostalZone><cac:Country><cbc:IdentificationCode>'+ccode+'</cbc:IdentificationCode></cac:Country></cac:PostalAddress>\n'
+    +(vatNo?'    <cac:PartyTaxScheme><cbc:CompanyID>'+X(vatNo)+'</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>\n':'')
+    +'    <cac:PartyLegalEntity><cbc:RegistrationName>'+X(f.name)+'</cbc:RegistrationName>'+(f.idno?'<cbc:CompanyID>'+X(f.idno)+'</cbc:CompanyID>':'')+'</cac:PartyLegalEntity>\n'
+    +((f.name||f.phone||au.email)?'    <cac:Contact>'+(f.name?'<cbc:Name>'+X(f.name)+'</cbc:Name>':'')+(f.phone?'<cbc:Telephone>'+X(f.phone)+'</cbc:Telephone>':'')+(au.email?'<cbc:ElectronicMail>'+X(au.email)+'</cbc:ElectronicMail>':'')+'</cac:Contact>\n':'')
+    +'  </cac:Party></cac:AccountingSupplierParty>\n';
+  const buyerParty='  <cac:AccountingCustomerParty><cac:Party>\n'
+    +(cl.email?'    <cbc:EndpointID schemeID="EM">'+X(cl.email)+'</cbc:EndpointID>\n':'')
+    +'    <cac:PartyName><cbc:Name>'+X(cl.name||'')+'</cbc:Name></cac:PartyName>\n'
+    +'    <cac:PostalAddress><cbc:StreetName>'+X(cl.address||'')+'</cbc:StreetName><cac:Country><cbc:IdentificationCode>'+ccode+'</cbc:IdentificationCode></cac:Country></cac:PostalAddress>\n'
+    +(cl.idno?'    <cac:PartyLegalEntity><cbc:RegistrationName>'+X(cl.name||'')+'</cbc:RegistrationName><cbc:CompanyID>'+X(cl.idno)+'</cbc:CompanyID></cac:PartyLegalEntity>\n':'    <cac:PartyLegalEntity><cbc:RegistrationName>'+X(cl.name||'')+'</cbc:RegistrationName></cac:PartyLegalEntity>\n')
+    +'  </cac:Party></cac:AccountingCustomerParty>\n';
+  const payMeans=au.iban?'  <cac:PaymentMeans><cbc:PaymentMeansCode>58</cbc:PaymentMeansCode><cac:PayeeFinancialAccount><cbc:ID>'+X(au.iban)+'</cbc:ID>'+(au.bic?'<cac:FinancialInstitutionBranch><cbc:ID>'+X(au.bic)+'</cbc:ID></cac:FinancialInstitutionBranch>':'')+'</cac:PayeeFinancialAccount></cac:PaymentMeans>\n':'';
   const xml='<?xml version="1.0" encoding="UTF-8"?>\n'
     +'<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">\n'
     +'  <cbc:CustomizationID>'+custID+'</cbc:CustomizationID>\n'
+    +'  <cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>\n'
     +'  <cbc:ID>'+X(inv.number)+'</cbc:ID>\n  <cbc:IssueDate>'+(inv.issue_date||'')+'</cbc:IssueDate>\n'
     +(inv.due_date?'  <cbc:DueDate>'+inv.due_date+'</cbc:DueDate>\n':'')
     +'  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>\n  <cbc:DocumentCurrencyCode>'+cur+'</cbc:DocumentCurrencyCode>\n'
-    +'  <cac:AccountingSupplierParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(f.name)+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(f.address||'')+'</cbc:StreetName><cac:Country><cbc:IdentificationCode>'+ccode+'</cbc:IdentificationCode></cac:Country></cac:PostalAddress>\n'+(supTax?'    <cac:PartyTaxScheme><cbc:CompanyID>'+X(supTax)+'</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>\n':'')+'    <cac:PartyLegalEntity><cbc:RegistrationName>'+X(f.name)+'</cbc:RegistrationName>'+(f.idno?'<cbc:CompanyID>'+X(f.idno)+'</cbc:CompanyID>':'')+'</cac:PartyLegalEntity>\n  </cac:Party></cac:AccountingSupplierParty>\n'
-    +'  <cac:AccountingCustomerParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(cl.name||'')+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(cl.address||'')+'</cbc:StreetName>'+(RO?'<cac:Country><cbc:IdentificationCode>RO</cbc:IdentificationCode></cac:Country>':'')+'</cac:PostalAddress>\n'+(cl.idno?'    <cac:PartyLegalEntity><cbc:RegistrationName>'+X(cl.name||'')+'</cbc:RegistrationName><cbc:CompanyID>'+X(cl.idno)+'</cbc:CompanyID></cac:PartyLegalEntity>\n':'')+'  </cac:Party></cac:AccountingCustomerParty>\n'
-    +'  <cac:TaxTotal><cbc:TaxAmount currencyID="'+cur+'">'+n2(inv.vat_total)+'</cbc:TaxAmount></cac:TaxTotal>\n'
-    +'  <cac:LegalMonetaryTotal>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(inv.subtotal)+'</cbc:LineExtensionAmount>\n    <cbc:TaxExclusiveAmount currencyID="'+cur+'">'+n2(inv.subtotal)+'</cbc:TaxExclusiveAmount>\n    <cbc:TaxInclusiveAmount currencyID="'+cur+'">'+n2(inv.total)+'</cbc:TaxInclusiveAmount>\n    <cbc:PayableAmount currencyID="'+cur+'">'+n2(inv.total)+'</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n'
+    +'  <cbc:BuyerReference>'+X(au.buyer_ref||cl.name||'NA')+'</cbc:BuyerReference>\n'
+    +sellerParty+buyerParty+payMeans
+    +'  <cac:TaxTotal><cbc:TaxAmount currencyID="'+cur+'">'+n2(taxAmt)+'</cbc:TaxAmount>\n'+taxSub+'\n  </cac:TaxTotal>\n'
+    +'  <cac:LegalMonetaryTotal>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(lineSum)+'</cbc:LineExtensionAmount>\n    <cbc:TaxExclusiveAmount currencyID="'+cur+'">'+n2(lineSum)+'</cbc:TaxExclusiveAmount>\n    <cbc:TaxInclusiveAmount currencyID="'+cur+'">'+n2(grand)+'</cbc:TaxInclusiveAmount>\n    <cbc:PayableAmount currencyID="'+cur+'">'+n2(grand)+'</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n'
     +lineXml+'\n</Invoice>';
   download(xml,(RO?'eFactura-RO-':'XRechnung-')+(inv.number||id)+'.xml','application/xml;charset=utf-8');
-  toast(RO?'🇷🇴 e-Factura RO (XML) descărcată. Încarc-o în SPV (ANAF) sau prin integratorul tău.':'🇩🇪 XRechnung XML descărcat.');
+  const miss=[]; if(!au.vat_id&&!RO) miss.push('Cod TVA'); if(!au.city) miss.push('oraș'); if(!au.zip) miss.push('cod poștal'); if(!au.iban) miss.push('IBAN'); if(!au.email) miss.push('email');
+  toast((RO?'🇷🇴 e-Factura RO (XML) descărcată — încarc-o în SPV (ANAF).':'🇩🇪 XRechnung XML descărcat.')+(miss.length?' ⚠️ Completează în Setări: '+miss.join(', ')+' (cerute de validare).':''));
 }
 /* ── Import catalog furnizori (CSV sau Datanorm) → Materiale ── */
 function importCatalog(){
