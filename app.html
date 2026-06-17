@@ -1164,7 +1164,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v101';
+const APP_VERSION='cod373-v102';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2783,7 +2783,10 @@ async function wialonTest(){ const tok=($('set-wialon-token').value||'').trim();
   }catch(e){ toast('❌ Conectare eșuată: '+(e.message||e)); }
 }
 /* ════ HARTĂ FLOTĂ — versiune live (Wialon) cu iconițe, listă, urmărire ════ */
-let _hMap=null,_hMarkers={},_hTimer=null,_hFollow=null,_hVeh=[],_hPts=[],_hSel=null,_hQuery='';
+let _hMap=null,_hMarkers={},_hTimer=null,_hFollow=null,_hVeh=[],_hPts=[],_hSel=null,_hQuery='',_hCluster=null,_hLayer=null,_hZones=null,_hZonesOn=false,_hTrackLine=null,_hSpeed=0;
+function loadCluster(){ return new Promise(res=>{ if(window.L&&L.markerClusterGroup){ res(); return; }
+  ['https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css','https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css'].forEach(h=>{ const c=document.createElement('link'); c.rel='stylesheet'; c.href=h; document.head.appendChild(c); });
+  const j=document.createElement('script'); j.src='https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js'; j.onload=()=>res(); j.onerror=()=>res(); document.head.appendChild(j); }); }
 const VEH_EMOJI={car:'🚗',van:'🚐',pickup:'🛻',truck:'🚚',mixer:'🚛',bus:'🚌',moto:'🏍️',excavator:'🚜',crane:'🏗️',pin:'📍'};
 function hNorm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function hMatchVeh(name){ const n=hNorm(name); if(!n) return null; return _hVeh.find(v=>(v.plate&&hNorm(v.plate).length>=4&&n.indexOf(hNorm(v.plate))>=0)) || _hVeh.find(v=>v.label&&hNorm(v.label)===n) || _hVeh.find(v=>v.label&&hNorm(v.label).length>=3&&n.indexOf(hNorm(v.label))>=0) || null; }
@@ -2804,34 +2807,44 @@ function injectHartaStyle(){ if(document.getElementById('harta-style')) return; 
  +'.veh-mk .b span{transform:rotate(-45deg)}'
  +'.veh-mk.idle .b{border-color:#9ca3af}'
  +'.veh-mk.sel .b{border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.35),0 2px 6px rgba(0,0,0,.35)}'
+ +'.veh-mk.over .b{border-color:#dc2626!important;box-shadow:0 0 0 3px rgba(220,38,38,.35),0 2px 6px rgba(0,0,0,.35)}'
+ +'.harta-bar input.spd{width:74px;padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem}'
+ +'.harta-warn{background:#fde7e5;color:#b42318;border:1px solid #f7c5c0;border-radius:9px;padding:.45rem .7rem;font-size:.82rem;font-weight:600;margin-bottom:.6rem}'
  +'.veh-mk .lbl{margin-top:3px;background:rgba(15,28,51,.85);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:5px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}'
  +'.veh-mk .hd{position:absolute;left:50%;top:17px;width:0;height:0;transform:translate(-50%,-50%) rotate(var(--rot,0deg))}'
  +'.veh-mk .hd::before{content:"";position:absolute;left:-5px;top:-30px;border:5px solid transparent;border-bottom-color:#16a34a}'
  +'.harta-bar{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.7rem}'
  +'@media(max-width:760px){.harta-wrap{flex-direction:column;height:auto}.harta-side{width:auto;max-height:210px;border-right:none;border-bottom:1px solid var(--line)}#map{height:400px}}';
   const st=document.createElement('style'); st.id='harta-style'; st.textContent=css; document.head.appendChild(st); }
-function vehDivIcon(emoji,moving,course,sel){ const rot=(course!=null&&moving)?course:null;
-  const html='<div class="veh-mk'+(moving?'':' idle')+(sel?' sel':'')+'">'+(rot!=null?'<div class="hd" style="--rot:'+rot+'deg"></div>':'')+'<div class="b"><span>'+emoji+'</span></div></div>';
+function vehDivIcon(emoji,moving,course,sel,over){ const rot=(course!=null&&moving)?course:null;
+  const html='<div class="veh-mk'+(moving?'':' idle')+(sel?' sel':'')+(over?' over':'')+'">'+(rot!=null?'<div class="hd" style="--rot:'+rot+'deg"></div>':'')+'<div class="b"><span>'+emoji+'</span></div></div>';
   return L.divIcon({html:html,className:'veh-divicon',iconSize:[40,40],iconAnchor:[20,20],popupAnchor:[0,-18]}); }
 function hPopup(pt){ const t=pt.time?(' · '+fmtDate(isoLocal(pt.time))+' '+String(pt.time.getHours()).padStart(2,'0')+':'+String(pt.time.getMinutes()).padStart(2,'0')):'';
-  return '<div style="min-width:160px"><b>'+esc(pt.name)+'</b><div style="font-size:.8rem;color:#6b7793;margin-top:.2rem">'+(pt.moving?('🟢 În mișcare · '+Math.round(pt.speed)+' km/h'):'⚪ Oprit')+t+'</div>'+(pt.vid?'<a onclick="closeMapPopupGo(\''+pt.vid+'\',\''+jsArg(pt.name)+'\')" style="display:inline-block;margin-top:.4rem;color:var(--primary);cursor:pointer;font-size:.8rem">🩺 Fișa mașinii</a>':'')+'</div>'; }
+  const head=pt.over?('🔴 Peste limită · '+Math.round(pt.speed)+' km/h'):(pt.moving?('🟢 În mișcare · '+Math.round(pt.speed)+' km/h'):'⚪ Oprit');
+  const trk=pt.uid?('<div style="margin-top:.45rem;display:flex;gap:.3rem;flex-wrap:wrap"><span style="font-size:.74rem;color:#6b7793">Traseu:</span><a onclick="hTrack(\''+pt.uid+'\',\''+jsArg(pt.name)+'\',0)" style="cursor:pointer;color:var(--primary);font-size:.78rem">azi</a> · <a onclick="hTrack(\''+pt.uid+'\',\''+jsArg(pt.name)+'\',1)" style="cursor:pointer;color:var(--primary);font-size:.78rem">ieri</a>'+(_hTrackLine?' · <a onclick="hClearTrack()" style="cursor:pointer;color:#dc2626;font-size:.78rem">șterge traseul</a>':'')+'</div>'):'';
+  return '<div style="min-width:170px"><b>'+esc(pt.name)+'</b><div style="font-size:.8rem;color:'+(pt.over?'#dc2626':'#6b7793')+';margin-top:.2rem">'+head+t+'</div>'+trk+(pt.vid?'<a onclick="closeMapPopupGo(\''+pt.vid+'\',\''+jsArg(pt.name)+'\')" style="display:inline-block;margin-top:.4rem;color:var(--primary);cursor:pointer;font-size:.8rem">🩺 Fișa mașinii</a>':'')+'</div>'; }
 function closeMapPopupGo(vid,nm){ if(_hMap) _hMap.closePopup(); vehicleLog(vid,nm); }
 async function hWialonUnits(){ const sid=await wialonLogin(); const j=await wialonCall('core/search_items',{spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1025,from:0,to:0}, sid); return (j&&j.items)||[]; }
 async function renderHarta(){
   const live=!!wialonToken();
-  clearInterval(_hTimer); _hMap=null; _hMarkers={};
+  clearInterval(_hTimer); _hMap=null; _hMarkers={}; _hZones=null; _hZonesOn=false; _hTrackLine=null;
+  _hSpeed=+((state.firm&&state.firm.automations&&state.firm.automations.speed_limit))||0;
   $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>🗺️ '+(LANG==='ru'?'Карта автопарка':'Hartă flotă')+'</h3><span id="harta-sub" style="font-size:.78rem;color:var(--muted)">'+(live?'🛰️ GPS live din Wialon':'Locația din aplicația șoferului')+'</span></div>'
     +'<div style="padding:0 1.2rem 1.2rem">'
-    +'<div class="harta-bar"><button class="btn-ghost" onclick="hartaRefresh(true)">🔄 Reîmprospătează</button><button class="btn-ghost" onclick="hartaFitAll()">🔭 Vezi tot</button>'+(_hFollow?'<button class="btn-ghost" onclick="hartaUnfollow()">🎯 Nu mai urmări</button>':'')+'<span id="harta-status" style="font-size:.78rem;color:var(--muted);margin-left:auto"></span></div>'
+    +'<div class="harta-bar"><button class="btn-ghost" onclick="hartaRefresh(true)">🔄 Reîmprospătează</button><button class="btn-ghost" onclick="hartaFitAll()">🔭 Vezi tot</button>'+(live?'<button class="btn-ghost" id="harta-zones-btn" onclick="hZonesToggle()">🚧 Zone (geofence)</button>':'')+(_hFollow?'<button class="btn-ghost" onclick="hartaUnfollow()">🎯 Nu mai urmări</button>':'')+'<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)">🚨 Limită <input class="spd" id="harta-speed" type="number" min="0" value="'+(_hSpeed||'')+'" placeholder="km/h" onchange="hSetSpeed(this.value)"/> km/h</span><span id="harta-status" style="font-size:.78rem;color:var(--muted);margin-left:auto"></span></div>'
+    +'<div id="harta-warn"></div>'
     +'<div class="harta-wrap"><div class="harta-side"><div class="hs-top"><input id="harta-search" placeholder="🔎 Caută vehicul…" oninput="_hQuery=this.value;hartaRenderList()"/></div><div class="hs-list" id="harta-list"><div style="padding:1rem;color:var(--muted);font-size:.85rem">Se încarcă…</div></div></div><div id="map"></div></div>'
     +'</div></div>';
   await loadLeaflet();
   if(!window.L){ $('map').innerHTML='<div class="empty">Harta nu s-a putut încărca (verifică internetul).</div>'; return; }
+  await loadCluster();
   injectHartaStyle();
   _hMap=L.map('map',{zoomControl:true}).setView([47.01,28.86],11);
   const street=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_hMap);
   const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'© Esri'});
   L.control.layers({'🗺️ Stradă':street,'🛰️ Satelit':sat},null,{position:'topright'}).addTo(_hMap);
+  _hCluster=(window.L&&L.markerClusterGroup)?L.markerClusterGroup({maxClusterRadius:48,showCoverageOnHover:false}):null;
+  _hLayer=_hCluster||L.layerGroup(); _hLayer.addTo(_hMap);
   const vr=await sb.from('vehicles').select('id,label,plate,status,map_icon,last_lat,last_lng,last_seen_at'); _hVeh=vr.data||[];
   await hartaRefresh(true);
   setTimeout(()=>{ if(_hMap) _hMap.invalidateSize(); },200);
@@ -2842,19 +2855,22 @@ async function hartaRefresh(fit){
   const live=!!wialonToken(); let pts=[], note='';
   if(live){
     try{ const units=await hWialonUnits();
-      units.forEach(u=>{ const p=u.pos; if(p&&p.y!=null&&p.x!=null){ const v=hMatchVeh(u.nm); pts.push({key:'w'+u.id,name:u.nm||(v&&v.label)||'—',lat:p.y,lng:p.x,speed:+p.s||0,course:(p.c!=null?+p.c:null),time:p.t?new Date(p.t*1000):null,moving:(+p.s||0)>2,emoji:VEH_EMOJI[(v&&v.map_icon)||'car']||'🚗',vid:v&&v.id||null}); } });
+      units.forEach(u=>{ const p=u.pos; if(p&&p.y!=null&&p.x!=null){ const v=hMatchVeh(u.nm); pts.push({key:'w'+u.id,uid:u.id,name:u.nm||(v&&v.label)||'—',lat:p.y,lng:p.x,speed:+p.s||0,course:(p.c!=null?+p.c:null),time:p.t?new Date(p.t*1000):null,moving:(+p.s||0)>2,emoji:VEH_EMOJI[(v&&v.map_icon)||'car']||'🚗',vid:v&&v.id||null}); } });
       note='🛰️ '+pts.length+' vehicule · Wialon';
     }catch(e){ note='⚠️ Wialon: '+(e.message||e); }
   }
   if(!pts.length && !live){ (_hVeh||[]).filter(v=>v.last_lat!=null&&v.last_lng!=null).forEach(v=>{ pts.push({key:'v'+v.id,name:v.label,lat:v.last_lat,lng:v.last_lng,speed:0,course:null,time:v.last_seen_at?new Date(v.last_seen_at):null,moving:false,emoji:VEH_EMOJI[v.map_icon||'car']||'🚗',vid:v.id}); }); if(pts.length&&!note) note='Locații din aplicația șoferului'; }
+  pts.forEach(pt=>{ pt.over = _hSpeed>0 && pt.speed>_hSpeed; });
   _hPts=pts;
   const seen={};
-  pts.forEach(pt=>{ seen[pt.key]=1; const ic=vehDivIcon(pt.emoji,pt.moving,pt.course,_hSel===pt.key);
+  pts.forEach(pt=>{ seen[pt.key]=1; const ic=vehDivIcon(pt.emoji,pt.moving,pt.course,_hSel===pt.key,pt.over);
     if(_hMarkers[pt.key]){ _hMarkers[pt.key].setLatLng([pt.lat,pt.lng]).setIcon(ic).setPopupContent(hPopup(pt)); }
-    else { const m=L.marker([pt.lat,pt.lng],{icon:ic}).addTo(_hMap).bindPopup(hPopup(pt)); m.on('click',()=>{ _hSel=pt.key; hartaRenderList(); }); _hMarkers[pt.key]=m; } });
-  Object.keys(_hMarkers).forEach(k=>{ if(!seen[k]){ _hMap.removeLayer(_hMarkers[k]); delete _hMarkers[k]; } });
+    else { const m=L.marker([pt.lat,pt.lng],{icon:ic}).bindPopup(hPopup(pt)); m.on('click',()=>{ _hSel=pt.key; hartaRenderList(); }); _hLayer.addLayer(m); _hMarkers[pt.key]=m; } });
+  Object.keys(_hMarkers).forEach(k=>{ if(!seen[k]){ _hLayer.removeLayer(_hMarkers[k]); delete _hMarkers[k]; } });
+  if(_hCluster&&_hCluster.refreshClusters) try{ _hCluster.refreshClusters(); }catch(e){}
   if(fit) hartaFitAll();
   if(_hFollow && _hMarkers[_hFollow]){ const pt=pts.find(p=>p.key===_hFollow); if(pt) _hMap.panTo([pt.lat,pt.lng]); }
+  const over=pts.filter(p=>p.over); const wb=$('harta-warn'); if(wb) wb.innerHTML = over.length?('<div class="harta-warn">🚨 '+over.length+' vehicul(e) peste limita de '+_hSpeed+' km/h: '+over.map(p=>esc(p.name)+' ('+Math.round(p.speed)+')').join(', ')+'</div>'):'';
   const now=new Date(); const st=$('harta-status'); if(st) st.textContent=(note?note+' · ':'')+'actualizat '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
   hartaRenderList();
 }
@@ -2863,11 +2879,51 @@ function hartaRenderList(){
   let pts=_hPts.slice().sort((a,b)=>(b.moving-a.moving)||a.name.localeCompare(b.name));
   const q=hNorm(_hQuery); if(q) pts=pts.filter(p=>hNorm(p.name).indexOf(q)>=0);
   if(!pts.length){ el.innerHTML='<div style="padding:1rem;color:var(--muted);font-size:.85rem">'+(_hPts.length?'Niciun rezultat.':'Niciun vehicul cu poziție. Conectează Wialon în Setări.')+'</div>'; return; }
-  el.innerHTML=pts.map(p=>'<div class="hs-item'+(_hSel===p.key?' sel':'')+'" onclick="hartaFocus(\''+p.key+'\')"><span class="hs-em">'+p.emoji+'</span><div style="min-width:0;flex:1"><div class="hs-nm">'+esc(p.name)+'</div><div class="hs-meta">'+(p.moving?(Math.round(p.speed)+' km/h'):'oprit')+(p.time?' · '+String(p.time.getHours()).padStart(2,'0')+':'+String(p.time.getMinutes()).padStart(2,'0'):'')+'</div></div><span class="hs-dot" style="background:'+(p.moving?'#16a34a':'#9ca3af')+'"></span></div>').join('');
+  el.innerHTML=pts.map(p=>'<div class="hs-item'+(_hSel===p.key?' sel':'')+'" onclick="hartaFocus(\''+p.key+'\')"><span class="hs-em">'+p.emoji+'</span><div style="min-width:0;flex:1"><div class="hs-nm">'+(p.over?'🚨 ':'')+esc(p.name)+'</div><div class="hs-meta"'+(p.over?' style="color:#dc2626;font-weight:600"':'')+'>'+(p.moving?(Math.round(p.speed)+' km/h'):'oprit')+(p.time?' · '+String(p.time.getHours()).padStart(2,'0')+':'+String(p.time.getMinutes()).padStart(2,'0'):'')+'</div></div><span class="hs-dot" style="background:'+(p.over?'#dc2626':(p.moving?'#16a34a':'#9ca3af'))+'"></span></div>').join('');
 }
-function hartaFocus(key){ _hSel=key; _hFollow=key; const pt=_hPts.find(p=>p.key===key); if(pt&&_hMap){ _hMap.setView([pt.lat,pt.lng], Math.max(_hMap.getZoom(),15)); const m=_hMarkers[key]; if(m){ m.setIcon(vehDivIcon(pt.emoji,pt.moving,pt.course,true)); m.openPopup(); } } hartaRenderList(); }
+function hartaFocus(key){ _hSel=key; _hFollow=key; const pt=_hPts.find(p=>p.key===key); if(pt&&_hMap){ _hMap.setView([pt.lat,pt.lng], Math.max(_hMap.getZoom(),15)); const m=_hMarkers[key]; if(m){ m.setIcon(vehDivIcon(pt.emoji,pt.moving,pt.course,true,pt.over)); m.openPopup(); } } hartaRenderList(); }
 function hartaFitAll(){ if(!_hMap||!_hPts.length) return; if(_hPts.length===1){ _hMap.setView([_hPts[0].lat,_hPts[0].lng],14); return; } const b=L.latLngBounds(_hPts.map(p=>[p.lat,p.lng])); _hMap.fitBounds(b,{padding:[40,40],maxZoom:15}); }
-function hartaUnfollow(){ _hFollow=null; const b=$('harta-status'); renderHarta(); }
+function hartaUnfollow(){ _hFollow=null; renderHarta(); }
+/* alertă viteză — pragul se salvează pe firmă */
+async function hSetSpeed(v){ _hSpeed=+v||0; try{ const au=Object.assign({}, state.firm.automations||{}); au.speed_limit=_hSpeed||null; await sb.from('tenants').update({automations:au}).eq('id',state.tenant); state.firm.automations=au; }catch(e){} hartaRefresh(false); }
+/* geofence-uri din Wialon */
+function hWialonColor(c){ if(c==null) return '#2f6bff'; const n=(c>>>0)&0xFFFFFF; if(!n) return '#2f6bff'; return '#'+n.toString(16).padStart(6,'0'); }
+async function hZonesToggle(){ const btn=$('harta-zones-btn');
+  if(_hZonesOn){ if(_hZones){ _hMap.removeLayer(_hZones); _hZones=null; } _hZonesOn=false; if(btn) btn.classList.remove('active'); return; }
+  toast('⏳ Încarc zonele din Wialon…');
+  try{ const sid=await wialonLogin();
+    const j=await wialonCall('core/search_items',{spec:{itemsType:'avl_resource',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:4097,from:0,to:0}, sid);
+    const grp=L.layerGroup(); let n=0;
+    ((j&&j.items)||[]).forEach(res=>{ const zones=res.zl||{}; Object.keys(zones).forEach(zid=>{ const z=zones[zid]; const col=hWialonColor(z.c); const pts=(z.p||[]).filter(p=>p&&p.y!=null&&p.x!=null);
+      if(pts.length===1 && z.w){ L.circle([pts[0].y,pts[0].x],{radius:+z.w,color:col,weight:2,fillColor:col,fillOpacity:.12}).bindTooltip(esc(z.n||'zonă')).addTo(grp); n++; }
+      else if(pts.length>=2){ const ll=pts.map(p=>[p.y,p.x]); if(pts.length>=3){ L.polygon(ll,{color:col,weight:2,fillColor:col,fillOpacity:.12}).bindTooltip(esc(z.n||'zonă')).addTo(grp); } else { L.polyline(ll,{color:col,weight:3+(z.w?Math.min(6,z.w/20):0)}).bindTooltip(esc(z.n||'zonă')).addTo(grp); } n++; }
+    }); });
+    _hZones=grp; grp.addTo(_hMap); _hZonesOn=true; if(btn) btn.classList.add('active');
+    toast(n?('✅ '+n+' zone afișate.'):'Nicio zonă (geofence) găsită în Wialon.');
+  }catch(e){ toast('❌ Nu am putut încărca zonele: '+(e.message||e)); }
+}
+/* istoric traseu (Wialon messages/load_interval) */
+async function hTrack(uid, name, dayOffset){
+  toast('⏳ Încarc traseul…');
+  try{ const sid=await wialonLogin();
+    const base=new Date(coToday()+'T00:00:00'); base.setDate(base.getDate()-(dayOffset||0));
+    const t0=Math.floor(base.getTime()/1000); const t1=t0+86400;
+    const j=await wialonCall('messages/load_interval',{itemId:+uid,timeFrom:t0,timeTo:t1,flags:1,flagsMask:0,loadCount:4294967295}, sid);
+    try{ await wialonCall('messages/unload',{}, sid); }catch(e){}
+    const msgs=(j&&j.messages)||[]; const ll=[]; msgs.forEach(m=>{ if(m.pos&&m.pos.y!=null&&m.pos.x!=null) ll.push([m.pos.y,m.pos.x]); });
+    if(_hTrackLine){ _hMap.removeLayer(_hTrackLine); _hTrackLine=null; }
+    if(!ll.length){ toast('Niciun traseu pentru '+name+' în ziua aleasă.'); return; }
+    const grp=L.layerGroup();
+    L.polyline(ll,{color:'#2f6bff',weight:4,opacity:.85}).addTo(grp);
+    L.circleMarker(ll[0],{radius:6,color:'#16a34a',fillColor:'#16a34a',fillOpacity:1}).bindTooltip('Start').addTo(grp);
+    L.circleMarker(ll[ll.length-1],{radius:6,color:'#dc2626',fillColor:'#dc2626',fillOpacity:1}).bindTooltip('Sfârșit').addTo(grp);
+    grp.addTo(_hMap); _hTrackLine=grp;
+    if(_hMap) _hMap.closePopup();
+    _hMap.fitBounds(L.latLngBounds(ll),{padding:[40,40]});
+    toast('✅ Traseu '+name+' ('+(dayOffset?'ieri':'azi')+') — '+ll.length+' puncte.');
+  }catch(e){ toast('❌ Traseul nu s-a încărcat: '+(e.message||e)); }
+}
+function hClearTrack(){ if(_hTrackLine&&_hMap){ _hMap.removeLayer(_hTrackLine); _hTrackLine=null; toast('Traseu șters.'); } }
 
 /* ════ SETĂRI FIRMĂ ════ */
 async function renderSetari(){

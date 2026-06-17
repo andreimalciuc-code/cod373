@@ -64,6 +64,7 @@
     '🔌 Testează conexiunea':{ru:'🔌 Проверить соединение',de:'🔌 Verbindung testen',en:'🔌 Test connection'},
     '🔄 Reîmprospătează':{ru:'🔄 Обновить',de:'🔄 Aktualisieren',en:'🔄 Refresh'},
     '🔭 Vezi tot':{ru:'🔭 Показать все',de:'🔭 Alle anzeigen',en:'🔭 Show all'},
+    '🚧 Zone (geofence)':{ru:'🚧 Зоны (геозоны)',de:'🚧 Zonen (Geofence)',en:'🚧 Zones (geofence)'},
     '🎯 Nu mai urmări':{ru:'🎯 Не следить',de:'🎯 Nicht mehr folgen',en:'🎯 Stop following'},
     '🔎 Caută vehicul…':{ru:'🔎 Поиск ТС…',de:'🔎 Fahrzeug suchen…',en:'🔎 Search vehicle…'},
     'Iconiță pe hartă':{ru:'Значок на карте',de:'Symbol auf Karte',en:'Map icon'},
