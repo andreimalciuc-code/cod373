@@ -1181,7 +1181,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v114';
+const APP_VERSION='cod373-v115';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3737,8 +3737,10 @@ function rowActions(key,m,r){
   if(m.toSite) a.push({i:'🏗️',l:'Creează șantier din ofertă',f:"estimateToSite('"+id+"')"});
   if(m.pageEditor) a.push({i:'📋',l:'Deschide / editează (filă nouă)',f:"window.open('"+m.pageEditor+"?id="+id+"','_blank')"});
   if(m.convertible) a.push({i:'🧾',l:'Creează factură din deviz',f:"estimateToInvoice('"+id+"')"});
-  if(m.efactura) a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"});
-  if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
+  if(m.efactura){ const cc=(state.firm&&state.firm.country)||'MD';
+    if(cc==='RO') a.push({i:'🇷🇴',l:'e-Factură RO (ANAF/SPV — XML)',f:"genEfacturaRO('"+id+"')"});
+    else if(cc==='DE'||cc==='AT') a.push({i:'🇩🇪',l:'e-Factură (XRechnung XML)',f:"genXRechnung('"+id+"')"});
+    else { a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"}); a.push({i:'🇪🇺',l:'e-Factură UBL (EN16931)',f:"genXRechnung('"+id+"')"}); } }
   if(m.efactura){ const au=(state.firm&&state.firm.automations)||{}; if(au.lexoffice_key) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'📍',l:'Unde se află (șantiere/depozit + cantități)',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
@@ -4581,30 +4583,35 @@ async function exportDATEV(){
   download(csv,'DATEV-facturi-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8');
   toast('📊 Export DATEV descărcat. Conturile 1400/8400 (SKR03) sunt implicite — confirmă-le cu contabilul.');
 }
-/* ── e-Factură germană: XRechnung (UBL 2.1 XML) ── */
-async function genXRechnung(id){
-  toast('⏳ Generez XRechnung…');
+/* ── e-Factură UBL 2.1: XRechnung (DE/AT) sau RO e-Factura (ANAF/SPV) ── */
+async function genXRechnung(id){ return genUBL(id,'de'); }
+async function genEfacturaRO(id){ return genUBL(id,'ro'); }
+async function genUBL(id, kind){
+  kind=kind||'de'; const RO=(kind==='ro');
+  toast('⏳ Generez e-Factura…');
   const inv=(await sb.from('invoices').select('*, clients!client_id(name,idno,address,email)').eq('id',id).single()).data; if(!inv){ toast('Eroare.'); return; }
   const items=(await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[];
-  const f=state.firm||{}, cl=inv.clients||{}; const cur=(f.currency||'EUR').toUpperCase();
+  const f=state.firm||{}, cl=inv.clients||{}; const cur=RO?'RON':((f.currency||'EUR').toUpperCase()); const ccode=RO?'RO':((f.country)||'DE');
+  const custID=RO?'urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1':'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0';
   const X=s=>(''+(s==null?'':s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   const n2=v=>(+v||0).toFixed(2);
+  const supTax=(RO&&f.vat_payer!==false?'RO':'')+(f.idno||'');
   const lineXml=items.map((it,i)=>{ const net=(+it.qty||0)*(+it.unit_price||0);
     return '  <cac:InvoiceLine>\n    <cbc:ID>'+(i+1)+'</cbc:ID>\n    <cbc:InvoicedQuantity unitCode="C62">'+(+it.qty||0)+'</cbc:InvoicedQuantity>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(net)+'</cbc:LineExtensionAmount>\n    <cac:Item>\n      <cbc:Name>'+X(it.name)+'</cbc:Name>\n      <cac:ClassifiedTaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>'+n2(it.vat_rate)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>\n    </cac:Item>\n    <cac:Price><cbc:PriceAmount currencyID="'+cur+'">'+n2(it.unit_price)+'</cbc:PriceAmount></cac:Price>\n  </cac:InvoiceLine>';
   }).join('\n');
   const xml='<?xml version="1.0" encoding="UTF-8"?>\n'
     +'<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">\n'
-    +'  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</cbc:CustomizationID>\n'
+    +'  <cbc:CustomizationID>'+custID+'</cbc:CustomizationID>\n'
     +'  <cbc:ID>'+X(inv.number)+'</cbc:ID>\n  <cbc:IssueDate>'+(inv.issue_date||'')+'</cbc:IssueDate>\n'
     +(inv.due_date?'  <cbc:DueDate>'+inv.due_date+'</cbc:DueDate>\n':'')
     +'  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>\n  <cbc:DocumentCurrencyCode>'+cur+'</cbc:DocumentCurrencyCode>\n'
-    +'  <cac:AccountingSupplierParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(f.name)+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(f.address||'')+'</cbc:StreetName></cac:PostalAddress>\n'+(f.idno?'    <cac:PartyTaxScheme><cbc:CompanyID>'+X(f.idno)+'</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>\n':'')+'  </cac:Party></cac:AccountingSupplierParty>\n'
-    +'  <cac:AccountingCustomerParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(cl.name||'')+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(cl.address||'')+'</cbc:StreetName></cac:PostalAddress>\n  </cac:Party></cac:AccountingCustomerParty>\n'
+    +'  <cac:AccountingSupplierParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(f.name)+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(f.address||'')+'</cbc:StreetName><cac:Country><cbc:IdentificationCode>'+ccode+'</cbc:IdentificationCode></cac:Country></cac:PostalAddress>\n'+(supTax?'    <cac:PartyTaxScheme><cbc:CompanyID>'+X(supTax)+'</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>\n':'')+'    <cac:PartyLegalEntity><cbc:RegistrationName>'+X(f.name)+'</cbc:RegistrationName>'+(f.idno?'<cbc:CompanyID>'+X(f.idno)+'</cbc:CompanyID>':'')+'</cac:PartyLegalEntity>\n  </cac:Party></cac:AccountingSupplierParty>\n'
+    +'  <cac:AccountingCustomerParty><cac:Party>\n    <cac:PartyName><cbc:Name>'+X(cl.name||'')+'</cbc:Name></cac:PartyName>\n    <cac:PostalAddress><cbc:StreetName>'+X(cl.address||'')+'</cbc:StreetName>'+(RO?'<cac:Country><cbc:IdentificationCode>RO</cbc:IdentificationCode></cac:Country>':'')+'</cac:PostalAddress>\n'+(cl.idno?'    <cac:PartyLegalEntity><cbc:RegistrationName>'+X(cl.name||'')+'</cbc:RegistrationName><cbc:CompanyID>'+X(cl.idno)+'</cbc:CompanyID></cac:PartyLegalEntity>\n':'')+'  </cac:Party></cac:AccountingCustomerParty>\n'
     +'  <cac:TaxTotal><cbc:TaxAmount currencyID="'+cur+'">'+n2(inv.vat_total)+'</cbc:TaxAmount></cac:TaxTotal>\n'
     +'  <cac:LegalMonetaryTotal>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(inv.subtotal)+'</cbc:LineExtensionAmount>\n    <cbc:TaxExclusiveAmount currencyID="'+cur+'">'+n2(inv.subtotal)+'</cbc:TaxExclusiveAmount>\n    <cbc:TaxInclusiveAmount currencyID="'+cur+'">'+n2(inv.total)+'</cbc:TaxInclusiveAmount>\n    <cbc:PayableAmount currencyID="'+cur+'">'+n2(inv.total)+'</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n'
     +lineXml+'\n</Invoice>';
-  download(xml,'XRechnung-'+(inv.number||id)+'.xml','application/xml;charset=utf-8');
-  toast('🇩🇪 XRechnung XML descărcat.');
+  download(xml,(RO?'eFactura-RO-':'XRechnung-')+(inv.number||id)+'.xml','application/xml;charset=utf-8');
+  toast(RO?'🇷🇴 e-Factura RO (XML) descărcată. Încarc-o în SPV (ANAF) sau prin integratorul tău.':'🇩🇪 XRechnung XML descărcat.');
 }
 /* ── Import catalog furnizori (CSV sau Datanorm) → Materiale ── */
 function importCatalog(){

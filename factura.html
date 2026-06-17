@@ -297,7 +297,7 @@ function lineRowHtml(i,inGroup){
     +'<td><input list="uom-list" onfocus="umFx(this)" onblur="umBl(this)" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
     +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
-    +(showVat?'<td><input id="vt-'+i+'" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>':'')
+    +(showVat?'<td><input id="vt-'+i+'" list="vat-list" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>':'')
     +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="Scrie aici totalul net pe poziție → prețul unitar se recalculează invers"/></td>'
     +'<td style="white-space:nowrap"><button class="delx" onclick="lineDetails('+i+')" title="Descriere și poză" style="'+((l.description||l.photo_url)?'color:#2f6bff':'')+'">'+((l.description||l.photo_url)?'📝':'＋')+'</button>'
     +(lineCatalogChanged(l)?'<button class="delx" onclick="saveLineToCatalog('+i+')" title="Produsul a fost modificat — actualizează în catalog sau salvează ca nou" style="color:#16a34a">💾</button>':'')
@@ -312,9 +312,10 @@ function sectionTableHtml(idxs,inGroup,gidv){
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
 }
 function uomOptions(){ const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct']; const cu=(S.firm&&S.firm.automations&&S.firm.automations.units)||[]; const cat=(S.catalog||[]).map(c=>c.unit).filter(Boolean); return Array.from(new Set(base.concat(cu).concat(cat))).map(u=>'<option value="'+esc(u)+'"></option>').join(''); }
+function vatListHtml(){ const rs=(S.firm&&S.firm.automations&&S.firm.automations.vat_rates)||[20,8,0]; return '<datalist id="vat-list">'+rs.map(r=>'<option value="'+esc(r)+'"></option>').join('')+'</datalist>'; }
 function renderLines(){
   const ungIdx=S.lines.map((l,i)=>i).filter(i=>!S.lines[i].group);
-  let html='<datalist id="uom-list">'+uomOptions()+'</datalist><div class="lsec">'+sectionTableHtml(ungIdx,false,'')+'</div>';
+  let html='<datalist id="uom-list">'+uomOptions()+'</datalist>'+vatListHtml()+'<div class="lsec">'+sectionTableHtml(ungIdx,false,'')+'</div>';
   html+='<div id="groups-wrap">';
   S.groups.forEach(g=>{ const gi=S.lines.map((l,i)=>i).filter(i=>S.lines[i].group===g.id); const gt=groupTotals(g);
     html+='<div class="lgroup" data-g="'+g.id+'" style="border:1px solid var(--line);border-radius:11px;margin-top:.8rem">'
@@ -368,7 +369,7 @@ async function lineDetails(i){
     +'<div style="font-weight:600;margin-bottom:.5rem">'+esc(l.name||'(fără denumire)')+'</div>'
     +'<div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.4rem"><div class="field" style="flex:1;margin:0"><label>Preț fără TVA</label><input id="ld-net" type="number" step="any" value="'+esc(l.unit_price||0)+'" oninput="ldSync(\'net\')"/></div>'
     +'<div class="field" style="flex:1;margin:0"><label>Preț cu TVA</label><input id="ld-gross" type="number" step="any" value="'+esc(Math.round((+l.unit_price||0)*(1+(+l.vat_rate||0)/100)*100)/100)+'" oninput="ldSync(\'gross\')"/></div>'
-    +'<div class="field" style="width:78px;margin:0"><label>TVA %</label><input id="ld-vat" type="number" step="any" value="'+esc(l.vat_rate!=null?l.vat_rate:20)+'" oninput="ldSync(\'net\')"/></div></div>'
+    +'<div class="field" style="width:78px;margin:0"><label>TVA %</label><input id="ld-vat" list="vat-list" type="number" step="any" value="'+esc(l.vat_rate!=null?l.vat_rate:20)+'" oninput="ldSync(\'net\')"/></div></div>'
     +'<div class="field"><label>Descriere (apare pe factură, sub denumire)</label><textarea id="ld-desc" rows="3">'+esc(l.description||'')+'</textarea></div>'
     +'<div class="field"><label>Poză (opțional)</label>'+thumb
     +(l.photo_url?'<button class="btn" onclick="lineRemovePhoto('+i+')" style="margin-bottom:.4rem">🗑 Șterge poza</button><br>':'')
