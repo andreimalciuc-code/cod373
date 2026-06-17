@@ -1058,6 +1058,7 @@ async function boot(){
   go(_lv && MODULES[_lv] && canSee(_lv) ? _lv : 'dashboard');
   startClock();
   hideSplash();
+  if((location.hash+location.search).indexOf('access_token=')>=0){ wialonCaptureFromUrl().then(ok=>{ if(ok) go('harta'); }); }
 }
 
 function buildNav(){
@@ -1162,7 +1163,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v98';
+const APP_VERSION='cod373-v99';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2748,18 +2749,23 @@ function wialonToken(){ return (state.firm&&state.firm.automations&&state.firm.a
 async function wialonCall(svc, params, sid){ const u='https://'+wialonHost()+'/wialon/ajax.html?svc='+encodeURIComponent(svc)+'&params='+encodeURIComponent(JSON.stringify(params||{}))+(sid?'&sid='+encodeURIComponent(sid):''); const r=await fetch(u); const j=await r.json(); if(j&&j.error){ throw new Error('cod '+j.error); } return j; }
 async function wialonLogin(){ const tok=wialonToken(); if(!tok) throw new Error('fără token'); const j=await wialonCall('token/login',{token:tok}); return j.eid; }
 function wialonWebHost(){ const h=(($('set-wialon-host')&&$('set-wialon-host').value)||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,''); return h.replace('hst-api','hosting'); }
-function wialonOpenGen(){ const web=wialonWebHost(); const origin='https://'+web;
-  const u=origin+'/login.html?client_id=Cod373&access_type=-1&activation_time=0&duration=0&flags=0x1&redirect_uri='+origin+'/post_token.html&response_type=token';
-  const w=window.open(u,'wialonLogin','width=820,height=640');
-  if(!w){ toast('Permite ferestrele pop-up pentru acest site, apoi reîncearcă.'); return; }
-  toast('Loghează-te în Wialon și aprobă accesul — token-ul vine automat aici.');
-  function onMsg(e){ if(e.origin!==origin) return; if(!e.data||typeof e.data!=='string') return; const pos=e.data.indexOf('access_token='); if(pos<0) return;
-    const token=e.data.substr(pos+13).split('&')[0]; if(!token) return;
-    window.removeEventListener('message',onMsg); try{ w.close(); }catch(_){}
-    const f=$('set-wialon-token'); if(f) f.value=token;
-    toast('✅ Token primit din Wialon. Verific conexiunea…'); try{ wialonTest(); }catch(_){}
-  }
-  window.addEventListener('message', onMsg);
+function wialonOpenGen(){ const web=wialonWebHost(); const origin='https://'+web; const back=location.origin+location.pathname;
+  try{ if($('set-wialon-host')) localStorage.setItem('c373_wialon_host', ($('set-wialon-host').value||'hst-api.wialon.com')); }catch(e){}
+  const u=origin+'/login.html?client_id=Cod373&access_type=-1&activation_time=0&duration=0&flags=0x1&redirect_uri='+encodeURIComponent(back)+'&response_type=token';
+  toast('Te duc la Wialon — loghează-te și aprobă; te aduc înapoi automat.');
+  location.href=u;
+}
+/* la întoarcerea din Wialon token-ul vine în adresă (#access_token=… sau ?access_token=…) */
+async function wialonCaptureFromUrl(){
+  let raw=(location.hash||''); if(raw.indexOf('access_token=')<0) raw=(location.search||'');
+  const pos=raw.indexOf('access_token='); if(pos<0) return false;
+  let tok=raw.substr(pos+13).split('&')[0]; try{ tok=decodeURIComponent(tok); }catch(e){}
+  try{ history.replaceState(null,'',location.origin+location.pathname); }catch(e){}
+  if(!tok) return false;
+  try{ const au=Object.assign({}, state.firm.automations||{}); au.wialon_token=tok; if(!au.wialon_host){ let hh='hst-api.wialon.com'; try{ hh=localStorage.getItem('c373_wialon_host')||hh; }catch(e){} au.wialon_host=hh; }
+    const { error }=await sb.from('tenants').update({automations:au}).eq('id',state.tenant); if(error) throw error;
+    state.firm.automations=au; toast('✅ Wialon conectat — token salvat. Deschid harta…'); return true;
+  }catch(e){ toast('Token Wialon primit, dar nu s-a salvat: '+(e.message||e)); return false; }
 }
 async function wialonTest(){ const tok=($('set-wialon-token').value||'').trim(); const host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,'');
   if(!tok){ toast('Pune întâi token-ul Wialon.'); return; }
@@ -2829,7 +2835,7 @@ async function renderSetari(){
     +'<button class="btn-primary" onclick="saveSetari()">Salvează setările</button>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🛰️ Integrare GPS (Wialon)</h3></div><div class="modal-body">'
-    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Leagă contul tău Wialon ca să vezi pozițiile reale ale vehiculelor pe „Hartă flotă". Apasă butonul de mai jos: se deschide pagina oficială Wialon, te loghezi acolo și aprobi accesul — <b>token-ul revine automat în câmpul de mai jos</b>. Apoi apasă <b>Salvează</b>. (Logarea se face pe site-ul Wialon, nu introduci parola la noi.)</p>'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Leagă contul tău Wialon ca să vezi pozițiile reale ale vehiculelor pe „Hartă flotă". Apasă butonul de mai jos: <b>te duce la Wialon</b>, te loghezi și aprobi accesul, apoi <b>te aduce automat înapoi, salvează token-ul singur și deschide harta</b>. (Logarea e pe site-ul Wialon — nu introduci parola la noi.) Dacă providerul tău folosește alt server, schimbă-l mai jos înainte.</p>'
     +'<div style="margin-bottom:.6rem"><button class="btn-ghost" onclick="wialonOpenGen()">🔑 Generează token în Wialon (se deschide Wialon)</button></div>'
     +'<div class="field"><label>Token Wialon</label><input id="set-wialon-token" type="text" autocomplete="off" value="'+esc(au.wialon_token||'')+'" placeholder="lipește aici token-ul copiat din Wialon"/></div>'
     +'<div class="field"><label>Server (host) <span class="hint-i" title="Implicit hst-api.wialon.com (Wialon Hosting). Dacă providerul tău folosește alt domeniu (ex. de la dealer), pune-l aici. Butonul de generare folosește versiunea web a aceluiași server.">ⓘ</span></label><input id="set-wialon-host" type="text" autocomplete="off" value="'+esc(au.wialon_host||'hst-api.wialon.com')+'" placeholder="hst-api.wialon.com"/></div>'
