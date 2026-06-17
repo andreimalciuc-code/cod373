@@ -1163,7 +1163,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v99';
+const APP_VERSION='cod373-v100';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2746,7 +2746,7 @@ function loadLeaflet(){ return new Promise(res=>{ if(window.L){ res(); return; }
 /* ── integrare GPS Wialon (Remote API cu token) ── */
 function wialonHost(){ const h=(state.firm&&state.firm.automations&&state.firm.automations.wialon_host)||'hst-api.wialon.com'; return String(h).replace(/^https?:\/\//,'').replace(/\/+$/,''); }
 function wialonToken(){ return (state.firm&&state.firm.automations&&state.firm.automations.wialon_token)||''; }
-async function wialonCall(svc, params, sid){ const u='https://'+wialonHost()+'/wialon/ajax.html?svc='+encodeURIComponent(svc)+'&params='+encodeURIComponent(JSON.stringify(params||{}))+(sid?'&sid='+encodeURIComponent(sid):''); const r=await fetch(u); const j=await r.json(); if(j&&j.error){ throw new Error('cod '+j.error); } return j; }
+async function wialonCall(svc, params, sid){ const { data, error }=await sb.functions.invoke('wialon',{body:{host:wialonHost(), svc:svc, params:params||{}, sid:sid||''}}); if(error) throw new Error(error.message||'proxy'); if(data&&data.error){ throw new Error('cod '+data.error); } return data; }
 async function wialonLogin(){ const tok=wialonToken(); if(!tok) throw new Error('fără token'); const j=await wialonCall('token/login',{token:tok}); return j.eid; }
 function wialonWebHost(){ const h=(($('set-wialon-host')&&$('set-wialon-host').value)||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,''); return h.replace('hst-api','hosting'); }
 function wialonOpenGen(){ const web=wialonWebHost(); const origin='https://'+web; const back=location.origin+location.pathname;
@@ -2770,15 +2770,16 @@ async function wialonCaptureFromUrl(){
 async function wialonTest(){ const tok=($('set-wialon-token').value||'').trim(); const host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,'');
   if(!tok){ toast('Pune întâi token-ul Wialon.'); return; }
   toast('⏳ Testez conexiunea Wialon…');
-  try{ const base='https://'+host+'/wialon/ajax.html';
-    const lr=await fetch(base+'?svc=token/login&params='+encodeURIComponent(JSON.stringify({token:tok}))); const lj=await lr.json();
-    if(lj.error){ toast('❌ Token respins de Wialon (eroare '+lj.error+').'); return; }
+  const inv=async(svc,params,sid)=>{ const { data, error }=await sb.functions.invoke('wialon',{body:{host:host,svc:svc,params:params||{},sid:sid||''}}); if(error) throw new Error(error.message||'proxy'); return data; };
+  try{
+    const lj=await inv('token/login',{token:tok});
+    if(!lj||lj.error){ toast('❌ Token respins de Wialon'+(lj&&lj.error?' (cod '+lj.error+')':'')+'.'); return; }
     const sid=lj.eid;
-    const ur=await fetch(base+'?svc=core/search_items&params='+encodeURIComponent(JSON.stringify({spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1,from:0,to:0}))+'&sid='+sid); const uj=await ur.json();
+    const uj=await inv('core/search_items',{spec:{itemsType:'avl_unit',propName:'sys_name',propValueMask:'*',sortType:'sys_name'},force:1,flags:1,from:0,to:0}, sid);
     const n=(uj&&uj.items)?uj.items.length:0;
-    try{ await fetch(base+'?svc=core/logout&params=%7B%7D&sid='+sid); }catch(e){}
+    try{ await inv('core/logout',{},sid); }catch(e){}
     toast('✅ Conectat la Wialon — '+n+' vehicule găsite. Salvează setările ca să apară pe hartă.');
-  }catch(e){ toast('❌ Conectare eșuată (posibil host greșit sau blocare CORS): '+(e.message||e)); }
+  }catch(e){ toast('❌ Conectare eșuată: '+(e.message||e)); }
 }
 async function renderHarta(){
   const live=!!wialonToken();
