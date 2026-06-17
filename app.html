@@ -276,6 +276,7 @@
         <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
         <button class="btn-ghost" id="guide-btn" onclick="openModuleGuide(curModuleKey())" title="Ghid de utilizare">❓</button>
         <button class="btn-ghost" id="support-btn" onclick="openSupport()" title="Suport / Ajutor">🛟</button>
+        <button class="btn-ghost" id="ai-btn" onclick="openAI()" title="Asistent AI">🤖</button>
         <button class="btn-ghost" id="chat-btn" onclick="openTeamChat()" title="Chat echipă">💬</button>
         <button class="btn-ghost" id="notif-btn" onclick="openNotifPanel()" title="Notificări" style="position:relative">🔔<span id="notif-badge" style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:0 .3rem;display:none"></span></button>
         <button class="btn-ghost" id="btn-iesi" onclick="doLogout()">Ieși</button>
@@ -1126,6 +1127,58 @@ function openTeamChat(){
   window._tcPoll=setInterval(()=>{ if($('tc-list')) tcLoad(false); else clearInterval(window._tcPoll); }, 4000);
 }
 function closeTeamChat(){ clearInterval(window._tcPoll); if(window._tcRec&&window._tcRec.state==='recording'){ try{ window._tcRec.stop(); }catch(e){} } closeModal(); }
+/* ════ ASISTENT AI (Claude) ════ */
+function aiKey(){ return (state.firm&&state.firm.automations&&state.firm.automations.anthropic_key)||''; }
+function aiModel(){ return (state.firm&&state.firm.automations&&state.firm.automations.ai_model)||'claude-haiku-4-5'; }
+function aiLang(){ try{ return localStorage.getItem('c373_lang')||'ro'; }catch(e){ return 'ro'; } }
+window._aiHist=[];
+async function aiCall(mode, input, history){
+  const body={ mode:mode, lang:aiLang(), currency:CUR||'MDL', model:aiModel(), tenant_id:state.tenant, key:aiKey()||undefined };
+  if(history) body.history=history; else body.input=input;
+  const { data, error }=await sb.functions.invoke('ai',{body:body});
+  if(error) throw new Error(error.message||'proxy');
+  if(!data||data.ok!==true){ const e=new Error((data&&(data.message||data.detail))||'Eroare AI'); e.code=data&&data.error; e.data=data; throw e; }
+  return data;
+}
+function openAI(){
+  const hasKey=!!aiKey();
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;display:flex;flex-direction:column;height:min(82vh,680px)"><div class="modal-head"><h3>🤖 Asistent AI</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div id="ai-list" style="flex:1;overflow:auto;padding:.5rem .2rem;display:flex;flex-direction:column;gap:.45rem"></div>'
+    +'<div style="display:flex;gap:.4rem;align-items:center;padding-top:.55rem;border-top:1px solid var(--line)"><input id="ai-input" placeholder="Întreabă asistentul…" autocomplete="off" style="flex:1;padding:.6rem .8rem;border:1px solid var(--line);border-radius:10px;outline:none" onkeydown="if(event.key===\'Enter\')aiSend()"/><button class="btn-primary" id="ai-send" onclick="aiSend()" style="padding:.55rem .9rem">➤</button></div>'
+    +'<div style="font-size:.72rem;color:var(--muted);padding-top:.4rem">'+(hasKey?'🔓 Cheie proprie — consum nelimitat (plătit de firmă).':'Cotă gratuită lunară. Pentru nelimitat: <a onclick="closeModal();go(\'setari\')" style="cursor:pointer;color:var(--primary)">adaugă-ți cheia Anthropic</a>.')+'</div>'
+    +'</div></div>';
+  aiRender();
+  setTimeout(()=>{ const i=$('ai-input'); if(i) i.focus(); }, 50);
+}
+function aiBubble(role, html){ const mine=role==='user';
+  return '<div style="max-width:88%;padding:.5rem .75rem;border-radius:13px;font-size:.9rem;line-height:1.4;white-space:pre-wrap;'+(mine?'align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:4px':'align-self:flex-start;background:#f1f5f9;color:var(--ink);border-bottom-left-radius:4px')+'">'+html+'</div>'; }
+function aiRender(){ const el=$('ai-list'); if(!el) return;
+  if(!window._aiHist.length){ el.innerHTML='<div class="empty" style="margin:auto;color:var(--muted);text-align:center">🤖 Cu ce te ajut?<br><span style="font-size:.8rem">Ex: „Scrie o descriere pentru o ofertă de fațadă ventilată" sau „Cum adaug un șantier?"</span></div>'; return; }
+  el.innerHTML=window._aiHist.map(m=>aiBubble(m.role, esc(m.content))).join(''); el.scrollTop=el.scrollHeight;
+}
+async function aiSend(){
+  const inp=$('ai-input'); const v=(inp.value||'').trim(); if(!v) return; inp.value=''; inp.disabled=true; const btn=$('ai-send'); if(btn) btn.disabled=true;
+  window._aiHist.push({role:'user',content:v}); aiRender();
+  const el=$('ai-list'); if(el){ el.insertAdjacentHTML('beforeend', aiBubble('assistant','<span class="noi18n" style="opacity:.6">…</span>')); el.scrollTop=el.scrollHeight; }
+  try{
+    const d=await aiCall('chat', null, window._aiHist);
+    window._aiHist.push({role:'assistant',content:d.text||'(răspuns gol)'}); aiRender();
+  }catch(e){
+    if(e.code==='quota'||e.code==='byok_needed'){ window._aiHist.push({role:'assistant',content:(e.message||'Limita atinsă.')}); aiRender(); }
+    else { aiRender(); toast('AI: '+esc(e.message||'eroare')); }
+  }finally{ if(inp){ inp.disabled=false; inp.focus(); } if(btn) btn.disabled=false; }
+}
+async function aiTest(){
+  const k=($('set-anthropic')&&$('set-anthropic').value||'').trim();
+  showMsg('set-ai-msg','⏳ Se testează…');
+  try{
+    const body={ mode:'chat', lang:aiLang(), currency:CUR||'MDL', model:($('set-ai-model')?$('set-ai-model').value:aiModel()), tenant_id:state.tenant, key:k||undefined, input:'Răspunde doar cu: OK' };
+    const { data, error }=await sb.functions.invoke('ai',{body:body});
+    if(error) throw new Error(error.message);
+    if(data&&data.ok){ showMsg('set-ai-msg','✅ Conexiune reușită'+(data.byok?' (cheie proprie).':'. Folosești cota gratuită a platformei.')); }
+    else { showMsg('set-ai-msg','⚠ '+esc((data&&(data.message||data.detail))||'Eroare')); }
+  }catch(e){ showMsg('set-ai-msg','⚠ '+esc(e.message||'eroare')); }
+}
 async function tcLoad(scroll){
   const { data }=await sb.from('messages').select('id,user_id,sender_name,body,created_at,attachments');
   const el=$('tc-list'); if(!el) return;
@@ -1181,7 +1234,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v116';
+const APP_VERSION='cod373-v117';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3066,6 +3119,13 @@ async function renderSetari(){
     +'<button class="btn-primary" onclick="saveSetari()">Salvează integrările</button>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După „Testează" reușit și „Salvează", din fiecare factură vei putea trimite direct în programul conectat (în lucru — îți activez butonul după ce confirmi conexiunea).</div>'
     +'</div></div>'
+    +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🤖 Asistent AI</h3></div><div class="modal-body"><div id="set-ai-msg"></div>'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Asistentul AI (din butonul 🤖 de sus) te ajută cu redactare de oferte/texte, estimări și întrebări despre program. Funcționează cu o <b>cotă gratuită lunară</b>. Pentru <b>consum nelimitat</b>, pune-ți propria cheie Anthropic — atunci consumul îl plătești tu, direct la Anthropic.</p>'
+    +'<div class="field"><label>Cheia mea Anthropic (BYOK) <span class="hint-i" title="O generezi pe console.anthropic.com → API Keys. Începe cu sk-ant-… Dacă o pui aici, consumul AI e nelimitat și se facturează pe contul tău Anthropic. O ștergi oricând ca să revii la cota gratuită a platformei.">ⓘ</span></label><div style="display:flex;gap:.5rem"><input id="set-anthropic" type="password" autocomplete="off" style="flex:1" value="'+esc(au.anthropic_key||'')+'" placeholder="sk-ant-…"/><button class="btn-ghost" onclick="aiTest()">🔌 Testează</button></div></div>'
+    +'<div class="field" style="max-width:280px"><label>Model</label><select id="set-ai-model">'+[['claude-haiku-4-5','Haiku 4.5 — rapid și ieftin (recomandat)'],['claude-sonnet-4-6','Sonnet 4.6 — echilibrat'],['claude-opus-4-8','Opus 4.8 — cel mai capabil']].map(o=>'<option value="'+o[0]+'"'+((aiModel()===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'
+    +'<button class="btn-primary" onclick="saveSetari()">Salvează</button>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">Cheia ta nu e vizibilă altor utilizatori și se folosește doar prin serverul nostru securizat către Anthropic.</div>'
+    +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🔒 Confidențialitate &amp; date</h3></div><div class="modal-body">'
     +'<p style="color:var(--muted);margin-bottom:1rem">Conform legislației privind datele cu caracter personal, ai control deplin asupra datelor firmei.</p>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.6rem">'
@@ -3163,6 +3223,8 @@ async function saveSetari(){
   if($('set-bic')) au.bic=($('set-bic').value||'').trim()||null;
   if($('set-lexoffice')) au.lexoffice_key=($('set-lexoffice').value||'').trim()||null;
   if($('set-sevdesk')) au.sevdesk_key=($('set-sevdesk').value||'').trim()||null;
+  if($('set-anthropic')) au.anthropic_key=($('set-anthropic').value||'').trim()||null;
+  if($('set-ai-model')) au.ai_model=$('set-ai-model').value||null;
   if($('set-wialon-token')) au.wialon_token=($('set-wialon-token').value||'').trim()||null;
   if($('set-wialon-host')) au.wialon_host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com');
   patch.automations=au;
