@@ -1171,7 +1171,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v112';
+const APP_VERSION='cod373-v113';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3727,6 +3727,7 @@ function rowActions(key,m,r){
   if(m.convertible) a.push({i:'🧾',l:'Creează factură din deviz',f:"estimateToInvoice('"+id+"')"});
   if(m.efactura) a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"});
   if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
+  if(m.efactura){ const au=(state.firm&&state.firm.automations)||{}; if(au.lexoffice_key) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'📍',l:'Unde se află (șantiere/depozit + cantități)',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(m.vehicleLog){ a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
@@ -4520,6 +4521,30 @@ async function acctTest(provider){
     else { const u=body&&body.objects&&body.objects[0]; toast('✅ sevdesk conectat'+(u&&u.fullname?': '+esc(u.fullname):'')+'.'); }
   }catch(e){ toast('❌ Conectare eșuată: '+(e.message||e)); }
 }
+async function acctCall(provider, path, method, payload){ const au=(state.firm&&state.firm.automations)||{}; const key=provider==='lexoffice'?au.lexoffice_key:au.sevdesk_key; if(!key) throw new Error('Cheia '+provider+' nu e setată în Setări.'); const { data, error }=await sb.functions.invoke('acct',{body:{provider:provider,path:path,method:method||'GET',key:key,payload:payload}}); if(error) throw new Error(error.message||'proxy'); if(data&&data.error) throw new Error(data.error); return data; }
+async function acctInvoiceData(id){ const inv=(await sb.from('invoices').select('*, clients!client_id(name,idno,address,email)').eq('id',id).single()).data; if(!inv) throw new Error('Factura nu a fost găsită.'); const items=((await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[]).filter(it=>(it.name||'').trim()); if(!items.length) throw new Error('Factura nu are linii.'); return {inv, items, cl:inv.clients||{}}; }
+async function pushLexoffice(id){ toast('⏳ Trimit în lexoffice…');
+  try{ const {inv,items,cl}=await acctInvoiceData(id);
+    const iso=(inv.issue_date||new Date().toISOString().slice(0,10))+'T00:00:00.000+02:00';
+    const lineItems=items.map(it=>({ type:'custom', name:String(it.name), quantity:(+it.qty||1), unitName:(it.unit||'Stück'), unitPrice:{ currency:'EUR', netAmount:+(+it.unit_price||0).toFixed(2), taxRatePercentage:+(it.vat_rate||0) } }));
+    const payload={ voucherDate:iso, address:{ name:(cl.name||'Client'), countryCode:'DE' }, lineItems:lineItems, totalPrice:{ currency:'EUR' }, taxConditions:{ taxType:'net' }, shippingConditions:{ shippingDate:iso, shippingType:'service' } };
+    const r=await acctCall('lexoffice','/v1/invoices?finalize=false','POST',payload);
+    if(r.status>=200&&r.status<300){ toast('✅ Trimis în lexoffice (ciornă)'+(r.body&&r.body.id?' · ID '+String(r.body.id).slice(0,8):'')+'.'); }
+    else { let m=(r.body&&(r.body.message||(r.body.IssueList&&r.body.IssueList[0]&&(r.body.IssueList[0].i18nKey||r.body.IssueList[0].source))))||('cod '+r.status); toast('❌ lexoffice: '+esc(typeof m==='string'?m:JSON.stringify(m)).slice(0,170)); }
+  }catch(e){ toast('❌ '+(e.message||e)); } }
+async function pushSevdesk(id){ toast('⏳ Trimit în sevdesk…');
+  try{ const {inv,items,cl}=await acctInvoiceData(id);
+    const su=await acctCall('sevdesk','/v1/SevUser','GET'); const userId=su.body&&su.body.objects&&su.body.objects[0]&&su.body.objects[0].id; if(!userId) throw new Error('Nu am găsit utilizatorul sevdesk (verifică token-ul).');
+    let contactId=null; const found=await acctCall('sevdesk','/v1/Contact?depth=0&name='+encodeURIComponent(cl.name||'Client'),'GET'); if(found.body&&found.body.objects&&found.body.objects.length) contactId=found.body.objects[0].id;
+    if(!contactId){ const cc=await acctCall('sevdesk','/v1/Contact','POST',{ name:(cl.name||'Client'), category:{ id:3, objectName:'Category' } }); contactId=cc.body&&cc.body.objects&&cc.body.objects.id; }
+    if(!contactId) throw new Error('Nu am putut crea contactul în sevdesk.');
+    const today=(inv.issue_date||new Date().toISOString().slice(0,10));
+    const posSave=items.map(it=>({ objectName:'InvoicePos', mapAll:true, quantity:(+it.qty||1), price:(+it.unit_price||0), name:String(it.name), unity:{ id:1, objectName:'Unity' }, taxRate:(+it.vat_rate||0) }));
+    const invoiceObj={ objectName:'Invoice', mapAll:true, invoiceNumber:(inv.number||''), contact:{ id:contactId, objectName:'Contact' }, contactPerson:{ id:userId, objectName:'SevUser' }, invoiceDate:today, status:100, invoiceType:'RE', currency:'EUR', taxRate:((items[0]&&+items[0].vat_rate)||0), taxText:'Umsatzsteuer', taxType:'default', discount:0, addressCountry:{ id:1, objectName:'StaticCountry' } };
+    const r=await acctCall('sevdesk','/v1/Invoice/Factory/saveInvoice','POST',{ invoice:invoiceObj, invoicePosSave:posSave, invoicePosDelete:null });
+    if(r.status>=200&&r.status<300){ const sid=r.body&&r.body.objects&&r.body.objects.invoice&&r.body.objects.invoice.id; toast('✅ Trimis în sevdesk (ciornă)'+(sid?' · ID '+sid:'')+'.'); }
+    else { toast('❌ sevdesk: cod '+r.status+' — '+esc(JSON.stringify(r.body)).slice(0,160)); }
+  }catch(e){ toast('❌ '+(e.message||e)); } }
 /* ════ EXPORT CONTABIL (CSV pentru 1C/contabil) ════ */
 async function exportContabil(){
   toast('⏳ Pregătesc exportul…');
