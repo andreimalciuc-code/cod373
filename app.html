@@ -1173,7 +1173,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v109';
+const APP_VERSION='cod373-v110';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3644,8 +3644,11 @@ async function renderModule(key){
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   let rows=data||[];
   if(m.orderBy) rows=sortRows(rows,m.orderBy.col,m.orderBy.asc);
-  listState={ key, m, rows, q:'', status:'', statusField };
+  listState={ key, m, rows, q:'', status:'', statusField, allSuppliers:null, allStores:null };
   renderList();
+  // populează filtrele cu TOȚI furnizorii / TOATE magazinele din bază (nu doar cei legați de materiale)
+  if(m.supplierFilter){ sb.from('suppliers').select('name').then(r=>{ if(listState.m===m){ listState.allSuppliers=(r.data||[]).map(x=>x.name).filter(Boolean); renderList(); } }).catch(()=>{}); }
+  if(m.storeFilter){ sb.from('stores').select('name').then(r=>{ if(listState.m===m){ listState.allStores=(r.data||[]).map(x=>x.name).filter(Boolean); renderList(); } }).catch(()=>{}); }
 }
 function onListSearch(v){ listState.q=(v||'').toLowerCase(); renderList(); }
 function onListStatus(v){ listState.status=v||''; renderList(); }
@@ -3671,8 +3674,8 @@ function renderList(){
   }
   let data=rows;
   if(m.catFilter){ const sel=$('list-cat'); if(sel){ const cats=Array.from(new Set(rows.map(r=>r.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate categoriile</option>'+cats.map(c=>'<option value="'+esc(c)+'"'+(listState.cat===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.cat) data=data.filter(r=>String(r.category||'')===listState.cat); }
-  if(m.supplierFilter){ const sel=$('list-supplier'); if(sel){ const sps=Array.from(new Set([].concat.apply([],rows.map(rowSupplierNames)))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toți furnizorii</option>'+sps.map(c=>'<option value="'+esc(c)+'"'+(listState.supplier===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.supplier) data=data.filter(r=>rowSupplierNames(r).indexOf(listState.supplier)>-1); }
-  if(m.storeFilter){ const sel=$('list-store'); if(sel){ const sts=Array.from(new Set([].concat.apply([],rows.map(rowStoreNames)))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate magazinele</option>'+sts.map(c=>'<option value="'+esc(c)+'"'+(listState.store===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.store) data=data.filter(r=>rowStoreNames(r).indexOf(listState.store)>-1); }
+  if(m.supplierFilter){ const sel=$('list-supplier'); if(sel){ const sps=Array.from(new Set([].concat.apply([],rows.map(rowSupplierNames)).concat(listState.allSuppliers||[]))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toți furnizorii</option>'+sps.map(c=>'<option value="'+esc(c)+'"'+(listState.supplier===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.supplier) data=data.filter(r=>rowSupplierNames(r).indexOf(listState.supplier)>-1); }
+  if(m.storeFilter){ const sel=$('list-store'); if(sel){ const sts=Array.from(new Set([].concat.apply([],rows.map(rowStoreNames)).concat(listState.allStores||[]))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">Toate magazinele</option>'+sts.map(c=>'<option value="'+esc(c)+'"'+(listState.store===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.store) data=data.filter(r=>rowStoreNames(r).indexOf(listState.store)>-1); }
   if(status&&statusField) data=data.filter(r=>String(r[statusField.key])===status);
   if(m.enumFilter && listState.enumv){ data=data.filter(r=>String(r[m.enumFilter.key]||'normal')===listState.enumv); }
   if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q));
