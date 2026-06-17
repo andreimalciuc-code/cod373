@@ -1052,8 +1052,10 @@ async function boot(){
   CUR = (state.firm.currency||'MDL').toUpperCase();
   // personele de teren (muncitor/sofer/subcontractant/client) folosesc aplicatia mobila
   if(['client','subcontractor','worker','driver'].includes(state.role)){ location.replace('mobil.html'); return; }
-  const coName = mem.tenants ? mem.tenants.name : 'Firma';
-  $('co-name').textContent = coName;
+  const legalName = mem.tenants ? mem.tenants.name : 'Firma';
+  const brandName = (mem.tenants&&mem.tenants.automations&&mem.tenants.automations.brand_name)||'';
+  const coName = brandName || legalName;
+  $('co-name').textContent = coName; $('co-name').title = brandName?('Marca comercială a '+legalName):legalName;
   $('co-avatar').textContent = (coName.trim()[0]||'F').toUpperCase();
   setHeaderLogo(mem.tenants&&mem.tenants.logo_url);
   $('co-role').textContent = mem.role;
@@ -1171,7 +1173,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v108';
+const APP_VERSION='cod373-v109';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3132,7 +3134,7 @@ async function saveSetari(){
   const { error }=await sb.from('tenants').update(patch).eq('id',state.tenant);
   if(error){ showMsg('set-msg', error.message); return; }
   state.firm={ ...state.firm, ...patch }; CUR=(patch.currency||'MDL').toUpperCase();
-  $('co-name').textContent=name; $('co-avatar').textContent=(name.trim()[0]||'F').toUpperCase();
+  { const disp=(au.brand_name||name); $('co-name').textContent=disp; $('co-name').title=au.brand_name?('Marca comercială a '+name):name; $('co-avatar').textContent=(disp.trim()[0]||'F').toUpperCase(); }
   toast('✅ Setări salvate.'); if($('content')&&document.querySelector('.nav-item.active')){ /* re-render current view to refresh currency */ const a=document.querySelector('.nav-item.active'); go(a?a.dataset.view:'dashboard'); }
 }
 
