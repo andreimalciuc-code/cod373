@@ -82,6 +82,8 @@
     'Marca comercială a':{ru:'Торговая марка',de:'Handelsmarke von',en:'Trademark of'},
     'Marcă comercială (opțional)':{ru:'Торговая марка (необязательно)',de:'Handelsmarke (optional)',en:'Trademark (optional)'},
     'Stoc pe locații (șantiere/depozit)':{ru:'Запас по локациям (объекты/склад)',de:'Bestand nach Standort (Baustelle/Lager)',en:'Stock by location (sites/warehouse)'},
+    'Unde se află':{ru:'Где находится',de:'Wo es ist',en:'Location'},
+    'Unde se află (șantiere/depozit + cantități)':{ru:'Где находится (объекты/склад + кол-во)',de:'Wo es ist (Baustelle/Lager + Menge)',en:'Where it is (sites/warehouse + qty)'},
     'Total în stoc:':{ru:'Всего на складе:',de:'Bestand gesamt:',en:'Total in stock:'},
     '＋ Adaugă la o locație':{ru:'＋ Добавить на локацию',de:'＋ Zu Standort hinzufügen',en:'＋ Add to a location'},
     'Contract (vânzare / locațiune)':{ru:'Договор (покупка / аренда)',de:'Vertrag (Kauf / Miete)',en:'Contract (purchase / lease)'},

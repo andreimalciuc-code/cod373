@@ -550,22 +550,20 @@ const MODULES = {
 
   instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
-    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,qty,photo_url,store_id,sites(name),stores!store_id(name)',
+    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,qty,photo_url,tool_locations(qty,site_id,store_id,sites(name),stores(name))',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">·'+esc(r.code)+'</small>':'')},
-      {label:'Depozit',get:r=>r.stores?('🏬 '+esc(r.stores.name)):'<span style="color:var(--muted)">—</span>'},
-      {label:'În stoc',get:r=>r.qty!=null?('<b>'+(+r.qty).toLocaleString('ro-RO')+'</b> buc'):'<span style="color:var(--muted)">—</span>'},
+      {label:'Unde se află',get:r=>{ const ls=(r.tool_locations||[]).filter(x=>+x.qty>0); if(!ls.length) return '<span style="color:var(--muted)">— (apasă → 📍 Unde se află)</span>'; return ls.map(x=>{ const w=x.site_id?('🏗️ '+esc((x.sites&&x.sites.name)||'șantier')):(x.store_id?('🏬 '+esc((x.stores&&x.stores.name)||'depozit')):'—'); return w+': <b>'+(+x.qty||0)+'</b>'; }).join(' · '); }},
+      {label:'Total',get:r=>{ const t=(r.tool_locations||[]).reduce((s,x)=>s+(+x.qty||0),0)||(+r.qty||0); return t?('<b>'+t.toLocaleString('ro-RO')+'</b> buc'):'<span style="color:var(--muted)">—</span>'; }},
       {label:'Cine o are acum',get:r=>'📍 '+esc(r.holder_label||'—')},
       {label:'Stare fizică',get:r=>toolCondBadge(r.condition,r.condition_note)},
       {label:'Stare',get:r=>pill(r.status)} ],
     fields:[
       {key:'name',label:'Denumire',type:'text',required:true},
       {key:'inventory_no',label:'Nr. inventar',type:'text'},
-      {key:'qty',label:'Câte avem (cantitate în stoc)',type:'number',hint:'Numărul de bucăți deținute.'},
-      {key:'store_id',label:'Depozit (unde se află)',type:'ref',ref:'stores',hint:'Depozitul/magazinul unde e păstrat instrumentul. Se administrează în modulul Magazine.'},
       {key:'status',label:'Stare',type:'select',options:opts(['available','in_use','maintenance','lost']),default:'available'},
-      {key:'assigned_site',label:'Atribuit șantierului',type:'ref',ref:'sites'},
-      {key:'photo_url',label:'Poză instrument',type:'photo',hint:'O fotografie a sculei / utilajului.'} ] },
+      {key:'assigned_site',label:'Atribuit șantierului (opțional)',type:'ref',ref:'sites'},
+      {key:'photo_url',label:'Poză instrument',type:'photo',hint:'O fotografie a sculei / utilajului. După salvare, apasă pe instrument → „📍 Unde se află" ca să indici șantierele/depozitul și câte bucăți.'} ] },
 
   flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'}, vehicleLog:true,
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
@@ -1173,7 +1171,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v110';
+const APP_VERSION='cod373-v111';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1468,7 +1466,7 @@ async function toolStock(tid, tname){
   const rows=locs.length?locs.map(l=>{ const where=l.site_id?('🏗️ '+esc((l.sites&&l.sites.name)||'șantier')):(l.store_id?('🏬 '+esc((l.stores&&l.stores.name)||'depozit')):'—'); return '<tr><td>'+where+'</td><td style="text-align:right"><b>'+(+l.qty||0)+'</b> buc</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="toolStockDel(\''+l.id+'\',\''+tid+'\',\''+jsArg(tname)+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="3" style="color:var(--muted);padding:1rem">Nicio locație înregistrată. Adaugă mai jos.</td></tr>';
   const locOpts='<option value="">— alege locația —</option>'+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>'<option value="site:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'')+(stores.length?'<optgroup label="Depozite">'+stores.map(s=>'<option value="store:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'');
   const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.8rem;padding-top:.7rem"><div style="font-weight:700;margin-bottom:.45rem">＋ Adaugă la o locație</div><div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:170px;margin:0"><label>Locație (șantier sau depozit)</label><select id="ts-loc">'+locOpts+'</select></div><div class="field" style="width:90px;margin:0"><label>Câte</label><input id="ts-qty" type="number" min="0" value="1"/></div><button class="btn-primary" id="ts-add" onclick="toolStockAdd(\''+tid+'\',\''+jsArg(tname)+'\')">Adaugă</button></div></div>'):'';
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>📦 Stoc pe locații — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="ts-msg"></div><div style="margin-bottom:.5rem;font-size:.9rem">Total în stoc: <b>'+total+' buc</b></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Locație</th><th style="text-align:right">Câte</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+addForm+'</div></div></div>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>📍 Unde se află — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="ts-msg"></div><div style="margin-bottom:.5rem;font-size:.9rem">Total în stoc: <b>'+total+' buc</b></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Locație</th><th style="text-align:right">Câte</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+addForm+'</div></div></div>';
 }
 async function toolStockAdd(tid, tname){
   const loc=$('ts-loc').value; const qty=+($('ts-qty').value||0);
@@ -3718,7 +3716,7 @@ function rowActions(key,m,r){
   if(m.efactura) a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"});
   if(m.efactura) a.push({i:'🇩🇪',l:'e-Factură DE (XRechnung XML)',f:"genXRechnung('"+id+"')"});
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
-  if(m.toolActions){ a.push({i:'📦',l:'Stoc pe locații (șantiere/depozit)',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
+  if(m.toolActions){ a.push({i:'📍',l:'Unde se află (șantiere/depozit + cantități)',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(m.vehicleLog){ a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
