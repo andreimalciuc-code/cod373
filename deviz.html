@@ -412,9 +412,10 @@ async function aiOfferRun(){
   try{
     const lang=(window.C373lang||'ro');
     const cur=(S.firm&&S.firm.currency)||'MDL';
-    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'offer', input, lang, currency:cur } });
+    const au=(S.firm&&S.firm.automations)||{};
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'offer', input, lang, currency:cur, tenant_id:S.tenant, key:au.anthropic_key||undefined, model:au.ai_model||'claude-haiku-4-5' } });
     if(error) throw new Error(error.message||'Eroare apel AI');
-    if(data && data.error) throw new Error(data.error);
+    if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
     let txt=(data&&data.text)||''; const m=txt.match(/\{[\s\S]*\}/); if(m) txt=m[0];
     const parsed=JSON.parse(txt); const lines=(parsed.lines||parsed||[]);
     if(!Array.isArray(lines)||!lines.length) throw new Error('Niciun rezultat. Reformulează descrierea.');
