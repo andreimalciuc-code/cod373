@@ -561,10 +561,10 @@ const MODULES = {
 
   instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
-    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,qty,photo_url,tool_locations(qty,site_id,store_id,sites(name),stores(name))',
+    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,qty,photo_url,tool_locations(qty,site_id,store_id,holder,loan_type,sites(name),stores(name))',
     columns:[
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">·'+esc(r.code)+'</small>':'')},
-      {label:'Unde se află',get:r=>{ const ls=(r.tool_locations||[]).filter(x=>+x.qty>0); if(!ls.length) return '<span style="color:var(--muted)">— (apasă → 📍 Unde se află)</span>'; return ls.map(x=>{ const w=x.site_id?('🏗️ '+esc((x.sites&&x.sites.name)||'șantier')):(x.store_id?('🏬 '+esc((x.stores&&x.stores.name)||'depozit')):'—'); return w+': <b>'+(+x.qty||0)+'</b>'; }).join(' · '); }},
+      {label:'Unde se află',get:r=>{ const ls=(r.tool_locations||[]).filter(x=>+x.qty>0); if(!ls.length) return '<span style="color:var(--muted)">— (apasă → 📍 Unde se află)</span>'; return ls.map(x=>{ const w=x.site_id?('🏗️ '+esc((x.sites&&x.sites.name)||'șantier')):(x.store_id?('🏬 '+esc((x.stores&&x.stores.name)||'depozit')):(x.holder?((x.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+esc(x.holder)):'—')); return w+': <b>'+(+x.qty||0)+'</b>'; }).join(' · '); }},
       {label:'Total',get:r=>{ const t=(r.tool_locations||[]).reduce((s,x)=>s+(+x.qty||0),0)||(+r.qty||0); return t?('<b>'+t.toLocaleString('ro-RO')+'</b> buc'):'<span style="color:var(--muted)">—</span>'; }},
       {label:'Cine o are acum',get:r=>'📍 '+esc(r.holder_label||'—')},
       {label:'Stare fizică',get:r=>toolCondBadge(r.condition,r.condition_note)},
@@ -1234,7 +1234,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v119';
+const APP_VERSION='cod373-v120';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1518,7 +1518,7 @@ async function vehDriversSave(vid, vlabel){
 /* stoc instrument pe locații (șantier / depozit) */
 async function toolStock(tid, tname){
   const [locR,siteR,storeR]=await Promise.all([
-    sb.from('tool_locations').select('id,site_id,store_id,qty,sites(name),stores(name)').eq('tool_id',tid),
+    sb.from('tool_locations').select('id,site_id,store_id,qty,holder,loan_type,sites(name),stores(name)').eq('tool_id',tid),
     sb.from('sites').select('id,name,status'),
     sb.from('stores').select('id,name')
   ]);
@@ -1526,9 +1526,10 @@ async function toolStock(tid, tname){
   const sites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const stores=(storeR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const canU=canDo('instrumente','u'), canD=canDo('instrumente','d');
-  const rows=locs.length?locs.map(l=>{ const where=l.site_id?('🏗️ '+esc((l.sites&&l.sites.name)||'șantier')):(l.store_id?('🏬 '+esc((l.stores&&l.stores.name)||'depozit')):'—'); return '<tr><td>'+where+'</td><td style="text-align:right"><b>'+(+l.qty||0)+'</b> buc</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="toolStockDel(\''+l.id+'\',\''+tid+'\',\''+jsArg(tname)+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="3" style="color:var(--muted);padding:1rem">Nicio locație înregistrată. Adaugă mai jos.</td></tr>';
-  const locOpts='<option value="">— alege locația —</option>'+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>'<option value="site:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'')+(stores.length?'<optgroup label="Depozite">'+stores.map(s=>'<option value="store:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'');
-  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.8rem;padding-top:.7rem"><div style="font-weight:700;margin-bottom:.45rem">＋ Adaugă la o locație</div><div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:170px;margin:0"><label>Locație (șantier sau depozit)</label><select id="ts-loc">'+locOpts+'</select></div><div class="field" style="width:90px;margin:0"><label>Câte</label><input id="ts-qty" type="number" min="0" value="1"/></div><button class="btn-primary" id="ts-add" onclick="toolStockAdd(\''+tid+'\',\''+jsArg(tname)+'\')">Adaugă</button></div></div>'):'';
+  const whereOf=l=>l.site_id?('🏗️ '+esc((l.sites&&l.sites.name)||'șantier')):(l.store_id?('🏬 '+esc((l.stores&&l.stores.name)||'depozit')):(l.holder?((l.loan_type==='rented'?'💶 În chirie la ':'🤝 Împrumutat la ')+esc(l.holder)):'—'));
+  const rows=locs.length?locs.map(l=>{ return '<tr><td>'+whereOf(l)+'</td><td style="text-align:right"><b>'+(+l.qty||0)+'</b> buc</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="toolStockDel(\''+l.id+'\',\''+tid+'\',\''+jsArg(tname)+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="3" style="color:var(--muted);padding:1rem">Nicio locație înregistrată. Adaugă mai jos.</td></tr>';
+  const locOpts='<option value="">— alege locația —</option>'+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>'<option value="site:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'')+(stores.length?'<optgroup label="Depozite">'+stores.map(s=>'<option value="store:'+s.id+'">'+esc(s.name)+'</option>').join('')+'</optgroup>':'')+'<optgroup label="În afara firmei"><option value="loan:lent">🤝 Împrumutat cuiva</option><option value="loan:rented">💶 Dat în chirie</option></optgroup>';
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.8rem;padding-top:.7rem"><div style="font-weight:700;margin-bottom:.45rem">＋ Adaugă la o locație</div><div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:170px;margin:0"><label>Locație</label><select id="ts-loc" onchange="var h=document.getElementById(\'ts-holder-wrap\'); if(h) h.style.display=(this.value.indexOf(\'loan:\')===0?\'block\':\'none\');">'+locOpts+'</select></div><div class="field" id="ts-holder-wrap" style="flex:1;min-width:160px;margin:0;display:none"><label>Către cine (persoană/firmă)</label><input id="ts-holder" placeholder="ex: Ion Popescu / SRL Vecinul"/></div><div class="field" style="width:90px;margin:0"><label>Câte</label><input id="ts-qty" type="number" min="0" value="1"/></div><button class="btn-primary" id="ts-add" onclick="toolStockAdd(\''+tid+'\',\''+jsArg(tname)+'\')">Adaugă</button></div></div>'):'';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>📍 Unde se află — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="ts-msg"></div><div style="margin-bottom:.5rem;font-size:.9rem">Total în stoc: <b>'+total+' buc</b></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Locație</th><th style="text-align:right">Câte</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+addForm+'</div></div></div>';
 }
 async function toolStockAdd(tid, tname){
@@ -1536,7 +1537,8 @@ async function toolStockAdd(tid, tname){
   if(!loc){ showMsg('ts-msg','Alege locația.'); return; }
   if(!(qty>0)){ showMsg('ts-msg','Pune o cantitate mai mare ca 0.'); return; }
   const parts=loc.split(':'); const kind=parts[0], lid=parts[1];
-  const rec={tenant_id:state.tenant,tool_id:tid,qty:qty, site_id:(kind==='site'?lid:null), store_id:(kind==='store'?lid:null)};
+  const rec={tenant_id:state.tenant,tool_id:tid,qty:qty, site_id:(kind==='site'?lid:null), store_id:(kind==='store'?lid:null), holder:null, loan_type:null};
+  if(kind==='loan'){ const h=(($('ts-holder')&&$('ts-holder').value)||'').trim(); if(!h){ showMsg('ts-msg','Scrie către cine e împrumutat/dat în chirie.'); return; } rec.holder=h; rec.loan_type=(lid==='rented'?'rented':'lent'); }
   const btn=$('ts-add'); if(btn) btn.disabled=true;
   const r=await sbRetry(()=>sb.from('tool_locations').insert(rec)); if(r.error){ if(btn) btn.disabled=false; showMsg('ts-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   await toolStockSync(tid); toast('✅ Adăugat la locație.'); toolStock(tid, tname);
