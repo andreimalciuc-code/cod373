@@ -1251,7 +1251,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v127';
+const APP_VERSION='cod373-v128';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1677,14 +1677,16 @@ async function warehouseContents(whId, whName){
   try{
     const [tl,st,vh]=await Promise.all([
       sb.from('tool_locations').select('qty,tools(name)').eq('warehouse_id',whId),
-      sb.from('stock').select('qty,min_qty,materials(name)').eq('warehouse_id',whId),
+      sb.from('stock').select('qty,min_qty,materials(name,last_price)').eq('warehouse_id',whId),
       sb.from('vehicles').select('label,plate,status').eq('home_warehouse_id',whId)
     ]);
     const tools=(tl.data||[]).filter(x=>+x.qty>0), mats=(st.data||[]).filter(x=>+x.qty>0), veh=vh.data||[];
+    const tBuc=tools.reduce((s,x)=>s+(+x.qty||0),0), mBuc=mats.reduce((s,x)=>s+(+x.qty||0),0), mVal=mats.reduce((s,x)=>s+((+x.qty||0)*(+((x.materials&&x.materials.last_price)||0))),0);
     const tR=_contTbl(tools.map(x=>'<tr><td>'+esc((x.tools&&x.tools.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b> buc</td></tr>'));
-    const mR=_contTbl(mats.map(x=>'<tr><td>'+esc((x.materials&&x.materials.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b></td></tr>'));
+    const mR=_contTbl(mats.map(x=>'<tr><td>'+esc((x.materials&&x.materials.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b>'+((x.materials&&x.materials.last_price!=null)?' <small style="color:var(--muted)">· '+money((+x.qty||0)*(+x.materials.last_price||0))+'</small>':'')+'</td></tr>'));
     const vR=_contTbl(veh.map(x=>'<tr><td>🚗 '+esc(x.label||'—')+(x.plate?' <small style="color:var(--muted)">'+esc(x.plate)+'</small>':'')+'</td><td style="text-align:right">'+pill(x.status)+'</td></tr>'));
-    const b=$('wc-body'); if(b) b.innerHTML=_contSection('🛠️','Instrumente',tR,'Niciun instrument aici.')+_contSection('📦','Materiale',mR,'Niciun material aici.')+_contSection('🚗','Flotă (depozit de bază)',vR,'Niciun vehicul cu acest depozit de bază.');
+    const sum='<div style="background:#f1f5f9;border-radius:9px;padding:.5rem .7rem;margin-bottom:.8rem;font-size:.84rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🛠️ <b>'+tBuc+'</b> buc</span><span>📦 <b>'+mBuc+'</b> buc · valoare ~<b>'+money(mVal)+'</b></span><span>🚗 <b>'+veh.length+'</b> vehicule</span></div>';
+    const b=$('wc-body'); if(b) b.innerHTML=sum+_contSection('🛠️','Instrumente'+(tBuc?(' — '+tBuc+' buc'):''),tR,'Niciun instrument aici.')+_contSection('📦','Materiale'+(mBuc?(' — '+mBuc+' buc · ~'+money(mVal)):''),mR,'Niciun material aici.')+_contSection('🚗','Flotă (depozit de bază)'+(veh.length?(' — '+veh.length):''),vR,'Niciun vehicul cu acest depozit de bază.');
   }catch(e){ const b=$('wc-body'); if(b) b.innerHTML='<div style="color:var(--red)">Eroare: '+esc(e.message||e)+'</div>'; }
 }
 async function siteContents(siteId, siteName){
@@ -1692,12 +1694,14 @@ async function siteContents(siteId, siteName){
   try{
     const [tl,st]=await Promise.all([
       sb.from('tool_locations').select('qty,tools(name)').eq('site_id',siteId),
-      sb.from('stock').select('qty,min_qty,materials(name)').eq('site_id',siteId)
+      sb.from('stock').select('qty,min_qty,materials(name,last_price)').eq('site_id',siteId)
     ]);
     const tools=(tl.data||[]).filter(x=>+x.qty>0), mats=(st.data||[]).filter(x=>+x.qty>0);
+    const tBuc=tools.reduce((s,x)=>s+(+x.qty||0),0), mBuc=mats.reduce((s,x)=>s+(+x.qty||0),0), mVal=mats.reduce((s,x)=>s+((+x.qty||0)*(+((x.materials&&x.materials.last_price)||0))),0);
     const tR=_contTbl(tools.map(x=>'<tr><td>'+esc((x.tools&&x.tools.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b> buc</td></tr>'));
-    const mR=_contTbl(mats.map(x=>'<tr><td>'+esc((x.materials&&x.materials.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b>'+((+x.qty<+x.min_qty)?' <span class="pill delay" style="font-size:.66rem">sub minim</span>':'')+'</td></tr>'));
-    const b=$('sc-body'); if(b) b.innerHTML=_contSection('🛠️','Instrumente',tR,'Niciun instrument pe acest șantier.')+_contSection('📦','Materiale',mR,'Niciun material pe acest șantier.');
+    const mR=_contTbl(mats.map(x=>'<tr><td>'+esc((x.materials&&x.materials.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b>'+((x.materials&&x.materials.last_price!=null)?' <small style="color:var(--muted)">· '+money((+x.qty||0)*(+x.materials.last_price||0))+'</small>':'')+((+x.qty<+x.min_qty)?' <span class="pill delay" style="font-size:.66rem">sub minim</span>':'')+'</td></tr>'));
+    const sum='<div style="background:#f1f5f9;border-radius:9px;padding:.5rem .7rem;margin-bottom:.8rem;font-size:.84rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🛠️ <b>'+tBuc+'</b> buc</span><span>📦 <b>'+mBuc+'</b> buc · valoare ~<b>'+money(mVal)+'</b></span></div>';
+    const b=$('sc-body'); if(b) b.innerHTML=sum+_contSection('🛠️','Instrumente'+(tBuc?(' — '+tBuc+' buc'):''),tR,'Niciun instrument pe acest șantier.')+_contSection('📦','Materiale'+(mBuc?(' — '+mBuc+' buc · ~'+money(mVal)):''),mR,'Niciun material pe acest șantier.');
   }catch(e){ const b=$('sc-body'); if(b) b.innerHTML='<div style="color:var(--red)">Eroare: '+esc(e.message||e)+'</div>'; }
 }
 async function subList(childKey, pField, pId, pName){
