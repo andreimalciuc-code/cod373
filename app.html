@@ -413,6 +413,7 @@ async function doCreateCompany(){
   if(error){ $('btn-onboard').disabled=false; showMsg('onb-msg',error.message); return; }
   const addr=($('onb-addr')&&$('onb-addr').value.trim())||'', phone=($('onb-phone')&&$('onb-phone').value.trim())||'';
   if(tid && (addr||phone)){ try{ await sb.from('tenants').update({address:addr||null,phone:phone||null}).eq('id',tid); }catch(e){} }
+  if(tid){ try{ await sb.from('subscriptions').insert({tenant_id:tid, plan_id:'trial', status:'trialing', trial_ends_at:new Date(Date.now()+14*86400000).toISOString()}); }catch(e){} }
   $('btn-onboard').disabled=false;
   await boot();
 }
@@ -1091,11 +1092,50 @@ async function boot(){
   document.querySelectorAll('[data-lang-btn]').forEach(b=>b.classList.toggle('on',b.dataset.langBtn===LANG));
   if(LANG==='ru'){ const o=$('btn-iesi'); if(o)o.textContent='Выход'; }
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
+  subLoad();
   let _lv; try{ _lv=localStorage.getItem('c373_last_view'); }catch(e){}
   go(_lv && MODULES[_lv] && canSee(_lv) ? _lv : 'dashboard');
   startClock();
   hideSplash();
   if((location.hash+location.search).indexOf('access_token=')>=0){ wialonCaptureFromUrl().then(ok=>{ if(ok) go('harta'); }); }
+}
+
+/* ════ ABONAMENT / TRIAL / DEMO ════ */
+async function subLoad(){
+  try{ const { data }=await sb.from('subscriptions').select('plan_id,status,trial_ends_at,current_period_end').eq('tenant_id',state.tenant).limit(1).maybeSingle(); state.sub=data||null; }catch(e){ state.sub=null; }
+  renderTrialBar();
+}
+function trialDaysLeft(){ if(!state.sub||!state.sub.trial_ends_at) return null; return Math.ceil((new Date(state.sub.trial_ends_at)-new Date())/86400000); }
+function renderTrialBar(){
+  const c=$('content'); if(!c) return;
+  let bar=$('trial-bar'); if(!bar){ bar=document.createElement('div'); bar.id='trial-bar'; c.parentNode.insertBefore(bar,c); }
+  const s=state.sub; if(!s || s.status==='active'){ bar.style.display='none'; bar.innerHTML=''; return; }
+  let html='', bg='#ecfdf5', col='#065f46';
+  if(s.status==='demo'){ bg='#eef2ff'; col='#3730a3'; html='🎬 <b>MOD DEMO</b> — datele sunt de probă. <a onclick="openPlans()" style="cursor:pointer;color:var(--primary);font-weight:700">Înregistrează-te ca să-ți creezi firma →</a>'; }
+  else { const d=trialDaysLeft();
+    if(d!=null && d>=0){ html='🎁 <b>Probă gratuită</b> — '+(d===0?'expiră azi':(d+' zile rămase'))+'. <a onclick="openPlans()" style="cursor:pointer;color:var(--primary);font-weight:700">Abonează-te →</a>'; }
+    else { bg='#fef2f2'; col='#991b1b'; html='⏳ <b>Proba a expirat.</b> <a onclick="openPlans()" style="cursor:pointer;color:var(--primary);font-weight:700">Abonează-te ca să continui →</a>'; }
+  }
+  bar.style.cssText='display:flex;align-items:center;gap:.6rem;padding:.5rem 1rem;margin:0 0 .8rem;border-radius:10px;font-size:.86rem;background:'+bg+';color:'+col;
+  bar.innerHTML=html;
+}
+function openPlans(){
+  const isOwner=ADMIN_ROLES.includes(state.role); const d=trialDaysLeft(); const isDemo=state.sub&&state.sub.status==='demo';
+  const plans=[['Pro','Pentru firme mici-medii','toate modulele, AI, GPS, e-Factură, suport'],['Business','Firme cu echipe multiple','tot din Pro + utilizatori nelimitați + integrări contabile (1C/DATEV/lexoffice/sevdesk)']];
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>⭐ Abonament Cod373</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.88rem;margin-top:0">'+(isDemo?'Ești în mod demo. Înregistrează o firmă reală ca să-ți păstrezi datele, apoi alege un plan.':(d!=null&&d<0?'Proba gratuită a expirat.':'Ești în proba gratuită'+(d!=null?(' — '+d+' zile rămase'):'')+'.'))+'</p>'
+    +plans.map(p=>'<div style="border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem;margin-bottom:.5rem"><div style="font-weight:700">'+p[0]+'</div><div style="font-size:.82rem;color:var(--muted)">'+p[1]+' — '+p[2]+'</div></div>').join('')
+    +'<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem"><a class="btn-primary" href="mailto:contact@generalconstruct.md?subject=Abonament%20Cod373" style="text-decoration:none">✉️ Contactează pentru abonare</a>'
+    +(isOwner&&!isDemo?'<button class="btn-ghost" onclick="subActivate()">✅ Am plătit — activează</button>':'')+'</div>'
+    +'<div style="font-size:.74rem;color:var(--muted);margin-top:.6rem">Plata online se adaugă în curând; până atunci activarea se face manual după confirmarea plății.</div>'
+    +'</div></div></div>';
+}
+async function subActivate(){
+  if(!ADMIN_ROLES.includes(state.role)) return;
+  if(!confirm('Confirmi că abonamentul a fost plătit și îl activezi?')) return;
+  const pe=new Date(Date.now()+31*86400000).toISOString();
+  try{ if(state.sub){ await sb.from('subscriptions').update({status:'active',current_period_end:pe}).eq('tenant_id',state.tenant); } else { await sb.from('subscriptions').insert({tenant_id:state.tenant,plan_id:'pro',status:'active',current_period_end:pe}); } }catch(e){ toast('Eroare: '+esc(e.message)); return; }
+  closeModal(); toast('✅ Abonament activat.'); subLoad();
 }
 
 function buildNav(){
@@ -1252,7 +1292,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v131';
+const APP_VERSION='cod373-v132';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
