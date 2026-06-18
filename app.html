@@ -583,7 +583,7 @@ const MODULES = {
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
     select:'id,label,plate,status,photo_url,contract_url,acq_condition,acq_type,km_purchase,km_current,itp_date,itp_until,insurance_date,insurance_until,map_icon,vehicle_drivers(employee_id,employees(full_name))',
     columns:[
-      {label:'Vehicul',get:r=>'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')},
+      {label:'Vehicul',get:r=>'<span class="tname">'+esc(r.label)+'</span>'+(r.acq_condition?'<span style="color:var(--muted);font-size:.72rem;font-weight:400"> · '+(r.acq_condition==='second'?'second-hand':'nou')+'</span>':'')+(canSee('harta')?' <button class="iconbtn" title="Vezi pe hartă (GPS)" onclick="event.stopPropagation();vehShowOnMap(\''+r.id+'\',\''+jsArg(r.label)+'\')">🗺️</button>':'')},
       {label:'Șoferi',get:r=>{ const ds=(r.vehicle_drivers||[]).map(x=>x.employees&&x.employees.full_name).filter(Boolean); return ds.length?('🧑‍✈️ '+ds.map(esc).join(', ')):'<span style="color:var(--muted)">—</span>'; }},
       {label:'Nr. înmatriculare',get:r=>esc(r.plate||'—')},
       {label:'Km actuali',get:r=>r.km_current!=null?((+r.km_current).toLocaleString('ro-RO')+' km'):'—'},
@@ -1237,7 +1237,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v123';
+const APP_VERSION='cod373-v124';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3059,7 +3059,9 @@ async function hartaRefresh(fit){
   const over=pts.filter(p=>p.over); const wb=$('harta-warn'); if(wb) wb.innerHTML = over.length?('<div class="harta-warn">🚨 '+over.length+' vehicul(e) peste limita de '+_hSpeed+' km/h: '+over.map(p=>esc(p.name)+' ('+Math.round(p.speed)+')').join(', ')+'</div>'):'';
   const now=new Date(); const st=$('harta-status'); if(st) st.textContent=(note?note+' · ':'')+'actualizat '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
   hartaRenderList();
+  if(window._hPendingVeh){ const pv=window._hPendingVeh; const pt=_hPts.find(p=>String(p.vid)===String(pv.id)); if(pt){ _hSel=pt.key; _hFollow=pt.key; try{ _hMap.setView([pt.lat,pt.lng], Math.max(_hMap.getZoom()||13,15)); }catch(e){} const mk=_hMarkers[pt.key]; if(mk&&mk.openPopup){ try{ mk.openPopup(); }catch(e){} } window._hPendingVeh=null; hartaRenderList(); } else { window._hPendingVeh=null; toast('🚗 '+(pv.label||'Vehiculul')+' nu are poziție GPS în acest moment.'); } }
 }
+function vehShowOnMap(vid,label){ window._hPendingVeh={id:vid,label:label||''}; go('harta'); }
 function hartaRenderList(){
   const el=$('harta-list'); if(!el) return;
   let pts=_hPts.slice().sort((a,b)=>(b.moving-a.moving)||a.name.localeCompare(b.name));
@@ -3872,7 +3874,7 @@ function rowActions(key,m,r){
   if(m.efactura){ const au=(state.firm&&state.firm.automations)||{}; if(au.lexoffice_key) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
   if(m.printable) a.push({i:'🖨',l:'Tipărește / PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'📍',l:'Unde se află (șantiere/depozit + cantități)',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
-  if(m.vehicleLog){ a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
+  if(m.vehicleLog){ if(canSee('harta')) a.push({i:'🗺️',l:'Vezi pe hartă (GPS)',f:"vehShowOnMap('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
   return a;
