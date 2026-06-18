@@ -1234,7 +1234,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v117';
+const APP_VERSION='cod373-v118';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1628,8 +1628,27 @@ async function subList(childKey, pField, pId, pName){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:760px">'
     +'<div class="modal-head"><h3>'+m.icon+' '+esc(m.title)+' — '+esc(pName)+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.7rem"><button class="btn-ghost" onclick="siteHub(\''+pId+'\',\''+esc(pName).replace(/\x27/g,"")+'\')">← Înapoi la șantier</button>'
-    +(canC?'<button class="btn-primary" style="margin-left:auto" onclick="subAdd()">＋ '+esc(m.newLabel||'Adaugă')+'</button>':'')+'</div>'
+    +(childKey==='jurnal'&&rows.length?'<button class="btn-ghost" style="margin-left:auto" title="Rezumat AI al rapoartelor zilnice" onclick="aiJurnalSummary()">🤖 Rezumat</button>':'')
+    +(canC?'<button class="btn-primary" '+(childKey==='jurnal'&&rows.length?'':'style="margin-left:auto"')+' onclick="subAdd()">＋ '+esc(m.newLabel||'Adaugă')+'</button>':'')+'</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div></div></div></div>';
+}
+async function aiJurnalSummary(){
+  const c=window._subCtx; if(!c||c.childKey!=='jurnal') return;
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()"><div class="modal" style="max-width:540px"><div class="modal-head"><h3>🤖 Rezumat jurnal — '+esc(c.pName||'Șantier')+'</h3><button class="x" onclick="closeSub()">×</button></div><div class="modal-body" id="ajs-body"><div class="loading">Se generează rezumatul…</div></div></div></div>';
+  try{
+    const { data }=await sb.from('daily_logs').select('log_date,weather,crew_count,work_done,notes').eq('site_id',c.pId);
+    const rows=(data||[]).slice().sort((a,b)=>((a.log_date||'')<(b.log_date||'')?-1:1)).slice(-40);
+    if(!rows.length){ if($('ajs-body')) $('ajs-body').innerHTML='<div class="empty" style="color:var(--muted)">Niciun raport zilnic încă.</div>'; return; }
+    const text='Rapoarte zilnice de șantier:\n'+rows.map(r=>'['+(r.log_date||'')+'] vreme: '+(r.weather||'-')+'; echipă: '+(r.crew_count!=null?r.crew_count:'-')+' pers.; lucrări: '+(r.work_done||'-')+(r.notes?('; observații: '+r.notes):'')).join('\n');
+    const d=await aiCall('summary', text);
+    if(!$('ajs-body')) return;
+    $('ajs-body').innerHTML='<div style="white-space:pre-wrap;font-size:.92rem;line-height:1.45">'+esc(d.text||'(rezumat gol)')+'</div>'
+      +'<div style="margin-top:.8rem;display:flex;gap:.5rem;align-items:center"><button class="btn-ghost" data-t="'+esc(d.text||'')+'" onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>toast(\'📋 Copiat\'))">📋 Copiază</button>'+(d.remaining!=null?'<span style="font-size:.74rem;color:var(--muted)">'+d.remaining+' mesaje gratuite rămase luna asta</span>':'')+'</div>';
+  }catch(e){
+    if(!$('ajs-body')) return;
+    const msg=(e.code==='quota'||e.code==='byok_needed')?(e.message||'Limită atinsă.'):('AI: '+(e.message||'eroare'));
+    $('ajs-body').innerHTML='<div style="color:var(--red);font-size:.9rem">'+esc(msg)+'</div>';
+  }
 }
 function subAdd(){ const c=window._subCtx; subForm(c.childKey,null,c.pField,c.pId,()=>subList(c.childKey,c.pField,c.pId,c.pName)); }
 async function subEdit(childKey,id){ const c=window._subCtx; const { data }=await sb.from(MODULES[childKey].table).select('*').eq('id',id).single(); subForm(childKey,data,c.pField,c.pId,()=>subList(c.childKey,c.pField,c.pId,c.pName)); }
