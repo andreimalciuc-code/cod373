@@ -1445,7 +1445,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v152';
+const APP_VERSION='cod373-v153';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1860,7 +1860,7 @@ function tsfAddSite(){ const wrap=$('tsf-sites'); if(!wrap) return; const sites=
   wrap.appendChild(div); }
 /* ── instrumente serializate: blocuri pe serie la creare ── */
 function tufLocOpts(){ const sites=window._tsfSites||[], whs=window._tufWhs||[]; return '<option value="">📦 Nealocat (în firmă)</option>'+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>'<option value="wh:'+w.id+'">🏬 '+esc(w.name)+'</option>').join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>'<option value="site:'+s.id+'">🏗️ '+esc(s.name)+'</option>').join('')+'</optgroup>':'')+'<optgroup label="În afara firmei"><option value="loan:lent">🤝 Împrumutat</option><option value="loan:rented">💶 În chirie</option></optgroup>'; }
-function tufAdd(){ const wrap=$('tuf-units'); if(!wrap) return; const i=wrap.children.length;
+function tufAdd(u){ const wrap=$('tuf-units'); if(!wrap) return; const i=wrap.children.length;
   const div=document.createElement('div'); div.className='tuf-row'; div.style.cssText='border:1px solid var(--line);border-radius:9px;padding:.55rem;margin-bottom:.5rem;background:var(--surface)';
   div.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem"><b style="font-size:.82rem">Serie #'+(i+1)+'</b><button type="button" class="iconbtn danger" title="Scoate seria" onclick="this.closest(\'.tuf-row\').remove();tufRecalc()">🗑</button></div>'
     +'<div style="display:flex;gap:.4rem;flex-wrap:wrap">'
@@ -1886,7 +1886,24 @@ function tufAdd(){ const wrap=$('tuf-units'); if(!wrap) return; const i=wrap.chi
       +'<div class="field" style="flex:1;min-width:150px;margin:0"><label>📷 Poză buletin (opțional)</label><input class="tuf-idphoto" type="file" accept="image/*"/></div>'
       +'<div class="field" style="flex:1;min-width:150px;margin:0"><label>✍️ Poză semnătură (opțional)</label><input class="tuf-sign" type="file" accept="image/*"/></div>'
       +'</div></div>';
-  wrap.appendChild(div); tufRecalc(); }
+  wrap.appendChild(div);
+  if(u){ div.dataset.uid=u.id; const q=c=>div.querySelector(c);
+    if(q('.tuf-serial')) q('.tuf-serial').value=u.serial_no||'';
+    if(q('.tuf-inv')) q('.tuf-inv').value=u.inventory_no||'';
+    if(q('.tuf-value')) q('.tuf-value').value=(u.value!=null?u.value:'');
+    if(q('.tuf-cond')) q('.tuf-cond').value=u.acq_condition||'nou';
+    if(q('.tuf-date')) q('.tuf-date').value=u.acq_date||'';
+    if(q('.tuf-life')) q('.tuf-life').value=(u.useful_life_years!=null?u.useful_life_years:5);
+    let locv=''; if(u.warehouse_id) locv='wh:'+u.warehouse_id; else if(u.site_id) locv='site:'+u.site_id; else if(u.loan_type) locv='loan:'+u.loan_type;
+    if(q('.tuf-loc')){ q('.tuf-loc').value=locv; tufLoanShow(q('.tuf-loc')); }
+    if(u.loan_type){ if(q('.tuf-cui')) q('.tuf-cui').value=u.holder||'';
+      if(q('.tuf-from')&&u.loan_from) q('.tuf-from').value=isoToLocalDT(u.loan_from);
+      if(q('.tuf-due')&&u.loan_due) q('.tuf-due').value=isoToLocalDT(u.loan_due);
+      if(u.loan_type==='rented'){ if(q('.tuf-rent')) q('.tuf-rent').value=(u.rent_amount!=null?u.rent_amount:''); if(q('.tuf-deposit')){ q('.tuf-deposit').value=(u.deposit_amount!=null?u.deposit_amount:''); q('.tuf-deposit').dataset.auto='0'; } tufRentCalc(div); } }
+    [['tuf-photo',u.photo_url,'poză'],['tuf-idphoto',u.id_photo_url,'buletin'],['tuf-sign',u.signature_url,'semnătură']].forEach(function(x){ if(x[1]){ const inp=div.querySelector('.'+x[0]); if(inp){ const n=document.createElement('div'); n.style.cssText='font-size:.7rem;color:var(--green);margin-top:.15rem'; n.textContent='✓ '+x[2]+' existentă (lasă gol ca s-o păstrezi)'; inp.after(n); } } });
+  }
+  tufRecalc(); }
+function isoToLocalDT(iso){ try{ const d=new Date(iso); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }catch(e){ return ''; } }
 function tufLoanShow(sel){ const row=sel.closest('.tuf-row'); if(!row) return; const v=sel.value, isLoan=v.indexOf('loan:')===0, isRent=v==='loan:rented'; const panel=row.querySelector('.tuf-loan'); if(panel) panel.style.display=isLoan?'block':'none'; const rw=row.querySelector('.tuf-rentwrap'), dw=row.querySelector('.tuf-depwrap'); if(rw) rw.style.display=isRent?'block':'none'; if(dw) dw.style.display=isRent?'block':'none';
   if(isRent){ const dr=$('f-default_rent'), ri=row.querySelector('.tuf-rent'); if(ri&&!ri.value&&dr&&dr.value) ri.value=dr.value; tufRowMoney(row); } }
 function depositPct(){ try{ return +(state.firm&&state.firm.automations&&state.firm.automations.deposit_pct)||30; }catch(e){ return 30; } }
@@ -4542,7 +4559,8 @@ async function openForm(key,row,preset){
     formCtx[s.list]=((await sb.from(s.ref).select('id,name').order('name')).data)||[]; formCtx[s.f]=[];
     if(row){ const d=((await sb.from(s.tbl).select(s.col+',price').eq('material_id',row.id)).data)||[]; formCtx[s.f]=d.map(x=>({ref_id:x[s.col]||'',price:(x.price!=null?x.price:'')})); } } }
   if(m.toolStockForm){ try{ const [wr,sr]=await Promise.all([sb.from('warehouses').select('id,name').order('name'), sb.from('sites').select('id,name,status')]); formCtx._whs=(wr.data||[]); formCtx._sites=(sr.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||'')); window._tsfSites=formCtx._sites; window._tufWhs=formCtx._whs; }catch(e){ formCtx._whs=[]; formCtx._sites=[]; window._tsfSites=[]; window._tufWhs=[]; }
-    formCtx._toolHasUnits=false; if(row){ try{ const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',row.id); formCtx._toolHasUnits=(c.count||0)>0; }catch(e){} } }
+    formCtx._toolHasUnits=false; formCtx._units=[]; formCtx._unitIds=[];
+    if(row){ try{ const ur=await sb.from('tool_units').select('*').eq('tool_id',row.id).order('created_at'); formCtx._units=ur.data||[]; formCtx._unitIds=formCtx._units.map(u=>u.id); formCtx._toolHasUnits=formCtx._units.length>0; }catch(e){} } }
   let body='<div id="form-msg"></div>';
   // pack fields in pairs where short
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
@@ -4566,17 +4584,12 @@ async function openForm(key,row,preset){
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
-  if(m.toolStockForm && (!row || !formCtx._toolHasUnits)){
+  if(m.toolStockForm){ const hasU=row&&formCtx._toolHasUnits;
     body+='<div class="field" style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>🔢 Bucăți pe serie</label>'
-      +(row?'<div style="font-size:.8rem;color:var(--muted);margin:-.1rem 0 .5rem">Acest instrument nu are încă bucăți pe serie (a fost introdus în modelul vechi pe cantități). Adaugă-le aici — nr. inventar, valoare, amortizare, poză și locație per bucată — exact ca la un instrument nou.</div>':'')
-      +'<div style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin:-.05rem 0 .55rem"><div class="field" style="width:200px;margin:0"><label>Câte bucăți în total</label><input id="tuf-count" type="number" min="0" value="1" oninput="tufSetCount(this.value)"/></div><div style="font-size:.8rem;color:var(--muted);align-self:center">Pune numărul → se creează automat câte o linie per bucată. Total serii: <b id="tuf-total">0</b>.</div></div>'
+      +(row?('<div style="font-size:.8rem;color:var(--muted);margin:-.1rem 0 .5rem">'+(hasU?'Fiecare bucată e mai jos, pre-completată — editezi nr. serie / inventar, valoare, amortizare și locație. Pentru etichetă QR / istoric / mutare detaliată folosește butonul „🔢" de pe rândul instrumentului din listă.':'Acest instrument nu are încă bucăți pe serie (model vechi pe cantități). Adaugă-le aici — exact ca la un instrument nou.')+'</div>'):'')
+      +'<div style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin:-.05rem 0 .55rem"><div class="field" style="width:200px;margin:0"><label>Câte bucăți în total</label><input id="tuf-count" type="number" min="0" value="1" oninput="tufSetCount(this.value)"/></div><div style="font-size:.8rem;color:var(--muted);align-self:center">Pune numărul → se creează / scade automat câte o linie per bucată. Total serii: <b id="tuf-total">0</b>.</div></div>'
       +'<div id="tuf-units"></div>'
       +'<button type="button" class="addline" onclick="tufAdd();var c=document.getElementById(\'tuf-count\');if(c)c.value=document.querySelectorAll(\'#tuf-units .tuf-row\').length">＋ adaugă încă o serie</button>'
-      +'</div>'; }
-  if(m.toolStockForm && row && formCtx._toolHasUnits){
-    body+='<div class="field" style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>🔢 Bucăți (serii) & unde se află</label>'
-      +'<div style="font-size:.82rem;color:var(--muted);margin-bottom:.55rem">Acest instrument are deja bucăți pe serie. Aici editezi fiecare bucată — nr. de inventar, valoare, amortizare, poză, locație (depozit / șantier / împrumut / chirie), etichetă QR și istoric.</div>'
-      +'<button type="button" class="btn-primary" onclick="toolUnits(\''+row.id+'\',\''+jsArg(row.name||'')+'\')">🔢 Deschide bucățile (serii) →</button>'
       +'</div>'; }
   if(m.recipe){ body+='<div class="field"><label>🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)</label><datalist id="recipe-mat-list">'+(formCtx.materials||[]).map(mm=>'<option value="'+esc(mm.name)+'"></option>').join('')+'</datalist><div id="recipe-mount"></div><button type="button" class="addline" onclick="recipeAdd()">＋ adaugă material</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Consum × volumul măsurat (la previzualizare șantier) = cantitatea de material. Prețul se ia automat din Materiale.</div></div>'; }
   if(m.priceSrc){ m.priceSrc.forEach(sk=>{ const s=PRICE_SRC[sk]; body+='<div class="field"><label>'+s.icon+' '+s.title+' (același material la mai multe '+s.noun+'e)</label><div id="'+s.mount+'"></div><button type="button" class="addline" onclick="srcAdd(\''+sk+'\')">＋ adaugă '+s.noun+'</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+s.hint+'</div></div>'; }); }
@@ -4595,7 +4608,7 @@ async function openForm(key,row,preset){
     renderLines();
   }
   if(m.recipe) renderRecipe();
-  if(m.toolStockForm && (!row || !formCtx._toolHasUnits)){ tufAdd(); }
+  if(m.toolStockForm){ const us=(formCtx._units||[]); if(us.length){ us.forEach(u=>tufAdd(u)); } else { tufAdd(); } const cc=$('tuf-count'); if(cc) cc.value=document.querySelectorAll('#tuf-units .tuf-row').length; }
   if(m.priceSrc) m.priceSrc.forEach(sk=>renderSrc(sk));
   if(m.fields.some(f=>f.type==='price2')){ const ve=$('f-vat_rate'); if(ve) ve.addEventListener('input',function(){ m.fields.forEach(f=>{ if(f.type==='price2') price2Sync(f.key,'net'); }); }); }
   if(m.dueFromSupplier){ const mb=document.querySelector('.modal-body'); if(mb && !$('credit-msg')){ const d=document.createElement('div'); d.id='credit-msg'; const fm=$('form-msg'); if(fm&&fm.after) fm.after(d); else mb.insertBefore(d,mb.firstChild); }
@@ -5061,21 +5074,26 @@ async function saveRecord(){
       if(srows.length){ const { error }=await sb.from(s.tbl).insert(srows); if(error) throw error; }
     } }
     if(m.table==='sites' && !formCtx.id){ try{ if(await seedSiteStages(parentId, payload.work_type, payload.start_date)) toast('📋 Am adăugat etape-șablon în grafic (le poți edita în Gantt).'); }catch(e){} }
-    const _wasNew=!formCtx.id, _nid=parentId, _nname=payload.name; let _unitsAdded=false;
-    if(key==='instrumente' && _nid && document.querySelector('#tuf-units')){ try{ const rows=document.querySelectorAll('#tuf-units .tuf-row'); const units=[];
-      for(const r of rows){ const gv=c=>{ const e=r.querySelector(c); return e?e.value:''; };
+    const _wasNew=!formCtx.id, _nid=parentId, _nname=payload.name;
+    if(key==='instrumente' && _nid && document.querySelector('#tuf-units')){
+      const rows=Array.from(document.querySelectorAll('#tuf-units .tuf-row')); const keepIds=[];
+      const up1=async(r,cls,prefix)=>{ const pf=r.querySelector('.'+cls); if(pf&&pf.files&&pf.files[0]){ const f=pf.files[0]; const path=state.tenant+'/tools/'+Date.now()+'_'+prefix+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const upr=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!upr.error) return path; } return undefined; };
+      for(const r of rows){ const gv=c=>{ const e=r.querySelector(c); return e?e.value:''; }; const uid=r.dataset.uid||null;
         const serial=gv('.tuf-serial').trim(), inv=gv('.tuf-inv').trim(), val=gv('.tuf-value'), cond=gv('.tuf-cond')||'nou', date=gv('.tuf-date'), life=gv('.tuf-life'), loc=gv('.tuf-loc');
-        if(!serial && !inv && !val) continue; // linie goală
-        let photo=null; const pf=r.querySelector('.tuf-photo'); if(pf&&pf.files&&pf.files[0]){ const f=pf.files[0]; const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/tools/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) photo=path; }
-        const u={tenant_id:state.tenant,tool_id:_nid,serial_no:serial||null,inventory_no:inv||null,value:val!==''?+val:null,acq_condition:cond,acq_date:date||null,useful_life_years:life!==''?+life:null,photo_url:photo};
+        if(!uid && !serial && !inv && !val) continue; // linie goală nouă
+        const u={tenant_id:state.tenant,tool_id:_nid,serial_no:serial||null,inventory_no:inv||null,value:val!==''?+val:null,acq_condition:cond,acq_date:date||null,useful_life_years:life!==''?+life:null,
+          site_id:null,warehouse_id:null,holder:null,loan_type:null,loan_from:null,loan_due:null,rent_amount:null,rent_total:null,deposit_amount:null};
         const parts=(loc||'').split(':'); if(parts[0]==='wh') u.warehouse_id=parts[1]; else if(parts[0]==='site') u.site_id=parts[1];
-        else if(parts[0]==='loan'){ u.loan_type=(parts[1]==='rented'?'rented':'lent'); u.holder=gv('.tuf-cui').trim()||null; const fr=gv('.tuf-from'), du=gv('.tuf-due'); if(fr) u.loan_from=fr; if(du) u.loan_due=du; if(parts[1]==='rented'){ const rt=gv('.tuf-rent'), dp=gv('.tuf-deposit'); if(rt!==''){ u.rent_amount=+rt; u.rent_total=(+rt)*rentDays(fr,du); } if(dp!=='') u.deposit_amount=+dp; }
-          const idf=r.querySelector('.tuf-idphoto'); if(idf&&idf.files&&idf.files[0]){ const f=idf.files[0]; const path=state.tenant+'/tools/'+Date.now()+'_id_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) u.id_photo_url=path; }
-          const sgf=r.querySelector('.tuf-sign'); if(sgf&&sgf.files&&sgf.files[0]){ const f=sgf.files[0]; const path=state.tenant+'/tools/'+Date.now()+'_sig_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) u.signature_url=path; } }
-        units.push(u); }
-      if(units.length){ await sb.from('tool_units').insert(units); const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',_nid); await sb.from('tools').update({qty:c.count||units.length}).eq('id',_nid); _unitsAdded=true; } }catch(e){} }
+        else if(parts[0]==='loan'){ u.loan_type=(parts[1]==='rented'?'rented':'lent'); u.holder=gv('.tuf-cui').trim()||null; const fr=gv('.tuf-from'), du=gv('.tuf-due'); if(fr) u.loan_from=fr; if(du) u.loan_due=du; if(parts[1]==='rented'){ const rt=gv('.tuf-rent'), dp=gv('.tuf-deposit'); if(rt!==''){ u.rent_amount=+rt; u.rent_total=(+rt)*rentDays(fr,du); } if(dp!=='') u.deposit_amount=+dp; } }
+        const ph=await up1(r,'tuf-photo',''); if(ph!==undefined) u.photo_url=ph;
+        if(parts[0]==='loan'){ const idp=await up1(r,'tuf-idphoto','id_'); if(idp!==undefined) u.id_photo_url=idp; const sg=await up1(r,'tuf-sign','sig_'); if(sg!==undefined) u.signature_url=sg; }
+        if(uid){ const rr=await sb.from('tool_units').update(u).eq('id',uid); if(rr.error) throw rr.error; keepIds.push(uid); }
+        else { const rr=await sb.from('tool_units').insert(u).select('id').single(); if(rr.error) throw rr.error; if(rr.data) keepIds.push(rr.data.id); } }
+      const orig=formCtx._unitIds||[]; const toDel=orig.filter(id=>keepIds.indexOf(id)<0);
+      if(toDel.length){ const rd=await sb.from('tool_units').delete().in('id',toDel); if(rd.error) throw rd.error; }
+      const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',_nid); await sb.from('tools').update({qty:c.count||0}).eq('id',_nid); }
     fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
-    if(key==='instrumente' && _nid && (_wasNew || _unitsAdded)){ setTimeout(()=>toolStock(_nid, _nname||''), 300); }
+    if(key==='instrumente' && _nid && _wasNew){ setTimeout(()=>toolStock(_nid, _nname||''), 300); }
   }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', isNetErr(e)?netMsg():(e.message||'Eroare la salvare.')); }
 }
 
