@@ -1546,7 +1546,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v166';
+const APP_VERSION='cod373-v167';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2633,31 +2633,42 @@ const CRM_STAGES=['lead','contacted','offer','won','active','lost'];
 const CRM_COL={lead:'#64748b',contacted:'#0ea5e9',offer:'#f59e0b',won:'#16a34a',active:'#2f6bff',lost:'#ef4444'};
 const CA_KIND={call:['📞','Apel'],meeting:['🤝','Întâlnire'],email:['✉️','Email'],note:['📝','Notă'],task:['✅','Follow-up']};
 let _crmData=[], _crmQ='';
+let _crmPipe=null, _crmLast={};
+function crmPipes(){ try{ const a=state.firm.automations&&state.firm.automations.crm_pipelines; if(a&&a.length) return a; }catch(e){} return [{id:'sales',name:'Vânzări',stages:CRM_STAGES.map(k=>({k:k,label:(STATUS[k]?STATUS[k][0]:k),color:CRM_COL[k]}))}]; }
+function crmPipe(id){ const ps=crmPipes(); return ps.find(p=>p.id===id)||ps[0]; }
+function crmRules(){ try{ return (state.firm.automations&&state.firm.automations.crm_rules)||{}; }catch(e){ return {}; } }
+function crmScore(c){ let s=0; const w={lead:10,contacted:30,offer:55,won:100,active:90,lost:0}; s+=(w[c.stage]!=null?w[c.stage]:25); if(c.temperature==='hot')s+=20;else if(c.temperature==='warm')s+=10; if(+c.value>0)s+=10; if(c.phone)s+=5; if(c.email)s+=5; const last=_crmLast[c.id]; if(last){ const d=(Date.now()-new Date(last).getTime())/86400000; if(d<=7)s+=10; else if(d<=30)s+=5; } return Math.max(0,Math.min(100,Math.round(s))); }
+function crmScoreBadge(c){ const s=crmScore(c); const col=s>=70?'var(--green)':(s>=40?'var(--amber)':'var(--muted)'); return '<span title="'+esc(C373t('Scor lead'))+'" style="float:right;font-size:.7rem;font-weight:700;color:#fff;background:'+col+';border-radius:20px;padding:.05rem .4rem">'+s+'</span>'; }
 async function renderClienti(){
-  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="renderModule(\'clienti\')">📋 '+esc(C373t('Listă'))+'</button>'
+  const pipes=crmPipes(); if(!_crmPipe||!pipes.find(p=>p.id===_crmPipe)) _crmPipe=pipes[0].id;
+  const pipeSel=pipes.length>1?('<select onchange="_crmPipe=this.value;renderClienti()" style="padding:.5rem .6rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)">'+pipes.map(p=>'<option value="'+p.id+'" '+(p.id===_crmPipe?'selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select>'):'';
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="renderModule(\'clienti\')">📋 '+esc(C373t('Listă'))+'</button>'+pipeSel
     +'<button class="btn-ghost" onclick="crmReport()">📊 '+esc(C373t('Raport pâlnie'))+'</button>'
     +'<button class="btn-ghost" onclick="crmFeed()">📰 '+esc(C373t('Flux activitate'))+'</button>'
-    +'<input id="crm-q" placeholder="'+esc(C373t('Caută'))+'" oninput="crmFilter(this.value)" value="'+esc(_crmQ)+'" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;min-width:170px"/>'
-    +'<span style="flex:1"></span><button class="btn-primary" onclick="openForm(\'clienti\')">＋ '+esc(C373t('Client nou'))+'</button></div>'
+    +'<button class="btn-ghost" onclick="crmAutomations()" title="'+esc(C373t('Automatizări & pâlnii'))+'">⚙️</button>'
+    +'<input id="crm-q" placeholder="'+esc(C373t('Caută'))+'" oninput="crmFilter(this.value)" value="'+esc(_crmQ)+'" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;min-width:150px"/>'
+    +'<span style="flex:1"></span><button class="btn-primary" onclick="crmNew()">＋ '+esc(C373t('Client nou'))+'</button></div>'
     +'<div id="crm-mount"><div class="loading">Se încarcă…</div></div>';
-  const { data, error }=await sb.from('clients').select('id,name,type,phone,email,stage,value,tags,source,stage_since,temperature,created_at').order('created_at',{ascending:false});
+  const { data, error }=await sb.from('clients').select('id,name,type,phone,email,stage,value,tags,source,stage_since,temperature,created_at,pipeline').order('created_at',{ascending:false});
   if(error){ $('crm-mount').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   const fu={}; try{ const fr=await sb.from('client_activities').select('client_id,due_date,body').eq('kind','task').eq('done',false).order('due_date'); (fr.data||[]).forEach(a=>{ if(!fu[a.client_id]) fu[a.client_id]={due:a.due_date,body:a.body}; }); }catch(e){}
+  _crmLast={}; try{ const lr=await sb.from('client_activities').select('client_id,created_at').order('created_at',{ascending:false}); (lr.data||[]).forEach(a=>{ if(!_crmLast[a.client_id]) _crmLast[a.client_id]=a.created_at; }); }catch(e){}
   _crmData=(data||[]).map(c=>Object.assign({},c,{_fu:fu[c.id]||null}));
   crmRender();
 }
-function crmRender(){ const q=_crmQ.toLowerCase();
-  const data=_crmData.filter(c=>!q||((c.name||'')+' '+(c.tags||'')+' '+(c.phone||'')+' '+(c.email||'')).toLowerCase().indexOf(q)>=0);
-  const cols=CRM_STAGES.map(st=>{ const items=data.filter(c=>(c.stage||'lead')===st); const tot=items.reduce((s,c)=>s+(+c.value||0),0);
+function crmNew(){ const p=crmPipe(_crmPipe); window._crmPreset={pipeline:p.id, stage:(p.stages[0]&&p.stages[0].k)||'lead'}; openForm('clienti'); }
+function crmRender(){ const q=_crmQ.toLowerCase(); const pipe=crmPipe(_crmPipe);
+  const data=_crmData.filter(c=>((c.pipeline||'sales')===pipe.id) && (!q||(((c.name||'')+' '+(c.tags||'')+' '+(c.phone||'')+' '+(c.email||'')).toLowerCase().indexOf(q)>=0)));
+  const cols=pipe.stages.map(st=>{ const items=data.filter(c=>(c.stage||pipe.stages[0].k)===st.k); const tot=items.reduce((s,c)=>s+(+c.value||0),0);
     const cards=items.length?items.map(crmCard).join(''):'<div style="color:var(--muted);font-size:.78rem;padding:.5rem;text-align:center">—</div>';
-    return '<div class="crm-col" ondragover="event.preventDefault();this.classList.add(\'crm-over\')" ondragleave="this.classList.remove(\'crm-over\')" ondrop="crmDrop(event,\''+st+'\')"><div class="crm-colh" style="border-top:3px solid '+CRM_COL[st]+'">'+esc(STATUS[st]?STATUS[st][0]:st)+' <span style="color:var(--muted);font-weight:400">('+items.length+')</span>'+(tot?'<div style="font-size:.72rem;color:var(--muted);font-weight:600">'+money(tot)+'</div>':'')+'</div><div class="crm-colb">'+cards+'</div></div>'; }).join('');
+    return '<div class="crm-col" ondragover="event.preventDefault();this.classList.add(\'crm-over\')" ondragleave="this.classList.remove(\'crm-over\')" ondrop="crmDrop(event,\''+st.k+'\')"><div class="crm-colh" style="border-top:3px solid '+(st.color||'#64748b')+'">'+esc(st.label)+' <span style="color:var(--muted);font-weight:400">('+items.length+')</span>'+(tot?'<div style="font-size:.72rem;color:var(--muted);font-weight:600">'+money(tot)+'</div>':'')+'</div><div class="crm-colb">'+cards+'</div></div>'; }).join('');
   $('crm-mount').innerHTML='<div class="crm-board">'+cols+'</div>';
 }
 const CRM_TEMP={hot:'🔥',warm:'🌤',cold:'❄️'};
 function crmDays(c){ const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(!base) return null; return Math.max(0,Math.round((new Date(coToday()+'T12:00:00')-new Date(base+'T12:00:00'))/86400000)); }
 function crmCard(c){ const fu=c._fu; const overdue=fu&&fu.due&&fu.due<coToday(); const open=(c.stage!=='won'&&c.stage!=='lost'); const ds=crmDays(c); const stuck=open&&!fu&&ds!=null&&ds>=14;
   return '<div class="crm-card'+(stuck?' crm-stuck':'')+'" draggable="true" ondragstart="crmDragStart(event,\''+c.id+'\')" onclick="clientHub(\''+c.id+'\')">'
-    +'<div style="font-weight:600">'+(c.temperature&&CRM_TEMP[c.temperature]?CRM_TEMP[c.temperature]+' ':'')+esc(c.name)+'</div>'
+    +'<div style="font-weight:600">'+crmScoreBadge(c)+(c.temperature&&CRM_TEMP[c.temperature]?CRM_TEMP[c.temperature]+' ':'')+esc(c.name)+'</div>'
     +(c.value!=null?'<div style="font-size:.78rem;color:var(--green);font-weight:600">'+money(c.value)+'</div>':'')
     +(c.tags?'<div style="font-size:.7rem;color:var(--muted)">🏷 '+esc(c.tags)+'</div>':'')
     +(c.phone?'<div style="font-size:.72rem;color:var(--muted)">📞 '+esc(c.phone)+'</div>':'')
@@ -2675,17 +2686,24 @@ async function crmDrop(ev,stage){ ev.preventDefault(); document.querySelectorAll
   if(stage==='lost'){ const why=prompt(C373t('Motiv pierdut (opțional):'),c.lost_reason||''); if(why===null) return; if(why.trim()){ patch.lost_reason=why.trim(); c.lost_reason=patch.lost_reason; } }
   c.stage=stage; c.stage_since=coToday(); crmRender();
   const r=await sb.from('clients').update(patch).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); c.stage=old; crmRender(); return; }
-  caLogSys(id,'🔀 '+(STATUS[old]?STATUS[old][0]:old)+' → '+(STATUS[stage]?STATUS[stage][0]:stage)+(patch.lost_reason?(' · '+patch.lost_reason):''));
-  toast('✅ '+esc(c.name)+' → '+esc(STATUS[stage]?STATUS[stage][0]:stage)); }
+  const lbl=k=>{ const pp=crmPipe(c.pipeline||'sales'); const sf=pp.stages.find(s=>s.k===k); return sf?sf.label:(STATUS[k]?STATUS[k][0]:k); };
+  caLogSys(id,'🔀 '+lbl(old)+' → '+lbl(stage)+(patch.lost_reason?(' · '+patch.lost_reason):''));
+  toast('✅ '+esc(c.name)+' → '+esc(lbl(stage)));
+  const rule=crmRules()[stage];
+  if(rule&&rule.text&&!c._fu){ try{ const due=isoLocal(new Date(Date.now()+(Math.max(0,+rule.days||0))*86400000)); await sb.from('client_activities').insert({tenant_id:state.tenant,client_id:id,kind:'task',body:rule.text,done:false,due_date:due,created_by:'🤖 auto'}); c._fu={due:due,body:rule.text}; crmRender(); toast('🤖 '+C373t('Sarcină creată automat')); }catch(e){} } }
 async function clientHub(id){ window._chId=id;
-  const [cr,ar,er,ir,srr]=await Promise.all([
+  const [cr,ar,er,ir,srr,ccr]=await Promise.all([
     sb.from('clients').select('*').eq('id',id).maybeSingle(),
     sb.from('client_activities').select('*').eq('client_id',id).order('created_at',{ascending:false}),
     sb.from('estimates').select('id,number,total,status').eq('client_id',id),
     sb.from('invoices').select('id,number,total,status').eq('client_id',id),
-    sb.from('sites').select('id,name,status').eq('client_id',id) ]);
+    sb.from('sites').select('id,name,status').eq('client_id',id),
+    sb.from('client_contacts').select('*').eq('client_id',id).order('created_at') ]);
   const c=cr.data; if(!c){ toast('Client negăsit.'); return; }
   const acts=ar.data||[];
+  if(c&&_crmLast&&acts.length) _crmLast[id]=acts[0].created_at;
+  const ccs=ccr&&ccr.data||[];
+  const ccH=ccs.length?ccs.map(p=>'<div style="display:flex;gap:.5rem;align-items:center;padding:.25rem 0;border-bottom:1px solid var(--line)"><div style="flex:1;min-width:0;font-size:.83rem"><b>'+esc(p.name||'—')+'</b>'+(p.role?' <span style="color:var(--muted)">· '+esc(p.role)+'</span>':'')+(p.phone?'<div style="font-size:.74rem;color:var(--muted)">📞 '+esc(p.phone)+(p.email?(' · ✉️ '+esc(p.email)):'')+'</div>':(p.email?'<div style="font-size:.74rem;color:var(--muted)">✉️ '+esc(p.email)+'</div>':''))+'</div><button class="iconbtn danger" onclick="ccDel(\''+p.id+'\')">🗑</button></div>').join(''):'<div style="color:var(--muted);font-size:.8rem">—</div>';
   const info=[]; if(c.contact) info.push('👤 '+esc(c.contact)); if(c.phone) info.push('📞 '+esc(c.phone)); if(c.email) info.push('✉️ '+esc(c.email)); if(c.address) info.push('📍 '+esc(c.address)); if(c.source) info.push('🌱 '+esc(c.source));
   const tags=c.tags?('<div style="margin:.3rem 0">'+String(c.tags).split(',').map(t=>t.trim()).filter(Boolean).map(t=>'<span style="background:var(--primary-soft);color:var(--primary);border-radius:20px;padding:.1rem .5rem;font-size:.72rem;margin-right:.3rem">🏷 '+esc(t)+'</span>').join('')+'</div>'):'';
   const tl=acts.length?acts.map(caRow).join(''):'<div style="color:var(--muted);font-size:.85rem;padding:.4rem 0">'+esc(C373t('Nicio interacțiune încă.'))+'</div>';
@@ -2699,6 +2717,8 @@ async function clientHub(id){ window._chId=id;
     +(function(){ const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(!base||c.stage==='won'||c.stage==='lost') return ''; const d=Math.round((new Date(coToday()+'T12:00:00')-new Date(base+'T12:00:00'))/86400000); return '<div style="font-size:.78rem;color:'+(d>=14?'var(--red)':'var(--muted)')+'">🕒 '+d+' '+esc(C373t('zile în etapă'))+(d>=14?(' · <b>'+esc(C373t('blocat'))+'</b>'):'')+'</div>'; })()
     +'<div style="display:flex;gap:.4rem;align-items:center;margin:.45rem 0;flex-wrap:wrap"><span style="font-size:.8rem;color:var(--muted)">'+esc(C373t('Temperatură'))+':</span>'+Object.keys(CRM_TEMP).map(k=>'<button class="btn-ghost" style="padding:.2rem .5rem'+(c.temperature===k?';background:var(--primary-soft);border-color:var(--primary)':'')+'" onclick="chSetTemp(\''+id+'\',\''+k+'\')">'+CRM_TEMP[k]+' '+esc(C373t(k==='hot'?'Fierbinte':k==='warm'?'Cald':'Rece'))+'</button>').join('')+'</div>'
     +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.6rem 0"><button class="btn-ghost" onclick="editRecord(\'clienti\',\''+id+'\')">✏️ '+esc(C373t('Editează'))+'</button>'+(c.email?'<button class="btn-ghost" onclick="closeModal();emailCompose({client_id:\''+id+'\',to:\''+esc(c.email)+'\',name:\''+jsArg(c.name)+'\'})">✉️ '+esc(C373t('Email'))+'</button>':'')+'</div>'
+    +'<div style="font-weight:700;font-size:.84rem;margin:.4rem 0 .2rem">👥 '+esc(C373t('Persoane de contact'))+'</div>'+ccH
+    +'<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin:.4rem 0"><input id="cc-name" placeholder="'+esc(C373t('Nume'))+'" style="flex:1;min-width:110px;padding:.4rem;border:1px solid var(--line);border-radius:8px;font-size:.82rem"/><input id="cc-role" placeholder="'+esc(C373t('Funcție'))+'" style="width:120px;padding:.4rem;border:1px solid var(--line);border-radius:8px;font-size:.82rem"/><input id="cc-phone" placeholder="📞" style="width:120px;padding:.4rem;border:1px solid var(--line);border-radius:8px;font-size:.82rem"/><input id="cc-email" placeholder="✉️" style="width:140px;padding:.4rem;border:1px solid var(--line);border-radius:8px;font-size:.82rem"/><button class="btn-ghost" onclick="ccAdd(\''+id+'\')">＋</button></div>'
     +'<div class="row-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:.4rem 0"><div><div style="font-weight:700;font-size:.84rem;margin-bottom:.2rem">📋 '+esc(C373t('Devize'))+'</div>'+estH+'<div style="font-weight:700;font-size:.84rem;margin:.5rem 0 .2rem">🧾 '+esc(C373t('Facturi'))+'</div>'+invH+'<div style="font-weight:700;font-size:.84rem;margin:.5rem 0 .2rem">🏗️ '+esc(C373t('Șantiere'))+'</div>'+siteH+'</div>'
     +'<div><div style="font-weight:700;font-size:.84rem;margin-bottom:.3rem">🗒️ '+esc(C373t('Jurnal interacțiuni'))+'</div>'
     +'<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.5rem .6rem;margin-bottom:.5rem"><div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.35rem">'+Object.keys(CA_KIND).map(k=>'<button class="btn-ghost" style="padding:.25rem .5rem;font-size:.78rem" onclick="caPick(\''+k+'\')">'+CA_KIND[k][0]+' '+esc(C373t(CA_KIND[k][1]))+'</button>').join('')+'</div>'
@@ -2724,6 +2744,39 @@ async function caSave(){ const id=window._chId; const kind=window._caKind||'note
 async function caToggle(aid){ const r=await sb.from('client_activities').update({done:true}).eq('id',aid); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
 async function caDel(aid){ if(!confirm(C373t('Ștergi din jurnal?'))) return; const r=await sb.from('client_activities').delete().eq('id',aid); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
 async function chSetTemp(id,t){ const r=await sb.from('clients').update({temperature:t}).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } const c=_crmData&&_crmData.find(x=>x.id===id); if(c) c.temperature=t; clientHub(id); }
+async function ccAdd(clientId){ const g=id=>{ const e=$(id); return e?e.value.trim():''; }; const name=g('cc-name'); if(!name){ toast(C373t('Scrie numele.')); return; }
+  const r=await sbRetry(()=>sb.from('client_contacts').insert({tenant_id:state.tenant,client_id:clientId,name:name,role:g('cc-role')||null,phone:g('cc-phone')||null,email:g('cc-email')||null})); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(clientId); }
+async function ccDel(ccId){ if(!confirm(C373t('Ștergi persoana de contact?'))) return; const r=await sb.from('client_contacts').delete().eq('id',ccId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
+async function crmSaveAuto(au){ try{ const r=await sb.from('tenants').update({automations:au}).eq('id',state.tenant); if(r.error) throw r.error; state.firm.automations=au; return true; }catch(e){ toast('Eroare: '+esc(e.message)); return false; } }
+const _CRM_PAL=['#64748b','#0ea5e9','#f59e0b','#8b5cf6','#16a34a','#2f6bff','#ef4444','#e11d48','#0891b2'];
+function _slug(s,i){ const b=String(s||'').toLowerCase().replace(/[ăâ]/g,'a').replace(/î/g,'i').replace(/[șş]/g,'s').replace(/[țţ]/g,'t').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,20); return b||('s'+(i||0)); }
+function crmAutomations(){ const au=Object.assign({},state.firm.automations||{}); const pipes=crmPipes(); const rules=crmRules();
+  const pipeRows=pipes.map(p=>'<div style="display:flex;gap:.5rem;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--line)"><div style="flex:1"><b>'+esc(p.name)+'</b> <span style="color:var(--muted);font-size:.78rem">'+p.stages.map(s=>esc(s.label)).join(' → ')+'</span></div>'+(p.id==='sales'?'<span style="color:var(--muted);font-size:.72rem">'+esc(C373t('implicit'))+'</span>':'<button class="iconbtn danger" onclick="crmDelPipe(\''+p.id+'\')">🗑</button>')+'</div>').join('');
+  // reguli pe etapele tuturor pâlniilor (cheie unică pe stage key)
+  const seen={}; let ruleRows='';
+  pipes.forEach(p=>p.stages.forEach(s=>{ if(seen[s.k]) return; seen[s.k]=1; const rl=rules[s.k]||{}; ruleRows+='<div style="display:flex;gap:.4rem;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--line);flex-wrap:wrap"><span style="min-width:96px;font-weight:600;font-size:.82rem">'+esc(s.label)+'</span><span style="font-size:.78rem;color:var(--muted)">'+esc(C373t('după'))+'</span><input id="rl-d-'+s.k+'" type="number" min="0" value="'+esc(rl.days!=null?rl.days:'')+'" style="width:56px;padding:.3rem;border:1px solid var(--line);border-radius:7px" placeholder="0"/><span style="font-size:.78rem;color:var(--muted)">'+esc(C373t('zile:'))+'</span><input id="rl-t-'+s.k+'" value="'+esc(rl.text||'')+'" placeholder="'+esc(C373t('ex: Sună clientul'))+'" style="flex:1;min-width:140px;padding:.3rem;border:1px solid var(--line);border-radius:7px"/></div>'; }));
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>⚙️ '+esc(C373t('Automatizări & pâlnii'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="font-weight:700;margin-bottom:.2rem">🤖 '+esc(C373t('Automatizări (Digital Pipeline)'))+'</div><div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(C373t('Când un client intră într-o etapă, se creează automat o sarcină de follow-up (dacă nu are deja una).'))+'</div>'+ruleRows
+    +'<button class="btn-primary" style="margin-top:.5rem" onclick="crmRulesSave()">💾 '+esc(C373t('Salvează automatizările'))+'</button>'
+    +'<hr style="border:none;border-top:1px solid var(--line);margin:1rem 0">'
+    +'<div style="font-weight:700;margin-bottom:.3rem">🗂️ '+esc(C373t('Pâlnii (boards)'))+'</div>'+pipeRows
+    +'<div style="display:flex;gap:.3rem;margin-top:.5rem;flex-wrap:wrap"><input id="pp-name" placeholder="'+esc(C373t('Nume pâlnie nouă'))+'" style="flex:1;min-width:120px;padding:.4rem;border:1px solid var(--line);border-radius:8px"/><input id="pp-stages" placeholder="'+esc(C373t('Etape separate prin virgulă'))+'" style="flex:2;min-width:160px;padding:.4rem;border:1px solid var(--line);border-radius:8px"/><button class="btn-ghost" onclick="crmAddPipe()">＋</button></div>'
+    +'<div style="font-size:.74rem;color:var(--muted);margin-top:.3rem">'+esc(C373t('Ex: „Reclamații" cu etapele: Nou, În lucru, Rezolvat, Închis."'))+'</div>'
+    +'</div></div></div>'; }
+async function crmRulesSave(){ const au=Object.assign({},state.firm.automations||{}); const rules={}; const seen={};
+  crmPipes().forEach(p=>p.stages.forEach(s=>{ if(seen[s.k]) return; seen[s.k]=1; const d=$('rl-d-'+s.k), t=$('rl-t-'+s.k); const txt=t?t.value.trim():''; if(txt){ rules[s.k]={days:Math.max(0,+(d&&d.value||0)||0),text:txt}; } }));
+  au.crm_rules=rules; if(await crmSaveAuto(au)){ toast('✅ '+C373t('Salvat')); closeModal(); } }
+async function crmAddPipe(){ const name=($('pp-name')&&$('pp-name').value||'').trim(); const stagesRaw=($('pp-stages')&&$('pp-stages').value||'').trim();
+  if(!name||!stagesRaw){ toast(C373t('Completează numele și etapele.')); return; }
+  const labels=stagesRaw.split(',').map(s=>s.trim()).filter(Boolean); if(labels.length<2){ toast(C373t('Cel puțin 2 etape.')); return; }
+  const au=Object.assign({},state.firm.automations||{}); const pipes=(au.crm_pipelines&&au.crm_pipelines.slice())||crmPipes().slice();
+  let pid=_slug(name); let n=1; while(pipes.find(p=>p.id===pid)){ pid=_slug(name)+(++n); }
+  const stages=labels.map((l,i)=>({k:_slug(l,i)+'_'+i,label:l,color:_CRM_PAL[i%_CRM_PAL.length]}));
+  pipes.push({id:pid,name:name,stages:stages}); au.crm_pipelines=pipes;
+  if(await crmSaveAuto(au)){ _crmPipe=pid; toast('✅ '+C373t('Pâlnie creată')); renderClienti(); } }
+async function crmDelPipe(pid){ if(pid==='sales') return; if(!confirm(C373t('Ștergi această pâlnie? Clienții rămân, dar revin în pâlnia implicită.'))) return;
+  const au=Object.assign({},state.firm.automations||{}); au.crm_pipelines=(au.crm_pipelines||crmPipes()).filter(p=>p.id!==pid);
+  if(await crmSaveAuto(au)){ try{ await sb.from('clients').update({pipeline:'sales'}).eq('pipeline',pid); }catch(e){} _crmPipe='sales'; toast('🗑 '+C373t('Pâlnie ștearsă')); renderClienti(); } }
 async function crmFeed(){
   const { data, error }=await sb.from('client_activities').select('kind,body,due_date,done,created_at,created_by,client_id,clients(name)').order('created_at',{ascending:false}).limit(60);
   if(error){ toast('Eroare: '+esc(error.message)); return; }
@@ -4918,10 +4971,11 @@ async function openForm(key,row,preset){
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
     let v = row && row[f.key]!=null ? row[f.key] : (f.default!=null?f.default:'');
     if(!row && f.key==='annual_leave_days' && (v===''||v==null)){ const da=state.firm&&state.firm.automations&&state.firm.automations.default_annual_leave; if(da!=null) v=da; }
+    if(key==='clienti' && f.key==='stage' && !row && window._crmPreset && window._crmPreset.stage){ v=window._crmPreset.stage; }
     body+='<div class="field"><label>'+esc(f.label)+(f.required?' *':'')+(f.hint?' <span class="hint-i" title="'+esc(f.hint)+'">ⓘ</span>':'')+'</label>';
     if(f.type==='textarea') body+='<textarea id="f-'+f.key+'">'+esc(v)+'</textarea>';
     else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="f-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
-    else if(f.type==='select'){ body+='<select id="f-'+f.key+'">'+f.options.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
+    else if(f.type==='select'){ let _o=f.options; if(key==='clienti'&&f.key==='stage'){ const pid=(row&&row.pipeline)||(window._crmPreset&&window._crmPreset.pipeline)||'sales'; try{ _o=crmPipe(pid).stages.map(s=>({value:s.k,label:s.label})); }catch(e){} } body+='<select id="f-'+f.key+'">'+_o.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
     else if(f.type==='photo'){ body+=(v?'<img class="lazimg" data-p="'+encodeURIComponent(v)+'" onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="display:block;max-width:100%;max-height:180px;border-radius:9px;border:1px solid var(--line);margin-bottom:.5rem;object-fit:contain;background:var(--bg);cursor:zoom-in">':'')+'<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a înlocui poza.</div>':''); }
     else if(f.type==='file'){ body+=(v?'<div style="margin-bottom:.4rem;display:flex;gap:.8rem"><a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">📎 Deschide</a><a onclick="downloadDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">⬇ Descarcă</a></div>':'')+'<input id="f-'+f.key+'" type="file"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a-l înlocui.</div>':''); }
@@ -5390,6 +5444,7 @@ async function saveRecord(){
   }
   // required check
   for(const f of m.fields){ if(f.required && $('f-'+f.key)!==null && (payload[f.key]==null||payload[f.key]==='')){ showMsg('form-msg','Câmpul „'+f.label+'” este obligatoriu.'); return; } }
+  if(key==='clienti'){ if(!formCtx.id){ payload.stage_since=coToday(); if(window._crmPreset&&window._crmPreset.pipeline&&!payload.pipeline) payload.pipeline=window._crmPreset.pipeline; } }
 
   let lineRows=null;
   if(m.lineItems){
@@ -5445,7 +5500,9 @@ async function saveRecord(){
       const orig=formCtx._unitIds||[]; const toDel=orig.filter(id=>keepIds.indexOf(id)<0);
       if(toDel.length){ const rd=await sb.from('tool_units').delete().in('id',toDel); if(rd.error) throw rd.error; }
       const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',_nid); await sb.from('tools').update({qty:c.count||0}).eq('id',_nid); }
-    fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
+    fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.');
+    if(key==='clienti'){ const fromKanban=!!window._crmPreset; window._crmPreset=null; if(fromKanban||document.getElementById('crm-mount')){ renderClienti(); } else { renderModule(key); } }
+    else renderModule(key);
     if(key==='instrumente' && _nid && _wasNew){ setTimeout(()=>toolStock(_nid, _nname||''), 300); }
   }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', isNetErr(e)?netMsg():(e.message||'Eroare la salvare.')); }
 }
