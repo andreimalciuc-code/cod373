@@ -93,6 +93,10 @@
   .nav-item:hover{background:var(--sidebar-hover);color:#fff}
   .nav-item.active{background:var(--primary);color:#fff;font-weight:600}
   .nav-item .ic{width:20px;text-align:center;font-size:1.02rem;flex-shrink:0}
+  .nav-grip{flex-shrink:0;opacity:0;cursor:grab;font-size:.9rem;color:#7e8aa6;transition:opacity .15s}
+  .nav-item:hover .nav-grip{opacity:.65}
+  .nav-item.navdrop{box-shadow:inset 0 2px 0 var(--primary)}
+  .nav-item[draggable=true]{user-select:none}
 
   .main{display:flex;flex-direction:column;min-width:0}
   .topbar{background:var(--surface);border-bottom:1px solid var(--line);padding:.85rem 1.6rem;display:flex;align-items:center;gap:1.2rem;position:sticky;top:0;z-index:20}
@@ -1187,22 +1191,37 @@ function applyPrefs(){
   else { root.removeProperty('--primary'); root.removeProperty('--primary-soft'); }
 }
 function buildNav(){
-  const p=czPrefs(); const favs=(p.favs||[]).filter(k=>MODULES[k]&&!MODULES[k].hidden&&canSee(k)&&!(p.hidden||[]).includes(k)); const hidden=p.hidden||[];
+  const p=czPrefs(); const hidden=p.hidden||[]; const order=p.order||[];
+  const visible=Object.keys(MODULES).filter(k=>!MODULES[k].hidden && canSee(k) && !hidden.includes(k));
   let html='';
-  if(favs.length){
-    html+='<div class="nav-group">⭐ '+esc(tz('Favorite'))+'</div>';
-    favs.forEach(k=>{ const m=MODULES[k]; html+=navItemHTML(k,m); });
+  if(order.length){
+    // meniu rearanjat manual de utilizator (listă plată, în ordinea aleasă)
+    const ordered=order.filter(k=>visible.includes(k)); visible.forEach(k=>{ if(ordered.indexOf(k)<0) ordered.push(k); });
+    html+='<div class="nav-group" style="display:flex;justify-content:space-between;align-items:center;gap:.4rem">⭐ '+esc(tz('Meniul tău'))+'<span onclick="navResetOrder()" title="'+esc(tz('Revino la meniul grupat'))+'" style="cursor:pointer;font-weight:400;font-size:.78rem;opacity:.7">↺</span></div>';
+    ordered.forEach(k=>{ html+=navItemHTML(k,MODULES[k]); });
+  } else {
+    const favs=(p.favs||[]).filter(k=>visible.includes(k));
+    if(favs.length){ html+='<div class="nav-group">⭐ '+esc(tz('Favorite'))+'</div>'; favs.forEach(k=>{ html+=navItemHTML(k,MODULES[k]); }); }
+    GROUPS.forEach(g=>{
+      const keys=visible.filter(k=>MODULES[k].group===g && favs.indexOf(k)<0);
+      if(!keys.length) return;
+      html+='<div class="nav-group">'+esc(tg(g))+'</div>';
+      keys.forEach(k=>{ html+=navItemHTML(k,MODULES[k]); });
+    });
   }
-  GROUPS.forEach(g=>{
-    const keys=Object.keys(MODULES).filter(k=>MODULES[k].group===g && !MODULES[k].hidden && canSee(k) && !hidden.includes(k) && !favs.includes(k));
-    if(!keys.length) return;
-    html+='<div class="nav-group">'+esc(tg(g))+'</div>';
-    keys.forEach(k=>{ const m=MODULES[k]; html+=navItemHTML(k,m); });
-  });
   $('nav').innerHTML=html;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===curModuleKey()));
 }
-function navItemHTML(k,m){ return '<div class="nav-item" data-view="'+k+'" onclick="go(\''+k+'\')"><span class="ic">'+m.icon+'</span><span>'+esc(mt(k).title)+'</span></div>'; }
+function navItemHTML(k,m){ return '<div class="nav-item" data-view="'+k+'" draggable="true" ondragstart="navDragStart(event,\''+k+'\')" ondragover="navDragOver(event,this)" ondragleave="this.classList.remove(\'navdrop\')" ondrop="navDrop(event,\''+k+'\')" ondragend="navDragEnd()" onclick="go(\''+k+'\')"><span class="ic">'+m.icon+'</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(mt(k).title)+'</span><span class="nav-grip" title="'+esc(tz('Trage ca să rearanjezi'))+'">⠿</span></div>'; }
+let _navDragKey=null;
+function navDragStart(ev,key){ _navDragKey=key; if(ev.dataTransfer){ ev.dataTransfer.effectAllowed='move'; try{ ev.dataTransfer.setData('text/plain',key); }catch(e){} } }
+function navDragOver(ev,el){ ev.preventDefault(); if(ev.dataTransfer) ev.dataTransfer.dropEffect='move'; if(el&&el.classList) el.classList.add('navdrop'); }
+function navDragEnd(){ _navDragKey=null; document.querySelectorAll('.nav-item.navdrop').forEach(n=>n.classList.remove('navdrop')); }
+function navDrop(ev,targetKey){ ev.preventDefault(); ev.stopPropagation(); const from=_navDragKey||((ev.dataTransfer&&ev.dataTransfer.getData('text/plain'))||''); navDragEnd(); if(!from||from===targetKey) return;
+  const p=czPrefs(); let cur=Array.from(document.querySelectorAll('#nav .nav-item')).map(n=>n.dataset.view).filter(Boolean);
+  cur=cur.filter(k=>k!==from); const ti=cur.indexOf(targetKey); cur.splice(ti<0?cur.length:ti,0,from);
+  p.order=cur; czSave(p); buildNav(); }
+function navResetOrder(){ const p=czPrefs(); delete p.order; czSave(p); buildNav(); toast('✅ '+tz('Revino la meniul grupat')); }
 /* ── Avatar + semnătură (cross-device, tabel user_prefs) ── */
 async function loadUserPrefs(){
   try{ const { data }=await sb.from('user_prefs').select('avatar_url,signature_url,prefs').eq('tenant_id',state.tenant).eq('user_id',state.session.user.id).maybeSingle(); state.uprefs=data||{}; }catch(e){ state.uprefs={}; }
@@ -1281,7 +1300,7 @@ function openPersonalize(){
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Densitate tabele'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(dens==='comfy'?'on':'')+'" onclick="pzSetDens(\'comfy\')">'+esc(tz('Confortabil'))+'</button><button class="'+(dens==='compact'?'on':'')+'" onclick="pzSetDens(\'compact\')">'+esc(tz('Compact'))+'</button></div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Mărime text'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(txt==='normal'?'on':'')+'" onclick="pzSetText(\'normal\')">'+esc(tz('Normal'))+'</button><button class="'+(txt==='large'?'on':'')+'" onclick="pzSetText(\'large\')">'+esc(tz('Mare'))+'</button><button class="'+(txt==='xl'?'on':'')+'" onclick="pzSetText(\'xl\')">'+esc(tz('Foarte mare'))+'</button></div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Pagina de start'))+'</div><select onchange="pzSetStart(this.value)" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-bottom:1rem;background:var(--surface);color:var(--text)">'+opts+'</select>'
-    +'<div style="font-weight:700;margin:.2rem 0 .2rem">'+esc(tz('Module în meniu'))+'</div><div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('⭐ pune favoritele sus · 👁 ascunde din meniu'))+'</div>'+mods
+    +'<div style="font-weight:700;margin:.2rem 0 .2rem">'+esc(tz('Module în meniu'))+'</div><div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('⭐ pune favoritele sus · 👁 ascunde din meniu'))+'<br>'+esc(tz('🖱️ Trage modulele direct în bara din stânga ca să le rearanjezi.'))+'</div>'+mods
     +'<hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0">'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Avatar'))+'</div>'
     +'<div style="display:flex;align-items:center;gap:.8rem;margin-bottom:1rem"><div id="pz-av" style="width:54px;height:54px;border-radius:50%;background:var(--primary-soft);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--primary);flex-shrink:0"></div>'
@@ -1445,7 +1464,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v153';
+const APP_VERSION='cod373-v154';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
