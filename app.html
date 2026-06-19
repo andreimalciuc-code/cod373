@@ -1285,7 +1285,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v143';
+const APP_VERSION='cod373-v144';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1581,12 +1581,15 @@ function tuLocOptsSel(cur){ const sites=window._tuSites||[], whs=window._tuWhs||
 function tuCurLoc(u){ return u.site_id?('site:'+u.site_id):(u.warehouse_id?('wh:'+u.warehouse_id):(u.loan_type?('loan:'+u.loan_type):'')); }
 async function toolUnits(tid, tname){
   window._tuTid=tid; window._tuTname=tname;
-  const [uR,siteR,whR]=await Promise.all([
+  const [uR,siteR,whR,legR]=await Promise.all([
     sb.from('tool_units').select('id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,photo_url,site_id,warehouse_id,holder,loan_type,loan_from,loan_due,rent_amount,rent_total,deposit_amount,id_photo_url,signature_url,sites(name),warehouses(name)').eq('tool_id',tid),
     sb.from('sites').select('id,name,status'),
-    sb.from('warehouses').select('id,name')
+    sb.from('warehouses').select('id,name'),
+    sb.from('tool_locations').select('qty,site_id,warehouse_id,store_id,holder,loan_type,sites(name),warehouses(name),stores(name)').eq('tool_id',tid)
   ]);
   const units=uR.data||[];
+  const legacy=(legR&&legR.data||[]).filter(x=>+x.qty>0);
+  const legBanner=legacy.length?('<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;margin-bottom:.7rem;font-size:.82rem">📦 <b>Stoc vechi pe cantități</b> (model anterior): '+legacy.map(x=>toolWhereSummary({tool_locations:[x]})).join(' · ')+'. Adaugă serii mai jos pentru evidență pe bucată, sau <a onclick="toolStockLegacy(window._tuTid,window._tuTname)" style="cursor:pointer;color:var(--primary);font-weight:700">gestionează stocul vechi →</a></div>'):'';
   window._tuSites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   window._tuWhs=(whR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const canU=canDo('instrumente','u'), canD=canDo('instrumente','d');
@@ -1597,8 +1600,8 @@ async function toolUnits(tid, tname){
       +'<td style="text-align:right;white-space:nowrap">'+(u.value!=null?money(u.value):'—')+'</td>'
       +'<td style="text-align:right;white-space:nowrap"><span style="color:'+(dep>=100?'#dc2626':(dep>=60?'#d97706':'#6b7793'))+'">'+dep+'%</span></td>'
       +'<td style="text-align:right;white-space:nowrap"><b>'+money(rem)+'</b></td>'
-      +'<td style="white-space:nowrap">'+(u.photo_url?'<button class="iconbtn" title="Poză" onclick="openDoc(\''+encodeURIComponent(u.photo_url)+'\')">🖼️</button>':'')+'<button class="iconbtn" title="Istoric mișcări" onclick="toolUnitHist(\''+u.id+'\')">🕘</button><button class="iconbtn" title="Etichetă QR" onclick="toolUnitQR(\''+u.id+'\',\''+jsArg((tname||'')+' '+(u.serial_no||''))+'\')">🏷️</button>'+(canD?'<button class="iconbtn danger" title="Șterge seria" onclick="toolUnitDel(\''+u.id+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="6" style="color:var(--muted);padding:1rem">Nicio serie încă. Adaugă mai jos.</td></tr>';
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px"><div class="modal-head"><h3>🔢 Bucăți (serii) — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="tu-msg"></div>'
+      +'<td style="white-space:nowrap">'+(u.photo_url?'<button class="iconbtn" title="Poză" onclick="openDoc(\''+encodeURIComponent(u.photo_url)+'\')">🖼️</button>':'')+(canU?'<button class="iconbtn" title="Editează seria" onclick="toolUnitEdit(\''+u.id+'\')">✏️</button>':'')+'<button class="iconbtn" title="Istoric mișcări" onclick="toolUnitHist(\''+u.id+'\')">🕘</button><button class="iconbtn" title="Etichetă QR" onclick="toolUnitQR(\''+u.id+'\',\''+jsArg((tname||'')+' '+(u.serial_no||''))+'\')">🏷️</button>'+(canD?'<button class="iconbtn danger" title="Șterge seria" onclick="toolUnitDel(\''+u.id+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="6" style="color:var(--muted);padding:1rem">Nicio serie încă. Adaugă mai jos.</td></tr>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px"><div class="modal-head"><h3>🔢 Bucăți (serii) — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="tu-msg"></div>'+legBanner
     +'<div style="background:#f1f5f9;border-radius:9px;padding:.5rem .7rem;margin-bottom:.7rem;font-size:.85rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🔢 <b>'+units.length+'</b> buc</span><span>💰 valoare <b>'+money(totVal)+'</b></span><span>📉 rămasă (după amortizare) <b>'+money(remVal)+'</b></span></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Serie</th><th>Unde e</th><th style="text-align:right">Valoare</th><th style="text-align:right">Amort.</th><th style="text-align:right">Rămas</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +(canU?'<button class="btn-primary" style="margin-top:.7rem" onclick="toolUnitAdd()">＋ adaugă serie</button>':'')
@@ -1642,8 +1645,35 @@ async function toolUnitAddSave(){
   try{ const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',window._tuTid); await sb.from('tools').update({qty:c.count||0}).eq('id',window._tuTid); }catch(e){}
   closeSub(); toast('✅ Serie adăugată.'); toolUnits(window._tuTid, window._tuTname);
 }
-async function toolStock(tid, tname){
-  try{ const uc=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',tid); if(uc&&(uc.count||0)>0) return toolUnits(tid, tname); }catch(e){}
+function tueDT(s){ if(!s) return ''; const d=new Date(s); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
+function tueLoanShow(sel){ const v=sel.value, isLoan=v.indexOf('loan:')===0, isRent=v==='loan:rented'; const pan=$('tue-loan'); if(pan) pan.style.display=isLoan?'block':'none'; const rw=$('tue-rentwrap'); if(rw) rw.style.display=isRent?'block':'none'; }
+async function toolUnitEdit(unitId){
+  const u=(await sb.from('tool_units').select('*').eq('id',unitId).maybeSingle()).data; if(!u){ toast('Negăsit.'); return; }
+  const isLoan=!!u.loan_type, isRent=u.loan_type==='rented';
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()"><div class="modal" style="max-width:480px"><div class="modal-head"><h3>✏️ Editează seria</h3><button class="x" onclick="closeSub()">×</button></div><div class="modal-body"><div id="tue-msg"></div>'
+    +'<div class="field"><label>Nr. serie *</label><input id="tue-serial" value="'+esc(u.serial_no||'')+'"/></div>'
+    +'<div class="field"><label>Nr. inventar</label><input id="tue-inv" value="'+esc(u.inventory_no||'')+'"/></div>'
+    +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Valoare ('+esc(CUR)+')</label><input id="tue-value" type="number" min="0" step="any" value="'+esc(u.value!=null?u.value:'')+'"/></div><div class="field" style="width:150px"><label>La achiziție</label><select id="tue-cond"><option value="nou"'+(u.acq_condition!=='second'?' selected':'')+'>Nou</option><option value="second"'+(u.acq_condition==='second'?' selected':'')+'>Second-hand</option></select></div></div>'
+    +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Data procurării</label><input id="tue-date" type="date" value="'+esc(u.acq_date||'')+'"/></div><div class="field" style="width:110px"><label>Durată (ani)</label><input id="tue-life" type="number" min="1" step="any" value="'+esc(u.useful_life_years!=null?u.useful_life_years:'')+'"/></div></div>'
+    +'<div class="field"><label>Unde e</label><select id="tue-loc" onchange="tueLoanShow(this)">'+tuLocOptsSel(tuCurLoc(u))+'</select></div>'
+    +'<div id="tue-loan" style="display:'+(isLoan?'block':'none')+';border:1px dashed var(--line);border-radius:8px;padding:.5rem;margin-bottom:.5rem"><div class="field"><label>Cui (persoană/firmă)</label><input id="tue-cui" value="'+esc(u.holder||'')+'"/></div>'
+      +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Când (de la)</label><input id="tue-from" type="datetime-local" value="'+esc(tueDT(u.loan_from))+'"/></div><div class="field" style="flex:1"><label>Până când</label><input id="tue-due" type="datetime-local" value="'+esc(tueDT(u.loan_due))+'"/></div></div>'
+      +'<div id="tue-rentwrap" style="display:'+(isRent?'block':'none')+'"><div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Chirie / 24h</label><input id="tue-rent" type="number" min="0" step="any" value="'+esc(u.rent_amount!=null?u.rent_amount:'')+'"/></div><div class="field" style="flex:1"><label>Gaj</label><input id="tue-deposit" type="number" min="0" step="any" value="'+esc(u.deposit_amount!=null?u.deposit_amount:'')+'"/></div></div></div></div>'
+    +'<div class="field"><label>Înlocuiește poza (opțional)</label><input id="tue-photo" type="file" accept="image/*"/></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeSub()">Anulează</button><button class="btn-primary" id="tue-go" onclick="toolUnitEditSave(\''+unitId+'\')">Salvează</button></div></div></div>';
+}
+async function toolUnitEditSave(unitId){
+  const g=id=>{ const e=$(id); return e?e.value:''; }; const serial=g('tue-serial').trim();
+  if(!serial){ showMsg('tue-msg','Scrie numărul de serie.'); return; }
+  const btn=$('tue-go'); if(btn) btn.disabled=true;
+  const patch={serial_no:serial,inventory_no:g('tue-inv').trim()||null,value:g('tue-value')!==''?+g('tue-value'):null,acq_condition:g('tue-cond')||'nou',acq_date:g('tue-date')||null,useful_life_years:g('tue-life')!==''?+g('tue-life'):null,site_id:null,warehouse_id:null,holder:null,loan_type:null,loan_from:null,loan_due:null,rent_amount:null,rent_total:null,deposit_amount:null};
+  const p=(g('tue-loc')||'').split(':'); if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1]; else if(p[0]==='loan'){ patch.loan_type=(p[1]==='rented'?'rented':'lent'); patch.holder=g('tue-cui').trim()||null; const fr=g('tue-from'), du=g('tue-due'); if(fr) patch.loan_from=fr; if(du) patch.loan_due=du; if(p[1]==='rented'){ const rt=g('tue-rent'), dp=g('tue-deposit'); if(rt!==''){ patch.rent_amount=+rt; patch.rent_total=(+rt)*rentDays(fr,du); } if(dp!=='') patch.deposit_amount=+dp; } }
+  const pf=$('tue-photo'); if(pf&&pf.files&&pf.files[0]){ const f=pf.files[0]; const path=state.tenant+'/tools/'+Date.now()+'_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) patch.photo_url=path; }
+  const r=await sb.from('tool_units').update(patch).eq('id',unitId); if(r.error){ if(btn)btn.disabled=false; showMsg('tue-msg','Eroare: '+esc(r.error.message)); return; }
+  closeSub(); toast('✅ Salvat.'); toolUnits(window._tuTid, window._tuTname);
+}
+async function toolStock(tid, tname){ return toolUnits(tid, tname); }
+async function toolStockLegacy(tid, tname){
   const [locR,siteR,whR]=await Promise.all([
     sb.from('tool_locations').select('id,site_id,store_id,warehouse_id,qty,holder,loan_type,due_date,rent_amount,rent_period,deposit_amount,sites(name),stores(name),warehouses(name)').eq('tool_id',tid),
     sb.from('sites').select('id,name,status'),
