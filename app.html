@@ -1546,7 +1546,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v165';
+const APP_VERSION='cod373-v166';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2636,10 +2636,11 @@ let _crmData=[], _crmQ='';
 async function renderClienti(){
   $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="renderModule(\'clienti\')">📋 '+esc(C373t('Listă'))+'</button>'
     +'<button class="btn-ghost" onclick="crmReport()">📊 '+esc(C373t('Raport pâlnie'))+'</button>'
+    +'<button class="btn-ghost" onclick="crmFeed()">📰 '+esc(C373t('Flux activitate'))+'</button>'
     +'<input id="crm-q" placeholder="'+esc(C373t('Caută'))+'" oninput="crmFilter(this.value)" value="'+esc(_crmQ)+'" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;min-width:170px"/>'
     +'<span style="flex:1"></span><button class="btn-primary" onclick="openForm(\'clienti\')">＋ '+esc(C373t('Client nou'))+'</button></div>'
     +'<div id="crm-mount"><div class="loading">Se încarcă…</div></div>';
-  const { data, error }=await sb.from('clients').select('id,name,type,phone,email,stage,value,tags,source').order('created_at',{ascending:false});
+  const { data, error }=await sb.from('clients').select('id,name,type,phone,email,stage,value,tags,source,stage_since,temperature,created_at').order('created_at',{ascending:false});
   if(error){ $('crm-mount').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   const fu={}; try{ const fr=await sb.from('client_activities').select('client_id,due_date,body').eq('kind','task').eq('done',false).order('due_date'); (fr.data||[]).forEach(a=>{ if(!fu[a.client_id]) fu[a.client_id]={due:a.due_date,body:a.body}; }); }catch(e){}
   _crmData=(data||[]).map(c=>Object.assign({},c,{_fu:fu[c.id]||null}));
@@ -2652,21 +2653,30 @@ function crmRender(){ const q=_crmQ.toLowerCase();
     return '<div class="crm-col" ondragover="event.preventDefault();this.classList.add(\'crm-over\')" ondragleave="this.classList.remove(\'crm-over\')" ondrop="crmDrop(event,\''+st+'\')"><div class="crm-colh" style="border-top:3px solid '+CRM_COL[st]+'">'+esc(STATUS[st]?STATUS[st][0]:st)+' <span style="color:var(--muted);font-weight:400">('+items.length+')</span>'+(tot?'<div style="font-size:.72rem;color:var(--muted);font-weight:600">'+money(tot)+'</div>':'')+'</div><div class="crm-colb">'+cards+'</div></div>'; }).join('');
   $('crm-mount').innerHTML='<div class="crm-board">'+cols+'</div>';
 }
-function crmCard(c){ const fu=c._fu; const overdue=fu&&fu.due&&fu.due<coToday();
-  return '<div class="crm-card" draggable="true" ondragstart="crmDragStart(event,\''+c.id+'\')" onclick="clientHub(\''+c.id+'\')">'
-    +'<div style="font-weight:600">'+esc(c.name)+'</div>'
+const CRM_TEMP={hot:'🔥',warm:'🌤',cold:'❄️'};
+function crmDays(c){ const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(!base) return null; return Math.max(0,Math.round((new Date(coToday()+'T12:00:00')-new Date(base+'T12:00:00'))/86400000)); }
+function crmCard(c){ const fu=c._fu; const overdue=fu&&fu.due&&fu.due<coToday(); const open=(c.stage!=='won'&&c.stage!=='lost'); const ds=crmDays(c); const stuck=open&&!fu&&ds!=null&&ds>=14;
+  return '<div class="crm-card'+(stuck?' crm-stuck':'')+'" draggable="true" ondragstart="crmDragStart(event,\''+c.id+'\')" onclick="clientHub(\''+c.id+'\')">'
+    +'<div style="font-weight:600">'+(c.temperature&&CRM_TEMP[c.temperature]?CRM_TEMP[c.temperature]+' ':'')+esc(c.name)+'</div>'
     +(c.value!=null?'<div style="font-size:.78rem;color:var(--green);font-weight:600">'+money(c.value)+'</div>':'')
     +(c.tags?'<div style="font-size:.7rem;color:var(--muted)">🏷 '+esc(c.tags)+'</div>':'')
     +(c.phone?'<div style="font-size:.72rem;color:var(--muted)">📞 '+esc(c.phone)+'</div>':'')
-    +(fu?'<div style="font-size:.72rem;margin-top:.2rem;color:'+(overdue?'var(--red)':'var(--primary)')+'">⏰ '+esc(fmtDate(fu.due))+(fu.body?(' · '+esc(String(fu.body).slice(0,22))):'')+'</div>':'')+'</div>';
+    +(ds!=null&&open?'<div style="font-size:.68rem;color:var(--muted)">🕒 '+ds+C373t('z în etapă')+'</div>':'')
+    +(fu?'<div style="font-size:.72rem;margin-top:.2rem;color:'+(overdue?'var(--red)':'var(--primary)')+'">⏰ '+esc(fmtDate(fu.due))+(fu.body?(' · '+esc(String(fu.body).slice(0,22))):'')+'</div>'
+        :(open?'<div style="font-size:.7rem;margin-top:.2rem;color:var(--red);font-weight:600">⚠️ '+esc(C373t('fără sarcină — planifică una'))+'</div>':''))+'</div>';
 }
 function crmFilter(v){ _crmQ=v||''; crmRender(); }
 let _crmDragId=null;
 function crmDragStart(ev,id){ _crmDragId=id; ev.dataTransfer.effectAllowed='move'; try{ev.dataTransfer.setData('text/plain',id);}catch(e){} }
+async function caLogSys(clientId,body){ try{ await sb.from('client_activities').insert({tenant_id:state.tenant,client_id:clientId,kind:'note',body:body,done:true,created_by:tuActor()}); }catch(e){} }
 async function crmDrop(ev,stage){ ev.preventDefault(); document.querySelectorAll('.crm-col.crm-over').forEach(n=>n.classList.remove('crm-over')); const id=_crmDragId||((ev.dataTransfer&&ev.dataTransfer.getData('text/plain'))||''); _crmDragId=null; if(!id) return;
-  const c=_crmData.find(x=>x.id===id); if(!c||c.stage===stage) return; const old=c.stage; c.stage=stage; crmRender();
-  const r=await sb.from('clients').update({stage:stage}).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); c.stage=old; crmRender(); return; }
-  toast('✅ '+esc(c.name)+' → '+esc(STATUS[stage]?STATUS[stage][0]:stage)); if(stage==='won'||stage==='lost') clientHub(id); }
+  const c=_crmData.find(x=>x.id===id); if(!c||c.stage===stage) return; const old=c.stage;
+  const patch={stage:stage,stage_since:coToday()};
+  if(stage==='lost'){ const why=prompt(C373t('Motiv pierdut (opțional):'),c.lost_reason||''); if(why===null) return; if(why.trim()){ patch.lost_reason=why.trim(); c.lost_reason=patch.lost_reason; } }
+  c.stage=stage; c.stage_since=coToday(); crmRender();
+  const r=await sb.from('clients').update(patch).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); c.stage=old; crmRender(); return; }
+  caLogSys(id,'🔀 '+(STATUS[old]?STATUS[old][0]:old)+' → '+(STATUS[stage]?STATUS[stage][0]:stage)+(patch.lost_reason?(' · '+patch.lost_reason):''));
+  toast('✅ '+esc(c.name)+' → '+esc(STATUS[stage]?STATUS[stage][0]:stage)); }
 async function clientHub(id){ window._chId=id;
   const [cr,ar,er,ir,srr]=await Promise.all([
     sb.from('clients').select('*').eq('id',id).maybeSingle(),
@@ -2686,6 +2696,8 @@ async function clientHub(id){ window._chId=id;
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:680px"><div class="modal-head"><h3>🤝 '+esc(c.name)+' '+pill(c.stage)+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +'<div style="display:flex;gap:.5rem;flex-wrap:wrap;font-size:.84rem;color:var(--muted)">'+(info.join(' · ')||'—')+'</div>'+tags
     +(c.value!=null?'<div style="margin:.3rem 0;font-weight:700;color:var(--green)">💰 '+money(c.value)+'</div>':'')
+    +(function(){ const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(!base||c.stage==='won'||c.stage==='lost') return ''; const d=Math.round((new Date(coToday()+'T12:00:00')-new Date(base+'T12:00:00'))/86400000); return '<div style="font-size:.78rem;color:'+(d>=14?'var(--red)':'var(--muted)')+'">🕒 '+d+' '+esc(C373t('zile în etapă'))+(d>=14?(' · <b>'+esc(C373t('blocat'))+'</b>'):'')+'</div>'; })()
+    +'<div style="display:flex;gap:.4rem;align-items:center;margin:.45rem 0;flex-wrap:wrap"><span style="font-size:.8rem;color:var(--muted)">'+esc(C373t('Temperatură'))+':</span>'+Object.keys(CRM_TEMP).map(k=>'<button class="btn-ghost" style="padding:.2rem .5rem'+(c.temperature===k?';background:var(--primary-soft);border-color:var(--primary)':'')+'" onclick="chSetTemp(\''+id+'\',\''+k+'\')">'+CRM_TEMP[k]+' '+esc(C373t(k==='hot'?'Fierbinte':k==='warm'?'Cald':'Rece'))+'</button>').join('')+'</div>'
     +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.6rem 0"><button class="btn-ghost" onclick="editRecord(\'clienti\',\''+id+'\')">✏️ '+esc(C373t('Editează'))+'</button>'+(c.email?'<button class="btn-ghost" onclick="closeModal();emailCompose({client_id:\''+id+'\',to:\''+esc(c.email)+'\',name:\''+jsArg(c.name)+'\'})">✉️ '+esc(C373t('Email'))+'</button>':'')+'</div>'
     +'<div class="row-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:.4rem 0"><div><div style="font-weight:700;font-size:.84rem;margin-bottom:.2rem">📋 '+esc(C373t('Devize'))+'</div>'+estH+'<div style="font-weight:700;font-size:.84rem;margin:.5rem 0 .2rem">🧾 '+esc(C373t('Facturi'))+'</div>'+invH+'<div style="font-weight:700;font-size:.84rem;margin:.5rem 0 .2rem">🏗️ '+esc(C373t('Șantiere'))+'</div>'+siteH+'</div>'
     +'<div><div style="font-weight:700;font-size:.84rem;margin-bottom:.3rem">🗒️ '+esc(C373t('Jurnal interacțiuni'))+'</div>'
@@ -2711,17 +2723,27 @@ async function caSave(){ const id=window._chId; const kind=window._caKind||'note
   toast('✅ '+C373t('Salvat')); clientHub(id); }
 async function caToggle(aid){ const r=await sb.from('client_activities').update({done:true}).eq('id',aid); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
 async function caDel(aid){ if(!confirm(C373t('Ștergi din jurnal?'))) return; const r=await sb.from('client_activities').delete().eq('id',aid); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
+async function chSetTemp(id,t){ const r=await sb.from('clients').update({temperature:t}).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } const c=_crmData&&_crmData.find(x=>x.id===id); if(c) c.temperature=t; clientHub(id); }
+async function crmFeed(){
+  const { data, error }=await sb.from('client_activities').select('kind,body,due_date,done,created_at,created_by,client_id,clients(name)').order('created_at',{ascending:false}).limit(60);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const acts=data||[]; const rows=acts.length?acts.map(a=>{ const k=CA_KIND[a.kind]||['•',a.kind||'']; const when=a.created_at?fmtDate(a.created_at.slice(0,10)):''; const task=a.kind==='task'&&!a.done;
+    return '<div onclick="clientHub(\''+a.client_id+'\')" style="display:flex;gap:.5rem;padding:.45rem 0;border-bottom:1px solid var(--line);cursor:pointer"><span style="font-size:1rem">'+k[0]+'</span><div style="flex:1;min-width:0"><div style="font-size:.85rem"><b>'+esc(a.clients?a.clients.name:'client')+'</b>'+(a.body?(' — '+esc(String(a.body).slice(0,60))):'')+'</div><div style="font-size:.72rem;color:var(--muted)">'+esc(C373t(k[1]))+' · '+esc(when)+(a.created_by?(' · '+esc(a.created_by)):'')+(task?(' · <b style="color:var(--primary)">'+esc(C373t('de făcut'))+(a.due_date?(' '+esc(fmtDate(a.due_date))):'')+'</b>'):'')+'</div></div></div>'; }).join(''):'<div style="color:var(--muted);padding:1rem 0">'+esc(C373t('Nicio activitate încă.'))+'</div>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>📰 '+esc(C373t('Flux activitate'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+rows+'</div></div></div>'; }
 async function crmReport(){
-  const { data, error }=await sb.from('clients').select('stage,value,source'); if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const rows=data||[]; const byS={}; CRM_STAGES.forEach(s=>byS[s]={n:0,v:0}); rows.forEach(c=>{ const s=c.stage||'lead'; (byS[s]=byS[s]||{n:0,v:0}); byS[s].n++; byS[s].v+=(+c.value||0); });
+  const { data, error }=await sb.from('clients').select('stage,value,source,stage_since,created_at'); if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const rows=data||[]; const today=new Date(coToday()+'T12:00:00'); const byS={}; CRM_STAGES.forEach(s=>byS[s]={n:0,v:0,stuck:0});
+  rows.forEach(c=>{ const s=c.stage||'lead'; (byS[s]=byS[s]||{n:0,v:0,stuck:0}); byS[s].n++; byS[s].v+=(+c.value||0); const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(base&&s!=='won'&&s!=='lost'){ const d=Math.round((today-new Date(base+'T12:00:00'))/86400000); if(d>=14) byS[s].stuck++; } });
   const won=byS.won||{n:0,v:0}, lost=byS.lost||{n:0,v:0}; const winRate=(won.n+lost.n)?Math.round(won.n/(won.n+lost.n)*100):0;
   const pipe=['lead','contacted','offer'].reduce((s,k)=>s+(byS[k]?byS[k].v:0),0);
-  const stRows=CRM_STAGES.map(s=>'<tr><td>'+pill(s)+'</td><td style="text-align:right">'+byS[s].n+'</td><td style="text-align:right">'+money(byS[s].v)+'</td></tr>').join('');
+  const stuckTot=CRM_STAGES.reduce((s,k)=>s+byS[k].stuck,0);
+  const stRows=CRM_STAGES.map(s=>'<tr><td>'+pill(s)+'</td><td style="text-align:right">'+byS[s].n+'</td><td style="text-align:right">'+money(byS[s].v)+'</td><td style="text-align:right'+(byS[s].stuck?';color:var(--red);font-weight:700':'')+'">'+(byS[s].stuck||'—')+'</td></tr>').join('');
   const bySrc={}; rows.forEach(c=>{ const k=(c.source||'—').trim()||'—'; bySrc[k]=(bySrc[k]||0)+1; }); const srcRows=Object.keys(bySrc).sort((a,b)=>bySrc[b]-bySrc[a]).map(k=>'<tr><td>'+esc(k)+'</td><td style="text-align:right">'+bySrc[k]+'</td></tr>').join('');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>📊 '+esc(C373t('Raport pâlnie'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +'<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem"><div style="flex:1;background:var(--primary-soft);border-radius:10px;padding:.6rem;text-align:center"><div style="font-size:.74rem;color:var(--muted)">'+esc(C373t('Valoare pâlnie (deschise)'))+'</div><div style="font-weight:800;font-size:1.1rem">'+money(pipe)+'</div></div>'
-    +'<div style="flex:1;background:var(--green-soft);border-radius:10px;padding:.6rem;text-align:center"><div style="font-size:.74rem;color:var(--muted)">'+esc(C373t('Rată câștig'))+'</div><div style="font-weight:800;font-size:1.1rem">'+winRate+'%</div></div></div>'
-    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(C373t('Etapă'))+'</th><th style="text-align:right">'+esc(C373t('Clienți'))+'</th><th style="text-align:right">'+esc(C373t('Valoare'))+'</th></tr></thead><tbody>'+stRows+'</tbody></table></div>'
+    +'<div style="flex:1;background:var(--green-soft);border-radius:10px;padding:.6rem;text-align:center"><div style="font-size:.74rem;color:var(--muted)">'+esc(C373t('Rată câștig'))+'</div><div style="font-weight:800;font-size:1.1rem">'+winRate+'%</div></div>'
+    +'<div style="flex:1;background:var(--red-soft);border-radius:10px;padding:.6rem;text-align:center"><div style="font-size:.74rem;color:var(--muted)">'+esc(C373t('Blocate (≥14z)'))+'</div><div style="font-weight:800;font-size:1.1rem">'+stuckTot+'</div></div></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(C373t('Etapă'))+'</th><th style="text-align:right">'+esc(C373t('Clienți'))+'</th><th style="text-align:right">'+esc(C373t('Valoare'))+'</th><th style="text-align:right">'+esc(C373t('Blocate'))+'</th></tr></thead><tbody>'+stRows+'</tbody></table></div>'
     +'<div style="font-weight:700;font-size:.84rem;margin:.7rem 0 .2rem">🌱 '+esc(C373t('Surse'))+'</div><div class="tbl-wrap"><table class="tbl"><tbody>'+srcRows+'</tbody></table></div></div></div></div>'; }
 async function crmFollowupWidget(){
   try{ const t=coToday(); const fr=await sb.from('client_activities').select('client_id,due_date,body,clients(name)').eq('kind','task').eq('done',false).lte('due_date',isoLocal(new Date(Date.now()+14*86400000))).order('due_date');
