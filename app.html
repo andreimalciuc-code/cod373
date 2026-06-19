@@ -669,7 +669,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['active','blocked']),default:'active'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
-  alimentari:{ title:'Alimentări', sub:'Alimentări de carburant — cost, litri, km (pentru cost/100km).', icon:'⛽', group:'Catalog', table:'fuel_logs',
+  alimentari:{ title:'Alimentări', sub:'Alimentări de carburant — cost, litri, km (pentru cost/100km).', icon:'⛽', group:'Catalog', table:'fuel_logs', topAction:{label:'📊 Consum / 100km',fn:'fuelReport()'},
     newLabel:'Alimentare nouă', orderBy:{col:'log_date',asc:false},
     select:'id,log_date,amount,liters,odometer,note,vehicle_id,card_id,vehicles(label,plate),fuel_cards(provider,label)',
     columns:[
@@ -686,6 +686,23 @@ const MODULES = {
       {key:'liters',label:'Litri',type:'number',step:'any'},
       {key:'amount',label:'Sumă plătită',type:'number',step:'any'},
       {key:'odometer',label:'Km la bord (pentru cost/100km)',type:'number',step:'any',hint:'Kilometrajul afișat la alimentare — din 2 alimentări succesive se poate calcula consumul.'},
+      {key:'note',label:'Note',type:'textarea'} ] },
+
+  concedii:{ title:'Concedii & absențe', sub:'Concediile anuale planificate, centralizat pe angajat.', icon:'🏖️', group:'Echipă', table:'employee_leaves', topAction:{label:'📊 Total pe angajat',fn:'leaveReport()'},
+    newLabel:'Concediu / absență', orderBy:{col:'start_date',asc:false},
+    select:'id,kind,start_date,end_date,days,note,employee_id,employees(full_name)',
+    columns:[
+      {label:'Angajat',get:r=>'<span class="tname">'+esc(r.employees?r.employees.full_name:'—')+'</span>'},
+      {label:'Tip',get:r=>esc((typeof LEAVE_KIND!=='undefined'&&LEAVE_KIND[r.kind])||r.kind||'—')},
+      {label:'De la',get:r=>dt(r.start_date)},
+      {label:'Până la',get:r=>dt(r.end_date)},
+      {label:'Zile',get:r=>esc(r.days!=null?r.days:(daysBetween(r.start_date,r.end_date)||'—'))} ],
+    fields:[
+      {key:'employee_id',label:'Angajat',type:'ref',ref:'employees',required:true},
+      {key:'kind',label:'Tip',type:'select',options:[{value:'concediu',label:'Concediu (anual)'},{value:'medical',label:'Medical'},{value:'nemotivat',label:'Nemotivat'},{value:'invoire',label:'Învoire'},{value:'altul',label:'Altul'}],default:'concediu'},
+      {key:'start_date',label:'De la',type:'date',required:true},
+      {key:'end_date',label:'Până la',type:'date',required:true},
+      {key:'days',label:'Zile (lasă gol = calcul automat din interval)',type:'number',step:'any'},
       {key:'note',label:'Note',type:'textarea'} ] },
 
   furnizori:{ title:'Furnizori', sub:'Parteneri și furnizori.', icon:'🏭', group:'Catalog', table:'suppliers',
@@ -1515,7 +1532,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v159';
+const APP_VERSION='cod373-v160';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2570,6 +2587,29 @@ function bdayDashWidget(){ const list=(state.birthdays||[]).filter(p=>p.days<=30
   if(list.length){ h+=list.map(p=>{ const w=p.days===0?('🎉 '+C373t('astăzi')):(p.days===1?C373t('mâine'):(C373t('în')+' '+p.days+' '+C373t('zile'))); return '<div style="display:flex;gap:.5rem;align-items:center;padding:.3rem 0;font-size:.86rem;border-bottom:1px solid var(--line)"><span>'+p.icon+'</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name)+(p.turning?(' <span style="color:var(--muted);font-size:.78rem">('+p.turning+')</span>'):'')+'</span><span style="color:var(--muted);white-space:nowrap">'+esc(w)+'</span></div>'; }).join(''); }
   else h+='<div style="color:var(--muted);font-size:.85rem">'+esc(C373t('Nicio zi de naștere în următoarele 30 de zile.'))+'</div>';
   h+='</div></div>'; return h; }
+async function fuelReport(){
+  const { data, error }=await sb.from('fuel_logs').select('vehicle_id,log_date,amount,liters,odometer,vehicles(label,plate)');
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const logs=data||[]; if(!logs.length){ toast(C373t('Nicio alimentare înregistrată.')); return; }
+  const byV={}; logs.forEach(l=>{ const k=l.vehicle_id||'—'; (byV[k]=byV[k]||{name:(l.vehicles?(l.vehicles.label||l.vehicles.plate||'(fără mașină)'):'(fără mașină)'),rows:[]}).rows.push(l); });
+  let rows='';
+  Object.keys(byV).forEach(k=>{ const v=byV[k], all=v.rows;
+    const totAmt=all.reduce((s,x)=>s+(+x.amount||0),0), totL=all.reduce((s,x)=>s+(+x.liters||0),0);
+    const od=all.filter(x=>x.odometer!=null).sort((a,b)=>(+a.odometer)-(+b.odometer));
+    let km=null,l100=null,c100=null;
+    if(od.length>=2){ km=(+od[od.length-1].odometer)-(+od[0].odometer); if(km>0){ const lUsed=od.slice(1).reduce((s,x)=>s+(+x.liters||0),0), aUsed=od.slice(1).reduce((s,x)=>s+(+x.amount||0),0); l100=lUsed/km*100; c100=aUsed/km*100; } }
+    rows+='<tr><td class="tname">'+esc(v.name)+'</td><td style="text-align:right">'+all.length+'</td><td style="text-align:right">'+money(totAmt)+'</td><td style="text-align:right">'+(totL?totL.toFixed(1)+' L':'—')+'</td><td style="text-align:right">'+(km!=null?km+' km':'—')+'</td><td style="text-align:right">'+(l100!=null?l100.toFixed(1)+' L':'—')+'</td><td style="text-align:right">'+(c100!=null?money(c100):'—')+'</td></tr>'; });
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:680px"><div class="modal-head"><h3>📊 '+esc(C373t('Consum & cost / 100km'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.5rem">'+esc(C373t('Consumul se calculează „de la plin la plin" — sunt necesare cel puțin 2 alimentări cu km la bord.'))+'</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(C373t('Mașină'))+'</th><th style="text-align:right">'+esc(C373t('Alimentări'))+'</th><th style="text-align:right">'+esc(C373t('Total'))+'</th><th style="text-align:right">'+esc(C373t('Litri'))+'</th><th style="text-align:right">Km</th><th style="text-align:right">L/100km</th><th style="text-align:right">'+esc(C373t('Cost/100km'))+'</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div>'; }
+async function leaveReport(){
+  const yr=coToday().slice(0,4);
+  const { data, error }=await sb.from('employee_leaves').select('kind,start_date,end_date,days,employee_id,employees(full_name)').gte('start_date',yr+'-01-01').lte('start_date',yr+'-12-31');
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const byE={}; (data||[]).forEach(r=>{ const k=r.employee_id||'—'; const e=(byE[k]=byE[k]||{name:(r.employees?r.employees.full_name:'—'),concediu:0,medical:0,alt:0,total:0}); const d=+(r.days!=null?r.days:(daysBetween(r.start_date,r.end_date)||0))||0; if(r.kind==='concediu') e.concediu+=d; else if(r.kind==='medical') e.medical+=d; else e.alt+=d; e.total+=d; });
+  const ks=Object.keys(byE).sort((a,b)=>byE[a].name.localeCompare(byE[b].name));
+  const body=ks.length?ks.map(k=>{ const e=byE[k]; return '<tr><td class="tname">'+esc(e.name)+'</td><td style="text-align:right">'+e.concediu+'</td><td style="text-align:right">'+e.medical+'</td><td style="text-align:right">'+e.alt+'</td><td style="text-align:right"><b>'+e.total+'</b></td></tr>'; }).join(''):'<tr><td colspan="5" style="color:var(--muted);padding:1rem">'+esc(C373t('Nicio absență înregistrată în acest an.'))+'</td></tr>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📊 '+esc(C373t('Concedii pe angajat'))+' — '+yr+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(C373t('Angajat'))+'</th><th style="text-align:right">'+esc(C373t('Concediu'))+'</th><th style="text-align:right">Medical</th><th style="text-align:right">'+esc(C373t('Altele'))+'</th><th style="text-align:right">'+esc(C373t('Total'))+'</th></tr></thead><tbody>'+body+'</tbody></table></div><div style="font-size:.74rem;color:var(--muted);margin-top:.5rem">'+esc(C373t('Zile, pe baza absențelor înregistrate în anul curent.'))+'</div></div></div></div>'; }
 function clockText(){ const tz=coTz(); const lang=(window.C373lang&&C373lang())||'ro'; const loc={ro:'ro-RO',ru:'ru-RU',de:'de-DE',en:'en-GB'}[lang]||'ro-RO';
   const opt={weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}; if(tz) opt.timeZone=tz;
   let s; try{ s=new Intl.DateTimeFormat(loc,opt).format(new Date()); }catch(e){ try{ delete opt.timeZone; s=new Intl.DateTimeFormat(loc,opt).format(new Date()); }catch(e2){ s=new Date().toLocaleString(); } }
@@ -2591,18 +2631,22 @@ async function loadBirthdays(){ const out=[];
     if(cob){ const n=bdayNext(cob); if(n){ const nm=(state.firm.automations.brand_name||state.firm.name||'Compania'); out.push({name:nm,role:'companie',icon:'🏢',bd:cob,days:n.days,turning:n.turning}); } }
   }catch(e){}
   out.sort((a,b)=>a.days-b.days); state.birthdays=out;
-  const btn=$('bday-btn'); if(btn){ if(out.length){ btn.style.display=''; const n=out[0]; const fn=String(n.name).split(' ')[0].slice(0,14); const lbl=n.days===0?(C373t('Azi')+': '+fn+' 🎉'):(n.days===1?(fn+' · '+C373t('mâine')):(fn+' · '+n.days+'z')); btn.innerHTML='🎂 <span style="font-weight:600">'+esc(lbl)+'</span>'; btn.title=C373t('Zile de naștere apropiate'); } else { btn.style.display='none'; btn.innerHTML='🎂'; } } }
-function openBirthdays(){ const list=(state.birthdays||[]);
+  const btn=$('bday-btn'); if(btn){ if(out.length){ btn.style.display=''; const n=out[0]; const fn=String(n.name).split(' ')[0].slice(0,14); const dm=String(n.bd).slice(8,10)+'.'+String(n.bd).slice(5,7); const lbl=n.days===0?(C373t('Azi')+': '+fn+' 🎉'):(fn+' · '+dm+' · '+(n.days===1?C373t('mâine'):(n.days+'z'))); btn.innerHTML='🎂 <span style="font-weight:600">'+esc(lbl)+'</span>'; btn.title=C373t('Zile de naștere apropiate'); } else { btn.style.display='none'; btn.innerHTML='🎂'; } } }
+function openBirthdays(){
+  const bdays=(state.birthdays||[]).map(p=>({type:'bday',icon:p.icon,name:p.name,bd:p.bd,days:p.days,turning:p.turning,role:p.role}));
+  const t=coToday(); const hol=[]; const y0=+t.slice(0,4); for(let yy=y0;yy<=y0+1;yy++){ const H=holYear(yy); for(const iso in H){ if(iso>=t){ const d=Math.round((new Date(iso+'T12:00:00')-new Date(t+'T12:00:00'))/86400000); if(d<=60) hol.push({type:'hol',icon:'🎉',name:H[iso],bd:iso,days:d}); } } }
+  const all=bdays.concat(hol).sort((a,b)=>a.days-b.days);
   const when=p=> p.days===0?('🎉 '+C373t('astăzi')):(p.days===1?C373t('mâine'):(C373t('în')+' '+p.days+' '+C373t('zile')));
   const roleT=r=>C373t(r==='angajat'?'Angajat':r==='client'?'Client':r==='companie'?'Compania':'Subcontractor');
-  const rows=list.length? list.map(p=>{ const dd=String(p.bd).slice(8,10), mm=String(p.bd).slice(5,7); const col=p.days===0?'var(--accent)':(p.days<=7?'var(--primary)':'var(--muted)');
+  const fmtD=bd=>{ const s=String(bd); return s.length>=10?(s.slice(8,10)+'.'+s.slice(5,7)+'.'+s.slice(0,4)):(s.slice(8,10)+'.'+s.slice(5,7)); };
+  const rows=all.length? all.map(p=>{ const col=p.days===0?'var(--accent)':(p.days<=7?'var(--primary)':'var(--muted)');
+      const sub=p.type==='hol' ? (fmtD(p.bd)+' · '+C373t('Sărbătoare legală')) : (fmtD(p.bd)+' · '+roleT(p.role)+(p.turning?(' · '+C373t('împlinește')+' '+p.turning):''));
       return '<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--line)"><span style="font-size:1.15rem">'+p.icon+'</span>'
-        +'<div style="flex:1;min-width:0"><div style="font-weight:600">'+esc(p.name)+(p.turning?(' <span style="color:var(--muted);font-weight:400;font-size:.78rem">('+C373t('împlinește')+' '+p.turning+')</span>'):'')+'</div>'
-        +'<div style="font-size:.76rem;color:var(--muted)">'+dd+'.'+mm+' · '+esc(roleT(p.role))+'</div></div>'
+        +'<div style="flex:1;min-width:0"><div style="font-weight:600">'+esc(p.name)+'</div><div style="font-size:.76rem;color:var(--muted)">'+esc(sub)+'</div></div>'
         +'<div style="font-weight:700;white-space:nowrap;color:'+col+'">'+esc(when(p))+'</div></div>'; }).join('')
     : '<div style="color:var(--muted);padding:1rem 0">'+esc(C373t('Nicio zi de naștere înregistrată. Completează „Data nașterii" la angajați, clienți sau subcontractori.'))+'</div>';
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px"><div class="modal-head"><h3>🎂 '+esc(C373t('Zile de naștere'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
-    +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">'+esc(C373t('Următoarele zile de naștere — angajați, clienți și subcontractori.'))+'</div>'+rows+'</div></div></div>'; }
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px"><div class="modal-head"><h3>🎂 '+esc(C373t('Zile de naștere'))+' & 🎉 '+esc(C373t('zile libere'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">'+esc(C373t('Următoarele zile de naștere și sărbători legale.'))+'</div>'+rows+'</div></div></div>'; }
 function planAbs(n){ return PLAN_ABS.find(a=>a[0]===n)||PLAN_ROLE.find(a=>a[0]===n); }
 function planChipHtml(rec, id, date, slot){
   if(!rec) return '';
@@ -4407,7 +4451,8 @@ async function renderModule(key){
   const statusField=m.fields.find(f=>['status','stage'].includes(f.key)&&f.type==='select')||null;
   let bar='<div class="seg">'
     +'<input id="list-search" placeholder="'+TR('cauta')+'" oninput="onListSearch(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none;min-width:200px"/>'
-    +'<button class="btn-ghost" title="Ghid pentru acest modul" onclick="openModuleGuide(\''+key+'\')">❓ Ghid</button>';
+    +'<button class="btn-ghost" title="Ghid pentru acest modul" onclick="openModuleGuide(\''+key+'\')">❓ Ghid</button>'
+    +(m.topAction?'<button class="btn-ghost" onclick="'+m.topAction.fn+'">'+m.topAction.label+'</button>':'');
   if(statusField){ bar+='<select id="list-status" onchange="onListStatus(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">'+TR('toate')+'</option>'+statusField.options.map(o=>'<option value="'+o.value+'">'+esc(LANG==='ru'&&STATUS_RU[o.value]?STATUS_RU[o.value]:o.label)+'</option>').join('')+'</select>'; }
   if(m.catFilter){ bar+='<select id="list-cat" onchange="onListCat(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">Toate categoriile</option></select>'; }
   if(m.supplierFilter){ bar+='<select id="list-supplier" onchange="onListSupplier(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">Toți furnizorii</option></select>'; }
