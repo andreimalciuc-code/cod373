@@ -1444,7 +1444,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v150';
+const APP_VERSION='cod373-v151';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2421,6 +2421,8 @@ let _planHalf=localStorage.getItem('c373_plan_half')==='1';
 let _planGroup=localStorage.getItem('c373_plan_teams')==='1';
 const PLAN_PALETTE=['#2f6bff','#16b364','#f79009','#f04438','#7a5af8','#06aed4','#ec4899','#65a30d','#d97706','#0ea5e9','#14b8a6','#a855f7','#e11d48','#475569'];
 const PLAN_ABS=[['concediu','🏖️ Concediu','#0ea5e9'],['liber','🏠 Liber','#94a3b8'],['boala','🤒 Boală','#f59e0b']];
+const PLAN_ROLE=[['sofer','🚚 Șofer','#16a34a'],['oficiu','🏢 Oficiu','#6366f1']];  // lucrează, dar nu pe șantier (transport / birou)
+function planTag(n){ const r=PLAN_ROLE.find(a=>a[0]===n); if(r) return {a:r,role:true}; const b=PLAN_ABS.find(a=>a[0]===n); return {a:b||['',n,'#94a3b8'],role:false}; }
 function mondayOf(d){ d=new Date(d); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
 function isoD(d){ return new Date(d).toISOString().slice(0,10); }
 /* ── fus orar + format dată pe companie (Setări → Regional) ── */
@@ -2435,14 +2437,15 @@ function clockText(){ const tz=coTz(); const lang=(window.C373lang&&C373lang())|
   let s; try{ s=new Intl.DateTimeFormat(loc,opt).format(new Date()); }catch(e){ try{ delete opt.timeZone; s=new Intl.DateTimeFormat(loc,opt).format(new Date()); }catch(e2){ s=new Date().toLocaleString(); } }
   s=s.charAt(0).toUpperCase()+s.slice(1); return '🕐 '+s; }
 function startClock(){ const el=document.getElementById('topclock'); if(el) el.textContent=clockText(); clearInterval(window._clockT); window._clockT=setInterval(function(){ const e=document.getElementById('topclock'); if(e) e.textContent=clockText(); }, 15000); }
-function planAbs(n){ return PLAN_ABS.find(a=>a[0]===n); }
+function planAbs(n){ return PLAN_ABS.find(a=>a[0]===n)||PLAN_ROLE.find(a=>a[0]===n); }
 function planChipHtml(rec, id, date, slot){
   if(!rec) return '';
   const mv='move:'+id+'|'+date+'|'+slot;
   if(rec.site_id){ const c=_planColor[rec.site_id]||'#475569'; const s=_planSites.find(x=>x.id===rec.site_id); const nm=s?s.name:'șantier';
     return '<div class="plchip" draggable="true" ondragstart="event.stopPropagation();planDragStart(event,\''+mv+'\')" style="background:'+c+'" title="'+esc(nm)+'">'+esc(nm)+'<span class="plx" onclick="event.stopPropagation();planAssign(\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">×</span></div>'; }
-  if(rec.note){ const a=planAbs(rec.note)||['',rec.note,'#94a3b8'];
-    return '<div class="plchip plabs" draggable="true" ondragstart="event.stopPropagation();planDragStart(event,\''+mv+'\')" style="background:var(--surface);color:#475569;border:1px dashed '+a[2]+'">'+esc(a[1])+'<span class="plx" onclick="event.stopPropagation();planAssign(\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">×</span></div>'; }
+  if(rec.note){ const tg=planTag(rec.note); const a=tg.a;
+    const style=tg.role?('background:'+a[2]+';color:#fff'):('background:var(--surface);color:#475569;border:1px dashed '+a[2]);
+    return '<div class="plchip'+(tg.role?'':' plabs')+'" draggable="true" ondragstart="event.stopPropagation();planDragStart(event,\''+mv+'\')" style="'+style+'">'+esc(a[1])+'<span class="plx" onclick="event.stopPropagation();planAssign(\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">×</span></div>'; }
   return '';
 }
 function planZone(empId,date,dropSlot,o,half){
@@ -2503,6 +2506,8 @@ async function renderPlantafel(){
   const dn=['Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă','Duminică'];
   const palette='<div class="plpalette"><span class="pllbl">Trage pe zi:</span>'
     +(sites.length?sites.map(s=>'<div class="plchip plpal" draggable="true" ondragstart="planDragStart(event,\'site:'+s.id+'\')" style="background:'+_planColor[s.id]+'">'+esc(s.name)+'</div>').join(''):'<span style="color:var(--muted);font-size:.8rem">— niciun șantier activ —</span>')
+    +'<span style="width:1px;height:20px;background:var(--line);margin:0 .3rem"></span>'
+    +PLAN_ROLE.map(a=>'<div class="plchip plpal" draggable="true" ondragstart="planDragStart(event,\'abs:'+a[0]+'\')" style="background:'+a[2]+'">'+a[1]+'</div>').join('')
     +'<span style="width:1px;height:20px;background:var(--line);margin:0 .3rem"></span>'
     +PLAN_ABS.map(a=>'<div class="plchip plpal plabs" draggable="true" ondragstart="planDragStart(event,\'abs:'+a[0]+'\')" style="background:var(--surface);color:#475569;border:1px dashed '+a[2]+'">'+a[1]+'</div>').join('')
     +'</div>';
@@ -2601,6 +2606,8 @@ function planCellMenu(ev,kind,id,date,slot){
   let html='<div style="font-size:.76rem;color:var(--muted);font-weight:600;padding:.2rem .55rem .35rem">'+title+' · '+date.slice(8,10)+'.'+date.slice(5,7)+sl+'</div>';
   html+=_planSites.map(s=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',\''+s.id+'\',null,\''+slot+'\')"><span class="pldot" style="background:'+_planColor[s.id]+'"></span>'+esc(s.name)+'</div>').join('');
   if(!_planSites.length) html+='<div style="padding:.4rem .55rem;color:var(--muted);font-size:.82rem">Niciun șantier activ.</div>';
+  html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div>';
+  html+=PLAN_ROLE.map(a=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,\''+a[0]+'\',\''+slot+'\')"><span class="pldot" style="background:'+a[2]+'"></span>'+a[1]+'</div>').join('');
   html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div>';
   html+=PLAN_ABS.map(a=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,\''+a[0]+'\',\''+slot+'\')"><span class="pldot" style="background:'+a[2]+'"></span>'+a[1]+'</div>').join('');
   html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div><div class="plopt" style="color:var(--red)" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,null,\''+slot+'\')">🗑 Șterge</div>';
