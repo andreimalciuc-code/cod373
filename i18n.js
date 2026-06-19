@@ -14,6 +14,16 @@
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
     'Personalizare':{ru:'Персонализация',de:'Personalisierung',en:'Personalization'},
+    'Subcontractor':{ru:'Субподрядчик',de:'Subunternehmer',en:'Subcontractor'},
+    'Zile de naștere':{ru:'Дни рождения',de:'Geburtstage',en:'Birthdays'},
+    'Zile de naștere apropiate':{ru:'Ближайшие дни рождения',de:'Bevorstehende Geburtstage',en:'Upcoming birthdays'},
+    'Următoarele zile de naștere — angajați, clienți și subcontractori.':{ru:'Ближайшие дни рождения — сотрудники, клиенты и субподрядчики.',de:'Bevorstehende Geburtstage — Mitarbeiter, Kunden und Subunternehmer.',en:'Upcoming birthdays — employees, clients and subcontractors.'},
+    'Nicio zi de naștere înregistrată. Completează „Data nașterii" la angajați, clienți sau subcontractori.':{ru:'Дни рождения не указаны. Заполните «Дата рождения» у сотрудников, клиентов или субподрядчиков.',de:'Keine Geburtstage erfasst. Trage das „Geburtsdatum" bei Mitarbeitern, Kunden oder Subunternehmern ein.',en:'No birthdays recorded. Fill in the date of birth for employees, clients or subcontractors.'},
+    'împlinește':{ru:'исполняется',de:'wird',en:'turns'},
+    'astăzi':{ru:'сегодня',de:'heute',en:'today'},
+    'mâine':{ru:'завтра',de:'morgen',en:'tomorrow'},
+    'în':{ru:'через',de:'in',en:'in'},
+    'zile':{ru:'дн.',de:'Tagen',en:'days'},
     'Temă':{ru:'Тема',de:'Design',en:'Theme'},
     'Luminos':{ru:'Светлая',de:'Hell',en:'Light'},
     'Întunecat':{ru:'Тёмная',de:'Dunkel',en:'Dark'},

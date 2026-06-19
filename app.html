@@ -310,6 +310,7 @@
       <div class="top-actions">
         <div id="topclock" class="noi18n" title="Data și ora" style="font-size:.78rem;color:var(--muted);font-weight:600;white-space:nowrap;margin-right:.3rem"></div>
         <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
+        <button class="btn-ghost" id="bday-btn" onclick="openBirthdays()" title="Zile de naștere apropiate" style="position:relative;display:none">🎂<span id="bday-badge" style="position:absolute;top:-4px;right:-4px;background:var(--accent);color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:0 .3rem;display:none"></span></button>
         <button class="btn-ghost" id="guide-btn" onclick="openModuleGuide(curModuleKey())" title="Ghid de utilizare">❓</button>
         <button class="btn-ghost" id="support-btn" onclick="openSupport()" title="Suport / Ajutor">🛟</button>
         <button class="btn-ghost" id="ai-btn" onclick="openAI()" title="Asistent AI">🤖</button>
@@ -533,7 +534,7 @@ const MODULES = {
 
   clienti:{ title:'Clienți', sub:'CRM — clienți și pâlnia de vânzări.', icon:'🤝', group:'Operațional', table:'clients',
     newLabel:'Client nou', invitable:'client', orderBy:{col:'created_at',asc:false},
-    select:'id,name,type,phone,email,stage',
+    select:'id,name,type,phone,email,stage,birth_date',
     columns:[
       {label:'Nume',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
       {label:'Tip',get:r=>pill(r.type)},
@@ -548,6 +549,7 @@ const MODULES = {
       {key:'phone',label:'Telefon',type:'text'},
       {key:'email',label:'Email',type:'text'},
       {key:'address',label:'Adresă',type:'text'},
+      {key:'birth_date',label:'Data nașterii (pers. fizice)',type:'date',hint:'Opțional. Apare în „🎂 Zile de naștere" din bara de sus.'},
       {key:'stage',label:'Etapă',type:'select',options:opts(['lead','contacted','offer','won','lost','active']),default:'lead'},
       {key:'contract_url',label:'Contract (fișier PDF/scan)',type:'file',hint:'Atașează contractul cu clientul. Se stochează securizat în Documente.'},
       {key:'notes',label:'Note',type:'textarea'} ] },
@@ -757,7 +759,7 @@ const MODULES = {
 
   subcontractori:{ title:'Subcontractori', sub:'Subantreprenori și specialitățile lor.', icon:'🧑‍🔧', group:'Echipă', table:'subcontractors',
     newLabel:'Subcontractor nou', invitable:'subcontractor', orderBy:{col:'name',asc:true},
-    select:'id,name,specialty,idno,phone,rating,price_list,logo_url',
+    select:'id,name,specialty,idno,phone,rating,price_list,logo_url,birth_date',
     columns:[
       {label:'Nume',get:r=>(r.logo_url?'<span onclick="openDoc(\''+encodeURIComponent(r.logo_url)+'\')" style="cursor:pointer" title="vezi logo">🏷️ </span>':'')+'<span class="tname">'+esc(r.name)+'</span>'},
       {label:'Specialitate (ce execută)',get:r=>esc(r.specialty||'—')},
@@ -768,6 +770,7 @@ const MODULES = {
       {key:'specialty',label:'Specialitate — ce lucrări execută',type:'text',hint:'Tipul de lucrări pe care le face. Ex: electricitate, acoperiș, instalații sanitare. Folosit ca să-l poți selecta la graficul lucrării corespunzătoare.'},
       {key:'idno',label:'IDNO',type:'text'},
       {key:'phone',label:'Telefon',type:'text',hint:'Numărul de contact al subcontractantului.'},
+      {key:'birth_date',label:'Data nașterii (persoană de contact)',type:'date',hint:'Opțional. Apare în „🎂 Zile de naștere" din bara de sus.'},
       {key:'rating',label:'Rating (0-5)',type:'number',hint:'Cât de bine au lucrat (0–5). Te ajută să-i compari.'},
       {key:'price_list',label:'Listă de prețuri',type:'textarea',hint:'Prețurile lor pe lucrări. Ex: „Priză montată — 350 lei; Punct lumină — 300 lei; m² gresie — 180 lei".'},
       {key:'contract_url',label:'Contract (fișier PDF/scan)',type:'file',hint:'Atașează contractul cu subcontractantul.'},
@@ -1124,6 +1127,7 @@ async function boot(){
   if(LANG==='ru'){ const o=$('btn-iesi'); if(o)o.textContent='Выход'; }
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
   subLoad();
+  loadBirthdays();
   let _lv; try{ _lv=localStorage.getItem('c373_last_view'); }catch(e){}
   const _start=(czPrefs().start)||'last';
   let _target='dashboard';
@@ -1464,7 +1468,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v155';
+const APP_VERSION='cod373-v156';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2474,6 +2478,34 @@ function clockText(){ const tz=coTz(); const lang=(window.C373lang&&C373lang())|
   let s; try{ s=new Intl.DateTimeFormat(loc,opt).format(new Date()); }catch(e){ try{ delete opt.timeZone; s=new Intl.DateTimeFormat(loc,opt).format(new Date()); }catch(e2){ s=new Date().toLocaleString(); } }
   s=s.charAt(0).toUpperCase()+s.slice(1); return '🕐 '+s; }
 function startClock(){ const el=document.getElementById('topclock'); if(el) el.textContent=clockText(); clearInterval(window._clockT); window._clockT=setInterval(function(){ const e=document.getElementById('topclock'); if(e) e.textContent=clockText(); }, 15000); }
+/* ════ 🎂 ZILE DE NAȘTERE (persoane din bază: angajați + clienți + subcontractori) ════ */
+function bdayNext(bd){ if(!bd) return null; const p=String(bd).slice(0,10).split('-'); if(p.length<3) return null; const y=+p[0],mo=+p[1],d=+p[2]; if(!mo||!d) return null;
+  const today=new Date(coToday()+'T12:00:00'); const ty=today.getFullYear(); let next=new Date(ty,mo-1,d,12,0,0); if(next<today) next=new Date(ty+1,mo-1,d,12,0,0);
+  const days=Math.round((next-today)/86400000); const turning=y?(next.getFullYear()-y):null; return {days:days,turning:turning,mo:mo,d:d}; }
+async function loadBirthdays(){ const out=[];
+  try{ const [emp,cli,sub]=await Promise.all([
+      sb.from('employees').select('full_name,birth_date,active').not('birth_date','is',null),
+      sb.from('clients').select('name,birth_date').not('birth_date','is',null),
+      sb.from('subcontractors').select('name,birth_date').not('birth_date','is',null) ]);
+    (emp.data||[]).forEach(p=>{ if(p.active===false) return; const n=bdayNext(p.birth_date); if(n) out.push({name:p.full_name,role:'angajat',icon:'👷',bd:p.birth_date,days:n.days,turning:n.turning}); });
+    (cli.data||[]).forEach(p=>{ const n=bdayNext(p.birth_date); if(n) out.push({name:p.name,role:'client',icon:'🤝',bd:p.birth_date,days:n.days,turning:n.turning}); });
+    (sub.data||[]).forEach(p=>{ const n=bdayNext(p.birth_date); if(n) out.push({name:p.name,role:'subcontractor',icon:'🧑‍🔧',bd:p.birth_date,days:n.days,turning:n.turning}); });
+  }catch(e){}
+  out.sort((a,b)=>a.days-b.days); state.birthdays=out;
+  const soon=out.filter(p=>p.days<=7).length; const btn=$('bday-btn'), badge=$('bday-badge');
+  if(btn) btn.style.display=out.length?'':'none';
+  if(badge){ if(soon>0){ badge.textContent=soon; badge.style.display='inline-block'; } else badge.style.display='none'; } }
+function openBirthdays(){ const list=(state.birthdays||[]);
+  const when=p=> p.days===0?('🎉 '+C373t('astăzi')):(p.days===1?C373t('mâine'):(C373t('în')+' '+p.days+' '+C373t('zile')));
+  const roleT=r=>C373t(r==='angajat'?'Angajat':r==='client'?'Client':'Subcontractor');
+  const rows=list.length? list.map(p=>{ const dd=String(p.bd).slice(8,10), mm=String(p.bd).slice(5,7); const col=p.days===0?'var(--accent)':(p.days<=7?'var(--primary)':'var(--muted)');
+      return '<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--line)"><span style="font-size:1.15rem">'+p.icon+'</span>'
+        +'<div style="flex:1;min-width:0"><div style="font-weight:600">'+esc(p.name)+(p.turning?(' <span style="color:var(--muted);font-weight:400;font-size:.78rem">('+C373t('împlinește')+' '+p.turning+')</span>'):'')+'</div>'
+        +'<div style="font-size:.76rem;color:var(--muted)">'+dd+'.'+mm+' · '+esc(roleT(p.role))+'</div></div>'
+        +'<div style="font-weight:700;white-space:nowrap;color:'+col+'">'+esc(when(p))+'</div></div>'; }).join('')
+    : '<div style="color:var(--muted);padding:1rem 0">'+esc(C373t('Nicio zi de naștere înregistrată. Completează „Data nașterii" la angajați, clienți sau subcontractori.'))+'</div>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px"><div class="modal-head"><h3>🎂 '+esc(C373t('Zile de naștere'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">'+esc(C373t('Următoarele zile de naștere — angajați, clienți și subcontractori.'))+'</div>'+rows+'</div></div></div>'; }
 function planAbs(n){ return PLAN_ABS.find(a=>a[0]===n)||PLAN_ROLE.find(a=>a[0]===n); }
 function planChipHtml(rec, id, date, slot){
   if(!rec) return '';
