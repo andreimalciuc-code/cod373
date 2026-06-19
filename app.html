@@ -1088,6 +1088,7 @@ async function boot(){
   startClock();
   hideSplash();
   if((location.hash+location.search).indexOf('access_token=')>=0){ wialonCaptureFromUrl().then(ok=>{ if(ok) go('harta'); }); }
+  try{ const _u=new URLSearchParams(location.search).get('unit'); if(_u){ history.replaceState(null,'',location.pathname); sb.from('tool_units').select('tool_id,tools(name)').eq('id',_u).maybeSingle().then(r=>{ if(r.data){ go('instrumente'); setTimeout(()=>toolUnits(r.data.tool_id,(r.data.tools&&r.data.tools.name)||''),400); } else toast('Bucata nu a fost găsită.'); }); } }catch(e){}
 }
 
 /* ════ ABONAMENT / TRIAL / DEMO ════ */
@@ -1282,7 +1283,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v136';
+const APP_VERSION='cod373-v137';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1671,6 +1672,7 @@ function tufAdd(){ const wrap=$('tuf-units'); if(!wrap) return; const i=wrap.chi
     +'</div>';
   wrap.appendChild(div); tufRecalc(); }
 function tufCond(sel){ const row=sel.closest('.tuf-row'); const life=row&&row.querySelector('.tuf-life'); if(life) life.value=(sel.value==='second'?3:5); tufRecalc(); }
+function tufSetCount(n){ n=Math.max(0,Math.min(200,Math.floor(+n||0))); const wrap=$('tuf-units'); if(!wrap) return; let cur=wrap.querySelectorAll('.tuf-row').length; while(cur<n){ tufAdd(); cur++; } while(cur>n){ const rows=wrap.querySelectorAll('.tuf-row'); rows[rows.length-1].remove(); cur--; } tufRecalc(); }
 function tufRecalc(){ const wrap=$('tuf-units'); if(!wrap) return; let n=0; wrap.querySelectorAll('.tuf-row').forEach(r=>{ n++; const d=r.querySelector('.tuf-date'), l=r.querySelector('.tuf-life'), dep=r.querySelector('.tuf-dep'); const p=depPct(d&&d.value, l&&l.value); if(dep) dep.textContent=Math.round(p)+'%'; }); const t=$('tuf-total'); if(t) t.textContent=n; }
 function tmWhere(l){ return l.site_id?('🏗️ '+((l.sites&&l.sites.name)||'șantier')):(l.warehouse_id?('🏬 '+((l.warehouses&&l.warehouses.name)||'depozit')):(l.store_id?'🏬 depozit':(l.holder?((l.loan_type==='rented'?'💶 ':'🤝 ')+l.holder):'—'))); }
 function toolMove(locId){
@@ -4321,9 +4323,9 @@ async function openForm(key,row,preset){
   });
   if(m.toolStockForm && !row){
     body+='<div class="field" style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>🔢 Bucăți pe serie</label>'
-      +'<div style="font-size:.8rem;color:var(--muted);margin:-.1rem 0 .5rem">Total deținut: <b id="tuf-total">0</b> buc — câte o linie pentru fiecare bucată (serie), cu nr. inventar, valoare, amortizare, poză și locație.</div>'
+      +'<div style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin:-.05rem 0 .55rem"><div class="field" style="width:200px;margin:0"><label>Câte bucăți în total</label><input id="tuf-count" type="number" min="0" value="1" oninput="tufSetCount(this.value)"/></div><div style="font-size:.8rem;color:var(--muted);align-self:center">Pune numărul → se creează automat câte o linie per bucată. Total serii: <b id="tuf-total">0</b>.</div></div>'
       +'<div id="tuf-units"></div>'
-      +'<button type="button" class="addline" onclick="tufAdd()">＋ adaugă serie</button>'
+      +'<button type="button" class="addline" onclick="tufAdd();var c=document.getElementById(\'tuf-count\');if(c)c.value=document.querySelectorAll(\'#tuf-units .tuf-row\').length">＋ adaugă încă o serie</button>'
       +'</div>'; }
   if(m.recipe){ body+='<div class="field"><label>🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)</label><datalist id="recipe-mat-list">'+(formCtx.materials||[]).map(mm=>'<option value="'+esc(mm.name)+'"></option>').join('')+'</datalist><div id="recipe-mount"></div><button type="button" class="addline" onclick="recipeAdd()">＋ adaugă material</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Consum × volumul măsurat (la previzualizare șantier) = cantitatea de material. Prețul se ia automat din Materiale.</div></div>'; }
   if(m.priceSrc){ m.priceSrc.forEach(sk=>{ const s=PRICE_SRC[sk]; body+='<div class="field"><label>'+s.icon+' '+s.title+' (același material la mai multe '+s.noun+'e)</label><div id="'+s.mount+'"></div><button type="button" class="addline" onclick="srcAdd(\''+sk+'\')">＋ adaugă '+s.noun+'</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+s.hint+'</div></div>'; }); }

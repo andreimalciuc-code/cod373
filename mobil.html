@@ -164,6 +164,7 @@ function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
 function money(n){return n==null||n===''?'—':Number(n).toLocaleString('ro-RO')+' '+(CURSYM[CUR]||CUR);}
+function depPct(acqDate,life){ if(!acqDate) return 0; const L=+life||0; if(!(L>0)) return 0; const y=(Date.now()-new Date(acqDate+'T12:00:00').getTime())/(365.25*86400000); return Math.min(100,Math.max(0,(y/L)*100)); }
 function toast(m){const t=$('toast');t.innerHTML=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),3500);}
 function lmsg(t,k='err'){$('lmsg').innerHTML=t?'<div class="msg '+k+'">'+esc(t)+'</div>':'';}
 function today(){return new Date().toISOString().slice(0,10);}
@@ -217,7 +218,7 @@ async function boot(){
   $('login').classList.add('hidden');$('app').classList.remove('hidden');
   render(); hideSplash();
   // scanare QR: link de forma mobil.html?tool=ID deschide direct scula
-  try{ const tp=new URLSearchParams(location.search).get('tool'); if(tp){ history.replaceState(null,'',location.pathname); openToolById(tp); } }catch(e){}
+  try{ const sp=new URLSearchParams(location.search); const up=sp.get('unit'); if(up){ history.replaceState(null,'',location.pathname); openUnitById(up); } else { const tp=sp.get('tool'); if(tp){ history.replaceState(null,'',location.pathname); openToolById(tp); } } }catch(e){}
 }
 async function openToolById(idOrCode){
   let t=null;
@@ -226,6 +227,29 @@ async function openToolById(idOrCode){
   if(!t){ toast('Scula nu a fost găsită.'); return; }
   toolSheet(t);
 }
+async function openUnitById(unitId){
+  let u=null; try{ const r=await sb.from('tool_units').select('id,tool_id,serial_no,inventory_no,value,acq_date,useful_life_years,site_id,warehouse_id,holder,loan_type,tools(name),sites(name),warehouses(name)').eq('id',unitId).maybeSingle(); u=r.data; }catch(e){}
+  if(!u){ toast('Bucata nu a fost găsită.'); return; }
+  unitSheet(u);
+}
+async function unitSheet(u){
+  let sites=[],whs=[]; try{ const [sr,wr]=await Promise.all([sb.from('sites').select('id,name,status'), sb.from('warehouses').select('id,name')]); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'); whs=wr.data||[]; }catch(e){}
+  const cur=u.site_id?('site:'+u.site_id):(u.warehouse_id?('wh:'+u.warehouse_id):(u.loan_type?('loan:'+u.loan_type):''));
+  const where=u.site_id?('🏗️ '+esc((u.sites&&u.sites.name)||'șantier')):(u.warehouse_id?('🏬 '+esc((u.warehouses&&u.warehouses.name)||'depozit')):(u.holder?((u.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+esc(u.holder)):'📦 nealocat'));
+  const dep=Math.round(depPct(u.acq_date,u.useful_life_years));
+  const opt=(v,l)=>'<option value="'+v+'"'+(cur===v?' selected':'')+'>'+l+'</option>';
+  const locSel='<select id="us-loc">'+opt('','📦 Nealocat')+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>opt('wh:'+w.id,'🏬 '+esc(w.name))).join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>opt('site:'+s.id,'🏗️ '+esc(s.name))).join('')+'</optgroup>':'')+'<optgroup label="În afară">'+opt('loan:lent','🤝 Împrumutat')+opt('loan:rented','💶 În chirie')+'</optgroup></select>';
+  const html='<div class="card" style="margin:0 0 .8rem"><div class="t">🔧 '+esc((u.tools&&u.tools.name)||'Instrument')+'</div>'
+    +'<div class="s">Serie <b>'+esc(u.serial_no||'—')+'</b>'+(u.inventory_no?(' · Nr. inv. '+esc(u.inventory_no)):'')+'</div>'
+    +'<div style="margin-top:.4rem">📍 acum: <b>'+where+'</b></div>'
+    +(u.value!=null?'<div class="s">Valoare: '+money(u.value)+' · amortizare '+dep+'% · rămas '+money((+u.value||0)*(1-dep/100))+'</div>':'')+'</div>'
+    +'<div id="us-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div class="fld"><label>Unde e acum (mută)</label>'+locSel+'</div>'
+    +'<button class="btn" style="width:100%" onclick="unitMove(\''+u.id+'\')">💾 Salvează locația</button>';
+  openSheet('🔧 '+((u.tools&&u.tools.name)||'Bucată'), html);
+}
+async function unitMove(unitId){ const v=$('us-loc').value; const patch={site_id:null,warehouse_id:null,holder:null,loan_type:null}; const p=(v||'').split(':'); if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?'); if(h===null) return; patch.holder=(h||'').trim()||null; patch.loan_type=(p[1]==='rented'?'rented':'lent'); }
+  const r=await sb.from('tool_units').update(patch).eq('id',unitId); if(r.error){ if($('us-msg'))$('us-msg').textContent='Eroare: '+(r.error.message); return; } toast('✅ Locație actualizată.'); closeSheet(); }
 function setRole(r){ S.role=r; S.view='acasa'; document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===r)); render(); }
 
 /* NAV per role */
@@ -804,7 +828,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v136', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v137', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
@@ -878,6 +902,7 @@ function scanTool(){
     try{
       const h=new Html5Qrcode('qr-reader'); window._qr=h;
       h.start({facingMode:'environment'},{fps:10,qrbox:230},function(txt){ h.stop().catch(()=>{}); window._qr=null;
+        const mu=/[?&]unit=([^&\s]+)/.exec(txt); if(mu){ closeSheet(); openUnitById(decodeURIComponent(mu[1])); return; }
         let id=txt; const m=/[?&]tool=([^&\s]+)/.exec(txt); if(m) id=decodeURIComponent(m[1]); closeSheet(); openToolById(id);
       },function(){});
     }catch(e){ $('qr-msg').textContent='Nu pot porni camera. Scanează eticheta cu camera telefonului sau alege scula din listă.'; }
