@@ -232,8 +232,11 @@ async function openUnitById(unitId){
   if(!u){ toast('Bucata nu a fost găsită.'); return; }
   unitSheet(u);
 }
+function uLabelFromVal(val,holder){ const p=(val||'').split(':'); if(p[0]==='wh'){ const w=(window._usWhs||[]).find(x=>x.id===p[1]); return '🏬 '+((w&&w.name)||'depozit'); } if(p[0]==='site'){ const s=(window._usSites||[]).find(x=>x.id===p[1]); return '🏗️ '+((s&&s.name)||'șantier'); } if(p[0]==='loan'){ return (p[1]==='rented'?'💶 chirie: ':'🤝 împrumut: ')+(holder||''); } return '📦 nealocat'; }
+function uWhereLbl(u){ return u.site_id?('🏗️ '+((u.sites&&u.sites.name)||'șantier')):(u.warehouse_id?('🏬 '+((u.warehouses&&u.warehouses.name)||'depozit')):(u.holder?((u.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+u.holder):'📦 nealocat')); }
 async function unitSheet(u){
-  let sites=[],whs=[]; try{ const [sr,wr]=await Promise.all([sb.from('sites').select('id,name,status'), sb.from('warehouses').select('id,name')]); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'); whs=wr.data||[]; }catch(e){}
+  let sites=[],whs=[],logs=[]; try{ const [sr,wr,lr]=await Promise.all([sb.from('sites').select('id,name,status'), sb.from('warehouses').select('id,name'), sb.from('tool_unit_logs').select('action,from_label,to_label,by_name,created_at').eq('unit_id',u.id).order('created_at',{ascending:false}).limit(20)]); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'); whs=wr.data||[]; logs=lr.data||[]; }catch(e){}
+  window._usU=u; window._usSites=sites; window._usWhs=whs;
   const cur=u.site_id?('site:'+u.site_id):(u.warehouse_id?('wh:'+u.warehouse_id):(u.loan_type?('loan:'+u.loan_type):''));
   const where=u.site_id?('🏗️ '+esc((u.sites&&u.sites.name)||'șantier')):(u.warehouse_id?('🏬 '+esc((u.warehouses&&u.warehouses.name)||'depozit')):(u.holder?((u.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+esc(u.holder)):'📦 nealocat'));
   const dep=Math.round(depPct(u.acq_date,u.useful_life_years));
@@ -245,11 +248,15 @@ async function unitSheet(u){
     +(u.value!=null?'<div class="s">Valoare: '+money(u.value)+' · amortizare '+dep+'% · rămas '+money((+u.value||0)*(1-dep/100))+'</div>':'')+'</div>'
     +'<div id="us-msg" style="color:var(--red);font-size:.82rem"></div>'
     +'<div class="fld"><label>Unde e acum (mută)</label>'+locSel+'</div>'
-    +'<button class="btn" style="width:100%" onclick="unitMove(\''+u.id+'\')">💾 Salvează locația</button>';
+    +'<button class="btn" style="width:100%" onclick="unitMove(\''+u.id+'\')">💾 Salvează locația</button>'
+    +'<div style="margin-top:.9rem"><div style="font-weight:700;font-size:.85rem;margin-bottom:.3rem">🕘 Istoric mișcări</div>'+(logs.length?logs.map(l=>'<div style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div style="font-size:.85rem">'+(l.action==='create'?'➕ Adăugat':'↦ Mutat')+(l.from_label?(' din '+esc(l.from_label)):'')+(l.to_label?(' → '+esc(l.to_label)):'')+'</div><div class="s" style="font-size:.72rem">👤 '+esc(l.by_name||'—')+' · '+esc((l.created_at||'').slice(0,16).replace("T"," "))+'</div></div>').join(''):'<div class="s">Nicio mișcare încă.</div>')+'</div>';
   openSheet('🔧 '+((u.tools&&u.tools.name)||'Bucată'), html);
 }
-async function unitMove(unitId){ const v=$('us-loc').value; const patch={site_id:null,warehouse_id:null,holder:null,loan_type:null}; const p=(v||'').split(':'); if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?'); if(h===null) return; patch.holder=(h||'').trim()||null; patch.loan_type=(p[1]==='rented'?'rented':'lent'); }
-  const r=await sb.from('tool_units').update(patch).eq('id',unitId); if(r.error){ if($('us-msg'))$('us-msg').textContent='Eroare: '+(r.error.message); return; } toast('✅ Locație actualizată.'); closeSheet(); }
+async function unitMove(unitId){ const v=$('us-loc').value; const patch={site_id:null,warehouse_id:null,holder:null,loan_type:null}; const p=(v||'').split(':'); let holder=null; if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?'); if(h===null) return; holder=(h||'').trim()||null; patch.holder=holder; patch.loan_type=(p[1]==='rented'?'rented':'lent'); }
+  const u=window._usU||{}; const fromLbl=u.id?uWhereLbl(u):'';
+  const r=await sb.from('tool_units').update(patch).eq('id',unitId); if(r.error){ if($('us-msg'))$('us-msg').textContent='Eroare: '+(r.error.message); return; }
+  try{ await sb.from('tool_unit_logs').insert({tenant_id:S.tenant,unit_id:unitId,tool_id:u.tool_id||null,action:'move',from_label:fromLbl,to_label:uLabelFromVal(v,holder),by_name:(S.uname||S.email||'—')}); }catch(e){}
+  toast('✅ Locație actualizată.'); openUnitById(unitId); }
 function setRole(r){ S.role=r; S.view='acasa'; document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===r)); render(); }
 
 /* NAV per role */
@@ -828,7 +835,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v137', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v138', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
