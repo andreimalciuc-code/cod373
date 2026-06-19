@@ -1282,7 +1282,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v135';
+const APP_VERSION='cod373-v136';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1611,7 +1611,7 @@ function toolUnitAdd(){
   $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()"><div class="modal" style="max-width:460px"><div class="modal-head"><h3>＋ Serie nouă</h3><button class="x" onclick="closeSub()">×</button></div><div class="modal-body"><div id="tua-msg"></div>'
     +'<div class="field"><label>Nr. serie *</label><input id="tua-serial" placeholder="SN-…"/></div>'
     +'<div class="field"><label>Nr. inventar</label><input id="tua-inv"/></div>'
-    +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Valoare</label><input id="tua-value" type="number" min="0" step="any"/></div><div class="field" style="width:140px"><label>La achiziție</label><select id="tua-cond" onchange="var l=document.getElementById(\'tua-life\'); if(l) l.value=(this.value===\'second\'?3:5);"><option value="nou">Nou</option><option value="second">Second-hand</option></select></div></div>'
+    +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Valoare ('+CUR+')</label><input id="tua-value" type="number" min="0" step="any"/></div><div class="field" style="width:140px"><label>La achiziție</label><select id="tua-cond" onchange="var l=document.getElementById(\'tua-life\'); if(l) l.value=(this.value===\'second\'?3:5);"><option value="nou">Nou</option><option value="second">Second-hand</option></select></div></div>'
     +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Data procurării</label><input id="tua-date" type="date"/></div><div class="field" style="width:110px"><label>Durată (ani)</label><input id="tua-life" type="number" min="1" step="any" value="5"/></div></div>'
     +'<div class="field"><label>Unde e</label><select id="tua-loc">'+tuLocOptsSel('')+'</select></div>'
     +'<div class="field"><label>Poză (opțional)</label><input id="tua-photo" type="file" accept="image/*"/></div>'
@@ -1661,7 +1661,7 @@ function tufAdd(){ const wrap=$('tuf-units'); if(!wrap) return; const i=wrap.chi
     +'<div style="display:flex;gap:.4rem;flex-wrap:wrap">'
     +'<div class="field" style="flex:1;min-width:130px;margin:0"><label>Nr. serie *</label><input class="tuf-serial" placeholder="ex: SN-12345"/></div>'
     +'<div class="field" style="flex:1;min-width:120px;margin:0"><label>Nr. inventar</label><input class="tuf-inv" placeholder="ex: INV-001"/></div>'
-    +'<div class="field" style="width:110px;margin:0"><label>Valoare</label><input class="tuf-value" type="number" min="0" step="any" oninput="tufRecalc()"/></div>'
+    +'<div class="field" style="width:110px;margin:0"><label>Valoare ('+CUR+')</label><input class="tuf-value" type="number" min="0" step="any" oninput="tufRecalc()"/></div>'
     +'<div class="field" style="width:130px;margin:0"><label>La achiziție</label><select class="tuf-cond" onchange="tufCond(this)"><option value="nou">Nou</option><option value="second">Second-hand</option></select></div>'
     +'<div class="field" style="width:140px;margin:0"><label>Data procurării</label><input class="tuf-date" type="date" oninput="tufRecalc()"/></div>'
     +'<div class="field" style="width:92px;margin:0"><label>Durată (ani)</label><input class="tuf-life" type="number" min="1" step="any" value="5" oninput="tufRecalc()"/></div>'
@@ -4297,12 +4297,6 @@ async function openForm(key,row,preset){
     if(row){ const d=((await sb.from(s.tbl).select(s.col+',price').eq('material_id',row.id)).data)||[]; formCtx[s.f]=d.map(x=>({ref_id:x[s.col]||'',price:(x.price!=null?x.price:'')})); } } }
   if(m.toolStockForm && !row){ try{ const [wr,sr]=await Promise.all([sb.from('warehouses').select('id,name').order('name'), sb.from('sites').select('id,name,status')]); formCtx._whs=(wr.data||[]); formCtx._sites=(sr.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||'')); window._tsfSites=formCtx._sites; window._tufWhs=formCtx._whs; }catch(e){ formCtx._whs=[]; formCtx._sites=[]; window._tsfSites=[]; window._tufWhs=[]; } }
   let body='<div id="form-msg"></div>';
-  if(m.toolStockForm && !row){
-    body+='<div class="field" style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>🔢 Bucăți pe serie</label>'
-      +'<div style="font-size:.8rem;color:var(--muted);margin:-.1rem 0 .5rem">Total deținut: <b id="tuf-total">0</b> buc — câte o linie pentru fiecare bucată (serie), cu nr. inventar, valoare, amortizare, poză și locație.</div>'
-      +'<div id="tuf-units"></div>'
-      +'<button type="button" class="addline" onclick="tufAdd()">＋ adaugă serie</button>'
-      +'</div>'; }
   // pack fields in pairs where short
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
     const v = row && row[f.key]!=null ? row[f.key] : (f.default!=null?f.default:'');
@@ -4325,6 +4319,12 @@ async function openForm(key,row,preset){
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
     body+='</div>';
   });
+  if(m.toolStockForm && !row){
+    body+='<div class="field" style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>🔢 Bucăți pe serie</label>'
+      +'<div style="font-size:.8rem;color:var(--muted);margin:-.1rem 0 .5rem">Total deținut: <b id="tuf-total">0</b> buc — câte o linie pentru fiecare bucată (serie), cu nr. inventar, valoare, amortizare, poză și locație.</div>'
+      +'<div id="tuf-units"></div>'
+      +'<button type="button" class="addline" onclick="tufAdd()">＋ adaugă serie</button>'
+      +'</div>'; }
   if(m.recipe){ body+='<div class="field"><label>🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)</label><datalist id="recipe-mat-list">'+(formCtx.materials||[]).map(mm=>'<option value="'+esc(mm.name)+'"></option>').join('')+'</datalist><div id="recipe-mount"></div><button type="button" class="addline" onclick="recipeAdd()">＋ adaugă material</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Consum × volumul măsurat (la previzualizare șantier) = cantitatea de material. Prețul se ia automat din Materiale.</div></div>'; }
   if(m.priceSrc){ m.priceSrc.forEach(sk=>{ const s=PRICE_SRC[sk]; body+='<div class="field"><label>'+s.icon+' '+s.title+' (același material la mai multe '+s.noun+'e)</label><div id="'+s.mount+'"></div><button type="button" class="addline" onclick="srcAdd(\''+sk+'\')">＋ adaugă '+s.noun+'</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+s.hint+'</div></div>'; }); }
   if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Din norme</button><button type="button" class="addline" style="margin-left:1rem" onclick="openServicePicker()">🧰 Din servicii</button>':'')+'</div>'; }
