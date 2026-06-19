@@ -562,23 +562,14 @@ const MODULES = {
 
   instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, locFilter:true, toolStockForm:true, bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
-    select:'id,name,inventory_no,status,code,holder_label,condition,condition_note,last_move_at,qty,photo_url,tool_locations(qty,site_id,store_id,warehouse_id,holder,loan_type,sites(name),stores(name),warehouses(name))',
+    select:'id,name,qty,tool_locations(qty,site_id,store_id,warehouse_id,holder,loan_type,sites(name),stores(name),warehouses(name)),tool_units(id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,site_id,warehouse_id,holder,loan_type,sites(name),warehouses(name))',
     columns:[
-      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">·'+esc(r.code)+'</small>':'')},
-      {label:'Unde se află',get:r=>{ const ls=(r.tool_locations||[]).filter(x=>+x.qty>0); if(!ls.length) return '<span style="color:var(--muted)">— (apasă → 📍 Unde se află)</span>'; return ls.map(x=>{ const w=x.site_id?('🏗️ '+esc((x.sites&&x.sites.name)||'șantier')):(x.warehouse_id?('🏬 '+esc((x.warehouses&&x.warehouses.name)||'depozit')):(x.store_id?('🏬 '+esc((x.stores&&x.stores.name)||'depozit')):(x.holder?((x.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+esc(x.holder)):'📦 nealocat'))); return w+': <b>'+(+x.qty||0)+'</b>'; }).join(' · '); }},
-      {label:'Total',get:r=>{ const t=(r.tool_locations||[]).reduce((s,x)=>s+(+x.qty||0),0)||(+r.qty||0); return t?('<b>'+t.toLocaleString('ro-RO')+'</b> buc'):'<span style="color:var(--muted)">—</span>'; }},
-      {label:'Cine o are acum',get:r=>'📍 '+esc(r.holder_label||'—')},
-      {label:'Stare fizică',get:r=>toolCondBadge(r.condition,r.condition_note)},
-      {label:'Stare',get:r=>pill(r.status)} ],
+      {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
+      {label:'Bucăți',get:r=>{ const n=toolCount(r); return n?('<b>'+n+'</b> buc'):'<span style="color:var(--muted)">—</span>'; }},
+      {label:'Unde se află',get:r=>toolWhereSummary(r)},
+      {label:'Valoare rămasă',get:r=>{ const u=r.tool_units||[]; if(!u.length) return '<span style="color:var(--muted)">—</span>'; const v=u.reduce((s,x)=>s+toolUnitRemaining(x),0); return v?('<b>'+money(v)+'</b>'):'<span style="color:var(--muted)">—</span>'; }} ],
     fields:[
-      {key:'name',label:'Denumire',type:'text',required:true},
-      {key:'code',label:'Cod / serie',type:'text',required:true,hint:'Cod intern sau seria de fabricație a sculei.'},
-      {key:'inventory_no',label:'Nr. inventar',type:'text'},
-      {key:'status',label:'Stare',type:'select',options:opts(['available','in_use','maintenance','lost']),default:'available'},
-      {key:'condition',label:'Stare fizică',type:'select',options:[{value:'ok',label:'Bună'},{value:'dirty',label:'Murdară / uzată'},{value:'defect',label:'Defectă'}],default:'ok'},
-      {key:'condition_note',label:'Observație stare (opțional)',type:'textarea'},
-      {key:'unit_value',label:'Valoare unitară (inventar, per bucată)',type:'number',step:'any',hint:'Valoarea unei bucăți — folosită la totalul „valoare instrumente" pe depozit/șantier.'},
-      {key:'photo_url',label:'Poză instrument',type:'photo',hint:'O fotografie a sculei / utilajului. După salvare, apasă pe instrument → „📍 Unde se află" ca să indici șantierele/depozitul, chiria/gajul și câte bucăți.'} ] },
+      {key:'name',label:'Denumire',type:'text',required:true} ] },
 
   flota:{ title:'Flotă', sub:'Vehiculele firmei.', icon:'📍', group:'Catalog', table:'vehicles', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'label'}, vehicleLog:true,
     newLabel:'Vehicul nou', orderBy:{col:'label',asc:true},
@@ -1291,7 +1282,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v134';
+const APP_VERSION='cod373-v135';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -1330,6 +1321,14 @@ async function submitTicket(){
 }
 
 /* ════ INSTRUMENTE — custodie (birou) ════ */
+/* ── instrumente serializate: amortizare liniară + ajutoare ── */
+function depPct(acqDate, lifeYears){ if(!acqDate) return 0; const life=+lifeYears||0; if(!(life>0)) return 0; const y=(Date.now()-new Date(acqDate+'T12:00:00').getTime())/(365.25*86400000); return Math.min(100, Math.max(0, (y/life)*100)); }
+function toolUnitRemaining(u){ const v=+u.value||0; return v*(1-depPct(u.acq_date,u.useful_life_years)/100); }
+function toolCount(r){ const u=r.tool_units||[]; if(u.length) return u.length; const q=(r.tool_locations||[]).reduce((s,x)=>s+(+x.qty||0),0); return q||(+r.qty||0); }
+function tuWhereLabel(u){ return u.site_id?('🏗️ '+((u.sites&&u.sites.name)||'șantier')):(u.warehouse_id?('🏬 '+((u.warehouses&&u.warehouses.name)||'depozit')):(u.holder?((u.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+u.holder):'📦 nealocat')); }
+function toolWhereSummary(r){ const u=r.tool_units||[]; if(u.length){ const m={}; u.forEach(x=>{ const k=tuWhereLabel(x); m[k]=(m[k]||0)+1; }); return Object.keys(m).map(k=>esc(k)+': <b>'+m[k]+'</b>').join(' · '); }
+  const ls=(r.tool_locations||[]).filter(x=>+x.qty>0); if(!ls.length) return '<span style="color:var(--muted)">— (apasă → 📍 Unde se află)</span>';
+  return ls.map(x=>{ const w=x.site_id?('🏗️ '+esc((x.sites&&x.sites.name)||'șantier')):(x.warehouse_id?('🏬 '+esc((x.warehouses&&x.warehouses.name)||'depozit')):(x.store_id?('🏬 '+esc((x.stores&&x.stores.name)||'depozit')):(x.holder?((x.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+esc(x.holder)):'📦 nealocat'))); return w+': <b>'+(+x.qty||0)+'</b>'; }).join(' · '); }
 function toolCondBadge(c,note){ c=c||'ok';
   const m={ok:['Bună','#dcfce7','#166534','✅'],dirty:['Murdar','#fef9c3','#854d0e','🧽'],defect:['Defect','#fee2e2','#b91c1c','🛠']}[c]||['—','#eee','#555',''];
   return '<span class="pill" style="background:'+m[1]+';color:'+m[2]+'" title="'+esc(note||'')+'">'+m[3]+' '+m[0]+'</span>'+(c==='defect'&&note?' <small style="color:var(--muted)">'+esc(note)+'</small>':'');
@@ -1573,7 +1572,63 @@ async function vehDriversSave(vid, vlabel){
   const a=document.querySelector('.nav-item.active'); if(a&&a.dataset.view==='flota') go('flota');
 }
 /* stoc instrument pe locații (șantier / depozit) */
+/* ── instrumente serializate: vederea pe bucăți/serii ── */
+function tuLocOptsSel(cur){ const sites=window._tuSites||[], whs=window._tuWhs||[]; const o=(v,l)=>'<option value="'+v+'"'+(cur===v?' selected':'')+'>'+l+'</option>'; return o('','📦 Nealocat')+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>o('wh:'+w.id,'🏬 '+esc(w.name))).join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>o('site:'+s.id,'🏗️ '+esc(s.name))).join('')+'</optgroup>':'')+'<optgroup label="În afară">'+o('loan:lent','🤝 Împrumutat')+o('loan:rented','💶 În chirie')+'</optgroup>'; }
+function tuCurLoc(u){ return u.site_id?('site:'+u.site_id):(u.warehouse_id?('wh:'+u.warehouse_id):(u.loan_type?('loan:'+u.loan_type):'')); }
+async function toolUnits(tid, tname){
+  window._tuTid=tid; window._tuTname=tname;
+  const [uR,siteR,whR]=await Promise.all([
+    sb.from('tool_units').select('id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,photo_url,site_id,warehouse_id,holder,loan_type,sites(name),warehouses(name)').eq('tool_id',tid),
+    sb.from('sites').select('id,name,status'),
+    sb.from('warehouses').select('id,name')
+  ]);
+  const units=uR.data||[];
+  window._tuSites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  window._tuWhs=(whR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const canU=canDo('instrumente','u'), canD=canDo('instrumente','d');
+  const totVal=units.reduce((s,u)=>s+(+u.value||0),0), remVal=units.reduce((s,u)=>s+toolUnitRemaining(u),0);
+  const rows=units.length?units.map(u=>{ const dep=Math.round(depPct(u.acq_date,u.useful_life_years)); const rem=toolUnitRemaining(u);
+    return '<tr><td><b>'+esc(u.serial_no||'—')+'</b>'+(u.inventory_no?'<div style="font-size:.74rem;color:var(--muted)">inv: '+esc(u.inventory_no)+'</div>':'')+'</td>'
+      +'<td>'+(canU?'<select onchange="toolUnitMove(\''+u.id+'\',this.value)" style="font-size:.8rem;max-width:150px">'+tuLocOptsSel(tuCurLoc(u))+'</select>'+(u.holder?'<div style="font-size:.72rem;color:var(--muted)">'+esc(u.holder)+'</div>':''):esc(tuWhereLabel(u)))+'</td>'
+      +'<td style="text-align:right;white-space:nowrap">'+(u.value!=null?money(u.value):'—')+'</td>'
+      +'<td style="text-align:right;white-space:nowrap"><span style="color:'+(dep>=100?'#dc2626':(dep>=60?'#d97706':'#6b7793'))+'">'+dep+'%</span></td>'
+      +'<td style="text-align:right;white-space:nowrap"><b>'+money(rem)+'</b></td>'
+      +'<td style="white-space:nowrap">'+(u.photo_url?'<button class="iconbtn" title="Poză" onclick="openDoc(\''+encodeURIComponent(u.photo_url)+'\')">🖼️</button>':'')+'<button class="iconbtn" title="Etichetă QR" onclick="toolUnitQR(\''+u.id+'\',\''+jsArg((tname||'')+' '+(u.serial_no||''))+'\')">🏷️</button>'+(canD?'<button class="iconbtn danger" title="Șterge seria" onclick="toolUnitDel(\''+u.id+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="6" style="color:var(--muted);padding:1rem">Nicio serie încă. Adaugă mai jos.</td></tr>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px"><div class="modal-head"><h3>🔢 Bucăți (serii) — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="tu-msg"></div>'
+    +'<div style="background:#f1f5f9;border-radius:9px;padding:.5rem .7rem;margin-bottom:.7rem;font-size:.85rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🔢 <b>'+units.length+'</b> buc</span><span>💰 valoare <b>'+money(totVal)+'</b></span><span>📉 rămasă (după amortizare) <b>'+money(remVal)+'</b></span></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Serie</th><th>Unde e</th><th style="text-align:right">Valoare</th><th style="text-align:right">Amort.</th><th style="text-align:right">Rămas</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +(canU?'<button class="btn-primary" style="margin-top:.7rem" onclick="toolUnitAdd()">＋ adaugă serie</button>':'')
+    +'</div></div></div>';
+}
+async function toolUnitMove(unitId, val){ const patch={site_id:null,warehouse_id:null,holder:null,loan_type:null}; const p=(val||'').split(':'); if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?'); if(h===null) return; patch.holder=(h||'').trim()||null; patch.loan_type=(p[1]==='rented'?'rented':'lent'); }
+  const r=await sb.from('tool_units').update(patch).eq('id',unitId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('↦ Mutat.'); toolUnits(window._tuTid, window._tuTname); }
+async function toolUnitDel(unitId){ if(!confirm('Ștergi această serie/bucată?')) return; const r=await sb.from('tool_units').delete().eq('id',unitId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } try{ const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',window._tuTid); await sb.from('tools').update({qty:c.count||0}).eq('id',window._tuTid); }catch(e){} toast('🗑 Șters.'); toolUnits(window._tuTid, window._tuTname); }
+function toolUnitQR(unitId, label){ const link=(typeof appBase==='function'?appBase():location.origin+location.pathname.replace(/[^/]*$/,''))+'app.html?unit='+unitId;
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:360px"><div class="modal-head"><h3>🏷️ Etichetă QR serie</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body" style="text-align:center"><div style="font-weight:700">'+esc(label||'')+'</div><div id="qrbox" style="display:flex;justify-content:center;margin:.8rem 0">Se generează…</div><p style="font-size:.8rem;color:var(--muted)">Lipește eticheta pe bucată. Scanează cu telefonul (aplicația de teren) ca să-i vezi fișa.</p><button class="btn-ghost" onclick="window.print()">🖨 Tipărește eticheta</button></div></div></div>';
+  const draw=()=>{ const box=$('qrbox'); if(!box) return; box.innerHTML=''; try{ new QRCode(box,{text:link,width:200,height:200,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ box.textContent='Nu s-a putut genera codul.'; } };
+  if(window.QRCode){ draw(); } else { const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js'; s.onload=draw; s.onerror=()=>{ const b=$('qrbox'); if(b)b.textContent='Codul nu s-a putut încărca (verifică internetul).'; }; document.head.appendChild(s); } }
+function toolUnitAdd(){
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()"><div class="modal" style="max-width:460px"><div class="modal-head"><h3>＋ Serie nouă</h3><button class="x" onclick="closeSub()">×</button></div><div class="modal-body"><div id="tua-msg"></div>'
+    +'<div class="field"><label>Nr. serie *</label><input id="tua-serial" placeholder="SN-…"/></div>'
+    +'<div class="field"><label>Nr. inventar</label><input id="tua-inv"/></div>'
+    +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Valoare</label><input id="tua-value" type="number" min="0" step="any"/></div><div class="field" style="width:140px"><label>La achiziție</label><select id="tua-cond" onchange="var l=document.getElementById(\'tua-life\'); if(l) l.value=(this.value===\'second\'?3:5);"><option value="nou">Nou</option><option value="second">Second-hand</option></select></div></div>'
+    +'<div style="display:flex;gap:.5rem"><div class="field" style="flex:1"><label>Data procurării</label><input id="tua-date" type="date"/></div><div class="field" style="width:110px"><label>Durată (ani)</label><input id="tua-life" type="number" min="1" step="any" value="5"/></div></div>'
+    +'<div class="field"><label>Unde e</label><select id="tua-loc">'+tuLocOptsSel('')+'</select></div>'
+    +'<div class="field"><label>Poză (opțional)</label><input id="tua-photo" type="file" accept="image/*"/></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeSub()">Anulează</button><button class="btn-primary" id="tua-go" onclick="toolUnitAddSave()">Adaugă</button></div></div></div>'; }
+async function toolUnitAddSave(){
+  const g=id=>{ const e=$(id); return e?e.value:''; }; const serial=g('tua-serial').trim();
+  if(!serial){ showMsg('tua-msg','Scrie numărul de serie.'); return; }
+  const btn=$('tua-go'); if(btn) btn.disabled=true;
+  let photo=null; const pf=$('tua-photo'); if(pf&&pf.files&&pf.files[0]){ const f=pf.files[0]; const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/tools/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) photo=path; }
+  const u={tenant_id:state.tenant,tool_id:window._tuTid,serial_no:serial,inventory_no:g('tua-inv').trim()||null,value:g('tua-value')!==''?+g('tua-value'):null,acq_condition:g('tua-cond')||'nou',acq_date:g('tua-date')||null,useful_life_years:g('tua-life')!==''?+g('tua-life'):null,photo_url:photo};
+  const p=(g('tua-loc')||'').split(':'); if(p[0]==='wh') u.warehouse_id=p[1]; else if(p[0]==='site') u.site_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?')||''; u.holder=h.trim()||null; u.loan_type=(p[1]==='rented'?'rented':'lent'); }
+  const r=await sbRetry(()=>sb.from('tool_units').insert(u)); if(r.error){ if(btn)btn.disabled=false; showMsg('tua-msg','Eroare: '+esc(r.error.message)); return; }
+  try{ const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',window._tuTid); await sb.from('tools').update({qty:c.count||0}).eq('id',window._tuTid); }catch(e){}
+  closeSub(); toast('✅ Serie adăugată.'); toolUnits(window._tuTid, window._tuTname);
+}
 async function toolStock(tid, tname){
+  try{ const uc=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',tid); if(uc&&(uc.count||0)>0) return toolUnits(tid, tname); }catch(e){}
   const [locR,siteR,whR]=await Promise.all([
     sb.from('tool_locations').select('id,site_id,store_id,warehouse_id,qty,holder,loan_type,due_date,rent_amount,rent_period,deposit_amount,sites(name),stores(name),warehouses(name)').eq('tool_id',tid),
     sb.from('sites').select('id,name,status'),
@@ -1598,6 +1653,25 @@ function tsfTotal(){ let sites=0; document.querySelectorAll('.tsf-site-qty').for
 function tsfAddSite(){ const wrap=$('tsf-sites'); if(!wrap) return; const sites=window._tsfSites||[]; const div=document.createElement('div'); div.style.cssText='display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.4rem';
   div.innerHTML='<div class="field" style="flex:1;min-width:150px;margin:0"><select class="tsf-site" onchange="tsfTotal()"><option value="">— alege șantierul —</option>'+sites.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('')+'</select></div><div class="field" style="width:90px;margin:0"><input class="tsf-site-qty" type="number" min="0" value="0" placeholder="câte" oninput="tsfTotal()"/></div><button type="button" class="iconbtn danger" title="Scoate" onclick="this.parentNode.remove();tsfTotal()">🗑</button>';
   wrap.appendChild(div); }
+/* ── instrumente serializate: blocuri pe serie la creare ── */
+function tufLocOpts(){ const sites=window._tsfSites||[], whs=window._tufWhs||[]; return '<option value="">📦 Nealocat (în firmă)</option>'+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>'<option value="wh:'+w.id+'">🏬 '+esc(w.name)+'</option>').join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>'<option value="site:'+s.id+'">🏗️ '+esc(s.name)+'</option>').join('')+'</optgroup>':'')+'<optgroup label="În afara firmei"><option value="loan:lent">🤝 Împrumutat</option><option value="loan:rented">💶 În chirie</option></optgroup>'; }
+function tufAdd(){ const wrap=$('tuf-units'); if(!wrap) return; const i=wrap.children.length;
+  const div=document.createElement('div'); div.className='tuf-row'; div.style.cssText='border:1px solid var(--line);border-radius:9px;padding:.55rem;margin-bottom:.5rem;background:#fff';
+  div.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem"><b style="font-size:.82rem">Serie #'+(i+1)+'</b><button type="button" class="iconbtn danger" title="Scoate seria" onclick="this.closest(\'.tuf-row\').remove();tufRecalc()">🗑</button></div>'
+    +'<div style="display:flex;gap:.4rem;flex-wrap:wrap">'
+    +'<div class="field" style="flex:1;min-width:130px;margin:0"><label>Nr. serie *</label><input class="tuf-serial" placeholder="ex: SN-12345"/></div>'
+    +'<div class="field" style="flex:1;min-width:120px;margin:0"><label>Nr. inventar</label><input class="tuf-inv" placeholder="ex: INV-001"/></div>'
+    +'<div class="field" style="width:110px;margin:0"><label>Valoare</label><input class="tuf-value" type="number" min="0" step="any" oninput="tufRecalc()"/></div>'
+    +'<div class="field" style="width:130px;margin:0"><label>La achiziție</label><select class="tuf-cond" onchange="tufCond(this)"><option value="nou">Nou</option><option value="second">Second-hand</option></select></div>'
+    +'<div class="field" style="width:140px;margin:0"><label>Data procurării</label><input class="tuf-date" type="date" oninput="tufRecalc()"/></div>'
+    +'<div class="field" style="width:92px;margin:0"><label>Durată (ani)</label><input class="tuf-life" type="number" min="1" step="any" value="5" oninput="tufRecalc()"/></div>'
+    +'<div class="field" style="width:120px;margin:0"><label>Amortizare</label><div class="tuf-dep" style="padding:.5rem 0;font-weight:700;color:#d97706">0%</div></div>'
+    +'<div class="field" style="flex:1;min-width:160px;margin:0"><label>Unde e</label><select class="tuf-loc">'+tufLocOpts()+'</select></div>'
+    +'<div class="field" style="flex:1;min-width:160px;margin:0"><label>Poză (opțional)</label><input class="tuf-photo" type="file" accept="image/*"/></div>'
+    +'</div>';
+  wrap.appendChild(div); tufRecalc(); }
+function tufCond(sel){ const row=sel.closest('.tuf-row'); const life=row&&row.querySelector('.tuf-life'); if(life) life.value=(sel.value==='second'?3:5); tufRecalc(); }
+function tufRecalc(){ const wrap=$('tuf-units'); if(!wrap) return; let n=0; wrap.querySelectorAll('.tuf-row').forEach(r=>{ n++; const d=r.querySelector('.tuf-date'), l=r.querySelector('.tuf-life'), dep=r.querySelector('.tuf-dep'); const p=depPct(d&&d.value, l&&l.value); if(dep) dep.textContent=Math.round(p)+'%'; }); const t=$('tuf-total'); if(t) t.textContent=n; }
 function tmWhere(l){ return l.site_id?('🏗️ '+((l.sites&&l.sites.name)||'șantier')):(l.warehouse_id?('🏬 '+((l.warehouses&&l.warehouses.name)||'depozit')):(l.store_id?'🏬 depozit':(l.holder?((l.loan_type==='rented'?'💶 ':'🤝 ')+l.holder):'—'))); }
 function toolMove(locId){
   const c=window._tsCtx; if(!c) return; const src=(c.locs||[]).find(l=>l.id===locId); if(!src) return; const srcQty=+src.qty||0;
@@ -1715,14 +1789,17 @@ function _contTbl(rows){ return rows.length?('<div class="tbl-wrap"><table class
 async function warehouseContents(whId, whName){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📦 În depozit — '+esc(whName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body" id="wc-body"><div class="loading">Se încarcă…</div></div></div></div>';
   try{
-    const [tl,st,vh]=await Promise.all([
+    const [tl,tu,st,vh]=await Promise.all([
       sb.from('tool_locations').select('qty,tools(name,unit_value)').eq('warehouse_id',whId),
+      sb.from('tool_units').select('value,acq_date,useful_life_years,tools(name)').eq('warehouse_id',whId),
       sb.from('stock').select('qty,min_qty,materials(name,last_price)').eq('warehouse_id',whId),
       sb.from('vehicles').select('label,plate,status').eq('home_warehouse_id',whId)
     ]);
-    const tools=(tl.data||[]).filter(x=>+x.qty>0), mats=(st.data||[]).filter(x=>+x.qty>0), veh=vh.data||[];
-    const tBuc=tools.reduce((s,x)=>s+(+x.qty||0),0), tVal=tools.reduce((s,x)=>s+((+x.qty||0)*(+((x.tools&&x.tools.unit_value)||0))),0), mBuc=mats.reduce((s,x)=>s+(+x.qty||0),0), mVal=mats.reduce((s,x)=>s+((+x.qty||0)*(+((x.materials&&x.materials.last_price)||0))),0);
-    const tR=_contTbl(tools.map(x=>'<tr><td>'+esc((x.tools&&x.tools.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b> buc'+((x.tools&&x.tools.unit_value!=null)?' <small style="color:var(--muted)">· '+money((+x.qty||0)*(+x.tools.unit_value||0))+'</small>':'')+'</td></tr>'));
+    const mats=(st.data||[]).filter(x=>+x.qty>0), veh=vh.data||[];
+    const tmap={}; (tl.data||[]).filter(x=>+x.qty>0).forEach(x=>{ const nm=(x.tools&&x.tools.name)||'—'; const q=+x.qty||0; (tmap[nm]=tmap[nm]||{qty:0,val:0}); tmap[nm].qty+=q; tmap[nm].val+=q*(+((x.tools&&x.tools.unit_value)||0)); });
+    (tu.data||[]).forEach(x=>{ const nm=(x.tools&&x.tools.name)||'—'; (tmap[nm]=tmap[nm]||{qty:0,val:0}); tmap[nm].qty+=1; tmap[nm].val+=toolUnitRemaining(x); });
+    const tNames=Object.keys(tmap); const tBuc=tNames.reduce((s,k)=>s+tmap[k].qty,0), tVal=tNames.reduce((s,k)=>s+tmap[k].val,0), mBuc=mats.reduce((s,x)=>s+(+x.qty||0),0), mVal=mats.reduce((s,x)=>s+((+x.qty||0)*(+((x.materials&&x.materials.last_price)||0))),0);
+    const tR=_contTbl(tNames.map(k=>'<tr><td>'+esc(k)+'</td><td style="text-align:right"><b>'+tmap[k].qty+'</b> buc'+(tmap[k].val?' <small style="color:var(--muted)">· '+money(tmap[k].val)+'</small>':'')+'</td></tr>'));
     const mR=_contTbl(mats.map(x=>'<tr><td>'+esc((x.materials&&x.materials.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b>'+((x.materials&&x.materials.last_price!=null)?' <small style="color:var(--muted)">· '+money((+x.qty||0)*(+x.materials.last_price||0))+'</small>':'')+'</td></tr>'));
     const vR=_contTbl(veh.map(x=>'<tr><td>🚗 '+esc(x.label||'—')+(x.plate?' <small style="color:var(--muted)">'+esc(x.plate)+'</small>':'')+'</td><td style="text-align:right">'+pill(x.status)+'</td></tr>'));
     const sum='<div style="background:#f1f5f9;border-radius:9px;padding:.5rem .7rem;margin-bottom:.8rem;font-size:.84rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🛠️ <b>'+tBuc+'</b> buc · ~<b>'+money(tVal)+'</b></span><span>📦 <b>'+mBuc+'</b> buc · ~<b>'+money(mVal)+'</b></span><span>🚗 <b>'+veh.length+'</b> vehicule</span><span style="margin-left:auto">💰 Total valoare ~<b>'+money(tVal+mVal)+'</b></span></div>';
@@ -1732,13 +1809,16 @@ async function warehouseContents(whId, whName){
 async function siteContents(siteId, siteName){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📦 Pe șantier — '+esc(siteName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body" id="sc-body"><div class="loading">Se încarcă…</div></div></div></div>';
   try{
-    const [tl,st]=await Promise.all([
+    const [tl,tu,st]=await Promise.all([
       sb.from('tool_locations').select('qty,tools(name,unit_value)').eq('site_id',siteId),
+      sb.from('tool_units').select('value,acq_date,useful_life_years,tools(name)').eq('site_id',siteId),
       sb.from('stock').select('qty,min_qty,materials(name,last_price)').eq('site_id',siteId)
     ]);
-    const tools=(tl.data||[]).filter(x=>+x.qty>0), mats=(st.data||[]).filter(x=>+x.qty>0);
-    const tBuc=tools.reduce((s,x)=>s+(+x.qty||0),0), tVal=tools.reduce((s,x)=>s+((+x.qty||0)*(+((x.tools&&x.tools.unit_value)||0))),0), mBuc=mats.reduce((s,x)=>s+(+x.qty||0),0), mVal=mats.reduce((s,x)=>s+((+x.qty||0)*(+((x.materials&&x.materials.last_price)||0))),0);
-    const tR=_contTbl(tools.map(x=>'<tr><td>'+esc((x.tools&&x.tools.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b> buc'+((x.tools&&x.tools.unit_value!=null)?' <small style="color:var(--muted)">· '+money((+x.qty||0)*(+x.tools.unit_value||0))+'</small>':'')+'</td></tr>'));
+    const mats=(st.data||[]).filter(x=>+x.qty>0);
+    const tmap={}; (tl.data||[]).filter(x=>+x.qty>0).forEach(x=>{ const nm=(x.tools&&x.tools.name)||'—'; const q=+x.qty||0; (tmap[nm]=tmap[nm]||{qty:0,val:0}); tmap[nm].qty+=q; tmap[nm].val+=q*(+((x.tools&&x.tools.unit_value)||0)); });
+    (tu.data||[]).forEach(x=>{ const nm=(x.tools&&x.tools.name)||'—'; (tmap[nm]=tmap[nm]||{qty:0,val:0}); tmap[nm].qty+=1; tmap[nm].val+=toolUnitRemaining(x); });
+    const tNames=Object.keys(tmap); const tBuc=tNames.reduce((s,k)=>s+tmap[k].qty,0), tVal=tNames.reduce((s,k)=>s+tmap[k].val,0), mBuc=mats.reduce((s,x)=>s+(+x.qty||0),0), mVal=mats.reduce((s,x)=>s+((+x.qty||0)*(+((x.materials&&x.materials.last_price)||0))),0);
+    const tR=_contTbl(tNames.map(k=>'<tr><td>'+esc(k)+'</td><td style="text-align:right"><b>'+tmap[k].qty+'</b> buc'+(tmap[k].val?' <small style="color:var(--muted)">· '+money(tmap[k].val)+'</small>':'')+'</td></tr>'));
     const mR=_contTbl(mats.map(x=>'<tr><td>'+esc((x.materials&&x.materials.name)||'—')+'</td><td style="text-align:right"><b>'+(+x.qty||0)+'</b>'+((x.materials&&x.materials.last_price!=null)?' <small style="color:var(--muted)">· '+money((+x.qty||0)*(+x.materials.last_price||0))+'</small>':'')+((+x.qty<+x.min_qty)?' <span class="pill delay" style="font-size:.66rem">sub minim</span>':'')+'</td></tr>'));
     const sum='<div style="background:#f1f5f9;border-radius:9px;padding:.5rem .7rem;margin-bottom:.8rem;font-size:.84rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🛠️ <b>'+tBuc+'</b> buc · ~<b>'+money(tVal)+'</b></span><span>📦 <b>'+mBuc+'</b> buc · ~<b>'+money(mVal)+'</b></span><span style="margin-left:auto">💰 Total ~<b>'+money(tVal+mVal)+'</b></span></div>';
     const b=$('sc-body'); if(b) b.innerHTML=sum+_contSection('🛠️','Instrumente'+(tBuc?(' — '+tBuc+' buc · ~'+money(tVal)):''),tR,'Niciun instrument pe acest șantier.')+_contSection('📦','Materiale'+(mBuc?(' — '+mBuc+' buc · ~'+money(mVal)):''),mR,'Niciun material pe acest șantier.');
@@ -3894,7 +3974,7 @@ function onListCat(v){ listState.cat=v||''; renderList(); }
 function onListStore(v){ listState.store=v||''; renderList(); }
 function onListSupplier(v){ listState.supplier=v||''; renderList(); }
 function onListLoc(v){ listState.loc=v||''; renderList(); }
-function locMatch(r,kind){ return (r.tool_locations||[]).some(x=>(+x.qty>0)&&(kind==='site'?!!x.site_id:kind==='depot'?(!!x.warehouse_id||!!x.store_id):kind==='rented'?x.loan_type==='rented':kind==='lent'?x.loan_type==='lent':false)); }
+function locMatch(r,kind){ const u=r.tool_units||[]; if(u.some(x=>kind==='site'?!!x.site_id:kind==='depot'?!!x.warehouse_id:kind==='rented'?x.loan_type==='rented':kind==='lent'?x.loan_type==='lent':false)) return true; return (r.tool_locations||[]).some(x=>(+x.qty>0)&&(kind==='site'?!!x.site_id:kind==='depot'?(!!x.warehouse_id||!!x.store_id):kind==='rented'?x.loan_type==='rented':kind==='lent'?x.loan_type==='lent':false)); }
 function onListEnum(v){ listState.enumv=v||''; renderList(); }
 function rowStoreNames(r){ return (r.material_stores||[]).map(x=>x.stores&&x.stores.name).filter(Boolean); }
 function rowSupplierNames(r){ return (r.material_suppliers||[]).map(x=>x.suppliers&&x.suppliers.name).filter(Boolean); }
@@ -4215,15 +4295,14 @@ async function openForm(key,row,preset){
   if(m.priceSrc){ for(const sk of m.priceSrc){ const s=PRICE_SRC[sk];
     formCtx[s.list]=((await sb.from(s.ref).select('id,name').order('name')).data)||[]; formCtx[s.f]=[];
     if(row){ const d=((await sb.from(s.tbl).select(s.col+',price').eq('material_id',row.id)).data)||[]; formCtx[s.f]=d.map(x=>({ref_id:x[s.col]||'',price:(x.price!=null?x.price:'')})); } } }
-  if(m.toolStockForm && !row){ try{ const [wr,sr]=await Promise.all([sb.from('warehouses').select('id,name').order('name'), sb.from('sites').select('id,name,status')]); formCtx._whs=(wr.data||[]); formCtx._sites=(sr.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||'')); window._tsfSites=formCtx._sites; }catch(e){ formCtx._whs=[]; formCtx._sites=[]; window._tsfSites=[]; } }
+  if(m.toolStockForm && !row){ try{ const [wr,sr]=await Promise.all([sb.from('warehouses').select('id,name').order('name'), sb.from('sites').select('id,name,status')]); formCtx._whs=(wr.data||[]); formCtx._sites=(sr.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||'')); window._tsfSites=formCtx._sites; window._tufWhs=formCtx._whs; }catch(e){ formCtx._whs=[]; formCtx._sites=[]; window._tsfSites=[]; window._tufWhs=[]; } }
   let body='<div id="form-msg"></div>';
-  if(m.toolStockForm && !row){ const whs=formCtx._whs||[];
-    body+='<div class="field" style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>📦 Câte avem și unde se află</label>'
-      +'<div style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin:-.1rem 0 .55rem"><div class="field" style="width:210px;margin:0"><label>Câte are firma în total</label><input id="tsf-owned" type="number" min="0" value="0" oninput="tsfTotal()"/></div><div id="tsf-alloc" style="font-size:.8rem;color:var(--muted);align-self:center;flex:1;min-width:160px"></div></div>'
-      +'<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.55rem"><div class="field" style="flex:1;min-width:160px;margin:0"><label>🏬 Depozit (ține restul, automat)</label><select id="tsf-wh" onchange="tsfTotal()">'+(whs.length?('<option value="">— alege depozitul —</option>'+whs.map(w=>'<option value="'+w.id+'">'+esc(w.name)+'</option>').join('')):'<option value="">(niciun depozit — adaugă în Catalog → Depozite)</option>')+'</select></div><div style="font-size:.9rem;white-space:nowrap;align-self:flex-end;padding-bottom:.45rem">în depozit: <b id="tsf-wh-qty">0</b> buc</div></div>'
-      +'<div style="font-size:.82rem;font-weight:600;margin:.2rem 0 .25rem">🏗️ La șantiere (care șantier și câte sunt deja duse)</div><div id="tsf-sites"></div>'
-      +'<button type="button" class="addline" onclick="tsfAddSite()">＋ adaugă șantier</button>'
-      +'<div style="font-size:.76rem;color:var(--muted);margin-top:.4rem">Depozitul ține <b>restul</b> (total − șantiere) — se scade automat. Împrumut/chirie le setezi după salvare, din „📍 Unde se află".</div></div>'; }
+  if(m.toolStockForm && !row){
+    body+='<div class="field" style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>🔢 Bucăți pe serie</label>'
+      +'<div style="font-size:.8rem;color:var(--muted);margin:-.1rem 0 .5rem">Total deținut: <b id="tuf-total">0</b> buc — câte o linie pentru fiecare bucată (serie), cu nr. inventar, valoare, amortizare, poză și locație.</div>'
+      +'<div id="tuf-units"></div>'
+      +'<button type="button" class="addline" onclick="tufAdd()">＋ adaugă serie</button>'
+      +'</div>'; }
   // pack fields in pairs where short
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
     const v = row && row[f.key]!=null ? row[f.key] : (f.default!=null?f.default:'');
@@ -4263,7 +4342,7 @@ async function openForm(key,row,preset){
     renderLines();
   }
   if(m.recipe) renderRecipe();
-  if(m.toolStockForm && !row){ tsfAddSite(); tsfTotal(); }
+  if(m.toolStockForm && !row){ tufAdd(); }
   if(m.priceSrc) m.priceSrc.forEach(sk=>renderSrc(sk));
   if(m.fields.some(f=>f.type==='price2')){ const ve=$('f-vat_rate'); if(ve) ve.addEventListener('input',function(){ m.fields.forEach(f=>{ if(f.type==='price2') price2Sync(f.key,'net'); }); }); }
   if(m.dueFromSupplier){ const mb=document.querySelector('.modal-body'); if(mb && !$('credit-msg')){ const d=document.createElement('div'); d.id='credit-msg'; const fm=$('form-msg'); if(fm&&fm.after) fm.after(d); else mb.insertBefore(d,mb.firstChild); }
@@ -4730,7 +4809,15 @@ async function saveRecord(){
     } }
     if(m.table==='sites' && !formCtx.id){ try{ if(await seedSiteStages(parentId, payload.work_type, payload.start_date)) toast('📋 Am adăugat etape-șablon în grafic (le poți edita în Gantt).'); }catch(e){} }
     const _wasNew=!formCtx.id, _nid=parentId, _nname=payload.name;
-    if(key==='instrumente' && _wasNew && _nid){ try{ const locs=[]; let sites=0; document.querySelectorAll('#tsf-sites > div').forEach(d=>{ const s=d.querySelector('.tsf-site'); const q=d.querySelector('.tsf-site-qty'); const sid=s&&s.value; const qq=+((q&&q.value)||0); if(sid&&qq>0){ locs.push({tenant_id:state.tenant,tool_id:_nid,site_id:sid,qty:qq}); sites+=qq; } }); const owned=+(($('tsf-owned')&&$('tsf-owned').value)||0)||0; const depot=owned-sites; const whId=($('tsf-wh')&&$('tsf-wh').value)||''; if(depot>0){ const dr={tenant_id:state.tenant,tool_id:_nid,qty:depot}; if(whId) dr.warehouse_id=whId; locs.push(dr); } if(locs.length){ await sb.from('tool_locations').insert(locs); await toolStockSync(_nid); } }catch(e){} }
+    if(key==='instrumente' && _wasNew && _nid){ try{ const rows=document.querySelectorAll('#tuf-units .tuf-row'); const units=[];
+      for(const r of rows){ const gv=c=>{ const e=r.querySelector(c); return e?e.value:''; };
+        const serial=gv('.tuf-serial').trim(), inv=gv('.tuf-inv').trim(), val=gv('.tuf-value'), cond=gv('.tuf-cond')||'nou', date=gv('.tuf-date'), life=gv('.tuf-life'), loc=gv('.tuf-loc');
+        if(!serial && !inv && !val) continue; // linie goală
+        let photo=null; const pf=r.querySelector('.tuf-photo'); if(pf&&pf.files&&pf.files[0]){ const f=pf.files[0]; const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/tools/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) photo=path; }
+        const u={tenant_id:state.tenant,tool_id:_nid,serial_no:serial||null,inventory_no:inv||null,value:val!==''?+val:null,acq_condition:cond,acq_date:date||null,useful_life_years:life!==''?+life:null,photo_url:photo};
+        const parts=(loc||'').split(':'); if(parts[0]==='wh') u.warehouse_id=parts[1]; else if(parts[0]==='site') u.site_id=parts[1]; else if(parts[0]==='loan') u.loan_type=(parts[1]==='rented'?'rented':'lent');
+        units.push(u); }
+      if(units.length){ await sb.from('tool_units').insert(units); await sb.from('tools').update({qty:units.length}).eq('id',_nid); } }catch(e){} }
     fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
     if(key==='instrumente' && _wasNew && _nid){ setTimeout(()=>toolStock(_nid, _nname||''), 300); }
   }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', isNetErr(e)?netMsg():(e.message||'Eroare la salvare.')); }
