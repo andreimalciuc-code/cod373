@@ -1534,7 +1534,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v162';
+const APP_VERSION='cod373-v163';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2637,7 +2637,7 @@ async function loadBirthdays(){ const out=[];
     if(cob){ const n=bdayNext(cob); if(n){ const nm=(state.firm.automations.brand_name||state.firm.name||'Compania'); out.push({name:nm,role:'companie',icon:'🏢',bd:cob,days:n.days,turning:n.turning}); } }
   }catch(e){}
   out.sort((a,b)=>a.days-b.days); state.birthdays=out;
-  const btn=$('bday-btn'); if(btn){ if(out.length){ btn.style.display=''; const n=out[0]; const fn=String(n.name).split(' ')[0].slice(0,14); const s=String(n.bd); const dmy=s.slice(8,10)+'.'+s.slice(5,7)+'.'+s.slice(0,4); const lbl=n.days===0?(C373t('Azi')+': '+fn+' ('+dmy+') 🎉'):(fn+' · '+dmy+' · '+(n.days===1?C373t('mâine'):(n.days+'z'))); btn.innerHTML='🎂 <span style="font-weight:600">'+esc(lbl)+'</span>'; btn.title=C373t('Zile de naștere apropiate'); } else { btn.style.display='none'; btn.innerHTML='🎂'; } }
+  const btn=$('bday-btn'); if(btn){ if(out.length){ btn.style.display=''; const n=out[0]; const nm0=String(n.name).trim(); const nm=nm0.length>22?(nm0.slice(0,22)+'…'):nm0; const s=String(n.bd); const dmy=s.slice(8,10)+'.'+s.slice(5,7)+'.'+s.slice(0,4); const lbl=n.days===0?(C373t('Azi')+': '+nm+' ('+dmy+') 🎉'):(nm+' · '+dmy+' · '+(n.days===1?C373t('mâine'):(n.days+'z'))); btn.innerHTML='🎂 <span style="font-weight:600">'+esc(lbl)+'</span>'; btn.title=C373t('Zile de naștere apropiate')+' — '+nm0; } else { btn.style.display='none'; btn.innerHTML='🎂'; } }
   renderHolidayChip(); }
 function renderHolidayChip(){ const btn=$('hol-btn'); if(!btn) return; let nh; try{ nh=nextHoliday(); }catch(e){ nh=null; } if(!nh){ btn.style.display='none'; return; } btn.style.display=''; const dm=nh.date.slice(8,10)+'.'+nh.date.slice(5,7); const w=nh.days===0?C373t('astăzi'):(nh.days===1?C373t('mâine'):(nh.days+'z')); const nm=String(nh.name).split(' ').slice(0,2).join(' '); btn.innerHTML='🎉 <span style="font-weight:600">'+esc(nm)+' · '+dm+' · '+w+'</span>'; btn.title='🎉 '+nh.name+' — '+H_fmtNH(nh); }
 function openBirthdays(){
