@@ -245,10 +245,10 @@ async function unitSheet(u){
   const isLoan=!!u.loan_type, isRent=u.loan_type==='rented';
   const loanPanel='<div id="us-loan" style="display:'+(isLoan?'block':'none')+';border:1px dashed var(--line);border-radius:9px;padding:.55rem;margin-top:.5rem"><div style="font-weight:700;font-size:.85rem;margin-bottom:.35rem">📋 Detalii împrumut / chirie</div>'
     +'<div class="fld"><label>Cui (persoană/firmă)</label><input id="us-cui" value="'+esc(u.holder||'')+'"/></div>'
-    +'<div class="fld"><label>Când (de la)</label><input id="us-from" type="datetime-local" value="'+esc(toLocalDT(u.loan_from))+'"/></div>'
-    +'<div class="fld"><label>Până când</label><input id="us-due" type="datetime-local" value="'+esc(toLocalDT(u.loan_due))+'"/></div>'
-    +'<div id="us-rentwrap" style="display:'+(isRent?'block':'none')+'"><div class="fld"><label>Preț chirie</label><input id="us-rent" type="number" min="0" step="any" value="'+esc(u.rent_amount!=null?u.rent_amount:'')+'"/></div>'
-      +'<div class="fld"><label>Gaj</label><input id="us-deposit" type="number" min="0" step="any" value="'+esc(u.deposit_amount!=null?u.deposit_amount:'')+'"/></div></div>'
+    +'<div class="fld"><label>Când (de la)</label><input id="us-from" type="datetime-local" oninput="uRentCalc()" value="'+esc(toLocalDT(u.loan_from))+'"/></div>'
+    +'<div class="fld"><label>Până când</label><input id="us-due" type="datetime-local" oninput="uRentCalc()" value="'+esc(toLocalDT(u.loan_due))+'"/></div>'
+    +'<div id="us-rentwrap" style="display:'+(isRent?'block':'none')+'"><div class="fld"><label>Chirie / 24h</label><input id="us-rent" type="number" min="0" step="any" oninput="uRentCalc()" value="'+esc(u.rent_amount!=null?u.rent_amount:'')+'"/><div id="us-rent-total" class="s" style="font-size:.72rem;margin-top:.2rem"></div></div>'
+      +'<div class="fld"><label>Gaj</label><input id="us-deposit" type="number" min="0" step="any" oninput="this.dataset.auto=0" value="'+esc(u.deposit_amount!=null?u.deposit_amount:'')+'"/></div></div>'
     +'<div class="fld"><label>📷 Poză buletin</label>'+(u.id_photo_url?'<a onclick="openDoc(\''+encodeURIComponent(u.id_photo_url)+'\')" style="color:var(--primary);font-size:.8rem;display:block;margin-bottom:.3rem">🪪 vezi buletinul atașat</a>':'')+'<input id="us-idphoto" type="file" accept="image/*" capture="environment"/></div>'
     +'<div class="fld"><label>✍️ Semnătură (semnează cu degetul)</label><canvas id="us-sign" width="320" height="130" style="width:100%;height:130px;border:1px solid var(--line);border-radius:8px;background:#fff;touch-action:none"></canvas>'+(u.signature_url?'<a onclick="openDoc(\''+encodeURIComponent(u.signature_url)+'\')" style="color:var(--primary);font-size:.8rem">vezi semnătura salvată</a> · ':'')+'<a onclick="sigClear()" style="color:var(--red);font-size:.8rem;cursor:pointer">Șterge semnătura</a></div>'
     +'</div>';
@@ -262,12 +262,15 @@ async function unitSheet(u){
     +'<button class="btn" style="width:100%" onclick="unitMove(\''+u.id+'\')">💾 Salvează locația</button>'
     +'<div style="margin-top:.9rem"><div style="font-weight:700;font-size:.85rem;margin-bottom:.3rem">🕘 Istoric mișcări</div>'+(logs.length?logs.map(l=>'<div style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div style="font-size:.85rem">'+(l.action==='create'?'➕ Adăugat':'↦ Mutat')+(l.from_label?(' din '+esc(l.from_label)):'')+(l.to_label?(' → '+esc(l.to_label)):'')+'</div><div class="s" style="font-size:.72rem">👤 '+esc(l.by_name||'—')+' · '+esc((l.created_at||'').slice(0,16).replace("T"," "))+'</div></div>').join(''):'<div class="s">Nicio mișcare încă.</div>')+'</div>';
   openSheet('🔧 '+((u.tools&&u.tools.name)||'Bucată'), html);
-  setTimeout(sigInit,60);
+  setTimeout(function(){sigInit();uRentCalc();},60);
 }
 function toLocalDT(s){ if(!s) return ''; const d=new Date(s); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
 function uLoanShow(sel){ const v=sel.value, isLoan=v.indexOf('loan:')===0, isRent=v==='loan:rented'; const pan=$('us-loan'); if(pan) pan.style.display=isLoan?'block':'none'; const rw=$('us-rentwrap'); if(rw) rw.style.display=isRent?'block':'none';
-  if(isRent){ const u=window._usU||{}; const t=u.tools||{}; const ri=$('us-rent'), di=$('us-deposit'); if(ri&&!ri.value&&t.default_rent!=null) ri.value=t.default_rent; if(di&&!di.value&&t.default_deposit!=null) di.value=t.default_deposit; }
+  if(isRent){ const u=window._usU||{}; const t=u.tools||{}; const ri=$('us-rent'); if(ri&&!ri.value&&t.default_rent!=null) ri.value=t.default_rent; uRowMoney(); }
   if(isLoan) setTimeout(sigInit,40); }
+function mRentDays(from,due){ if(!from||!due) return 1; const a=new Date(from),b=new Date(due); if(isNaN(a)||isNaN(b)) return 1; const d=Math.ceil((b-a)/86400000); return d>0?d:1; }
+function uRentCalc(){ const r=+(($('us-rent')&&$('us-rent').value)||0)||0; const days=mRentDays($('us-from')&&$('us-from').value, $('us-due')&&$('us-due').value); const el=$('us-rent-total'); if(el) el.textContent=r?('× '+days+' zile = '+money(r*days)+' total'):''; window._usRentTotal=r*days; }
+function uRowMoney(){ const di=$('us-deposit'); if(di && di.dataset.auto!=='0'){ const u=window._usU||{}, t=u.tools||{}; if(t.default_deposit!=null){ di.value=t.default_deposit; } else { const val=+((u.value)||0)||0; di.value=val?Math.round(val*30/100):''; } } uRentCalc(); }
 function sigInit(){ const c=$('us-sign'); if(!c||c._init) return; c._init=true; const ctx=c.getContext('2d'); ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.strokeStyle='#111'; let drawing=false; window._sigDrawn=false;
   const pos=e=>{ const r=c.getBoundingClientRect(); const t=(e.touches&&e.touches[0])||e; return [(t.clientX-r.left)*(c.width/r.width),(t.clientY-r.top)*(c.height/r.height)]; };
   const start=e=>{ drawing=true; const xy=pos(e); ctx.beginPath(); ctx.moveTo(xy[0],xy[1]); e.preventDefault(); };
@@ -278,7 +281,7 @@ function sigInit(){ const c=$('us-sign'); if(!c||c._init) return; c._init=true; 
 function sigClear(){ const c=$('us-sign'); if(c){ c.getContext('2d').clearRect(0,0,c.width,c.height); window._sigDrawn=false; } }
 async function unitMove(unitId){ const v=$('us-loc').value; const patch={site_id:null,warehouse_id:null,holder:null,loan_type:null,loan_from:null,loan_due:null,rent_amount:null,deposit_amount:null}; const p=(v||'').split(':'); let holder=null;
   if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1];
-  else if(p[0]==='loan'){ holder=(($('us-cui')&&$('us-cui').value)||'').trim()||null; patch.holder=holder; patch.loan_type=(p[1]==='rented'?'rented':'lent'); const fr=($('us-from')&&$('us-from').value)||'', du=($('us-due')&&$('us-due').value)||''; if(fr) patch.loan_from=fr; if(du) patch.loan_due=du; if(p[1]==='rented'){ const rt=($('us-rent')&&$('us-rent').value)||'', dp=($('us-deposit')&&$('us-deposit').value)||''; if(rt!=='') patch.rent_amount=+rt; if(dp!=='') patch.deposit_amount=+dp; }
+  else if(p[0]==='loan'){ holder=(($('us-cui')&&$('us-cui').value)||'').trim()||null; patch.holder=holder; patch.loan_type=(p[1]==='rented'?'rented':'lent'); const fr=($('us-from')&&$('us-from').value)||'', du=($('us-due')&&$('us-due').value)||''; if(fr) patch.loan_from=fr; if(du) patch.loan_due=du; if(p[1]==='rented'){ const rt=($('us-rent')&&$('us-rent').value)||'', dp=($('us-deposit')&&$('us-deposit').value)||''; if(rt!==''){ patch.rent_amount=+rt; patch.rent_total=(+rt)*mRentDays(fr,du); } if(dp!=='') patch.deposit_amount=+dp; }
     const idf=$('us-idphoto'); if(idf&&idf.files&&idf.files[0]){ const f=idf.files[0]; const path=S.tenant+'/tools/'+Date.now()+'_id_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) patch.id_photo_url=path; }
     if(window._sigDrawn){ try{ const c=$('us-sign'); const blob=await (await fetch(c.toDataURL('image/png'))).blob(); const path=S.tenant+'/tools/'+Date.now()+'_sig.png'; const up=await sb.storage.from('docs').upload(path,blob,{contentType:'image/png'}); if(!up.error) patch.signature_url=path; }catch(e){} }
   }
@@ -864,7 +867,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v142', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v143', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
