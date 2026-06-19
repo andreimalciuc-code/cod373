@@ -467,7 +467,7 @@ async function doCreateCompany(){
 /* ════ MODULE DEFINITIONS ════ */
 const REF = {
   clients:{table:'clients',label:'name'}, sites:{table:'sites',label:'name'},
-  suppliers:{table:'suppliers',label:'name'}, stores:{table:'stores',label:'name'}, warehouses:{table:'warehouses',label:'name'}, vehicles:{table:'vehicles',label:'label'},
+  suppliers:{table:'suppliers',label:'name'}, stores:{table:'stores',label:'name'}, warehouses:{table:'warehouses',label:'name'}, vehicles:{table:'vehicles',label:'label'}, fuel_cards:{table:'fuel_cards',label:'provider'},
   orders:{table:'material_orders',label:'number'},
   materials:{table:'materials',label:'name'}, employees:{table:'employees',label:'full_name'},
   estimates:{table:'estimates',label:'number'}, stages:{table:'site_stages',label:'name'}
@@ -649,6 +649,44 @@ const MODULES = {
       {key:'contract_url',label:'Contract (vânzare / locațiune)',type:'file',hint:'Atașează contractul de cumpărare sau de locațiune/leasing (PDF/scan).'},
       {key:'map_icon',label:'Iconiță pe hartă',type:'select',options:[{value:'car',label:'🚗 Mașină'},{value:'van',label:'🚐 Dubă'},{value:'pickup',label:'🛻 Pickup'},{value:'truck',label:'🚚 Camion'},{value:'mixer',label:'🚛 Camion greu / beton'},{value:'bus',label:'🚌 Autobuz'},{value:'moto',label:'🏍️ Motocicletă'},{value:'excavator',label:'🚜 Utilaj / excavator'},{value:'crane',label:'🏗️ Macara'},{value:'pin',label:'📍 Punct'}],default:'car',hint:'Cum apare vehiculul pe „Hartă flotă".'},
       {key:'home_warehouse_id',label:'Depozit de bază (opțional)',type:'ref',ref:'warehouses',hint:'Unde „staționează" de obicei vehiculul — apare în conținutul depozitului.'} ] },
+
+  carduri_carburant:{ title:'Carduri carburant', sub:'Carduri de alimentare la benzinării (pe mașină / șofer).', icon:'⛽', group:'Catalog', table:'fuel_cards',
+    newLabel:'Card nou', orderBy:{col:'provider',asc:true},
+    select:'id,provider,label,holder,monthly_limit,status,vehicle_id,vehicles(label,plate)',
+    columns:[
+      {label:'Furnizor',get:r=>'<span class="tname">'+esc(r.provider||'—')+'</span>'},
+      {label:'Card',get:r=>esc(r.label||'—')},
+      {label:'Mașină',get:r=>esc(r.vehicles?(r.vehicles.label||r.vehicles.plate||'—'):'—')},
+      {label:'Responsabil',get:r=>esc(r.holder||'—')},
+      {label:'Limită/lună',get:r=>r.monthly_limit!=null?money(r.monthly_limit):'—'},
+      {label:'Stare',get:r=>pill(r.status)} ],
+    fields:[
+      {key:'provider',label:'Furnizor (Rompetrol, Lukoil, Petrom…)',type:'text',required:true},
+      {key:'label',label:'Etichetă / ultimele cifre',type:'text',hint:'NU introduce numărul complet al cardului și NICIODATĂ PIN-ul — doar o etichetă sau ultimele 4 cifre, ca să-l recunoști. PIN-ul rămâne la șofer.'},
+      {key:'vehicle_id',label:'Mașina atribuită',type:'ref',ref:'vehicles'},
+      {key:'holder',label:'Responsabil / șofer',type:'text'},
+      {key:'monthly_limit',label:'Limită lunară (opțional)',type:'number',step:'any'},
+      {key:'status',label:'Stare',type:'select',options:opts(['active','blocked']),default:'active'},
+      {key:'notes',label:'Note',type:'textarea'} ] },
+
+  alimentari:{ title:'Alimentări', sub:'Alimentări de carburant — cost, litri, km (pentru cost/100km).', icon:'⛽', group:'Catalog', table:'fuel_logs',
+    newLabel:'Alimentare nouă', orderBy:{col:'log_date',asc:false},
+    select:'id,log_date,amount,liters,odometer,note,vehicle_id,card_id,vehicles(label,plate),fuel_cards(provider,label)',
+    columns:[
+      {label:'Data',get:r=>dt(r.log_date)},
+      {label:'Mașină',get:r=>esc(r.vehicles?(r.vehicles.label||r.vehicles.plate||'—'):'—')},
+      {label:'Litri',get:r=>r.liters!=null?(r.liters+' L'):'—'},
+      {label:'Sumă',get:r=>r.amount!=null?money(r.amount):'—'},
+      {label:'Km bord',get:r=>r.odometer!=null?(r.odometer+' km'):'—'},
+      {label:'Card',get:r=>esc(r.fuel_cards?((r.fuel_cards.provider||'')+(r.fuel_cards.label?(' '+r.fuel_cards.label):'')||'—'):'—')} ],
+    fields:[
+      {key:'log_date',label:'Data',type:'date',required:true},
+      {key:'vehicle_id',label:'Mașina',type:'ref',ref:'vehicles',required:true},
+      {key:'card_id',label:'Card carburant (opțional)',type:'ref',ref:'fuel_cards'},
+      {key:'liters',label:'Litri',type:'number',step:'any'},
+      {key:'amount',label:'Sumă plătită',type:'number',step:'any'},
+      {key:'odometer',label:'Km la bord (pentru cost/100km)',type:'number',step:'any',hint:'Kilometrajul afișat la alimentare — din 2 alimentări succesive se poate calcula consumul.'},
+      {key:'note',label:'Note',type:'textarea'} ] },
 
   furnizori:{ title:'Furnizori', sub:'Parteneri și furnizori.', icon:'🏭', group:'Catalog', table:'suppliers',
     newLabel:'Furnizor nou', orderBy:{col:'name',asc:true},
@@ -1477,7 +1515,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v158';
+const APP_VERSION='cod373-v159';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
