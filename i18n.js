@@ -14,6 +14,15 @@
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
     'Personalizare':{ru:'Персонализация',de:'Personalisierung',en:'Personalization'},
+    'Temă':{ru:'Тема',de:'Design',en:'Theme'},
+    'Luminos':{ru:'Светлая',de:'Hell',en:'Light'},
+    'Întunecat':{ru:'Тёмная',de:'Dunkel',en:'Dark'},
+    'Avatar':{ru:'Аватар',de:'Avatar',en:'Avatar'},
+    'Semnătura mea':{ru:'Моя подпись',de:'Meine Unterschrift',en:'My signature'},
+    'Încarcă poză':{ru:'Загрузить фото',de:'Foto hochladen',en:'Upload photo'},
+    'Șterge':{ru:'Удалить',de:'Löschen',en:'Delete'},
+    'Desenează semnătura':{ru:'Нарисуйте подпись',de:'Unterschrift zeichnen',en:'Draw signature'},
+    'Folosită la predarea/împrumutul instrumentelor':{ru:'Используется при выдаче/займе инструментов',de:'Wird bei Geräteübergabe/-verleih verwendet',en:'Used when handing over / lending tools'},
     'Culoare de accent':{ru:'Акцентный цвет',de:'Akzentfarbe',en:'Accent color'},
     'Densitate tabele':{ru:'Плотность таблиц',de:'Tabellendichte',en:'Table density'},
     'Confortabil':{ru:'Просторно',de:'Komfortabel',en:'Comfortable'},
