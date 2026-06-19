@@ -1477,7 +1477,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v157';
+const APP_VERSION='cod373-v158';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2549,14 +2549,14 @@ async function loadBirthdays(){ const out=[];
     (emp.data||[]).forEach(p=>{ if(p.active===false) return; const n=bdayNext(p.birth_date); if(n) out.push({name:p.full_name,role:'angajat',icon:'👷',bd:p.birth_date,days:n.days,turning:n.turning}); });
     (cli.data||[]).forEach(p=>{ const n=bdayNext(p.birth_date); if(n) out.push({name:p.name,role:'client',icon:'🤝',bd:p.birth_date,days:n.days,turning:n.turning}); });
     (sub.data||[]).forEach(p=>{ const n=bdayNext(p.birth_date); if(n) out.push({name:p.name,role:'subcontractor',icon:'🧑‍🔧',bd:p.birth_date,days:n.days,turning:n.turning}); });
+    const cob=state.firm&&state.firm.automations&&state.firm.automations.company_birthday;
+    if(cob){ const n=bdayNext(cob); if(n){ const nm=(state.firm.automations.brand_name||state.firm.name||'Compania'); out.push({name:nm,role:'companie',icon:'🏢',bd:cob,days:n.days,turning:n.turning}); } }
   }catch(e){}
   out.sort((a,b)=>a.days-b.days); state.birthdays=out;
-  const soon=out.filter(p=>p.days<=7).length; const btn=$('bday-btn'), badge=$('bday-badge');
-  if(btn) btn.style.display=out.length?'':'none';
-  if(badge){ if(soon>0){ badge.textContent=soon; badge.style.display='inline-block'; } else badge.style.display='none'; } }
+  const btn=$('bday-btn'); if(btn){ if(out.length){ btn.style.display=''; const n=out[0]; const fn=String(n.name).split(' ')[0].slice(0,14); const lbl=n.days===0?(C373t('Azi')+': '+fn+' 🎉'):(n.days===1?(fn+' · '+C373t('mâine')):(fn+' · '+n.days+'z')); btn.innerHTML='🎂 <span style="font-weight:600">'+esc(lbl)+'</span>'; btn.title=C373t('Zile de naștere apropiate'); } else { btn.style.display='none'; btn.innerHTML='🎂'; } } }
 function openBirthdays(){ const list=(state.birthdays||[]);
   const when=p=> p.days===0?('🎉 '+C373t('astăzi')):(p.days===1?C373t('mâine'):(C373t('în')+' '+p.days+' '+C373t('zile')));
-  const roleT=r=>C373t(r==='angajat'?'Angajat':r==='client'?'Client':'Subcontractor');
+  const roleT=r=>C373t(r==='angajat'?'Angajat':r==='client'?'Client':r==='companie'?'Compania':'Subcontractor');
   const rows=list.length? list.map(p=>{ const dd=String(p.bd).slice(8,10), mm=String(p.bd).slice(5,7); const col=p.days===0?'var(--accent)':(p.days<=7?'var(--primary)':'var(--muted)');
       return '<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--line)"><span style="font-size:1.15rem">'+p.icon+'</span>'
         +'<div style="flex:1;min-width:0"><div style="font-weight:600">'+esc(p.name)+(p.turning?(' <span style="color:var(--muted);font-weight:400;font-size:.78rem">('+C373t('împlinește')+' '+p.turning+')</span>'):'')+'</div>'
@@ -3706,6 +3706,7 @@ async function renderSetari(){
       +(f.logo_url?'<button class="btn-ghost" style="color:var(--red)" onclick="removeFirmLogo()">🗑 Elimină</button>':'')+'</div></div>'
     +'<div class="field"><label>Denumirea firmei (persoana juridică) *</label><input id="set-name" value="'+esc(f.name||'')+'"/></div>'
     +'<div class="field"><label>Marcă comercială (opțional) <span class="hint-i" title="Denumirea comercială sub care lucrezi. Pe facturi/devize apare mare, cu mențiunea „marca comercială a [denumirea juridică]".">ⓘ</span></label><input id="set-brand" value="'+esc(au.brand_name||'')+'" placeholder="ex: BuildPro"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Dacă o completezi, pe documente apare marca, urmată de „marca comercială a '+esc(f.name||'persoana juridică')+'".</div></div>'
+    +'<div class="field"><label>🎂 Ziua companiei (data înființării)</label><input id="set-cobday" type="date" value="'+esc(au.company_birthday||'')+'"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Apare în lista „🎂 Zile de naștere" din bara de sus.</div></div>'
     +'<div class="row-2"><div class="field"><label><span id="set-idno-lbl">'+esc((COUNTRY_PRESETS[f.country||'MD']||{}).idLabel||'IDNO / Cod fiscal')+'</span></label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
     +'<div class="field"><label>Telefon</label><input id="set-phone" value="'+esc(f.phone||'')+'"/></div></div>'
     +'<div class="field"><label>Adresă</label><input id="set-addr" value="'+esc(f.address||'')+'"/></div>'
@@ -3842,6 +3843,7 @@ async function saveSetari(){
   if(patch.bank_accounts===undefined) delete patch.bank_accounts;
   const au=Object.assign({}, state.firm.automations||{});
   if($('set-brand')) au.brand_name=($('set-brand').value||'').trim()||null;
+  if($('set-cobday')) au.company_birthday=$('set-cobday').value||null;
   if($('set-tz')) au.tz=$('set-tz').value||null;
   if($('set-datefmt')) au.date_fmt=$('set-datefmt').value||null;
   if($('set-wstart')) au.work_start=$('set-wstart').value||null;

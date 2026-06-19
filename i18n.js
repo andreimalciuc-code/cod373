@@ -15,6 +15,7 @@
   var D = {
     'Personalizare':{ru:'Персонализация',de:'Personalisierung',en:'Personalization'},
     'Subcontractor':{ru:'Субподрядчик',de:'Subunternehmer',en:'Subcontractor'},
+    'Compania':{ru:'Компания',de:'Unternehmen',en:'Company'},
     'Zile de naștere':{ru:'Дни рождения',de:'Geburtstage',en:'Birthdays'},
     'zile libere':{ru:'выходные дни',de:'freie Tage',en:'days off'},
     'Următoarea zi liberă':{ru:'Ближайший выходной',de:'Nächster freier Tag',en:'Next day off'},
