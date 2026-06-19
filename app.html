@@ -181,6 +181,28 @@
     .overlay-nav.show{display:block}
     .row-2{grid-template-columns:1fr}
   }
+  /* ════ PERSONALIZARE (per utilizator, pe dispozitiv) ════ */
+  body.dens-compact{font-size:13px}
+  body.dens-compact .tbl{font-size:.8rem}
+  body.dens-compact .tbl th{padding:.4rem .7rem}
+  body.dens-compact .tbl td{padding:.4rem .7rem}
+  body.dens-compact .card{padding:.7rem .9rem}
+  body.dens-compact .nav-item{padding:.4rem .8rem}
+  body.txt-large{font-size:15.5px}
+  body.txt-large.dens-compact{font-size:14.5px}
+  body.txt-xl{font-size:17px}
+  body.txt-xl.dens-compact{font-size:15.5px}
+  .pz-swatch{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);cursor:pointer;transition:transform .1s}
+  .pz-swatch:hover{transform:scale(1.12)}
+  .pz-swatch.on{border-color:var(--text);box-shadow:0 0 0 2px var(--surface),0 0 0 4px currentColor}
+  .pz-seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .pz-seg button{flex:1;border:none;background:var(--surface);padding:.5rem .4rem;cursor:pointer;font-size:.82rem;color:var(--text);font-weight:600}
+  .pz-seg button.on{background:var(--primary);color:#fff}
+  .pz-mod{display:flex;align-items:center;gap:.5rem;padding:.4rem .2rem;border-bottom:1px solid var(--line)}
+  .pz-mod .pz-nm{flex:1;font-size:.86rem}
+  .pz-mod button{border:1px solid var(--line);background:var(--surface);border-radius:7px;cursor:pointer;padding:.2rem .45rem;font-size:.9rem;line-height:1}
+  .pz-mod button.on{background:var(--primary-soft);border-color:var(--primary)}
+  .nav-item .nav-star{margin-left:auto;font-size:.7rem;opacity:.85}
 </style>
 </head>
 <body>
@@ -280,7 +302,7 @@
         <button class="btn-ghost" id="chat-btn" onclick="openTeamChat()" title="Chat echipă">💬</button>
         <button class="btn-ghost" id="notif-btn" onclick="openNotifPanel()" title="Notificări" style="position:relative">🔔<span id="notif-badge" style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:0 .3rem;display:none"></span></button>
         <button class="btn-ghost" id="btn-iesi" onclick="doLogout()">Ieși</button>
-        <div class="user-av" id="user-av">A</div>
+        <div class="user-av" id="user-av" onclick="openPersonalize()" title="Personalizare" style="cursor:pointer">A</div>
       </div>
     </header>
     <main class="content" id="content"></main>
@@ -1061,6 +1083,7 @@ async function maybeShowInvite(){
   }catch(e){}
 }
 async function boot(){
+  applyPrefs();
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login'); maybeShowInvite(); hideSplash(); return; }
   state.session = session;
@@ -1086,7 +1109,11 @@ async function boot(){
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
   subLoad();
   let _lv; try{ _lv=localStorage.getItem('c373_last_view'); }catch(e){}
-  go(_lv && MODULES[_lv] && canSee(_lv) ? _lv : 'dashboard');
+  const _start=(czPrefs().start)||'last';
+  let _target='dashboard';
+  if(_start==='last'){ if(_lv && MODULES[_lv] && canSee(_lv)) _target=_lv; }
+  else if(MODULES[_start] && !MODULES[_start].hidden && canSee(_start)) _target=_start;
+  go(_target);
   startClock();
   hideSplash();
   if((location.hash+location.search).indexOf('access_token=')>=0){ wialonCaptureFromUrl().then(ok=>{ if(ok) go('harta'); }); }
@@ -1131,17 +1158,73 @@ async function subActivate(){
   closeModal(); toast('✅ Abonament activat.'); subLoad();
 }
 
+/* ════ PERSONALIZARE (per utilizator, pe dispozitiv) ════ */
+const PZ_ACCENTS=[['#2f6bff','#e8f0ff','Albastru (implicit)'],['#16b364','#e3f8ee','Verde'],['#7c3aed','#efe7fd','Mov'],['#e11d48','#fde7ec','Roșu'],['#0891b2','#dff5fa','Turcoaz'],['#ea580c','#fdecdf','Portocaliu'],['#0f1c33','#e5e9f2','Bleumarin']];
+function czPrefs(){ try{ return JSON.parse(localStorage.getItem('c373_prefs')||'{}')||{}; }catch(e){ return {}; } }
+function czSave(p){ try{ localStorage.setItem('c373_prefs', JSON.stringify(p)); }catch(e){} }
+function tz(s){ try{ return (window.C373t&&C373t(s))||s; }catch(e){ return s; } }
+function applyPrefs(){
+  const p=czPrefs(), b=document.body; if(!b) return;
+  b.classList.toggle('dens-compact', p.density==='compact');
+  b.classList.remove('txt-large','txt-xl');
+  if(p.textsize==='large') b.classList.add('txt-large');
+  else if(p.textsize==='xl') b.classList.add('txt-xl');
+  const root=document.documentElement.style;
+  if(p.accent && PZ_ACCENTS[p.accent]){ root.setProperty('--primary',PZ_ACCENTS[p.accent][0]); root.setProperty('--primary-soft',PZ_ACCENTS[p.accent][1]); }
+  else { root.removeProperty('--primary'); root.removeProperty('--primary-soft'); }
+}
 function buildNav(){
+  const p=czPrefs(); const favs=(p.favs||[]).filter(k=>MODULES[k]&&!MODULES[k].hidden&&canSee(k)&&!(p.hidden||[]).includes(k)); const hidden=p.hidden||[];
   let html='';
+  if(favs.length){
+    html+='<div class="nav-group">⭐ '+esc(tz('Favorite'))+'</div>';
+    favs.forEach(k=>{ const m=MODULES[k]; html+=navItemHTML(k,m); });
+  }
+  GROUPS.forEach(g=>{
+    const keys=Object.keys(MODULES).filter(k=>MODULES[k].group===g && !MODULES[k].hidden && canSee(k) && !hidden.includes(k) && !favs.includes(k));
+    if(!keys.length) return;
+    html+='<div class="nav-group">'+esc(tg(g))+'</div>';
+    keys.forEach(k=>{ const m=MODULES[k]; html+=navItemHTML(k,m); });
+  });
+  $('nav').innerHTML=html;
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===curModuleKey()));
+}
+function navItemHTML(k,m){ return '<div class="nav-item" data-view="'+k+'" onclick="go(\''+k+'\')"><span class="ic">'+m.icon+'</span><span>'+esc(mt(k).title)+'</span></div>'; }
+function openPersonalize(){
+  const p=czPrefs(); const acc=p.accent||0;
+  const sw=PZ_ACCENTS.map((a,i)=>'<div class="pz-swatch'+(i===acc?' on':'')+'" title="'+esc(a[2])+'" style="background:'+a[0]+';color:'+a[0]+'" onclick="pzSetAccent('+i+')"></div>').join('');
+  const dens=p.density==='compact'?'compact':'comfy';
+  const txt=p.textsize||'normal';
+  // module list (excludem dashboard de la ascundere — e mereu disponibil)
+  let mods=''; const hidden=p.hidden||[], favs=p.favs||[];
   GROUPS.forEach(g=>{
     const keys=Object.keys(MODULES).filter(k=>MODULES[k].group===g && !MODULES[k].hidden && canSee(k));
     if(!keys.length) return;
-    html+='<div class="nav-group">'+esc(tg(g))+'</div>';
-    keys.forEach(k=>{ const m=MODULES[k];
-      html+='<div class="nav-item" data-view="'+k+'" onclick="go(\''+k+'\')"><span class="ic">'+m.icon+'</span><span>'+esc(mt(k).title)+'</span></div>'; });
+    mods+='<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:700;margin:.5rem 0 .2rem">'+esc(tg(g))+'</div>';
+    keys.forEach(k=>{ const m=MODULES[k]; const isFav=favs.includes(k), isHid=hidden.includes(k);
+      mods+='<div class="pz-mod"><span style="font-size:.95rem">'+m.icon+'</span><span class="pz-nm">'+esc(mt(k).title)+'</span>'
+        +'<button class="'+(isFav?'on':'')+'" title="'+esc(tz('Favorit'))+'" onclick="pzTogFav(\''+k+'\')">⭐</button>'
+        +(k==='dashboard'?'':'<button class="'+(isHid?'on':'')+'" title="'+esc(tz('Ascunde'))+'" onclick="pzTogHide(\''+k+'\')">'+(isHid?'🙈':'👁')+'</button>')
+        +'</div>'; });
   });
-  $('nav').innerHTML=html;
+  // start page options
+  const startCur=p.start||'last';
+  let opts='<option value="last"'+(startCur==='last'?' selected':'')+'>'+esc(tz('Ultima vizitată'))+'</option>';
+  Object.keys(MODULES).filter(k=>!MODULES[k].hidden&&canSee(k)).forEach(k=>{ opts+='<option value="'+k+'"'+(startCur===k?' selected':'')+'>'+esc(mt(k).title)+'</option>'; });
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>🎨 '+esc(tz('Personalizare'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Culoare de accent'))+'</div><div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">'+sw+'</div>'
+    +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Densitate tabele'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(dens==='comfy'?'on':'')+'" onclick="pzSetDens(\'comfy\')">'+esc(tz('Confortabil'))+'</button><button class="'+(dens==='compact'?'on':'')+'" onclick="pzSetDens(\'compact\')">'+esc(tz('Compact'))+'</button></div>'
+    +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Mărime text'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(txt==='normal'?'on':'')+'" onclick="pzSetText(\'normal\')">'+esc(tz('Normal'))+'</button><button class="'+(txt==='large'?'on':'')+'" onclick="pzSetText(\'large\')">'+esc(tz('Mare'))+'</button><button class="'+(txt==='xl'?'on':'')+'" onclick="pzSetText(\'xl\')">'+esc(tz('Foarte mare'))+'</button></div>'
+    +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Pagina de start'))+'</div><select onchange="pzSetStart(this.value)" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-bottom:1rem;background:var(--surface);color:var(--text)">'+opts+'</select>'
+    +'<div style="font-weight:700;margin:.2rem 0 .2rem">'+esc(tz('Module în meniu'))+'</div><div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('⭐ pune favoritele sus · 👁 ascunde din meniu'))+'</div>'+mods
+    +'</div></div></div>';
 }
+function pzSetAccent(i){ const p=czPrefs(); p.accent=i; czSave(p); applyPrefs(); openPersonalize(); }
+function pzSetDens(v){ const p=czPrefs(); p.density=(v==='compact'?'compact':'comfy'); czSave(p); applyPrefs(); openPersonalize(); }
+function pzSetText(v){ const p=czPrefs(); p.textsize=v; czSave(p); applyPrefs(); openPersonalize(); }
+function pzSetStart(v){ const p=czPrefs(); p.start=v; czSave(p); toast('✅ '+tz('Salvat')); }
+function pzTogFav(k){ const p=czPrefs(); p.favs=p.favs||[]; const i=p.favs.indexOf(k); if(i>=0) p.favs.splice(i,1); else { p.favs.push(k); if(p.hidden){ const h=p.hidden.indexOf(k); if(h>=0)p.hidden.splice(h,1); } } czSave(p); buildNav(); openPersonalize(); }
+function pzTogHide(k){ const p=czPrefs(); p.hidden=p.hidden||[]; const i=p.hidden.indexOf(k); if(i>=0) p.hidden.splice(i,1); else { p.hidden.push(k); if(p.favs){ const f=p.favs.indexOf(k); if(f>=0)p.favs.splice(f,1); } } czSave(p); buildNav(); openPersonalize(); }
 
 function go(key){
   const m=MODULES[key]; if(!m) return;
@@ -1285,7 +1368,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v146';
+const APP_VERSION='cod373-v147';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }

@@ -13,6 +13,28 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    'Personalizare':{ru:'Персонализация',de:'Personalisierung',en:'Personalization'},
+    'Culoare de accent':{ru:'Акцентный цвет',de:'Akzentfarbe',en:'Accent color'},
+    'Densitate tabele':{ru:'Плотность таблиц',de:'Tabellendichte',en:'Table density'},
+    'Confortabil':{ru:'Просторно',de:'Komfortabel',en:'Comfortable'},
+    'Compact':{ru:'Компактно',de:'Kompakt',en:'Compact'},
+    'Mărime text':{ru:'Размер текста',de:'Textgröße',en:'Text size'},
+    'Normal':{ru:'Обычный',de:'Normal',en:'Normal'},
+    'Mare':{ru:'Крупный',de:'Groß',en:'Large'},
+    'Foarte mare':{ru:'Очень крупный',de:'Sehr groß',en:'Very large'},
+    'Pagina de start':{ru:'Стартовая страница',de:'Startseite',en:'Start page'},
+    'Ultima vizitată':{ru:'Последняя открытая',de:'Zuletzt besucht',en:'Last visited'},
+    'Module în meniu':{ru:'Модули в меню',de:'Module im Menü',en:'Modules in menu'},
+    'Favorite':{ru:'Избранное',de:'Favoriten',en:'Favorites'},
+    'Favorit':{ru:'В избранное',de:'Favorit',en:'Favorite'},
+    'Ascunde':{ru:'Скрыть',de:'Ausblenden',en:'Hide'},
+    'Salvat':{ru:'Сохранено',de:'Gespeichert',en:'Saved'},
+    '⭐ pune favoritele sus · 👁 ascunde din meniu':{ru:'⭐ избранные наверх · 👁 скрыть из меню',de:'⭐ Favoriten nach oben · 👁 aus dem Menü ausblenden',en:'⭐ pin favorites to top · 👁 hide from menu'},
+    'Unde se află':{ru:'Где находится',de:'Wo es sich befindet',en:'Where it is'},
+    'În depozit':{ru:'На складе',de:'Im Lager',en:'In warehouse'},
+    'Pe șantier':{ru:'На объекте',de:'Auf der Baustelle',en:'On site'},
+    'Rezumat jurnal':{ru:'Сводка журнала',de:'Tagebuch-Zusammenfassung',en:'Log summary'},
+    'Fișa mașinii (service & mentenanță)':{ru:'Карта машины (сервис и ТО)',de:'Fahrzeugakte (Service & Wartung)',en:'Vehicle log (service & maintenance)'},
     'Prețuri pe furnizori':{ru:'Цены по поставщикам',de:'Preise nach Lieferanten',en:'Prices by supplier'},
     'Prețuri pe magazine':{ru:'Цены по магазинам',de:'Preise nach Geschäften',en:'Prices by store'},
     'Depozit (dacă e în depozit)':{ru:'Склад (если на складе)',de:'Lager (falls im Lager)',en:'Warehouse (if in warehouse)'},
@@ -1630,6 +1652,8 @@
     if(/ \*$/.test(k)){ var k2=k.replace(/ \*$/,''); var e2=D[k2]; if(e2&&e2[LANG]) return {k:k,v:e2[LANG]+' *'}; }
     var sp=k.indexOf(' ');
     if(sp>0){ var head=k.slice(0,sp); if(!hasLetter(head)){ var e3=look(k.slice(sp+1)); if(e3) return {k:k,v:head+' '+e3.v}; } }
+    var em=k.indexOf(' — '); /* titluri compuse: traduce partea statică, păstrează numele dinamic după „—" */
+    if(em>0){ var lp=look(k.slice(0,em)); if(lp) return {k:k,v:lp.v+k.slice(em)}; }
     return null; }
   function tNode(n){ var v=n.nodeValue; if(!v) return; var t=v.trim(); if(!t) return; var r=look(t); if(r) n.nodeValue=v.replace(t,r.v); }
   function tEl(el){
