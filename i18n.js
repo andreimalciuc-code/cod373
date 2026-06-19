@@ -22,7 +22,7 @@
     'Încarcă poză':{ru:'Загрузить фото',de:'Foto hochladen',en:'Upload photo'},
     'Șterge':{ru:'Удалить',de:'Löschen',en:'Delete'},
     'Desenează semnătura':{ru:'Нарисуйте подпись',de:'Unterschrift zeichnen',en:'Draw signature'},
-    'Folosită la predarea/împrumutul instrumentelor':{ru:'Используется при выдаче/займе инструментов',de:'Wird bei Geräteübergabe/-verleih verwendet',en:'Used when handing over / lending tools'},
+    'Semnătura ta — pentru documentele pe care le emiți tu':{ru:'Ваша подпись — для документов, которые выдаёте вы',de:'Deine Unterschrift — für Dokumente, die du ausstellst',en:'Your signature — for documents you issue'},
     'Culoare de accent':{ru:'Акцентный цвет',de:'Akzentfarbe',en:'Accent color'},
     'Densitate tabele':{ru:'Плотность таблиц',de:'Tabellendichte',en:'Table density'},
     'Confortabil':{ru:'Просторно',de:'Komfortabel',en:'Comfortable'},
