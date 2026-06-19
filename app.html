@@ -1444,7 +1444,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v149';
+const APP_VERSION='cod373-v150';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2214,7 +2214,11 @@ function invoiceReminder(id){
 /* ════ PONTAJ — tabel zilnic (șantier + ore + comentariu per angajat) ════ */
 let _ptDate=null, _ptSites=[], _ptISO='', _ptSaved=new Set();
 function ptDay(delta){ if(!_ptDate) _ptDate=new Date(coToday()+'T12:00:00'); if(delta===0) _ptDate=new Date(coToday()+'T12:00:00'); else { _ptDate=new Date(_ptDate); _ptDate.setDate(_ptDate.getDate()+delta); } renderPontaj(); }
-function ptSiteOpts(sel){ return '<option value="">— fără / liber —</option>'+_ptSites.map(s=>'<option value="'+s.id+'" '+(sel===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join(''); }
+const PT_ABS=[['concediu','🏖️ Concediu'],['medical','🩺 Medical'],['boala','🤒 Boală'],['invoire','🚪 Învoire'],['liber','🏠 Liber'],['nemotivat','⛔ Nemotivat']];
+function ptAbsLabel(k){ const a=PT_ABS.find(x=>x[0]===k); return a?a[1]:(k||''); }
+function ptSiteOpts(sel, absSel){ return '<option value="" '+(!sel&&!absSel?'selected':'')+'>— fără / liber —</option>'
+  +_ptSites.map(s=>'<option value="'+s.id+'" '+(!absSel&&sel===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join('')
+  +'<optgroup label="Absență (concediu / boală / etc.)">'+PT_ABS.map(a=>'<option value="abs:'+a[0]+'" '+(absSel===a[0]?'selected':'')+'>'+a[1]+'</option>').join('')+'</optgroup>'; }
 function ptBreakOpts(sel){ const std=[[0,'Fără pauză'],[30,'30 min'],[60,'1 oră'],[90,'1 oră 30']]; sel=(sel==null?60:+sel); const has=std.some(o=>o[0]===sel); const extra=has?'':('<option value="'+sel+'" selected>'+sel+' min</option>'); return extra+std.map(o=>'<option value="'+o[0]+'" '+(o[0]===sel?'selected':'')+'>'+o[1]+'</option>').join(''); }
 function ptHours(st,en,br){ if(!st||!en) return 0; const a=st.split(':').map(Number), b=en.split(':').map(Number); if(a.length<2||b.length<2||[a[0],a[1],b[0],b[1]].some(isNaN)) return 0; let m=(b[0]*60+b[1])-(a[0]*60+a[1]); if(m<0) m+=1440; m-=(+br||0); if(m<0) m=0; return Math.round(m/60*100)/100; }
 function ptRecalcTotal(){ let t=0; document.querySelectorAll('.pt-h').forEach(s=>t+=+(s.dataset.h)||0); const el=$('pt-total'); if(el) el.textContent=Math.round(t*100)/100; }
@@ -2224,41 +2228,53 @@ async function renderPontaj(){
   const dn=['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'][new Date(_ptISO+'T12:00:00').getDay()];
   $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="ptDay(-1)">←</button><b style="margin:0 .5rem">'+dn+' '+fmtDate(_ptISO)+'</b><button class="btn-ghost" onclick="ptDay(1)">→</button><button class="btn-ghost" onclick="ptDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="ptFillPlanned()" title="Înregistrează programul de lucru implicit al firmei pentru toți angajații planificați azi (din Planificare echipe)">🕗 Aplică programul celor planificați</button><button class="btn-ghost" onclick="ptReport()" title="Generează un raport pe săptămână / lună, pentru toți sau pentru un angajat">📄 Raport</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>⏱️ Pontaj — '+fmtDate(_ptISO)+'</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
-  const [empR,siteR,tsR,cpR]=await Promise.all([
+  const [empR,siteR,tsR,cpR,lvR]=await Promise.all([
     sb.from('employees').select('id,full_name,active,specialty,position'),
     sb.from('sites').select('id,name,status'),
-    sb.from('timesheets').select('employee_id,site_id,hours,note,start_time,end_time,break_min').eq('work_date',_ptISO),
-    sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO)
+    sb.from('timesheets').select('employee_id,site_id,hours,note,start_time,end_time,break_min,absence').eq('work_date',_ptISO),
+    sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO),
+    sb.from('employee_leaves').select('employee_id,kind,start_date,end_date').lte('start_date',_ptISO).gte('end_date',_ptISO)
   ]);
   const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
   _ptSites=(siteR.data||[]).filter(s=>s.status!=='done'&&s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const hm=t=>(t||'').slice(0,5);
-  const ts={}; (tsR.data||[]).forEach(t=>{ if(!ts[t.employee_id]) ts[t.employee_id]={site_id:t.site_id,hours:t.hours,note:t.note,start_time:hm(t.start_time),end_time:hm(t.end_time),break_min:t.break_min}; });
+  const ts={}; (tsR.data||[]).forEach(t=>{ if(!ts[t.employee_id]) ts[t.employee_id]={site_id:t.site_id,hours:t.hours,note:t.note,start_time:hm(t.start_time),end_time:hm(t.end_time),break_min:t.break_min,absence:t.absence}; });
   _ptSaved=new Set(Object.keys(ts));
+  const lv={}; (lvR.data||[]).forEach(l=>{ if(!lv[l.employee_id]) lv[l.employee_id]=l.kind; });  // concedii planificate (HR) care acoperă ziua
   const plan={}; (cpR.data||[]).forEach(p=>{ if(p.site_id && (p.slot==='full'||!plan[p.employee_id])) plan[p.employee_id]=p.site_id; });
   if(!emps.length){ $('mod-body').innerHTML='<div class="empty">Niciun angajat activ.</div>'; return; }
   const wk=coWork();
   const rows=emps.map(e=>{ const saved=!!ts[e.id]; const t=ts[e.id]||{}; const sel=(t.site_id!=null?t.site_id:(plan[e.id]||'')); const sp=e.specialty||e.position;
+    const absVal = saved ? (t.absence||null) : (lv[e.id]||null); const dis=!!absVal;
     /* rândurile încă nesalvate apar pre-completate cu programul implicit al firmei; cele salvate își păstrează valorile */
-    const st=saved?(t.start_time||''):wk.start, en=saved?(t.end_time||''):wk.end, br=saved?(t.break_min!=null?+t.break_min:wk.brk):wk.brk;
-    const initH=(st&&en)?ptHours(st,en,br):(t.hours!=null?+t.hours:0); const hasH=(st&&en)||t.hours!=null;
+    const st=dis?'':(saved?(t.start_time||''):wk.start), en=dis?'':(saved?(t.end_time||''):wk.end), br=dis?wk.brk:(saved?(t.break_min!=null?+t.break_min:wk.brk):wk.brk);
+    const initH=dis?0:((st&&en)?ptHours(st,en,br):(t.hours!=null?+t.hours:0)); const hasH=(st&&en)||t.hours!=null;
+    const da=dis?' disabled':'';
     return '<tr><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'
-      +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:140px">'+ptSiteOpts(sel)+'</select></td>'
-      +'<td><input id="pt-s-'+e.id+'" type="time" style="width:104px" value="'+esc(st)+'" onchange="ptSet(\''+e.id+'\')"/></td>'
-      +'<td><input id="pt-e-'+e.id+'" type="time" style="width:104px" value="'+esc(en)+'" onchange="ptSet(\''+e.id+'\')"/></td>'
-      +'<td><select id="pt-b-'+e.id+'" style="min-width:104px" onchange="ptSet(\''+e.id+'\')">'+ptBreakOpts(br)+'</select></td>'
-      +'<td style="white-space:nowrap"><b id="pt-h-'+e.id+'" class="pt-h" data-h="'+(initH||0)+'">'+(hasH?(Math.round(initH*100)/100):'—')+'</b> h'+(saved?'':'<span title="Program implicit — neînregistrat încă; editează rândul sau apasă butonul Aplică programul" style="color:var(--muted);font-size:.7rem"> · prestabilit</span>')+'</td>'
+      +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:140px">'+ptSiteOpts(sel,absVal)+'</select></td>'
+      +'<td><input id="pt-s-'+e.id+'" type="time" style="width:104px" value="'+esc(st)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
+      +'<td><input id="pt-e-'+e.id+'" type="time" style="width:104px" value="'+esc(en)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
+      +'<td><select id="pt-b-'+e.id+'" style="min-width:104px"'+da+' onchange="ptSet(\''+e.id+'\')">'+ptBreakOpts(br)+'</select></td>'
+      +'<td style="white-space:nowrap">'+(dis
+          ? '<b id="pt-h-'+e.id+'" class="pt-h" data-h="0" style="color:var(--primary)">'+esc(ptAbsLabel(absVal))+'</b>'+(saved?'':'<span title="Concediu/absență planificată în HR — apasă pentru a o înregistra în pontaj" style="color:var(--muted);font-size:.7rem"> · planificat</span>')
+          : '<b id="pt-h-'+e.id+'" class="pt-h" data-h="'+(initH||0)+'">'+(hasH?(Math.round(initH*100)/100):'—')+'</b> h'+(saved?'':'<span title="Program implicit — neînregistrat încă; editează rândul sau apasă butonul Aplică programul" style="color:var(--muted);font-size:.7rem"> · prestabilit</span>'))+'</td>'
       +'<td><input id="pt-n-'+e.id+'" value="'+esc(t.note||'')+'" placeholder="comentariu (opțional)" style="min-width:160px;width:100%" onchange="ptSet(\''+e.id+'\')"/></td></tr>'; }).join('');
   $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">Programul implicit al firmei ('+esc(wk.start)+'–'+esc(wk.end)+', pauză '+wk.brk+' min) apare pre-completat — editează la nevoie pe fiecare angajat; se salvează pe loc. „🕗 Aplică programul" înregistrează programul pentru toți cei planificați azi. Schimbi valorile implicite în Setări.</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Angajat</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+rows+'</tbody>'
     +'<tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="5">Total ore</td><td><span id="pt-total">0</span> h</td><td></td></tr></tfoot></table></div>';
   ptRecalcTotal();
 }
-async function ptSet(empId){ const site=$('pt-site-'+empId).value, st=$('pt-s-'+empId).value, en=$('pt-e-'+empId).value, br=+($('pt-b-'+empId).value||0), note=($('pt-n-'+empId).value||'').trim();
-  const h=ptShowH(empId);
+async function ptSet(empId){ const raw=$('pt-site-'+empId).value, note=($('pt-n-'+empId).value||'').trim();
+  let absence=null, site=null; if(raw.indexOf('abs:')===0) absence=raw.slice(4); else site=raw||null;
+  const ss=$('pt-s-'+empId), ee=$('pt-e-'+empId), bb=$('pt-b-'+empId);
+  [ss,ee,bb].forEach(el=>{ if(el) el.disabled=!!absence; });   // la absență: orele nu se completează
+  let st='', en='', br=0, h=0;
+  if(absence){ const hc=$('pt-h-'+empId); if(hc){ hc.dataset.h=0; hc.textContent=ptAbsLabel(absence); hc.style.color='var(--primary)'; } ptRecalcTotal(); }
+  else { st=ss?ss.value:''; en=ee?ee.value:''; br=+(bb?bb.value:0)||0; const hc=$('pt-h-'+empId); if(hc) hc.style.color=''; h=ptShowH(empId); }
   await sb.from('timesheets').delete().eq('employee_id',empId).eq('work_date',_ptISO);
-  if(h>0||site||note||st||en){ const r=await sbRetry(()=>sb.from('timesheets').insert({tenant_id:state.tenant,employee_id:empId,site_id:site||null,work_date:_ptISO,hours:h,note:note||null,start_time:st||null,end_time:en||null,break_min:br,approved:false})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
-  toast('✅ Pontaj salvat.'); }
+  if(absence||h>0||site||note||st||en){ const r=await sbRetry(()=>sb.from('timesheets').insert({tenant_id:state.tenant,employee_id:empId,site_id:site,work_date:_ptISO,hours:h,note:note||null,start_time:st||null,end_time:en||null,break_min:br,absence:absence,approved:false})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
+  _ptSaved&&_ptSaved.add(empId);
+  toast(absence?('✅ '+ptAbsLabel(absence)+' înregistrat.'):'✅ Pontaj salvat.'); }
 async function ptFillPlanned(){
   const cp=((await sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO)).data)||[];
   const plan={}; cp.forEach(p=>{ if(p.site_id && (p.slot==='full'||!plan[p.employee_id])) plan[p.employee_id]=p.site_id; });
@@ -2291,7 +2307,7 @@ async function ptReportRun(){
   if(!from||!to){ toast('Alege perioada.'); return; }
   if(from>to){ toast('„De la" trebuie să fie înainte de „Până la".'); return; }
   toast('⏳ Generez raportul…');
-  let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,employees!employee_id(full_name),sites!site_id(name)').gte('work_date',from).lte('work_date',to);
+  let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,absence,employees!employee_id(full_name),sites!site_id(name)').gte('work_date',from).lte('work_date',to);
   if(empId) q=q.eq('employee_id',empId);
   const { data, error }=await q;
   if(error){ toast('Eroare: '+esc(error.message)); return; }
@@ -2302,8 +2318,8 @@ async function ptReportRun(){
   let grand=0, gDays=0, body='';
   Object.keys(byEmp).sort((a,b)=>byEmp[a].name.localeCompare(byEmp[b].name)).forEach(k=>{
     const e=byEmp[k]; grand+=e.total; gDays+=e.rows.length;
-    const trs=e.rows.sort((a,b)=>(a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0)).map(r=>{ const dt=new Date(r.work_date+'T12:00:00');
-      return '<tr><td>'+ro(r.work_date)+'</td><td>'+dn[dt.getDay()]+'</td><td>'+esc((r.sites&&r.sites.name)||'—')+'</td><td>'+esc(hm(r.start_time))+'</td><td>'+esc(hm(r.end_time))+'</td><td>'+(r.break_min!=null?(r.break_min+' min'):'')+'</td><td style="text-align:right">'+fmt(r.hours)+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('');
+    const trs=e.rows.sort((a,b)=>(a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0)).map(r=>{ const dt=new Date(r.work_date+'T12:00:00'); const ab=r.absence?ptAbsLabel(r.absence):null;
+      return '<tr><td>'+ro(r.work_date)+'</td><td>'+dn[dt.getDay()]+'</td><td>'+(ab?('<b>'+esc(ab)+'</b>'):esc((r.sites&&r.sites.name)||'—'))+'</td><td>'+(ab?'':esc(hm(r.start_time)))+'</td><td>'+(ab?'':esc(hm(r.end_time)))+'</td><td>'+(ab?'':(r.break_min!=null?(r.break_min+' min'):''))+'</td><td style="text-align:right">'+(ab?'—':fmt(r.hours))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('');
     const siteSum=Object.keys(e.sites).sort().map(sn=>esc(sn)+': <b>'+fmt(e.sites[sn])+'h</b>').join(' · ');
     body+='<div class="emp"><h2>'+esc(e.name)+'</h2>'
       +'<table><thead><tr><th>Data</th><th>Zi</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+trs+'</tbody></table>'
@@ -4307,7 +4323,7 @@ function rowActions(key,m,r){
     else { a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"}); a.push({i:'🇪🇺',l:'e-Factură UBL (EN16931)',f:"genXRechnung('"+id+"')"}); } }
   if(m.efactura){ const au=(state.firm&&state.firm.automations)||{}; if(au.lexoffice_key) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
   if(m.printable) a.push({i:'⬇',l:'Descarcă / Tipărește PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
-  if(m.toolActions){ a.push({i:'📍',l:'Unde se află (șantiere/depozit + cantități)',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
+  if(m.toolActions){ a.push({i:'🔢',l:'Bucăți (serii), inventar, valoare, amortizare + unde se află',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(m.vehicleLog){ if(canSee('harta')) a.push({i:'🗺️',l:'Vezi pe hartă (GPS)',f:"vehShowOnMap('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
@@ -4546,6 +4562,11 @@ async function openForm(key,row,preset){
       +'<div style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin:-.05rem 0 .55rem"><div class="field" style="width:200px;margin:0"><label>Câte bucăți în total</label><input id="tuf-count" type="number" min="0" value="1" oninput="tufSetCount(this.value)"/></div><div style="font-size:.8rem;color:var(--muted);align-self:center">Pune numărul → se creează automat câte o linie per bucată. Total serii: <b id="tuf-total">0</b>.</div></div>'
       +'<div id="tuf-units"></div>'
       +'<button type="button" class="addline" onclick="tufAdd();var c=document.getElementById(\'tuf-count\');if(c)c.value=document.querySelectorAll(\'#tuf-units .tuf-row\').length">＋ adaugă încă o serie</button>'
+      +'</div>'; }
+  if(m.toolStockForm && row){
+    body+='<div class="field" style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem"><label>🔢 Bucăți (serii) & unde se află</label>'
+      +'<div style="font-size:.82rem;color:var(--muted);margin-bottom:.55rem">Aici editezi fiecare bucată pe serie — nr. de inventar, valoare, amortizare, poză, locație (depozit / șantier / împrumut / chirie), etichetă QR și istoric. <b>Funcționează și pentru instrumentele mai vechi</b> din bază: deschide panoul și adaugi serii peste stocul existent pe cantități.</div>'
+      +'<button type="button" class="btn-primary" onclick="toolUnits(\''+row.id+'\',\''+jsArg(row.name||'')+'\')">🔢 Deschide bucățile (serii) →</button>'
       +'</div>'; }
   if(m.recipe){ body+='<div class="field"><label>🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)</label><datalist id="recipe-mat-list">'+(formCtx.materials||[]).map(mm=>'<option value="'+esc(mm.name)+'"></option>').join('')+'</datalist><div id="recipe-mount"></div><button type="button" class="addline" onclick="recipeAdd()">＋ adaugă material</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Consum × volumul măsurat (la previzualizare șantier) = cantitatea de material. Prețul se ia automat din Materiale.</div></div>'; }
   if(m.priceSrc){ m.priceSrc.forEach(sk=>{ const s=PRICE_SRC[sk]; body+='<div class="field"><label>'+s.icon+' '+s.title+' (același material la mai multe '+s.noun+'e)</label><div id="'+s.mount+'"></div><button type="button" class="addline" onclick="srcAdd(\''+sk+'\')">＋ adaugă '+s.noun+'</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+s.hint+'</div></div>'; }); }
