@@ -1549,7 +1549,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v168';
+const APP_VERSION='cod373-v169';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2641,6 +2641,9 @@ let _crmPipe=null, _crmLast={};
 function crmPipes(){ try{ const a=state.firm.automations&&state.firm.automations.crm_pipelines; if(a&&a.length) return a; }catch(e){} return [{id:'sales',name:'Vânzări',stages:CRM_STAGES.map(k=>({k:k,label:(STATUS[k]?STATUS[k][0]:k),color:CRM_COL[k]}))}]; }
 function crmPipe(id){ const ps=crmPipes(); return ps.find(p=>p.id===id)||ps[0]; }
 function crmRules(){ try{ return (state.firm.automations&&state.firm.automations.crm_rules)||{}; }catch(e){ return {}; } }
+function crmFields(){ try{ return (state.firm.automations&&state.firm.automations.crm_fields)||[]; }catch(e){ return []; } }
+function crmCustomFormHTML(row){ const fs=crmFields(); if(!fs.length) return ''; const cu=(row&&row.custom)||{};
+  return '<div style="border-top:1px dashed var(--line);margin-top:.4rem;padding-top:.4rem;font-weight:700;font-size:.84rem">🧩 '+esc(C373t('Câmpuri personalizate'))+'</div>'+fs.map(f=>{ const v=cu[f.key]!=null?cu[f.key]:''; const t=f.type==='number'?'number':(f.type==='date'?'date':'text'); return '<div class="field"><label>'+esc(f.label)+'</label><input id="cf-'+f.key+'" type="'+t+'" value="'+esc(v)+'"/></div>'; }).join(''); }
 function crmScore(c){ let s=0; const w={lead:10,contacted:30,offer:55,won:100,active:90,lost:0}; s+=(w[c.stage]!=null?w[c.stage]:25); if(c.temperature==='hot')s+=20;else if(c.temperature==='warm')s+=10; if(+c.value>0)s+=10; if(c.phone)s+=5; if(c.email)s+=5; const last=_crmLast[c.id]; if(last){ const d=(Date.now()-new Date(last).getTime())/86400000; if(d<=7)s+=10; else if(d<=30)s+=5; } return Math.max(0,Math.min(100,Math.round(s))); }
 function crmScoreBadge(c){ const s=crmScore(c); const col=s>=70?'var(--green)':(s>=40?'var(--amber)':'var(--muted)'); return '<span title="'+esc(C373t('Scor lead'))+'" style="float:right;font-size:.7rem;font-weight:700;color:#fff;background:'+col+';border-radius:20px;padding:.05rem .4rem">'+s+'</span>'; }
 async function renderClienti(){
@@ -2710,6 +2713,7 @@ async function clientHub(id){ window._chId=id;
   const ccs=ccr&&ccr.data||[];
   const ccH=ccs.length?ccs.map(p=>'<div style="display:flex;gap:.5rem;align-items:center;padding:.25rem 0;border-bottom:1px solid var(--line)"><div style="flex:1;min-width:0;font-size:.83rem"><b>'+esc(p.name||'—')+'</b>'+(p.role?' <span style="color:var(--muted)">· '+esc(p.role)+'</span>':'')+(p.phone?'<div style="font-size:.74rem;color:var(--muted)">📞 '+esc(p.phone)+(p.email?(' · ✉️ '+esc(p.email)):'')+'</div>':(p.email?'<div style="font-size:.74rem;color:var(--muted)">✉️ '+esc(p.email)+'</div>':''))+'</div><button class="iconbtn danger" onclick="ccDel(\''+p.id+'\')">🗑</button></div>').join(''):'<div style="color:var(--muted);font-size:.8rem">—</div>';
   const info=[]; if(c.contact) info.push('👤 '+esc(c.contact)); if(c.phone) info.push('📞 '+esc(c.phone)); if(c.email) info.push('✉️ '+esc(c.email)); if(c.address) info.push('📍 '+esc(c.address)); if(c.source) info.push('🌱 '+esc(c.source));
+  try{ crmFields().forEach(f=>{ const v=c.custom&&c.custom[f.key]; if(v!=null&&v!=='') info.push('🧩 '+esc(f.label)+': '+esc(v)); }); }catch(e){}
   const tags=c.tags?('<div style="margin:.3rem 0">'+String(c.tags).split(',').map(t=>t.trim()).filter(Boolean).map(t=>'<span style="background:var(--primary-soft);color:var(--primary);border-radius:20px;padding:.1rem .5rem;font-size:.72rem;margin-right:.3rem">🏷 '+esc(t)+'</span>').join('')+'</div>'):'';
   const tl=acts.length?acts.map(caRow).join(''):'<div style="color:var(--muted);font-size:.85rem;padding:.4rem 0">'+esc(C373t('Nicio interacțiune încă.'))+'</div>';
   const lk=(arr,fmt)=>arr&&arr.length?arr.map(fmt).join(''):'<span style="color:var(--muted);font-size:.8rem">—</span>';
@@ -2767,7 +2771,15 @@ function crmAutomations(){ const au=Object.assign({},state.firm.automations||{})
     +'<div style="font-weight:700;margin-bottom:.3rem">🗂️ '+esc(C373t('Pâlnii (boards)'))+'</div>'+pipeRows
     +'<div style="display:flex;gap:.3rem;margin-top:.5rem;flex-wrap:wrap"><input id="pp-name" placeholder="'+esc(C373t('Nume pâlnie nouă'))+'" style="flex:1;min-width:120px;padding:.4rem;border:1px solid var(--line);border-radius:8px"/><input id="pp-stages" placeholder="'+esc(C373t('Etape separate prin virgulă'))+'" style="flex:2;min-width:160px;padding:.4rem;border:1px solid var(--line);border-radius:8px"/><button class="btn-ghost" onclick="crmAddPipe()">＋</button></div>'
     +'<div style="font-size:.74rem;color:var(--muted);margin-top:.3rem">'+esc(C373t('Ex: „Reclamații" cu etapele: Nou, În lucru, Rezolvat, Închis."'))+'</div>'
+    +'<hr style="border:none;border-top:1px solid var(--line);margin:1rem 0">'
+    +'<div style="font-weight:700;margin-bottom:.3rem">🧩 '+esc(C373t('Câmpuri personalizate'))+'</div>'
+    +(crmFields().length?crmFields().map(f=>'<div style="display:flex;gap:.5rem;align-items:center;padding:.25rem 0;border-bottom:1px solid var(--line)"><div style="flex:1"><b>'+esc(f.label)+'</b> <span style="color:var(--muted);font-size:.78rem">('+esc(f.type)+')</span></div><button class="iconbtn danger" onclick="crmDelField(\''+f.key+'\')">🗑</button></div>').join(''):'<div style="color:var(--muted);font-size:.8rem">—</div>')
+    +'<div style="display:flex;gap:.3rem;margin-top:.5rem;flex-wrap:wrap"><input id="cf-label" placeholder="'+esc(C373t('Nume câmp (ex: Cod fiscal)'))+'" style="flex:1;min-width:120px;padding:.4rem;border:1px solid var(--line);border-radius:8px"/><select id="cf-type" style="padding:.4rem;border:1px solid var(--line);border-radius:8px;background:var(--surface)"><option value="text">'+esc(C373t('Text'))+'</option><option value="number">'+esc(C373t('Număr'))+'</option><option value="date">'+esc(C373t('Dată'))+'</option></select><button class="btn-ghost" onclick="crmAddField()">＋</button></div>'
     +'</div></div></div>'; }
+async function crmAddField(){ const label=($('cf-label')&&$('cf-label').value||'').trim(); const type=($('cf-type')&&$('cf-type').value)||'text'; if(!label){ toast(C373t('Scrie numele câmpului.')); return; }
+  const au=Object.assign({},state.firm.automations||{}); const fs=(au.crm_fields&&au.crm_fields.slice())||[]; let key=_slug(label); let n=1; while(fs.find(f=>f.key===key)){ key=_slug(label)+(++n); } fs.push({key:key,label:label,type:type}); au.crm_fields=fs;
+  if(await crmSaveAuto(au)){ toast('✅ '+C373t('Câmp adăugat')); crmAutomations(); } }
+async function crmDelField(key){ if(!confirm(C373t('Ștergi acest câmp personalizat?'))) return; const au=Object.assign({},state.firm.automations||{}); au.crm_fields=(au.crm_fields||[]).filter(f=>f.key!==key); if(await crmSaveAuto(au)){ toast('🗑 '+C373t('Câmp șters')); crmAutomations(); } }
 async function crmRulesSave(){ const au=Object.assign({},state.firm.automations||{}); const rules={}; const seen={};
   crmPipes().forEach(p=>p.stages.forEach(s=>{ if(seen[s.k]) return; seen[s.k]=1; const d=$('rl-d-'+s.k), t=$('rl-t-'+s.k); const txt=t?t.value.trim():''; if(txt){ rules[s.k]={days:Math.max(0,+(d&&d.value||0)||0),text:txt}; } }));
   au.crm_rules=rules; if(await crmSaveAuto(au)){ toast('✅ '+C373t('Salvat')); closeModal(); } }
@@ -2801,26 +2813,26 @@ function _csvMap(h){ h=String(h).toLowerCase().replace(/[ăâ]/g,'a').replace(/�
   if(/contact|persoan/.test(h)) return 'contact';
   if(/^tip$|type/.test(h)) return 'type';
   return null; }
+const _CSV_TARGETS=[['','— '],['name','Nume *'],['phone','Telefon'],['email','Email'],['address','Adresă'],['contact','Persoană contact'],['tags','Etichete'],['source','Sursă'],['value','Valoare'],['type','Tip (person/company)']];
 function crmImportParse(text){
   const head1=(text.split('\n')[0]||''); const delim=(head1.split(';').length>head1.split(',').length)?';':',';
   const rows=_csvSplit(text,delim).filter(r=>r.length&&r.some(x=>String(x).trim()!==''));
   if(rows.length<2){ toast(C373t('CSV gol sau fără rânduri.')); return; }
-  const hdr=rows[0].map(h=>String(h).trim()); const map=hdr.map(_csvMap);
-  if(map.indexOf('name')<0){ toast(C373t('Nu am găsit o coloană „nume". Asigură-te că primul rând are anteturi (Nume, Telefon, Email...).')); return; }
-  const objs=[]; for(let r=1;r<rows.length;r++){ const o={}; rows[r].forEach((v,ci)=>{ const k=map[ci]; if(k&&String(v).trim()!=='') o[k]=String(v).trim(); }); if(o.name){ if(o.value!=null){ const num=parseFloat(String(o.value).replace(/[^0-9.,-]/g,'').replace(',','.')); o.value=isNaN(num)?null:num; } objs.push(o); } }
-  if(!objs.length){ toast(C373t('Niciun rând cu nume.')); return; }
-  window._crmImport=objs;
-  const cols=hdr.map((h,i)=>map[i]?('<b>'+esc(h)+'</b> → '+esc(map[i])):('<span style="color:var(--muted);text-decoration:line-through">'+esc(h)+'</span>')).join(' · ');
-  const sample=objs.slice(0,5).map(o=>'<div style="font-size:.82rem;padding:.2rem 0;border-bottom:1px solid var(--line)">'+esc(o.name)+(o.phone?(' · 📞 '+esc(o.phone)):'')+(o.email?(' · ✉️ '+esc(o.email)):'')+(o.value!=null?(' · '+money(o.value)):'')+'</div>').join('');
+  const hdr=rows[0].map(h=>String(h).trim()); window._crmCsv={hdr:hdr, rows:rows.slice(1)};
+  const sel=hdr.map((h,i)=>{ const auto=_csvMap(h)||''; const sample=(rows[1]&&rows[1][i]!=null)?String(rows[1][i]).slice(0,18):''; return '<div style="display:flex;gap:.5rem;align-items:center;padding:.25rem 0;border-bottom:1px solid var(--line)"><div style="flex:1;min-width:0"><div style="font-size:.83rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(h||('Col '+(i+1)))+'</div>'+(sample?'<div style="font-size:.72rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(sample)+'</div>':'')+'</div><select id="cm-'+i+'" style="padding:.3rem;border:1px solid var(--line);border-radius:7px;font-size:.82rem;background:var(--surface)">'+_CSV_TARGETS.map(t=>'<option value="'+t[0]+'" '+(t[0]===auto?'selected':'')+'>'+esc(t[1])+'</option>').join('')+'</select></div>'; }).join('');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>⬆️ '+esc(C373t('Import clienți din CSV'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
-    +'<div style="font-size:.85rem;margin-bottom:.4rem">'+esc(C373t('Găsite'))+' <b>'+objs.length+'</b> '+esc(C373t('rânduri'))+'. '+esc(C373t('Intră în pâlnia activă, etapa „Lead".'))+'</div>'
-    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.5rem">'+cols+'</div>'+sample
-    +'<button class="btn-primary" style="width:100%;margin-top:.6rem" onclick="crmImportRun()">⬆️ '+esc(C373t('Importă'))+' '+objs.length+'</button></div></div></div>'; }
-async function crmImportRun(){ const objs=window._crmImport||[]; if(!objs.length){ closeModal(); return; }
+    +'<div style="font-size:.85rem;margin-bottom:.5rem"><b>'+window._crmCsv.rows.length+'</b> '+esc(C373t('rânduri'))+'. '+esc(C373t('Potrivește fiecare coloană din fișier cu un câmp:'))+'</div>'+sel
+    +'<div style="font-size:.76rem;color:var(--muted);margin-top:.4rem">'+esc(C373t('Intră în pâlnia activă, etapa „Lead".'))+'</div>'
+    +'<button class="btn-primary" style="width:100%;margin-top:.6rem" onclick="crmImportRun()">⬆️ '+esc(C373t('Importă'))+'</button></div></div></div>'; }
+async function crmImportRun(){ const csv=window._crmCsv; if(!csv){ closeModal(); return; }
+  const map=csv.hdr.map((h,i)=>{ const s=$('cm-'+i); return s?s.value:''; });
+  if(map.indexOf('name')<0){ toast(C373t('Alege ce coloană e „Nume".')); return; }
+  const objs=[]; csv.rows.forEach(r=>{ const o={}; r.forEach((v,ci)=>{ const k=map[ci]; if(k&&String(v).trim()!=='') o[k]=String(v).trim(); }); if(o.name){ if(o.value!=null){ const num=parseFloat(String(o.value).replace(/[^0-9.,-]/g,'').replace(',','.')); o.value=isNaN(num)?null:num; } objs.push(o); } });
+  if(!objs.length){ toast(C373t('Niciun rând cu nume.')); return; }
   const pid=crmPipe(_crmPipe).id; const st=(crmPipe(_crmPipe).stages[0]&&crmPipe(_crmPipe).stages[0].k)||'lead'; const today=coToday();
   const rows=objs.map(o=>({tenant_id:state.tenant,name:o.name,type:(o.type==='company'||o.type==='companie'?'company':'person'),phone:o.phone||null,email:o.email||null,address:o.address||null,contact:o.contact||null,tags:o.tags||null,source:o.source||null,value:(o.value!=null?o.value:null),stage:(o.stage||st),pipeline:pid,stage_since:today}));
   let done=0; try{ for(let i=0;i<rows.length;i+=200){ const r=await sb.from('clients').insert(rows.slice(i,i+200)); if(r.error) throw r.error; done+=Math.min(200,rows.length-i); } }catch(e){ toast('Eroare la import ('+done+' adăugați): '+esc(e.message)); }
-  window._crmImport=null; closeModal(); toast('✅ '+done+' '+C373t('clienți importați')); renderClienti(); }
+  window._crmCsv=null; closeModal(); toast('✅ '+done+' '+C373t('clienți importați')); renderClienti(); }
 async function crmFeed(){
   const { data, error }=await sb.from('client_activities').select('kind,body,due_date,done,created_at,created_by,client_id,clients(name)').order('created_at',{ascending:false}).limit(60);
   if(error){ toast('Eroare: '+esc(error.message)); return; }
@@ -5046,6 +5058,7 @@ async function openForm(key,row,preset){
   if(m.priceSrc){ m.priceSrc.forEach(sk=>{ const s=PRICE_SRC[sk]; body+='<div class="field"><label>'+s.icon+' '+s.title+' (același material la mai multe '+s.noun+'e)</label><div id="'+s.mount+'"></div><button type="button" class="addline" onclick="srcAdd(\''+sk+'\')">＋ adaugă '+s.noun+'</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+s.hint+'</div></div>'; }); }
   if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Din norme</button><button type="button" class="addline" style="margin-left:1rem" onclick="openServicePicker()">🧰 Din servicii</button>':'')+'</div>'; }
   if(m.bomFromNorms){ formCtx.bom=true; body+='<div id="form-bom"></div>'; await ensureNorms(); await ensureNormMaterials(); }
+  if(key==='clienti'){ try{ body+=crmCustomFormHTML(row); }catch(e){} }
   $('modal-mount').innerHTML='<div class="modal-overlay"><div class="modal">'
     +'<div class="modal-head"><h3>'+(row?'Editează':esc(m.newLabel))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body">'+body+'</div>'
@@ -5488,7 +5501,8 @@ async function saveRecord(){
   }
   // required check
   for(const f of m.fields){ if(f.required && $('f-'+f.key)!==null && (payload[f.key]==null||payload[f.key]==='')){ showMsg('form-msg','Câmpul „'+f.label+'” este obligatoriu.'); return; } }
-  if(key==='clienti'){ if(!formCtx.id){ payload.stage_since=coToday(); if(window._crmPreset&&window._crmPreset.pipeline&&!payload.pipeline) payload.pipeline=window._crmPreset.pipeline; } }
+  if(key==='clienti'){ if(!formCtx.id){ payload.stage_since=coToday(); if(window._crmPreset&&window._crmPreset.pipeline&&!payload.pipeline) payload.pipeline=window._crmPreset.pipeline; }
+    try{ const cf={}; crmFields().forEach(f=>{ const e=$('cf-'+f.key); if(e&&e.value!==''){ cf[f.key]=(f.type==='number'?(+e.value):e.value); } }); payload.custom=cf; }catch(e){} }
 
   let lineRows=null;
   if(m.lineItems){
