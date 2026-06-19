@@ -1285,7 +1285,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v139';
+const APP_VERSION='cod373-v140';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2573,13 +2573,12 @@ async function fleetAlert(){
 }
 async function toolLoanAlert(){
   if(typeof canSee==='function' && !canSee('instrumente')) return '';
-  let lr; try{ lr=await sb.from('tool_locations').select('qty,holder,loan_type,due_date,tools(name)').not('holder','is',null).not('due_date','is',null); }catch(e){ return ''; }
-  const list=lr&&lr.data||[]; if(!list.length) return '';
-  const today=new Date(); today.setHours(0,0,0,0);
-  const items=[]; list.forEach(l=>{ if(!l.due_date) return; const exp=new Date(l.due_date+'T12:00:00'); const days=Math.floor((exp-today)/86400000); if(days<=30) items.push({name:(l.tools&&l.tools.name)||'Instrument',holder:l.holder,rented:l.loan_type==='rented',qty:+l.qty||0,days:days,exp:exp}); });
+  const today=new Date(); today.setHours(0,0,0,0); const items=[];
+  try{ const lr=await sb.from('tool_locations').select('qty,holder,loan_type,due_date,tools(name)').not('holder','is',null).not('due_date','is',null); (lr.data||[]).forEach(l=>{ if(!l.due_date) return; const exp=new Date(l.due_date+'T12:00:00'); const days=Math.floor((exp-today)/86400000); if(days<=30) items.push({name:(l.tools&&l.tools.name)||'Instrument',holder:l.holder,rented:l.loan_type==='rented',qty:+l.qty||0,days:days,exp:exp,serial:''}); }); }catch(e){}
+  try{ const ur=await sb.from('tool_units').select('serial_no,holder,loan_type,loan_due,tools(name)').not('loan_due','is',null).not('loan_type','is',null); (ur.data||[]).forEach(u=>{ if(!u.loan_due) return; const exp=new Date(u.loan_due); if(isNaN(exp)) return; const days=Math.floor((exp-today)/86400000); if(days<=30) items.push({name:(u.tools&&u.tools.name)||'Instrument',holder:u.holder||'—',rented:u.loan_type==='rented',qty:1,days:days,exp:exp,serial:u.serial_no||''}); }); }catch(e){}
   if(!items.length) return '';
   items.sort((a,b)=>a.days-b.days);
-  const rows=items.map(it=>{ const expired=it.days<0; const col=expired?'#dc2626':(it.days<=7?'#d97706':'#6b7793'); const when=expired?('depășit cu '+(-it.days)+' zile'):(it.days===0?'azi':('în '+it.days+' zile')); return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:1px solid var(--line)"><span>'+(it.rented?'💶':'🤝')+' <b>'+esc(it.name)+'</b>'+(it.qty>1?(' ×'+it.qty):'')+' · '+(it.rented?'în chirie la ':'împrumutat la ')+esc(it.holder)+'</span><span style="color:'+col+';font-weight:700;white-space:nowrap">retur '+esc(fmtDate(isoLocal(it.exp)))+' · '+when+'</span></div>'; }).join('');
+  const rows=items.map(it=>{ const expired=it.days<0; const col=expired?'#dc2626':(it.days<=7?'#d97706':'#6b7793'); const when=expired?('depășit cu '+(-it.days)+' zile'):(it.days===0?'azi':('în '+it.days+' zile')); return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:1px solid var(--line)"><span>'+(it.rented?'💶':'🤝')+' <b>'+esc(it.name)+'</b>'+(it.serial?(' #'+esc(it.serial)):'')+(it.qty>1?(' ×'+it.qty):'')+' · '+(it.rented?'în chirie la ':'împrumutat la ')+esc(it.holder)+'</span><span style="color:'+col+';font-weight:700;white-space:nowrap">retur '+esc(fmtDate(isoLocal(it.exp)))+' · '+when+'</span></div>'; }).join('');
   return '<div class="panel" style="margin-bottom:1.4rem;border-left:4px solid var(--amber)"><div class="panel-head"><h3>⚠️ Scule de returnat (împrumut / chirie)</h3></div><div style="padding:.3rem 1.2rem 1rem">'+rows+'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">Gestionezi din <a onclick="go(\'instrumente\')" style="cursor:pointer;color:var(--primary)">Instrumente → 📍 Unde se află</a>.</div></div></div>';
 }
 function dashCharts(inv, facturat, incasat){

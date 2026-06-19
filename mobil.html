@@ -228,7 +228,7 @@ async function openToolById(idOrCode){
   toolSheet(t);
 }
 async function openUnitById(unitId){
-  let u=null; try{ const r=await sb.from('tool_units').select('id,tool_id,serial_no,inventory_no,value,acq_date,useful_life_years,site_id,warehouse_id,holder,loan_type,tools(name),sites(name),warehouses(name)').eq('id',unitId).maybeSingle(); u=r.data; }catch(e){}
+  let u=null; try{ const r=await sb.from('tool_units').select('id,tool_id,serial_no,inventory_no,value,acq_date,useful_life_years,site_id,warehouse_id,holder,loan_type,loan_from,loan_due,rent_amount,deposit_amount,id_photo_url,signature_url,tools(name,default_rent,default_deposit),sites(name),warehouses(name)').eq('id',unitId).maybeSingle(); u=r.data; }catch(e){}
   if(!u){ toast('Bucata nu a fost găsită.'); return; }
   unitSheet(u);
 }
@@ -241,18 +241,47 @@ async function unitSheet(u){
   const where=u.site_id?('🏗️ '+esc((u.sites&&u.sites.name)||'șantier')):(u.warehouse_id?('🏬 '+esc((u.warehouses&&u.warehouses.name)||'depozit')):(u.holder?((u.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+esc(u.holder)):'📦 nealocat'));
   const dep=Math.round(depPct(u.acq_date,u.useful_life_years));
   const opt=(v,l)=>'<option value="'+v+'"'+(cur===v?' selected':'')+'>'+l+'</option>';
-  const locSel='<select id="us-loc">'+opt('','📦 Nealocat')+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>opt('wh:'+w.id,'🏬 '+esc(w.name))).join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>opt('site:'+s.id,'🏗️ '+esc(s.name))).join('')+'</optgroup>':'')+'<optgroup label="În afară">'+opt('loan:lent','🤝 Împrumutat')+opt('loan:rented','💶 În chirie')+'</optgroup></select>';
+  const locSel='<select id="us-loc" onchange="uLoanShow(this)">'+opt('','📦 Nealocat')+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>opt('wh:'+w.id,'🏬 '+esc(w.name))).join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>opt('site:'+s.id,'🏗️ '+esc(s.name))).join('')+'</optgroup>':'')+'<optgroup label="În afară">'+opt('loan:lent','🤝 Împrumutat')+opt('loan:rented','💶 În chirie')+'</optgroup></select>';
+  const isLoan=!!u.loan_type, isRent=u.loan_type==='rented';
+  const loanPanel='<div id="us-loan" style="display:'+(isLoan?'block':'none')+';border:1px dashed var(--line);border-radius:9px;padding:.55rem;margin-top:.5rem"><div style="font-weight:700;font-size:.85rem;margin-bottom:.35rem">📋 Detalii împrumut / chirie</div>'
+    +'<div class="fld"><label>Cui (persoană/firmă)</label><input id="us-cui" value="'+esc(u.holder||'')+'"/></div>'
+    +'<div class="fld"><label>Când (de la)</label><input id="us-from" type="datetime-local" value="'+esc(toLocalDT(u.loan_from))+'"/></div>'
+    +'<div class="fld"><label>Până când</label><input id="us-due" type="datetime-local" value="'+esc(toLocalDT(u.loan_due))+'"/></div>'
+    +'<div id="us-rentwrap" style="display:'+(isRent?'block':'none')+'"><div class="fld"><label>Preț chirie</label><input id="us-rent" type="number" min="0" step="any" value="'+esc(u.rent_amount!=null?u.rent_amount:'')+'"/></div>'
+      +'<div class="fld"><label>Gaj</label><input id="us-deposit" type="number" min="0" step="any" value="'+esc(u.deposit_amount!=null?u.deposit_amount:'')+'"/></div></div>'
+    +'<div class="fld"><label>📷 Poză buletin</label>'+(u.id_photo_url?'<a onclick="openDoc(\''+encodeURIComponent(u.id_photo_url)+'\')" style="color:var(--primary);font-size:.8rem;display:block;margin-bottom:.3rem">🪪 vezi buletinul atașat</a>':'')+'<input id="us-idphoto" type="file" accept="image/*" capture="environment"/></div>'
+    +'<div class="fld"><label>✍️ Semnătură (semnează cu degetul)</label><canvas id="us-sign" width="320" height="130" style="width:100%;height:130px;border:1px solid var(--line);border-radius:8px;background:#fff;touch-action:none"></canvas>'+(u.signature_url?'<a onclick="openDoc(\''+encodeURIComponent(u.signature_url)+'\')" style="color:var(--primary);font-size:.8rem">vezi semnătura salvată</a> · ':'')+'<a onclick="sigClear()" style="color:var(--red);font-size:.8rem;cursor:pointer">Șterge semnătura</a></div>'
+    +'</div>';
   const html='<div class="card" style="margin:0 0 .8rem"><div class="t">🔧 '+esc((u.tools&&u.tools.name)||'Instrument')+'</div>'
     +'<div class="s">Serie <b>'+esc(u.serial_no||'—')+'</b>'+(u.inventory_no?(' · Nr. inv. '+esc(u.inventory_no)):'')+'</div>'
     +'<div style="margin-top:.4rem">📍 acum: <b>'+where+'</b></div>'
     +(u.value!=null?'<div class="s">Valoare: '+money(u.value)+' · amortizare '+dep+'% · rămas '+money((+u.value||0)*(1-dep/100))+'</div>':'')+'</div>'
     +'<div id="us-msg" style="color:var(--red);font-size:.82rem"></div>'
     +'<div class="fld"><label>Unde e acum (mută)</label>'+locSel+'</div>'
+    +loanPanel
     +'<button class="btn" style="width:100%" onclick="unitMove(\''+u.id+'\')">💾 Salvează locația</button>'
     +'<div style="margin-top:.9rem"><div style="font-weight:700;font-size:.85rem;margin-bottom:.3rem">🕘 Istoric mișcări</div>'+(logs.length?logs.map(l=>'<div style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div style="font-size:.85rem">'+(l.action==='create'?'➕ Adăugat':'↦ Mutat')+(l.from_label?(' din '+esc(l.from_label)):'')+(l.to_label?(' → '+esc(l.to_label)):'')+'</div><div class="s" style="font-size:.72rem">👤 '+esc(l.by_name||'—')+' · '+esc((l.created_at||'').slice(0,16).replace("T"," "))+'</div></div>').join(''):'<div class="s">Nicio mișcare încă.</div>')+'</div>';
   openSheet('🔧 '+((u.tools&&u.tools.name)||'Bucată'), html);
+  setTimeout(sigInit,60);
 }
-async function unitMove(unitId){ const v=$('us-loc').value; const patch={site_id:null,warehouse_id:null,holder:null,loan_type:null}; const p=(v||'').split(':'); let holder=null; if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?'); if(h===null) return; holder=(h||'').trim()||null; patch.holder=holder; patch.loan_type=(p[1]==='rented'?'rented':'lent'); }
+function toLocalDT(s){ if(!s) return ''; const d=new Date(s); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
+function uLoanShow(sel){ const v=sel.value, isLoan=v.indexOf('loan:')===0, isRent=v==='loan:rented'; const pan=$('us-loan'); if(pan) pan.style.display=isLoan?'block':'none'; const rw=$('us-rentwrap'); if(rw) rw.style.display=isRent?'block':'none';
+  if(isRent){ const u=window._usU||{}; const t=u.tools||{}; const ri=$('us-rent'), di=$('us-deposit'); if(ri&&!ri.value&&t.default_rent!=null) ri.value=t.default_rent; if(di&&!di.value&&t.default_deposit!=null) di.value=t.default_deposit; }
+  if(isLoan) setTimeout(sigInit,40); }
+function sigInit(){ const c=$('us-sign'); if(!c||c._init) return; c._init=true; const ctx=c.getContext('2d'); ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.strokeStyle='#111'; let drawing=false; window._sigDrawn=false;
+  const pos=e=>{ const r=c.getBoundingClientRect(); const t=(e.touches&&e.touches[0])||e; return [(t.clientX-r.left)*(c.width/r.width),(t.clientY-r.top)*(c.height/r.height)]; };
+  const start=e=>{ drawing=true; const xy=pos(e); ctx.beginPath(); ctx.moveTo(xy[0],xy[1]); e.preventDefault(); };
+  const move=e=>{ if(!drawing) return; const xy=pos(e); ctx.lineTo(xy[0],xy[1]); ctx.stroke(); window._sigDrawn=true; e.preventDefault(); };
+  const end=()=>{ drawing=false; };
+  c.addEventListener('mousedown',start); c.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+  c.addEventListener('touchstart',start,{passive:false}); c.addEventListener('touchmove',move,{passive:false}); c.addEventListener('touchend',end); }
+function sigClear(){ const c=$('us-sign'); if(c){ c.getContext('2d').clearRect(0,0,c.width,c.height); window._sigDrawn=false; } }
+async function unitMove(unitId){ const v=$('us-loc').value; const patch={site_id:null,warehouse_id:null,holder:null,loan_type:null,loan_from:null,loan_due:null,rent_amount:null,deposit_amount:null}; const p=(v||'').split(':'); let holder=null;
+  if(p[0]==='wh') patch.warehouse_id=p[1]; else if(p[0]==='site') patch.site_id=p[1];
+  else if(p[0]==='loan'){ holder=(($('us-cui')&&$('us-cui').value)||'').trim()||null; patch.holder=holder; patch.loan_type=(p[1]==='rented'?'rented':'lent'); const fr=($('us-from')&&$('us-from').value)||'', du=($('us-due')&&$('us-due').value)||''; if(fr) patch.loan_from=fr; if(du) patch.loan_due=du; if(p[1]==='rented'){ const rt=($('us-rent')&&$('us-rent').value)||'', dp=($('us-deposit')&&$('us-deposit').value)||''; if(rt!=='') patch.rent_amount=+rt; if(dp!=='') patch.deposit_amount=+dp; }
+    const idf=$('us-idphoto'); if(idf&&idf.files&&idf.files[0]){ const f=idf.files[0]; const path=S.tenant+'/tools/'+Date.now()+'_id_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) patch.id_photo_url=path; }
+    if(window._sigDrawn){ try{ const c=$('us-sign'); const blob=await (await fetch(c.toDataURL('image/png'))).blob(); const path=S.tenant+'/tools/'+Date.now()+'_sig.png'; const up=await sb.storage.from('docs').upload(path,blob,{contentType:'image/png'}); if(!up.error) patch.signature_url=path; }catch(e){} }
+  }
   const u=window._usU||{}; const fromLbl=u.id?uWhereLbl(u):'';
   const r=await sb.from('tool_units').update(patch).eq('id',unitId); if(r.error){ if($('us-msg'))$('us-msg').textContent='Eroare: '+(r.error.message); return; }
   try{ await sb.from('tool_unit_logs').insert({tenant_id:S.tenant,unit_id:unitId,tool_id:u.tool_id||null,action:'move',from_label:fromLbl,to_label:uLabelFromVal(v,holder),by_name:(S.uname||S.email||'—')}); }catch(e){}
@@ -835,7 +864,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v139', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v140', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
