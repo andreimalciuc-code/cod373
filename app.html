@@ -1285,7 +1285,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v140';
+const APP_VERSION='cod373-v141';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -4263,10 +4263,10 @@ function fdraftSave(){ if(!formCtx||formCtx.id||!formCtx.key) return; const m=MO
   const d={}; m.fields.forEach(f=>{ if(f.type==='photo') return; const el=$('f-'+f.key); if(!el) return; d[f.key]=(f.type==='checkbox')?el.checked:el.value; });
   if(m.lineItems) d._lines=formCtx.lines;
   const has=Object.keys(d).some(k=>k!=='_lines'&&d[k]!==''&&d[k]!==false&&d[k]!=null);
-  try{ if(has) localStorage.setItem(fdraftKey(formCtx.key),JSON.stringify(d)); else localStorage.removeItem(fdraftKey(formCtx.key)); }catch(e){}
+  try{ if(has) localStorage.setItem(fdraftKey(formCtx.key),JSON.stringify({t:Date.now(),v:d})); else localStorage.removeItem(fdraftKey(formCtx.key)); }catch(e){}
 }
 function fdraftClear(key){ try{ localStorage.removeItem(fdraftKey(key)); }catch(e){} }
-function fdraftGet(key){ try{ const r=localStorage.getItem(fdraftKey(key)); return r?JSON.parse(r):null; }catch(e){ return null; } }
+function fdraftGet(key){ try{ const r=localStorage.getItem(fdraftKey(key)); if(!r) return null; const o=JSON.parse(r); if(o&&o.t&&o.v){ if(Date.now()-o.t>2*86400000){ localStorage.removeItem(fdraftKey(key)); return null; } return o.v; } return o; }catch(e){ return null; } }
 function fdraftDiscard(){ const k=formCtx&&formCtx.key; if(k) fdraftClear(k); const b=$('draft-banner'); if(b) b.remove(); }
 /* ──── REȚETĂ de materiale pe serviciu ──── */
 function recipeMatch(i){ const r=formCtx.recipe[i]; const mm=(formCtx.materials||[]).find(x=>x.name===r.material_name); if(mm){ r.material_id=mm.id; r.unit=mm.unit||r.unit; r._price=+mm.last_price||0; } else { r.material_id=null; r._price=0; } }
@@ -4384,7 +4384,7 @@ async function openForm(key,row,preset){
   if(!row && !preset){ const dr=fdraftGet(key); if(dr){
     m.fields.forEach(f=>{ if(f.type==='photo'||dr[f.key]==null) return; const el=$('f-'+f.key); if(!el) return; if(f.type==='checkbox') el.checked=!!dr[f.key]; else el.value=dr[f.key]; });
     if(m.lineItems && dr._lines && dr._lines.length){ formCtx.lines=dr._lines; renderLines(); }
-    const msg=$('form-msg'); if(msg) msg.insertAdjacentHTML('beforebegin','<div id="draft-banner" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><button class="btn-ghost" style="padding:.2rem .5rem" onclick="fdraftDiscard()">🗑 Renunță</button></div>');
+    const msg=$('form-msg'); if(msg) msg.insertAdjacentHTML('beforebegin','<div id="draft-banner" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Ai un formular neterminat de data trecută — l-am completat înapoi. Continuă sau apasă „Renunță" ca să începi gol.</span><button class="btn-ghost" style="padding:.2rem .5rem;white-space:nowrap" onclick="fdraftDiscard()">🗑 Renunță</button></div>');
   }}
   // SKU generat automat (doar la adăugare, dacă e gol)
   if(!row && m.autoCode){ const el=$('f-'+m.autoCode.field); if(el && !el.value){ try{ const { count }=await sb.from(m.table).select('id',{count:'exact',head:true}); el.value=m.autoCode.prefix+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){} } }
