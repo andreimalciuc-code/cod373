@@ -319,6 +319,7 @@
       <div class="top-actions">
         <div id="topclock" class="noi18n" onclick="openCalendar()" title="Deschide calendarul (sărbători legale)" style="font-size:.78rem;color:var(--muted);font-weight:600;white-space:nowrap;margin-right:.3rem;cursor:pointer"></div>
         <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
+        <button class="btn-ghost" id="hol-btn" onclick="openCalendar()" title="Următoarea sărbătoare legală" style="display:none">🎉</button>
         <button class="btn-ghost" id="bday-btn" onclick="openBirthdays()" title="Zile de naștere apropiate" style="position:relative;display:none">🎂<span id="bday-badge" style="position:absolute;top:-4px;right:-4px;background:var(--accent);color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:0 .3rem;display:none"></span></button>
         <button class="btn-ghost" id="guide-btn" onclick="openModuleGuide(curModuleKey())" title="Ghid de utilizare">❓</button>
         <button class="btn-ghost" id="support-btn" onclick="openSupport()" title="Suport / Ajutor">🛟</button>
@@ -1533,7 +1534,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v161';
+const APP_VERSION='cod373-v162';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2611,7 +2612,8 @@ async function leaveReport(){
   if(lr.error){ toast('Eroare: '+esc(lr.error.message)); return; }
   const used={}; (lr.data||[]).forEach(r=>{ const k=r.employee_id; const u=(used[k]=used[k]||{concediu:0,medical:0,alt:0}); const d=+(r.days!=null?r.days:(daysBetween(r.start_date,r.end_date)||0))||0; if(r.kind==='concediu') u.concediu+=d; else if(r.kind==='medical') u.medical+=d; else u.alt+=d; });
   const emps=(er.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
-  const body=emps.length?emps.map(e=>{ const u=used[e.id]||{concediu:0,medical:0,alt:0}; const ent=(e.annual_leave_days!=null&&e.annual_leave_days!=='')?+e.annual_leave_days:null; const rem=ent!=null?(ent-u.concediu):null;
+  const defAL=(state.firm&&state.firm.automations&&state.firm.automations.default_annual_leave);
+  const body=emps.length?emps.map(e=>{ const u=used[e.id]||{concediu:0,medical:0,alt:0}; const ent=(e.annual_leave_days!=null&&e.annual_leave_days!=='')?+e.annual_leave_days:(defAL!=null?+defAL:null); const rem=ent!=null?(ent-u.concediu):null;
     return '<tr><td class="tname">'+esc(e.full_name)+'</td><td style="text-align:right">'+(ent!=null?ent:'—')+'</td><td style="text-align:right">'+u.concediu+'</td><td style="text-align:right'+(rem!=null&&rem<0?';color:var(--red)':'')+'"><b>'+(rem!=null?rem:'—')+'</b></td><td style="text-align:right">'+u.medical+'</td><td style="text-align:right">'+u.alt+'</td></tr>'; }).join(''):'<tr><td colspan="6" style="color:var(--muted);padding:1rem">'+esc(C373t('Niciun angajat activ.'))+'</td></tr>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:620px"><div class="modal-head"><h3>📊 '+esc(C373t('Concedii pe angajat'))+' — '+yr+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(C373t('Angajat'))+'</th><th style="text-align:right">'+esc(C373t('Drept (zile)'))+'</th><th style="text-align:right">'+esc(C373t('Folosit'))+'</th><th style="text-align:right">'+esc(C373t('Rămas'))+'</th><th style="text-align:right">Medical</th><th style="text-align:right">'+esc(C373t('Altele'))+'</th></tr></thead><tbody>'+body+'</tbody></table></div><div style="font-size:.74rem;color:var(--muted);margin-top:.5rem">'+esc(C373t('„Rămas" = dreptul anual − concediul de odihnă folosit. Setează dreptul în fișa angajatului.'))+'</div></div></div></div>'; }
 function clockText(){ const tz=coTz(); const lang=(window.C373lang&&C373lang())||'ro'; const loc={ro:'ro-RO',ru:'ru-RU',de:'de-DE',en:'en-GB'}[lang]||'ro-RO';
@@ -2635,7 +2637,9 @@ async function loadBirthdays(){ const out=[];
     if(cob){ const n=bdayNext(cob); if(n){ const nm=(state.firm.automations.brand_name||state.firm.name||'Compania'); out.push({name:nm,role:'companie',icon:'🏢',bd:cob,days:n.days,turning:n.turning}); } }
   }catch(e){}
   out.sort((a,b)=>a.days-b.days); state.birthdays=out;
-  const btn=$('bday-btn'); if(btn){ if(out.length){ btn.style.display=''; const n=out[0]; const fn=String(n.name).split(' ')[0].slice(0,14); const dm=String(n.bd).slice(8,10)+'.'+String(n.bd).slice(5,7); const lbl=n.days===0?(C373t('Azi')+': '+fn+' 🎉'):(fn+' · '+dm+' · '+(n.days===1?C373t('mâine'):(n.days+'z'))); btn.innerHTML='🎂 <span style="font-weight:600">'+esc(lbl)+'</span>'; btn.title=C373t('Zile de naștere apropiate'); } else { btn.style.display='none'; btn.innerHTML='🎂'; } } }
+  const btn=$('bday-btn'); if(btn){ if(out.length){ btn.style.display=''; const n=out[0]; const fn=String(n.name).split(' ')[0].slice(0,14); const s=String(n.bd); const dmy=s.slice(8,10)+'.'+s.slice(5,7)+'.'+s.slice(0,4); const lbl=n.days===0?(C373t('Azi')+': '+fn+' ('+dmy+') 🎉'):(fn+' · '+dmy+' · '+(n.days===1?C373t('mâine'):(n.days+'z'))); btn.innerHTML='🎂 <span style="font-weight:600">'+esc(lbl)+'</span>'; btn.title=C373t('Zile de naștere apropiate'); } else { btn.style.display='none'; btn.innerHTML='🎂'; } }
+  renderHolidayChip(); }
+function renderHolidayChip(){ const btn=$('hol-btn'); if(!btn) return; let nh; try{ nh=nextHoliday(); }catch(e){ nh=null; } if(!nh){ btn.style.display='none'; return; } btn.style.display=''; const dm=nh.date.slice(8,10)+'.'+nh.date.slice(5,7); const w=nh.days===0?C373t('astăzi'):(nh.days===1?C373t('mâine'):(nh.days+'z')); const nm=String(nh.name).split(' ').slice(0,2).join(' '); btn.innerHTML='🎉 <span style="font-weight:600">'+esc(nm)+' · '+dm+' · '+w+'</span>'; btn.title='🎉 '+nh.name+' — '+H_fmtNH(nh); }
 function openBirthdays(){
   const when=p=> p.days===0?('🎉 '+C373t('astăzi')):(p.days===1?C373t('mâine'):(C373t('în')+' '+p.days+' '+C373t('zile')));
   const roleT=r=>C373t(r==='angajat'?'Angajat':r==='client'?'Client':r==='companie'?'Compania':'Subcontractor');
@@ -3794,6 +3798,7 @@ async function renderSetari(){
     +'<div class="field"><label>Denumirea firmei (persoana juridică) *</label><input id="set-name" value="'+esc(f.name||'')+'"/></div>'
     +'<div class="field"><label>Marcă comercială (opțional) <span class="hint-i" title="Denumirea comercială sub care lucrezi. Pe facturi/devize apare mare, cu mențiunea „marca comercială a [denumirea juridică]".">ⓘ</span></label><input id="set-brand" value="'+esc(au.brand_name||'')+'" placeholder="ex: BuildPro"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Dacă o completezi, pe documente apare marca, urmată de „marca comercială a '+esc(f.name||'persoana juridică')+'".</div></div>'
     +'<div class="field"><label>🎂 Ziua companiei (data înființării)</label><input id="set-cobday" type="date" value="'+esc(au.company_birthday||'')+'"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Apare în lista „🎂 Zile de naștere" din bara de sus.</div></div>'
+    +'<div class="field"><label>🏖️ Drept concediu anual implicit (zile)</label><input id="set-defleave" type="number" step="any" value="'+esc(au.default_annual_leave!=null?au.default_annual_leave:'')+'" placeholder="ex: 28"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Se completează automat la angajații noi și se folosește ca implicit în raportul de concedii (poți seta altă valoare pe fiecare angajat).</div></div>'
     +'<div class="row-2"><div class="field"><label><span id="set-idno-lbl">'+esc((COUNTRY_PRESETS[f.country||'MD']||{}).idLabel||'IDNO / Cod fiscal')+'</span></label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
     +'<div class="field"><label>Telefon</label><input id="set-phone" value="'+esc(f.phone||'')+'"/></div></div>'
     +'<div class="field"><label>Adresă</label><input id="set-addr" value="'+esc(f.address||'')+'"/></div>'
@@ -3931,6 +3936,7 @@ async function saveSetari(){
   const au=Object.assign({}, state.firm.automations||{});
   if($('set-brand')) au.brand_name=($('set-brand').value||'').trim()||null;
   if($('set-cobday')) au.company_birthday=$('set-cobday').value||null;
+  if($('set-defleave')) au.default_annual_leave=($('set-defleave').value!==''?+$('set-defleave').value:null);
   if($('set-tz')) au.tz=$('set-tz').value||null;
   if($('set-datefmt')) au.date_fmt=$('set-datefmt').value||null;
   if($('set-wstart')) au.work_start=$('set-wstart').value||null;
@@ -4774,7 +4780,8 @@ async function openForm(key,row,preset){
   let body='<div id="form-msg"></div>';
   // pack fields in pairs where short
   m.fields.filter(f=>!f.secure||FINANCE_ROLES.includes(state.role)).forEach(f=>{
-    const v = row && row[f.key]!=null ? row[f.key] : (f.default!=null?f.default:'');
+    let v = row && row[f.key]!=null ? row[f.key] : (f.default!=null?f.default:'');
+    if(!row && f.key==='annual_leave_days' && (v===''||v==null)){ const da=state.firm&&state.firm.automations&&state.firm.automations.default_annual_leave; if(da!=null) v=da; }
     body+='<div class="field"><label>'+esc(f.label)+(f.required?' *':'')+(f.hint?' <span class="hint-i" title="'+esc(f.hint)+'">ⓘ</span>':'')+'</label>';
     if(f.type==='textarea') body+='<textarea id="f-'+f.key+'">'+esc(v)+'</textarea>';
     else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="f-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
