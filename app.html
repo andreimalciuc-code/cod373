@@ -1221,7 +1221,7 @@ function navDrop(ev,targetKey){ ev.preventDefault(); ev.stopPropagation(); const
   const p=czPrefs(); let cur=Array.from(document.querySelectorAll('#nav .nav-item')).map(n=>n.dataset.view).filter(Boolean);
   cur=cur.filter(k=>k!==from); const ti=cur.indexOf(targetKey); cur.splice(ti<0?cur.length:ti,0,from);
   p.order=cur; czSave(p); buildNav(); }
-function navResetOrder(){ const p=czPrefs(); delete p.order; czSave(p); buildNav(); toast('✅ '+tz('Revino la meniul grupat')); }
+function navResetOrder(){ if(!confirm(tz('Revii la meniul grupat implicit?\n\nOrdinea ta personalizată a modulelor se va șterge, iar meniul revine pe grupuri (⭐ Favorite + secțiuni). Poți rearanja oricând la loc prin glisare.'))) return; const p=czPrefs(); delete p.order; czSave(p); buildNav(); toast('✅ '+tz('Revino la meniul grupat')); }
 /* ── Avatar + semnătură (cross-device, tabel user_prefs) ── */
 async function loadUserPrefs(){
   try{ const { data }=await sb.from('user_prefs').select('avatar_url,signature_url,prefs').eq('tenant_id',state.tenant).eq('user_id',state.session.user.id).maybeSingle(); state.uprefs=data||{}; }catch(e){ state.uprefs={}; }
@@ -1464,7 +1464,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v154';
+const APP_VERSION='cod373-v155';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }

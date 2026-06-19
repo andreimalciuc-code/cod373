@@ -39,6 +39,7 @@
     'Revino la meniul grupat':{ru:'Вернуть меню по группам',de:'Zurück zum gruppierten Menü',en:'Back to grouped menu'},
     'Trage ca să rearanjezi':{ru:'Перетащите для перестановки',de:'Ziehen zum Neuordnen',en:'Drag to reorder'},
     '🖱️ Trage modulele direct în bara din stânga ca să le rearanjezi.':{ru:'🖱️ Перетаскивайте модули прямо в левой панели, чтобы изменить порядок.',de:'🖱️ Ziehe die Module direkt in der linken Leiste, um sie neu zu ordnen.',en:'🖱️ Drag modules directly in the left bar to reorder them.'},
+    'Revii la meniul grupat implicit?\n\nOrdinea ta personalizată a modulelor se va șterge, iar meniul revine pe grupuri (⭐ Favorite + secțiuni). Poți rearanja oricând la loc prin glisare.':{ru:'Вернуться к меню по группам по умолчанию?\n\nВаш персональный порядок модулей будет удалён, а меню вернётся к группам (⭐ Избранное + разделы). Вы всегда можете снова переставить перетаскиванием.',de:'Zum gruppierten Standardmenü zurückkehren?\n\nDeine persönliche Modulreihenfolge wird gelöscht und das Menü kehrt zu den Gruppen zurück (⭐ Favoriten + Abschnitte). Du kannst jederzeit per Ziehen neu anordnen.',en:'Return to the default grouped menu?\n\nYour custom module order will be cleared and the menu returns to groups (⭐ Favorites + sections). You can rearrange again anytime by dragging.'},
     'Favorit':{ru:'В избранное',de:'Favorit',en:'Favorite'},
     'Ascunde':{ru:'Скрыть',de:'Ausblenden',en:'Hide'},
     'Salvat':{ru:'Сохранено',de:'Gespeichert',en:'Saved'},
