@@ -1354,6 +1354,23 @@ function pzInitMedia(){
   if(sp&&up.signature_url){ sb.storage.from('docs').createSignedUrl(up.signature_url,86400).then(({data})=>{ const e=document.getElementById('pz-sig-prev'); if(e&&data&&data.signedUrl){ e.innerHTML='<img src="'+data.signedUrl+'" style="max-height:70px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px" title="'+esc(tz('Semnătura mea'))+'">'; } }); }
   pzSigInit();
 }
+/* ════ NOTIFICĂRI PUSH (Web Push) ════ */
+const VAPID_PUBLIC='BP-pbvgwlGRCq-MHlsDb3lXLC97nLOw9DmrePoNVB80QeyW9eZ5zpWPPpVMTs1Hrjlq5mL4Dv73lYnT3zBBfq-k';
+function _b64ToU8(b){ const pad='='.repeat((4-b.length%4)%4); const s=(b+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(s); const u=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++) u[i]=raw.charCodeAt(i); return u; }
+function pushSupported(){ return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window); }
+async function pushRefreshBtn(){ const b=$('pz-push'); if(!b) return; if(!pushSupported()){ b.textContent='🔕 '+tz('Indisponibil pe acest dispozitiv'); b.disabled=true; return; }
+  try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); if(sub){ b.textContent='🔔 '+tz('Activate — dezactivează'); b.onclick=pushUnsubscribe; } else { b.textContent='🔔 '+tz('Activează notificările push'); b.onclick=pushSubscribe; } }catch(e){} }
+async function pushSubscribe(){ try{
+  if(!pushSupported()){ toast(tz('Dispozitivul nu suportă notificări push.')); return; }
+  const perm=await Notification.requestPermission(); if(perm!=='granted'){ toast(tz('Permisiune refuzată.')); return; }
+  const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription();
+  if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_b64ToU8(VAPID_PUBLIC)});
+  const j=sub.toJSON()||{}; const keys=j.keys||{};
+  const r=await sb.from('push_subscriptions').upsert({tenant_id:state.tenant,user_id:state.session.user.id,endpoint:sub.endpoint,p256dh:keys.p256dh||null,auth:keys.auth||null},{onConflict:'endpoint'});
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+  toast('🔔 '+tz('Notificări push activate.')); pushRefreshBtn();
+}catch(e){ toast('Eroare: '+esc(e.message||e)); } }
+async function pushUnsubscribe(){ try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} await sub.unsubscribe(); } toast(tz('Notificări push dezactivate.')); pushRefreshBtn(); }catch(e){} }
 function openPersonalize(){
   const p=czPrefs(); const acc=p.accent||0;
   const sw=PZ_ACCENTS.map((a,i)=>'<div class="pz-swatch'+(i===acc?' on':'')+'" title="'+esc(a[2])+'" style="background:'+a[0]+';color:'+a[0]+'" onclick="pzSetAccent('+i+')"></div>').join('');
@@ -1393,8 +1410,12 @@ function openPersonalize(){
     +'<div id="pz-sig-prev" style="margin-bottom:.4rem"></div>'
     +'<canvas id="pz-sign" width="480" height="120" style="width:100%;border:1px dashed var(--line);border-radius:10px;background:#fff;touch-action:none;cursor:crosshair"></canvas>'
     +'<div style="display:flex;gap:.5rem;margin-top:.4rem"><button class="btn-ghost" onclick="pzSigClear()">🧹 '+esc(tz('Șterge'))+'</button><button class="btn-primary" onclick="pzSigSave()">💾 '+esc(tz('Salvează'))+'</button></div>'
+    +'<hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0">'
+    +'<div style="font-weight:700;margin:.2rem 0 .2rem">🔔 '+esc(tz('Notificări push'))+'</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Primește alerte pentru follow-up clienți chiar și când aplicația e închisă.'))+'</div>'
+    +'<button id="pz-push" class="btn-ghost" onclick="pushSubscribe()">🔔 '+esc(tz('Activează notificările push'))+'</button>'
     +'</div></div></div>';
-  setTimeout(pzInitMedia,0);
+  setTimeout(pzInitMedia,0); setTimeout(pushRefreshBtn,0);
 }
 function pzSetTheme(v){ const p=czPrefs(); p.theme=v; czSave(p); applyPrefs(); openPersonalize(); }
 function pzSetAccent(i){ const p=czPrefs(); p.accent=i; czSave(p); applyPrefs(); openPersonalize(); }
@@ -1549,7 +1570,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v169';
+const APP_VERSION='cod373-v170';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
