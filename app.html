@@ -786,6 +786,8 @@ const MODULES = {
       {key:'valid_until',label:'Valabil până',type:'date'} ],
     lineItems:{table:'estimate_items',parentKey:'estimate_id',totals:['subtotal','vat_total','total']} },
 
+  calculator:{ title:'Calculator proiect', sub:'Din parametrii casei → cantități + deviz rapid (automat).', icon:'🏠', group:'Finanțe', custom:true },
+
   facturi:{ title:'Facturi', sub:'Facturi emise + e-Factura.', icon:'🧾', group:'Finanțe', table:'invoices',
     newLabel:'Factură nouă', printable:'FACTURĂ FISCALĂ', efactura:true, pageEditor:'factura.html', orderBy:{col:'created_at',asc:false},
     enumFilter:{key:'inv_type', all:'Toate tipurile', map:{normal:'Normală',abschlag:'Abschlag',schluss:'Schluss'}},
@@ -1431,7 +1433,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1570,7 +1572,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v171';
+const APP_VERSION='cod373-v172';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2854,6 +2856,97 @@ async function crmImportRun(){ const csv=window._crmCsv; if(!csv){ closeModal();
   const rows=objs.map(o=>({tenant_id:state.tenant,name:o.name,type:(o.type==='company'||o.type==='companie'?'company':'person'),phone:o.phone||null,email:o.email||null,address:o.address||null,contact:o.contact||null,tags:o.tags||null,source:o.source||null,value:(o.value!=null?o.value:null),stage:(o.stage||st),pipeline:pid,stage_since:today}));
   let done=0; try{ for(let i=0;i<rows.length;i+=200){ const r=await sb.from('clients').insert(rows.slice(i,i+200)); if(r.error) throw r.error; done+=Math.min(200,rows.length-i); } }catch(e){ toast('Eroare la import ('+done+' adăugați): '+esc(e.message)); }
   window._crmCsv=null; closeModal(); toast('✅ '+done+' '+C373t('clienți importați')); renderClienti(); }
+/* ════ 🏠 CALCULATOR PROIECT / DEVIZ RAPID ════ */
+const CALC_DEF={ L:10, W:8, H:2.8, N:1, te:0.30, zid:'bca', li:0, ti:0.12, fb:0.4, fh:0.9, acop:'sarpanta', coef:1.25, nf:8, sf:1.8, nue:1, sue:2.0, nui:6, tenc_int:1, tenc_ext:1, glet:1, sapa:1, izo:1, pard:1 };
+const CALC_PRICES_DEF={ fundatie:3500, zid_bca:2500, zid_caramida:2800, pereti_int:2200, plansee:900, sarpanta:750, terasa:650, tenc_int:180, tenc_ext:220, glet:120, sapa:150, izolatie:350, pardoseli:400, fereastra:4500, usa_ext:7000, usa_int:2500 };
+function calcPrices(){ const s=(state.firm&&state.firm.automations&&state.firm.automations.calc_prices)||{}; return Object.assign({},CALC_PRICES_DEF,s); }
+let _calc={params:null, prices:null, items:[]};
+function calcCompute(p){ const items=[]; const r2=x=>Math.round((+x||0)*100)/100;
+  const P=2*(p.L+p.W), Sc=p.L*p.W, Sd=Sc*p.N, Su=Sd*0.82;
+  const li=p.li>0?p.li:r2(P*0.8);
+  const golExt=p.nf*p.sf+p.nue*p.sue;
+  const ariaExt=Math.max(0,P*p.H*p.N-golExt);
+  const ariaInt=Math.max(0,li*p.H*p.N-p.nui*1.8);
+  const tencInt=(2*li+P)*p.H*p.N*0.9;
+  const add=(cat,name,qty,unit,key)=>{ if(qty>0) items.push({cat:cat,name:name,qty:r2(qty),unit:unit,key:key}); };
+  add('Structură','Fundație beton armat',(P+li)*p.fb*p.fh,'m³','fundatie');
+  add('Structură',p.zid==='caramida'?'Zidărie exterioară (cărămidă)':'Zidărie exterioară (BCA)',ariaExt*p.te,'m³',p.zid==='caramida'?'zid_caramida':'zid_bca');
+  add('Structură','Pereți interiori',ariaInt*p.ti,'m³','pereti_int');
+  add('Structură','Planșee beton armat',Sc*p.N,'m²','plansee');
+  if(p.acop==='terasa') add('Acoperiș','Acoperiș terasă (hidro+termo)',Sc,'m²','terasa');
+  else add('Acoperiș','Șarpantă + învelitoare',Sc*p.coef,'m²','sarpanta');
+  if(p.tenc_int) add('Finisaje','Tencuieli interioare',tencInt,'m²','tenc_int');
+  if(p.tenc_ext) add('Finisaje','Tencuieli exterioare',ariaExt,'m²','tenc_ext');
+  if(p.glet) add('Finisaje','Glet + zugrăveli',tencInt+Sd,'m²','glet');
+  if(p.sapa) add('Finisaje','Șapă',Su,'m²','sapa');
+  if(p.izo) add('Finisaje','Termoizolație fațadă',ariaExt,'m²','izolatie');
+  if(p.pard) add('Finisaje','Pardoseli finisaj',Su,'m²','pardoseli');
+  add('Tâmplărie','Ferestre',p.nf,'buc','fereastra');
+  add('Tâmplărie','Uși exterioare',p.nue,'buc','usa_ext');
+  add('Tâmplărie','Uși interioare',p.nui,'buc','usa_int');
+  return items;
+}
+const _CF_NUM=[['L','Lungime exterioară','m'],['W','Lățime exterioară','m'],['H','Înălțime nivel','m'],['N','Niveluri','—'],['te','Grosime zid exterior','m'],['ti','Grosime pereți interiori','m'],['li','Lungime pereți interiori (0=auto)','m'],['fb','Lățime fundație','m'],['fh','Adâncime fundație','m'],['coef','Coef. pantă acoperiș','×'],['nf','Nr. ferestre','buc'],['sf','Suprafață medie fereastră','m²'],['nue','Nr. uși exterioare','buc'],['sue','Suprafață ușă','m²'],['nui','Nr. uși interioare','buc']];
+const _CF_CHK=[['tenc_int','Tencuieli interioare'],['tenc_ext','Tencuieli exterioare'],['glet','Glet + zugrăveli'],['sapa','Șapă'],['izo','Termoizolație fațadă'],['pard','Pardoseli finisaj']];
+function renderCalculator(){
+  if(!_calc.params) _calc.params=Object.assign({},CALC_DEF);
+  if(!_calc.prices) _calc.prices=calcPrices();
+  const p=_calc.params;
+  const numFld=(k,l,u)=>'<div class="field" style="margin:0"><label style="font-size:.76rem">'+esc(l)+(u&&u!=='—'?(' ('+u+')'):'')+'</label><input id="cp-'+k+'" type="number" step="any" value="'+esc(p[k])+'" onchange="calcRun()" style="padding:.4rem;border:1px solid var(--line);border-radius:8px;width:100%"/></div>';
+  const chk=(k,l)=>'<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.82rem;margin-right:.8rem"><input type="checkbox" id="cp-'+k+'" '+(p[k]?'checked':'')+' onchange="calcRun()"/> '+esc(l)+'</label>';
+  $('content').innerHTML='<div class="seg"><b>🏠 Calculator proiect / deviz rapid</b><span style="flex:1"></span>'
+    +'<button class="btn-ghost" onclick="calcAI()">🤖 Completează din descriere</button>'
+    +'<button class="btn-ghost" onclick="calcSavePrices()">💾 Salvează prețurile</button>'
+    +'<button class="btn-primary" onclick="calcSaveDeviz()">📋 Salvează ca deviz</button></div>'
+    +'<div class="panel" style="margin-bottom:1rem"><div class="panel-head"><h3>Parametrii casei</h3></div><div style="padding:1rem 1.2rem">'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem">'+_CF_NUM.map(f=>numFld(f[0],f[1],f[2])).join('')
+    +'<div class="field" style="margin:0"><label style="font-size:.76rem">Tip zidărie</label><select id="cp-zid" onchange="calcRun()" style="padding:.4rem;border:1px solid var(--line);border-radius:8px;width:100%"><option value="bca" '+(p.zid==='bca'?'selected':'')+'>BCA</option><option value="caramida" '+(p.zid==='caramida'?'selected':'')+'>Cărămidă</option></select></div>'
+    +'<div class="field" style="margin:0"><label style="font-size:.76rem">Tip acoperiș</label><select id="cp-acop" onchange="calcRun()" style="padding:.4rem;border:1px solid var(--line);border-radius:8px;width:100%"><option value="sarpanta" '+(p.acop==='sarpanta'?'selected':'')+'>Șarpantă</option><option value="terasa" '+(p.acop==='terasa'?'selected':'')+'>Terasă</option></select></div>'
+    +'</div><div style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.6rem">'+_CF_CHK.map(f=>chk(f[0],f[1])).join('')+'</div></div></div>'
+    +'<div class="panel"><div class="panel-head"><h3>📋 Deviz estimativ</h3><span style="font-size:.78rem;color:var(--muted)">prețuri unitare editabile (lei la cheie / UM)</span></div><div id="calc-res"></div></div>';
+  calcRun();
+}
+function calcRun(){ const p=_calc.params||(_calc.params=Object.assign({},CALC_DEF));
+  _CF_NUM.forEach(f=>{ const e=$('cp-'+f[0]); if(e) p[f[0]]=+e.value||0; });
+  ['zid','acop'].forEach(k=>{ const e=$('cp-'+k); if(e) p[k]=e.value; });
+  _CF_CHK.forEach(f=>{ const e=$('cp-'+f[0]); if(e) p[f[0]]=e.checked?1:0; });
+  _calc.items=calcCompute(p);
+  const cats={}; _calc.items.forEach((it,i)=>{ it._i=i; (cats[it.cat]=cats[it.cat]||[]).push(it); });
+  let body='';
+  Object.keys(cats).forEach(cat=>{ body+='<tr><td colspan="5" style="background:var(--bg);font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)">'+esc(cat)+'</td></tr>';
+    cats[cat].forEach(it=>{ const pr=_calc.prices[it.key]||0; body+='<tr><td>'+esc(it.name)+'</td>'
+      +'<td style="text-align:right"><input type="number" step="any" value="'+it.qty+'" oninput="calcQty('+it._i+',this.value)" style="width:90px;text-align:right;padding:.25rem;border:1px solid var(--line);border-radius:6px"/></td>'
+      +'<td style="color:var(--muted)">'+esc(it.unit)+'</td>'
+      +'<td style="text-align:right"><input type="number" step="any" value="'+pr+'" oninput="calcPrice(\''+it.key+'\',this.value)" style="width:100px;text-align:right;padding:.25rem;border:1px solid var(--line);border-radius:6px"/></td>'
+      +'<td id="ct-'+it._i+'" style="text-align:right;font-weight:600;white-space:nowrap">'+money(it.qty*pr)+'</td></tr>'; }); });
+  $('calc-res').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Lucrare</th><th style="text-align:right">Cantitate</th><th>UM</th><th style="text-align:right">Preț unitar</th><th style="text-align:right">Total</th></tr></thead><tbody>'+body+'</tbody>'
+    +'<tfoot><tr style="border-top:2px solid var(--line)"><td colspan="4" style="text-align:right">Subtotal</td><td id="calc-sub" style="text-align:right;font-weight:700"></td></tr>'
+    +'<tr><td colspan="4" style="text-align:right;color:var(--muted)">TVA</td><td id="calc-vat" style="text-align:right"></td></tr>'
+    +'<tr style="font-size:1.05rem"><td colspan="4" style="text-align:right;font-weight:800">TOTAL</td><td id="calc-total" style="text-align:right;font-weight:800"></td></tr></tfoot></table></div>';
+  calcTotals();
+}
+function calcVat(){ return (state.firm&&state.firm.vat_rate!=null)?+state.firm.vat_rate:20; }
+function calcTotals(){ let sub=0; _calc.items.forEach(it=>{ const pr=_calc.prices[it.key]||0; const t=(+it.qty||0)*pr; const c=$('ct-'+it._i); if(c) c.textContent=money(t); sub+=t; }); const vat=sub*calcVat()/100; const set=(id,v)=>{ const e=$(id); if(e) e.textContent=money(v); }; set('calc-sub',sub); set('calc-vat',vat); set('calc-total',sub+vat); _calc._sub=sub; _calc._vat=vat; }
+function calcQty(i,v){ if(_calc.items[i]){ _calc.items[i].qty=+v||0; calcTotals(); } }
+function calcPrice(key,v){ _calc.prices[key]=+v||0; calcTotals(); }
+async function calcSavePrices(){ const au=Object.assign({},state.firm.automations||{}); au.calc_prices=_calc.prices; try{ const r=await sb.from('tenants').update({automations:au}).eq('id',state.tenant); if(r.error) throw r.error; state.firm.automations=au; toast('💾 Prețuri salvate (devin implicite).'); }catch(e){ toast('Eroare: '+esc(e.message)); } }
+async function calcSaveDeviz(){ if(!_calc.items.length){ toast('Nimic de salvat.'); return; }
+  const vat=calcVat(); const sub=_calc._sub||0;
+  try{ const num='CALC-'+coToday().replace(/-/g,'')+'-'+String(Date.now()).slice(-4);
+    const er=await sb.from('estimates').insert({tenant_id:state.tenant,number:num,status:'draft',subtotal:Math.round(sub*100)/100,vat_total:Math.round(sub*vat/100*100)/100,total:Math.round(sub*(1+vat/100)*100)/100}).select('id').single();
+    if(er.error) throw er.error;
+    const rows=_calc.items.map(it=>({tenant_id:state.tenant,estimate_id:er.data.id,name:it.name+' ('+it.unit+')',qty:it.qty,unit:it.unit,unit_price:(_calc.prices[it.key]||0),vat_rate:vat}));
+    const ir=await sb.from('estimate_items').insert(rows); if(ir.error) throw ir.error;
+    toast('📋 Deviz creat ('+num+'). Îl găsești în Devize.'); if(confirm('Deviz creat. Deschizi modulul Devize?')) go('devize');
+  }catch(e){ toast('Eroare: '+esc(e.message)); } }
+async function calcAI(){ const desc=prompt('Descrie proiectul (ex: „casă P+1, 10×12 m, ziduri BCA 30 cm, acoperiș în 4 ape, 8 ferestre, 1 ușă exterioară, 6 uși interioare"):'); if(!desc) return;
+  toast('🤖 Interpretez…');
+  try{ const prompt2='Ești asistent de devize în construcții. Din descrierea de mai jos extrage parametrii unei case și răspunde DOAR cu un obiect JSON valid (fără text în plus), cu cheile (toate opționale, doar cele deduse): L,W (m, dimensiuni exterioare), H (înălțime nivel m), N (niveluri), te (grosime zid ext m), ti, li, zid ("bca"|"caramida"), acop ("sarpanta"|"terasa"), coef, nf (nr ferestre), sf, nue, sue, nui, tenc_int,tenc_ext,glet,sapa,izo,pard (0/1). Descriere: '+desc;
+    const d=await aiCall('chat', prompt2);
+    const txt=(d&&(d.reply||d.text||d.output||d.message))||''; const m=String(txt).match(/\{[\s\S]*\}/); if(!m) throw new Error('Nu am putut interpreta răspunsul.');
+    const obj=JSON.parse(m[0]); Object.keys(obj).forEach(k=>{ if(k in CALC_DEF && obj[k]!=null && obj[k]!=='') _calc.params[k]=(typeof CALC_DEF[k]==='number'?+obj[k]:obj[k]); });
+    renderCalculator(); toast('🤖 Am completat parametrii — verifică-i și ajustează.');
+  }catch(e){ toast('AI: '+esc(e.message||e)+' — completează manual.'); } }
 async function crmFeed(){
   const { data, error }=await sb.from('client_activities').select('kind,body,due_date,done,created_at,created_by,client_id,clients(name)').order('created_at',{ascending:false}).limit(60);
   if(error){ toast('Eroare: '+esc(error.message)); return; }
