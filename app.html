@@ -1468,9 +1468,10 @@ function aiKey(){ return (state.firm&&state.firm.automations&&state.firm.automat
 function aiModel(){ return (state.firm&&state.firm.automations&&state.firm.automations.ai_model)||'claude-haiku-4-5'; }
 function aiLang(){ try{ return localStorage.getItem('c373_lang')||'ro'; }catch(e){ return 'ro'; } }
 window._aiHist=[];
-async function aiCall(mode, input, history){
+async function aiCall(mode, input, history, image){
   const body={ mode:mode, lang:aiLang(), currency:CUR||'MDL', model:aiModel(), tenant_id:state.tenant, key:aiKey()||undefined };
   if(history) body.history=history; else body.input=input;
+  if(image) body.image=image;
   const { data, error }=await sb.functions.invoke('ai',{body:body});
   if(error) throw new Error(error.message||'proxy');
   if(!data||data.ok!==true){ const e=new Error((data&&(data.message||data.detail))||'Eroare AI'); e.code=data&&data.error; e.data=data; throw e; }
@@ -1572,7 +1573,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v172';
+const APP_VERSION='cod373-v173';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2895,6 +2896,7 @@ function renderCalculator(){
   const numFld=(k,l,u)=>'<div class="field" style="margin:0"><label style="font-size:.76rem">'+esc(l)+(u&&u!=='—'?(' ('+u+')'):'')+'</label><input id="cp-'+k+'" type="number" step="any" value="'+esc(p[k])+'" onchange="calcRun()" style="padding:.4rem;border:1px solid var(--line);border-radius:8px;width:100%"/></div>';
   const chk=(k,l)=>'<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.82rem;margin-right:.8rem"><input type="checkbox" id="cp-'+k+'" '+(p[k]?'checked':'')+' onchange="calcRun()"/> '+esc(l)+'</label>';
   $('content').innerHTML='<div class="seg"><b>🏠 Calculator proiect / deviz rapid</b><span style="flex:1"></span>'
+    +'<button class="btn-ghost" onclick="calcImport()">📄 Încarcă PDF/poză → AI</button>'
     +'<button class="btn-ghost" onclick="calcAI()">🤖 Completează din descriere</button>'
     +'<button class="btn-ghost" onclick="calcSavePrices()">💾 Salvează prețurile</button>'
     +'<button class="btn-primary" onclick="calcSaveDeviz()">📋 Salvează ca deviz</button></div>'
@@ -2919,6 +2921,13 @@ function calcRun(){ const p=_calc.params||(_calc.params=Object.assign({},CALC_DE
       +'<td style="color:var(--muted)">'+esc(it.unit)+'</td>'
       +'<td style="text-align:right"><input type="number" step="any" value="'+pr+'" oninput="calcPrice(\''+it.key+'\',this.value)" style="width:100px;text-align:right;padding:.25rem;border:1px solid var(--line);border-radius:6px"/></td>'
       +'<td id="ct-'+it._i+'" style="text-align:right;font-weight:600;white-space:nowrap">'+money(it.qty*pr)+'</td></tr>'; }); });
+  const ex=_calc.extra||[];
+  if(ex.length){ body+='<tr><td colspan="5" style="background:var(--bg);font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)">📄 Din document (AI)</td></tr>';
+    ex.forEach((it,i)=>{ body+='<tr><td>'+esc(it.name)+'</td>'
+      +'<td style="text-align:right"><input type="number" step="any" value="'+(+it.qty||0)+'" oninput="calcExtraQty('+i+',this.value)" style="width:90px;text-align:right;padding:.25rem;border:1px solid var(--line);border-radius:6px"/></td>'
+      +'<td style="color:var(--muted)">'+esc(it.unit||'buc')+'</td>'
+      +'<td style="text-align:right"><input type="number" step="any" value="'+(+it.price||0)+'" oninput="calcExtraPrice('+i+',this.value)" style="width:100px;text-align:right;padding:.25rem;border:1px solid var(--line);border-radius:6px"/></td>'
+      +'<td id="cet-'+i+'" style="text-align:right;font-weight:600;white-space:nowrap">'+money((+it.qty||0)*(+it.price||0))+' <button class="iconbtn danger" title="Scoate" onclick="calcExtraDel('+i+')">🗑</button></td></tr>'; }); }
   $('calc-res').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Lucrare</th><th style="text-align:right">Cantitate</th><th>UM</th><th style="text-align:right">Preț unitar</th><th style="text-align:right">Total</th></tr></thead><tbody>'+body+'</tbody>'
     +'<tfoot><tr style="border-top:2px solid var(--line)"><td colspan="4" style="text-align:right">Subtotal</td><td id="calc-sub" style="text-align:right;font-weight:700"></td></tr>'
     +'<tr><td colspan="4" style="text-align:right;color:var(--muted)">TVA</td><td id="calc-vat" style="text-align:right"></td></tr>'
@@ -2926,16 +2935,44 @@ function calcRun(){ const p=_calc.params||(_calc.params=Object.assign({},CALC_DE
   calcTotals();
 }
 function calcVat(){ return (state.firm&&state.firm.vat_rate!=null)?+state.firm.vat_rate:20; }
-function calcTotals(){ let sub=0; _calc.items.forEach(it=>{ const pr=_calc.prices[it.key]||0; const t=(+it.qty||0)*pr; const c=$('ct-'+it._i); if(c) c.textContent=money(t); sub+=t; }); const vat=sub*calcVat()/100; const set=(id,v)=>{ const e=$(id); if(e) e.textContent=money(v); }; set('calc-sub',sub); set('calc-vat',vat); set('calc-total',sub+vat); _calc._sub=sub; _calc._vat=vat; }
+function calcTotals(){ let sub=0; _calc.items.forEach(it=>{ const pr=_calc.prices[it.key]||0; const t=(+it.qty||0)*pr; const c=$('ct-'+it._i); if(c) c.textContent=money(t); sub+=t; });
+  (_calc.extra||[]).forEach((it,i)=>{ const t=(+it.qty||0)*(+it.price||0); const c=$('cet-'+i); if(c) c.innerHTML=money(t)+' <button class="iconbtn danger" title="Scoate" onclick="calcExtraDel('+i+')">🗑</button>'; sub+=t; });
+  const vat=sub*calcVat()/100; const set=(id,v)=>{ const e=$(id); if(e) e.textContent=money(v); }; set('calc-sub',sub); set('calc-vat',vat); set('calc-total',sub+vat); _calc._sub=sub; _calc._vat=vat; }
+function calcExtraQty(i,v){ if(_calc.extra&&_calc.extra[i]){ _calc.extra[i].qty=+v||0; calcTotals(); } }
+function calcExtraPrice(i,v){ if(_calc.extra&&_calc.extra[i]){ _calc.extra[i].price=+v||0; calcTotals(); } }
+function calcExtraDel(i){ if(_calc.extra){ _calc.extra.splice(i,1); calcRun(); } }
+let _pdfjs=null;
+async function ensurePdfjs(){ if(_pdfjs) return _pdfjs; if(!window.pdfjsLib){ await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload=res; s.onerror=()=>rej(new Error('Nu am putut încărca pdf.js')); document.head.appendChild(s); }); }
+  _pdfjs=window.pdfjsLib; try{ _pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} return _pdfjs; }
+function calcImport(){ const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,image/*'; inp.onchange=async()=>{ const f=inp.files&&inp.files[0]; if(!f) return; try{ await calcDoFile(f); }catch(e){ toast('Eroare: '+esc(e.message||e)); } }; inp.click(); }
+async function calcDoFile(f){
+  const isPdf=/pdf/i.test(f.type)||/\.pdf$/i.test(f.name||'');
+  if(isPdf){ toast('📄 Citesc PDF-ul…'); const pj=await ensurePdfjs(); const buf=await f.arrayBuffer(); const doc=await pj.getDocument({data:buf}).promise; let text='';
+    for(let p=1;p<=Math.min(doc.numPages,15);p++){ const pg=await doc.getPage(p); const tc=await pg.getTextContent(); text+=tc.items.map(it=>it.str).join(' ')+'\n'; }
+    text=text.trim();
+    if(text.length>200){ await calcAiLines('offer', text.slice(0,7000), null); }
+    else { toast('📄 PDF scanat (fără text) — folosesc vederea AI…'); const pg=await doc.getPage(1); const vp=pg.getViewport({scale:1.6}); const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height; await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; await calcAiLines('takeoff','',{ media_type:'image/png', data:cv.toDataURL('image/png').split(',')[1] }); }
+  } else { toast('🖼️ Citesc imaginea cu vederea AI…'); const url=await new Promise((res,rej)=>{ const rd=new FileReader(); rd.onload=()=>res(String(rd.result)); rd.onerror=rej; rd.readAsDataURL(f); }); await calcAiLines('takeoff','',{ media_type:(f.type||'image/png'), data:url.split(',')[1] }); }
+}
+async function calcAiLines(mode, text, image){ toast('🤖 Interpretez documentul (poate dura)…');
+  try{ const d=await aiCall(mode, text||'Extrage devizul/antemăsurătoarea din acest document.', null, image); const txt=(d&&d.text)||''; const m=txt.match(/\{[\s\S]*\}/); if(!m) throw new Error('Răspuns AI neașteptat.');
+    const obj=JSON.parse(m[0]); const lines=(obj.lines||[]).filter(l=>l&&l.name);
+    if(!lines.length){ toast('AI: documentul nu conține poziții clare de deviz.'); return; }
+    if(!_calc.params){ _calc.params=Object.assign({},CALC_DEF); _calc.prices=calcPrices(); }
+    _calc.extra=(_calc.extra||[]).concat(lines.map(l=>({name:String(l.name),qty:+l.qty||0,unit:String(l.unit||'buc'),price:+l.price||0})));
+    if($('calc-res')) calcRun(); else renderCalculator();
+    toast('✅ Am extras '+lines.length+' poziții din document — verifică-le și ajustează.');
+  }catch(e){ const msg=(e&&e.message)||String(e); toast('AI: '+esc(msg)+(/Lipse|image|exception/i.test(msg)?' (vederea pe imagini se activează după update-ul funcției AI)':'')); } }
 function calcQty(i,v){ if(_calc.items[i]){ _calc.items[i].qty=+v||0; calcTotals(); } }
 function calcPrice(key,v){ _calc.prices[key]=+v||0; calcTotals(); }
 async function calcSavePrices(){ const au=Object.assign({},state.firm.automations||{}); au.calc_prices=_calc.prices; try{ const r=await sb.from('tenants').update({automations:au}).eq('id',state.tenant); if(r.error) throw r.error; state.firm.automations=au; toast('💾 Prețuri salvate (devin implicite).'); }catch(e){ toast('Eroare: '+esc(e.message)); } }
-async function calcSaveDeviz(){ if(!_calc.items.length){ toast('Nimic de salvat.'); return; }
+async function calcSaveDeviz(){ const ex=_calc.extra||[]; if(!_calc.items.length && !ex.length){ toast('Nimic de salvat.'); return; }
   const vat=calcVat(); const sub=_calc._sub||0;
   try{ const num='CALC-'+coToday().replace(/-/g,'')+'-'+String(Date.now()).slice(-4);
     const er=await sb.from('estimates').insert({tenant_id:state.tenant,number:num,status:'draft',subtotal:Math.round(sub*100)/100,vat_total:Math.round(sub*vat/100*100)/100,total:Math.round(sub*(1+vat/100)*100)/100}).select('id').single();
     if(er.error) throw er.error;
-    const rows=_calc.items.map(it=>({tenant_id:state.tenant,estimate_id:er.data.id,name:it.name+' ('+it.unit+')',qty:it.qty,unit:it.unit,unit_price:(_calc.prices[it.key]||0),vat_rate:vat}));
+    const rows=_calc.items.map(it=>({tenant_id:state.tenant,estimate_id:er.data.id,name:it.name+' ('+it.unit+')',qty:it.qty,unit:it.unit,unit_price:(_calc.prices[it.key]||0),vat_rate:vat}))
+      .concat(ex.map(it=>({tenant_id:state.tenant,estimate_id:er.data.id,name:it.name,qty:(+it.qty||0),unit:(it.unit||'buc'),unit_price:(+it.price||0),vat_rate:vat})));
     const ir=await sb.from('estimate_items').insert(rows); if(ir.error) throw ir.error;
     toast('📋 Deviz creat ('+num+'). Îl găsești în Devize.'); if(confirm('Deviz creat. Deschizi modulul Devize?')) go('devize');
   }catch(e){ toast('Eroare: '+esc(e.message)); } }
