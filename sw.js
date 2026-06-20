@@ -1,5 +1,5 @@
 /* Cod373 service worker — network-first pentru pagini, cache-first pentru resurse */
-const CACHE = 'cod373-v170';
+const CACHE = 'cod373-v171';
 const ASSETS = [
   './app.html', './mobil.html', './portal.html', './erp.html', './grafic.html', './deviz.html', './factura.html', './i18n.js',
   './manifest.webmanifest', './manifest-mobil.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png'
@@ -20,7 +20,7 @@ self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { title: 'Cod373', body: e.data ? e.data.text() : '' }; }
   const title = d.title || 'Cod373';
-  const opts = { body: d.body || '', icon: './icon-192.png', badge: './icon-192.png', data: { url: d.url || './app.html' }, tag: d.tag || 'cod373' };
+  const opts = { body: d.body || '', icon: './icon-192.png', badge: './icon-192.png', data: { url: d.url || './app.html' }, tag: d.tag || 'cod373', requireInteraction: true, renotify: true };
   e.waitUntil(self.registration.showNotification(title, opts));
 });
 
