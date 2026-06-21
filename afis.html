@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Afiș — Instalează Cod373 (A4)</title>
+<meta name="robots" content="noindex">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;background:#e9edf4;color:#0f1c33}
+  .bar{max-width:760px;margin:1rem auto;text-align:center}
+  .bar button{background:#2f6bff;color:#fff;border:none;padding:.7rem 1.4rem;border-radius:10px;font-weight:800;font-size:1rem;cursor:pointer}
+  .bar p{color:#6b7793;font-size:.85rem;margin-top:.4rem}
+  .page{width:210mm;min-height:297mm;margin:0 auto 2rem;background:#fff;padding:22mm 18mm;display:flex;flex-direction:column;align-items:center;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.15)}
+  .logo{display:flex;align-items:center;gap:.6rem;margin-bottom:6mm}
+  .logo .b{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#2f6bff,#7aa5ff);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+  .logo b{font-size:2rem}.o{color:#ff8a3d}
+  h1{font-size:30pt;line-height:1.15;margin-bottom:3mm}
+  .ru{font-size:15pt;color:#6b7793;margin-bottom:8mm}
+  .qr{border:3px solid #0f1c33;border-radius:18px;padding:8mm;margin:2mm 0 7mm}
+  .qr #q{display:block}
+  .scan{font-size:16pt;font-weight:800;margin-bottom:7mm}
+  .steps{display:flex;gap:6mm;justify-content:center;flex-wrap:wrap;margin-bottom:8mm}
+  .st{flex:1;min-width:46mm;max-width:54mm;border:1px solid #e5e9f2;border-radius:14px;padding:5mm}
+  .st .ic{font-size:22pt}.st h3{font-size:12pt;margin:2mm 0 1mm}.st p{font-size:10.5pt;color:#6b7793}
+  .url{font-size:11pt;color:#6b7793;word-break:break-all}
+  .foot{margin-top:auto;font-size:10pt;color:#6b7793;padding-top:6mm}
+  @media print{
+    @page{size:A4;margin:0}
+    body{background:#fff}
+    .bar{display:none}
+    .page{box-shadow:none;margin:0;width:auto;min-height:auto}
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button onclick="window.print()">🖨 Printează afișul (A4)</button>
+  <p>Lipește-l la birou / pe șantier. Angajații scanează codul și instalează aplicația.</p>
+</div>
+
+<div class="page">
+  <div class="logo"><span class="b">C373</span><b>Cod<span class="o">373</span></b></div>
+  <h1>Instalează aplicația<br>pe telefonul tău</h1>
+  <div class="ru">Установи приложение на телефон</div>
+
+  <div class="qr"><div id="q"></div></div>
+  <div class="scan">📷 Scanează codul cu camera telefonului<br><span style="font-weight:600;font-size:12pt;color:#6b7793">Отсканируй код камерой телефона</span></div>
+
+  <div class="steps">
+    <div class="st"><div class="ic">📷</div><h3>1. Scanează</h3><p>Deschide camera și îndreapt-o spre cod.</p></div>
+    <div class="st"><div class="ic">🤖</div><h3>2. Android</h3><p>Meniul ⋮ → „Instalează aplicația”.</p></div>
+    <div class="st"><div class="ic"></div><h3>3. iPhone</h3><p>Safari → Share ↑ → „Adaugă pe ecranul principal”.</p></div>
+  </div>
+
+  <div class="url" id="url"></div>
+  <div class="foot">Cod373 — program pentru firme de construcții · contact@generalconstruct.md</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  var url = new URL('mobil.html', location.href).href;
+  document.getElementById('url').textContent = url;
+  try{ new QRCode(document.getElementById('q'), { text:url, width:300, height:300, colorDark:'#0f1c33', colorLight:'#ffffff' }); }
+  catch(e){ document.getElementById('q').textContent = url; }
+</script>
+</body>
+</html>
