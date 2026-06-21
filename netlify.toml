@@ -2,8 +2,5 @@
 [build]
   publish = "."
 
-# pagina implicită = aplicația
-[[redirects]]
-  from = "/"
-  to = "/app.html"
-  status = 302
+# Rădăcina „/" servește pagina de prezentare (index.html) — bună pentru SEO/AEO.
+# Utilizatorii deja logați sunt redirecționați automat către app.html din index.html (client-side).

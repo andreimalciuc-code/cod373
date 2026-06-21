@@ -1,0 +1,29 @@
+# Cod373
+
+> Cod373 este un program (ERP + CRM) pentru firme de construcții din Moldova, România și Germania. Gestionează într-un singur loc șantierele, devizele, facturile (cu e-Factură), materialele, instrumentele, flota, echipa, pontajul, salariile și clienții. Rulează în web și ca aplicație de teren (PWA) pe telefon. Disponibil în română, rusă, germană și engleză.
+
+## Ce este
+Cod373 = software de management pentru construcții (construction management / ERP / CRM). Pentru firme mici și medii. Acoperă tot fluxul: de la ofertă (deviz) → contract → execuție (șantier, echipe, materiale) → factură (e-Factură) → încasare → pontaj și salarii.
+
+## Module principale
+- Șantiere și grafic Gantt (planificare lucrări pe etape)
+- Devize și facturi; e-Factură: SFS (Moldova), ANAF / RO e-Factura (România), XRechnung / ZUGFeRD (Germania)
+- CRM clienți: pipeline Kanban, fișă 360°, jurnal de interacțiuni, follow-up cu memento, notificări push, import CSV, pâlnii multiple, scoring lead
+- Materiale, instrumente (cu cod QR și amortizare) și depozite
+- Flotă cu urmărire GPS, carduri de carburant și cost pe 100 km
+- Pontaj, planificare echipe (Plantafel), concedii, sărbători legale și salarii
+- Calculator de deviz: din parametrii casei (determinist) sau dintr-un PDF/poză cu AI
+- Aplicație de teren PWA (offline): pontaj, jurnal de șantier, poze, scanare QR
+
+## Pentru cine
+Firme de construcții mici și medii din Moldova, România și Germania.
+
+## Limbi
+Română, rusă, germană, engleză.
+
+## Preț
+Probă gratuită 14 zile, apoi abonament lunar.
+
+## Contact
+- Email: contact@generalconstruct.md
+- Aplicație: https://andreimalciuc-code.github.io/cod373/
