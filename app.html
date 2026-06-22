@@ -410,7 +410,7 @@ async function doSignup(){
   if(pass!==$('su-pass2').value){ showMsg('signup-msg','Parolele nu coincid.'); return; }
   if(!$('su-consent').checked){ showMsg('signup-msg','Trebuie să accepți Politica de confidențialitate.'); return; }
   $('btn-signup').disabled=true; showMsg('signup-msg','');
-  const { data,error } = await sb.auth.signUp({ email,password:pass,options:{data:{full_name:name}} });
+  const { data,error } = await sb.auth.signUp({ email,password:pass,options:{data:{full_name:name, pw_set:true}} });
   $('btn-signup').disabled=false;
   if(error){ showMsg('signup-msg',error.message); return; }
   if(data.session){ await boot(); }
@@ -455,9 +455,27 @@ async function doSetNewPassword(){
   if(p.length<6){ showMsg('rp-msg','Parola trebuie să aibă minim 6 caractere.'); return; }
   if(p!==p2){ showMsg('rp-msg','Parolele nu coincid.'); return; }
   $('rp-btn').disabled=true; showMsg('rp-msg','');
-  const { error }=await sb.auth.updateUser({ password:p });
+  const { error }=await sb.auth.updateUser({ password:p, data:{ pw_set:true } });
   if(error){ $('rp-btn').disabled=false; showMsg('rp-msg', error.message); return; }
   toast('✅ Parolă setată.'); await boot();
+}
+/* Ecran obligatoriu de setare a parolei pentru cine a intrat prin link (fără parolă) — nu se poate sări. */
+function showForceSetPassword(){
+  $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login');
+  $('screen-login').innerHTML='<h2>'+esc(tz('Setează o parolă'))+'</h2><p class="sub">'+esc(tz('Pentru siguranța contului, alege acum o parolă. O vei folosi ca să te poți loga pe orice dispozitiv (telefon, calculator).'))+'</p><div id="fp-msg"></div>'
+    +'<div class="field"><label>'+esc(tz('Parolă (min. 6 caractere)'))+'</label><input id="fp-pass" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
+    +'<div class="field"><label>'+esc(tz('Confirmă parola'))+'</label><input id="fp-pass2" type="password" autocomplete="new-password" placeholder="••••••••" onkeydown="if(event.key===\'Enter\')doForceSetPassword()"/></div>'
+    +'<button class="btn-primary btn-block" id="fp-btn" onclick="doForceSetPassword()">'+esc(tz('Salvează parola și intră'))+'</button>';
+  setTimeout(()=>{ const e=$('fp-pass'); if(e) e.focus(); },60);
+}
+async function doForceSetPassword(){
+  const p=$('fp-pass').value, p2=$('fp-pass2').value;
+  if(p.length<6){ showMsg('fp-msg','Parola trebuie să aibă minim 6 caractere.'); return; }
+  if(p!==p2){ showMsg('fp-msg','Parolele nu coincid.'); return; }
+  $('fp-btn').disabled=true; showMsg('fp-msg','');
+  const { error }=await sb.auth.updateUser({ password:p, data:{ pw_set:true } });
+  if(error){ $('fp-btn').disabled=false; showMsg('fp-msg', error.message); return; }
+  toast('✅ '+tz('Parolă setată.')); await boot();
 }
 async function doCreateCompany(){
   const name=$('onb-name').value.trim(), idno=$('onb-idno').value.trim();
@@ -963,7 +981,7 @@ const MODULES = {
 
   utilizatori:{ title:'Utilizatori & Roluri', sub:'Membrii firmei și accesul lor.', icon:'👥', group:'Administrare', custom:true },
   setari:{ title:'Setări firmă', sub:'Datele firmei — apar pe facturi și în portal.', icon:'⚙️', group:'Administrare', custom:true },
-  seif:{ title:'Seif (parole & chei)', sub:'Parolele și cheile tale — criptate pe dispozitiv, doar tu le poți citi.', icon:'🔐', group:'Administrare', custom:true, ownerOnly:true },
+  seif:{ title:'Seif (parole & chei)', sub:'Parolele și cheile tale — criptate pe dispozitiv, doar tu le poți citi.', icon:'🔐', group:'Administrare', custom:true },
 
   licitatii:{ title:'Licitații publice', sub:'MTender / achiziții.', icon:'🤖', group:'Altele', table:'tenders',
     newLabel:'Licitație nouă', orderBy:{col:'created_at',asc:false},
@@ -1136,6 +1154,9 @@ const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi','postcalc
 const FINANCE_ROLES=['owner','admin','accountant','manager'];
 const ADMIN_KEYS=['utilizatori','setari'];
 const ADMIN_ROLES=['owner','admin'];
+/* Module „rezervate proprietarului": implicit invizibile pentru oricine NU e proprietar;
+   devin vizibile DOAR dacă proprietarul le bifează explicit în permisiuni. */
+const OWNER_GATED_KEYS=['setari','seif'];
 const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Muncitor',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
 /* Permisiuni granulare. Codificare in state.perms (text[]):
    - null / gol            -> fara restrictie suplimentara (decide rolul)
@@ -1155,7 +1176,12 @@ function canDo(key, act){ // act: 'c' | 'u' | 'd'
   return p.includes(key+':'+act);
 }
 function canSee(key){
-  if(MODULES[key]&&MODULES[key].ownerOnly){ if(state.role!=='owner') return false; }
+  if(state.role==='owner') return true;                 // proprietarul vede tot
+  if(MODULES[key]&&MODULES[key].ownerOnly) return false; // strict proprietar
+  if(OWNER_GATED_KEYS.includes(key)){                    // rezervat proprietarului — doar dacă a fost bifat explicit
+    const p=state.perms;
+    return !!p && (p.includes(key) || p.some(t=>t.indexOf(key+':')===0));
+  }
   if(ADMIN_KEYS.includes(key)){ if(!ADMIN_ROLES.includes(state.role)) return false; }
   else if(FINANCE_KEYS.includes(key)){ if(!FINANCE_ROLES.includes(state.role)) return false; }
   if(!moduleVisible(key)) return false;
@@ -1188,7 +1214,11 @@ async function boot(){
   if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login'); maybeShowInvite(); hideSplash(); return; }
   state.session = session;
   const tok=getInviteToken();
-  if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK') toast('✅ Acces activat la firmă.'); if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
+  let _justJoined=false;
+  if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK'){ toast('✅ Acces activat la firmă.'); _justJoined=true; } if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
+  // Cine intră prin link (magic link, fără parolă) trebuie să-și seteze imediat o parolă pentru cont.
+  const _pwSet=!!(session.user&&session.user.user_metadata&&session.user.user_metadata.pw_set);
+  if(_justJoined && !_pwSet){ hideSplash(); showForceSetPassword(); return; }
   const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations,bank_accounts)').eq('active',true).limit(1).maybeSingle();
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); hideSplash(); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
@@ -1402,7 +1432,7 @@ async function vaultMeta(){ // rândul vault_keys al utilizatorului curent
   try{ const { data }=await sb.from('vault_keys').select('salt,verifier').eq('tenant_id',state.tenant).eq('user_id',state.session.user.id).maybeSingle(); return data||null; }catch(e){ return null; }
 }
 async function renderSeif(){
-  if(state.role!=='owner'){ $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem">🔒 '+tz('Seiful este disponibil doar proprietarului firmei.')+'</div>'; return; }
+  if(!canSee('seif')){ $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem">🔒 '+tz('Acces restricționat pentru rolul tău.')+'</div>'; return; }
   if(!window.crypto||!crypto.subtle){ $('content').innerHTML='<div class="card" style="padding:1.5rem">⚠️ '+tz('Browserul nu suportă criptarea necesară. Deschide aplicația prin https.')+'</div>'; return; }
   $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Se încarcă…')+'</div>';
   const meta=await vaultMeta();
@@ -1603,7 +1633,7 @@ async function pzSavePassword(){
   if(p.length<6){ msg.textContent=tz('Parola trebuie să aibă minim 6 caractere.'); return; }
   if(p!==p2){ msg.textContent=tz('Parolele nu coincid.'); return; }
   $('pz-pw-btn').disabled=true; msg.style.color='var(--muted)'; msg.textContent=tz('Se salvează…');
-  const { error }=await sb.auth.updateUser({ password:p });
+  const { error }=await sb.auth.updateUser({ password:p, data:{ pw_set:true } });
   $('pz-pw-btn').disabled=false;
   if(error){ msg.style.color='var(--red)'; msg.textContent=error.message; return; }
   closeModal(); toast('✅ '+tz('Parolă setată. De acum te poți loga cu email + parolă.'));
@@ -1763,7 +1793,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v177';
+const APP_VERSION='cod373-v178';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -4653,15 +4683,16 @@ async function inviteEntity(type, id){
     const { data }=await sb.from(tbl).select(col).eq('id',id).single(); name=data?data[col]:''; }catch(e){}
   openInviteForm(type, id, def, name);
 }
-/* modulele care pot fi acordate prin permisiuni (excludem Administrarea — controlata strict prin rol) */
-function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && !ADMIN_KEYS.includes(k)); }
+/* modulele care pot fi acordate prin permisiuni (excludem dashboard-ul, mereu vizibil, și
+   „Utilizatori & Roluri" — controlat strict prin rol; „Setări" și „Seif" rămân, dar implicit nebifate) */
+function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && k!=='utilizatori'); }
 /* daca rolul ar vedea modulul (oglindeste canSee fara stratul perms) */
 function roleCanSeeKey(role,key){ if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(role); if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(role); return true; }
 /* actiuni granulare in cadrul unui modul: c=adauga, u=editeaza, d=sterge (v=vede = bifa principala) */
 const PERM_ACTS=[['c','＋','Adăugare'],['u','✏️','Editare'],['d','🗑','Ștergere']];
 /* starea {v,c,u,d} a unui modul, pornind de la permisiunile curente (null => implicit dupa rol) */
 function permModState(key, cur, role){
-  if(cur===null||cur===undefined){ const v=roleCanSeeKey(role,key); return {v:v,c:v,u:v,d:v}; }
+  if(cur===null||cur===undefined){ const v=OWNER_GATED_KEYS.includes(key)?false:roleCanSeeKey(role,key); return {v:v,c:v,u:v,d:v}; }
   if(cur.includes(key)) return {v:true,c:true,u:true,d:true};
   const has=a=>cur.includes(key+':'+a);
   const v=has('v')||has('c')||has('u')||has('d');
@@ -4672,14 +4703,15 @@ function permLegend(){ return '<div style="font-size:.74rem;color:var(--muted);m
 function permChecklistHtml(role, cur){
   if(cur===undefined) cur=null;
   let html='';
-  GROUPS.forEach(g=>{ if(g==='Administrare') return;
+  GROUPS.forEach(g=>{
     const keys=permKeys().filter(k=>MODULES[k].group===g);
     if(!keys.length) return;
     html+='<div style="margin:.6rem 0 .2rem;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase">'+esc(g)+'</div>';
-    keys.forEach(k=>{ const m=MODULES[k]; const st=permModState(k,cur,role);
+    if(g==='Administrare') html+='<div style="font-size:.74rem;color:var(--muted);margin:0 0 .2rem">🔒 '+esc(tz('Rezervat proprietarului — implicit nebifat. Bifează doar dacă vrei să dai acces.'))+'</div>';
+    keys.forEach(k=>{ const m=MODULES[k]; const st=permModState(k,cur,role); const gated=OWNER_GATED_KEYS.includes(k);
       const acts=PERM_ACTS.map(a=>'<label title="'+a[2]+'" style="display:inline-flex;align-items:center;gap:.15rem;cursor:pointer"><input type="checkbox" class="perm-a" data-k="'+k+'" data-a="'+a[0]+'" '+(st[a[0]]?'checked':'')+' '+(st.v?'':'disabled')+'/>'+a[1]+'</label>').join('');
       html+='<div style="display:flex;align-items:center;gap:.5rem;padding:.3rem .1rem;font-size:.86rem;border-top:1px solid var(--line)">'
-        +'<label style="display:flex;align-items:center;gap:.45rem;flex:1;min-width:0;cursor:pointer"><input type="checkbox" class="perm-v" value="'+k+'" '+(st.v?'checked':'')+' onchange="permToggleMod(this)"/><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.icon+' '+esc(m.title)+'</span></label>'
+        +'<label style="display:flex;align-items:center;gap:.45rem;flex:1;min-width:0;cursor:pointer"><input type="checkbox" class="perm-v" value="'+k+'" '+(st.v?'checked':'')+' onchange="permToggleMod(this)"/><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(gated?'🔒 ':'')+m.icon+' '+esc(m.title)+'</span></label>'
         +'<span style="display:flex;gap:.6rem;flex:none">'+acts+'</span></div>';
     });
   });
@@ -4695,7 +4727,11 @@ function collectPerms(){
     const acts=['c','u','d'].filter(a=>{ const cb=document.querySelector('.perm-a[data-k="'+k+'"][data-a="'+a+'"]'); return cb&&cb.checked; });
     if(acts.length===3) out.push(k); else { out.push(k+':v'); acts.forEach(a=>out.push(k+':'+a)); }
   });
-  if(out.length===allKeys.length && allKeys.every(k=>out.includes(k))) return null;
+  // „null" = acces complet pentru rol; dar NU colapsăm la null dacă s-a bifat un modul rezervat
+  // proprietarului (altfel s-ar pierde acordarea lui — gated-urile sunt invizibile sub perms=null).
+  const gatedPicked=out.some(o=>OWNER_GATED_KEYS.some(g=>o===g||o.indexOf(g+':')===0));
+  const regular=allKeys.filter(k=>!OWNER_GATED_KEYS.includes(k));
+  if(!gatedPicked && out.length===regular.length && regular.every(k=>out.includes(k))) return null;
   return out;
 }
 function openInviteForm(entityType, entityId, defaultRole, entityName){
