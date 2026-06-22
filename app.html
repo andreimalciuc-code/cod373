@@ -1763,7 +1763,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v176';
+const APP_VERSION='cod373-v177';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -4639,7 +4639,7 @@ async function renderInvites(){
   const body=list.map(i=>{ const link=inviteLink(i.token);
     return '<tr><td class="tname">'+esc(ROLE_LABELS[i.role]||i.role)+(i.entity_type?' <small style="color:var(--muted)">· '+esc(i.entity_type)+'</small>':'')+'</td>'
     +'<td>'+esc(i.email||'—')+'</td><td>'+(stp[i.status]||esc(i.status))+'</td>'
-    +'<td><div class="rowact">'+(i.status==='pending'?'<button class="iconbtn" title="Copiază linkul" onclick="copyInvite(\''+i.token+'\')">📋</button><button class="iconbtn danger" title="Anulează" onclick="revokeInvite(\''+i.id+'\')">🚫</button>':'')+'</div></td></tr>'; }).join('');
+    +'<td><div class="rowact">'+(i.status==='pending'?((i.email?'<button class="iconbtn" title="Trimite linkul din nou pe email" onclick="resendInvite(\''+i.token+'\',\''+jsArg(i.email)+'\')">📧</button>':'')+'<button class="iconbtn" title="Copiază linkul" onclick="copyInvite(\''+i.token+'\')">📋</button><button class="iconbtn danger" title="Anulează" onclick="revokeInvite(\''+i.id+'\')">🚫</button>'):'')+'</div></td></tr>'; }).join('');
   $('inv-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Rol</th><th>Email</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 function inviteLink(token){ const m=location.href.split('?')[0].replace(/\/[^/]*$/,'/'); return m+'app.html?invite='+token; }
@@ -5015,10 +5015,34 @@ function docOptions(id){
 let membersList=[];
 function memberOptions(uid){
   const u=(membersList||[]).find(x=>x.user_id===uid); if(!u) return;
-  actionsSheet(u.email,[
-    {i:'🔐',l:'Permisiuni (module accesibile)',f:"editMemberPerms('"+uid+"','"+u.role+"','"+jsArg(u.email)+"')"},
-    {i:(u.active?'🚫':'✅'),l:(u.active?'Dezactivează membrul':'Activează membrul'),f:"toggleMember('"+uid+"',"+(u.active?'false':'true')+")"}
-  ]);
+  const acts=[{i:'🔐',l:'Permisiuni (module accesibile)',f:"editMemberPerms('"+uid+"','"+u.role+"','"+jsArg(u.email)+"')"}];
+  if(u.email){
+    acts.push({i:'📧',l:'Trimite link de logare pe email',f:"sendLoginLink('"+jsArg(u.email)+"')"});
+    acts.push({i:'🔑',l:'Trimite link de resetare parolă',f:"sendResetLink('"+jsArg(u.email)+"')"});
+  }
+  acts.push({i:(u.active?'🚫':'✅'),l:(u.active?'Dezactivează membrul':'Activează membrul'),f:"toggleMember('"+uid+"',"+(u.active?'false':'true')+")"});
+  actionsSheet(u.email,acts);
+}
+function sendLoginLink(email){
+  if(!email){ toast('Acest membru nu are email salvat.'); return; }
+  toast('📧 Se trimite linkul de logare…');
+  sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: appBase()+'app.html', shouldCreateUser:false } })
+    .then(({error})=>{ if(error) toast('Eroare: '+esc(error.message)); else toast('✅ Link de logare trimis la '+esc(email)+'. Persoana dă click și intră direct, fără parolă.'); })
+    .catch(e=>toast('Eroare: '+esc(e.message||e)));
+}
+function sendResetLink(email){
+  if(!email){ toast('Acest membru nu are email salvat.'); return; }
+  toast('📧 Se trimite linkul de resetare…');
+  sb.auth.resetPasswordForEmail(email, { redirectTo: appBase()+'app.html' })
+    .then(({error})=>{ if(error) toast('Eroare: '+esc(error.message)); else toast('✅ Link de resetare parolă trimis la '+esc(email)+'.'); })
+    .catch(e=>toast('Eroare: '+esc(e.message||e)));
+}
+function resendInvite(token, email){
+  if(!email){ toast('Această invitație nu are email salvat — folosește 📋 ca să copiezi linkul.'); return; }
+  toast('📧 Se retrimite invitația…');
+  sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: inviteLink(token), shouldCreateUser:true } })
+    .then(({error})=>{ if(error) toast('Eroare: '+esc(error.message)); else toast('✅ Invitație retrimisă pe email la '+esc(email)+'.'); })
+    .catch(e=>toast('Eroare: '+esc(e.message||e)));
 }
 async function uploadDoc(input){
   const file=input.files&&input.files[0]; if(!file) return;
