@@ -963,6 +963,7 @@ const MODULES = {
 
   utilizatori:{ title:'Utilizatori & Roluri', sub:'Membrii firmei și accesul lor.', icon:'👥', group:'Administrare', custom:true },
   setari:{ title:'Setări firmă', sub:'Datele firmei — apar pe facturi și în portal.', icon:'⚙️', group:'Administrare', custom:true },
+  seif:{ title:'Seif (parole & chei)', sub:'Parolele și cheile tale — criptate pe dispozitiv, doar tu le poți citi.', icon:'🔐', group:'Administrare', custom:true, ownerOnly:true },
 
   licitatii:{ title:'Licitații publice', sub:'MTender / achiziții.', icon:'🤖', group:'Altele', table:'tenders',
     newLabel:'Licitație nouă', orderBy:{col:'created_at',asc:false},
@@ -1154,6 +1155,7 @@ function canDo(key, act){ // act: 'c' | 'u' | 'd'
   return p.includes(key+':'+act);
 }
 function canSee(key){
+  if(MODULES[key]&&MODULES[key].ownerOnly){ if(state.role!=='owner') return false; }
   if(ADMIN_KEYS.includes(key)){ if(!ADMIN_ROLES.includes(state.role)) return false; }
   else if(FINANCE_KEYS.includes(key)){ if(!FINANCE_ROLES.includes(state.role)) return false; }
   if(!moduleVisible(key)) return false;
@@ -1373,6 +1375,169 @@ async function pushSubscribe(){ try{
   toast('🔔 '+tz('Notificări push activate.')); pushRefreshBtn();
 }catch(e){ toast('Eroare: '+esc(e.message||e)); } }
 async function pushUnsubscribe(){ try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} await sub.unsubscribe(); } toast(tz('Notificări push dezactivate.')); pushRefreshBtn(); }catch(e){} }
+
+/* ════ SEIF DE PAROLE & CHEI (zero-knowledge, criptat pe dispozitiv) ════
+   Cheia de criptare se derivă din parola-mamă cu PBKDF2 și NU părăsește dispozitivul.
+   Serverul vede doar text criptat (AES-GCM). window._vk = CryptoKey în memorie (se șterge la blocare). */
+const VAULT_VERIFY_TOKEN='cod373-vault-ok';
+const VAULT_PBKDF2_ITERS=250000;
+const VAULT_CATS=['Site web','Bancă','Email','Supabase','Domeniu','Hosting','Social media','API / cheie','Aplicație','Altele'];
+function _u8b64(u8){ let s=''; for(let i=0;i<u8.length;i++) s+=String.fromCharCode(u8[i]); return btoa(s); }
+async function vaultDerive(pw, saltB64){
+  const enc=new TextEncoder();
+  const base=await crypto.subtle.importKey('raw', enc.encode(pw), {name:'PBKDF2'}, false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt:_b64ToU8(saltB64), iterations:VAULT_PBKDF2_ITERS, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+async function vaultEncrypt(key, obj){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { iv:_u8b64(iv), blob:_u8b64(new Uint8Array(ct)) };
+}
+async function vaultDecrypt(key, ivB64, blobB64){
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM', iv:_b64ToU8(ivB64)}, key, _b64ToU8(blobB64));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function vaultMeta(){ // rândul vault_keys al utilizatorului curent
+  try{ const { data }=await sb.from('vault_keys').select('salt,verifier').eq('tenant_id',state.tenant).eq('user_id',state.session.user.id).maybeSingle(); return data||null; }catch(e){ return null; }
+}
+async function renderSeif(){
+  if(state.role!=='owner'){ $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem">🔒 '+tz('Seiful este disponibil doar proprietarului firmei.')+'</div>'; return; }
+  if(!window.crypto||!crypto.subtle){ $('content').innerHTML='<div class="card" style="padding:1.5rem">⚠️ '+tz('Browserul nu suportă criptarea necesară. Deschide aplicația prin https.')+'</div>'; return; }
+  $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Se încarcă…')+'</div>';
+  const meta=await vaultMeta();
+  if(!meta){ vaultSetupScreen(); return; }
+  state._vaultSalt=meta.salt; state._vaultVerifier=meta.verifier;
+  if(window._vk){ vaultListScreen(); return; }
+  vaultUnlockScreen();
+}
+function vaultSetupScreen(){
+  $('content').innerHTML=
+  '<div class="card" style="max-width:520px;margin:1rem auto;padding:1.6rem">'
+  +'<h2 style="margin:0 0 .3rem">🔐 '+tz('Creează seiful tău')+'</h2>'
+  +'<p style="color:var(--muted);font-size:.9rem;margin:0 0 1rem">'+tz('Alege o parolă-mamă. Din ea se generează, pe acest dispozitiv, cheia care îți criptează parolele. Nimeni altcineva — nici noi, nici colegii, nici serverul — nu o poate citi.')+'</p>'
+  +'<div style="background:#fff4e5;border:1px solid #ffd8a8;border-radius:10px;padding:.7rem .9rem;font-size:.85rem;color:#7a4f01;margin-bottom:1rem">⚠️ <b>'+tz('Important:')+'</b> '+tz('dacă uiți parola-mamă, datele NU pot fi recuperate. Nu există resetare — asta e și motivul pentru care nimeni nu o poate sparge.')+'</div>'
+  +'<label style="font-size:.82rem;font-weight:600">'+tz('Parola-mamă')+'</label>'
+  +'<input id="v-pw1" type="password" autocomplete="new-password" style="width:100%;padding:.6rem;margin:.3rem 0 .8rem;border:1px solid var(--line);border-radius:9px">'
+  +'<label style="font-size:.82rem;font-weight:600">'+tz('Repetă parola-mamă')+'</label>'
+  +'<input id="v-pw2" type="password" autocomplete="new-password" style="width:100%;padding:.6rem;margin:.3rem 0 .4rem;border:1px solid var(--line);border-radius:9px">'
+  +'<div id="v-err" style="color:var(--red);font-size:.82rem;min-height:1.1rem;margin-bottom:.6rem"></div>'
+  +'<button class="btn" style="width:100%" onclick="vaultCreate()">'+tz('Creează seiful')+'</button>'
+  +'</div>';
+}
+async function vaultCreate(){
+  const p1=$('v-pw1').value, p2=$('v-pw2').value; const er=$('v-err');
+  if(p1.length<8){ er.textContent=tz('Parola-mamă trebuie să aibă cel puțin 8 caractere.'); return; }
+  if(p1!==p2){ er.textContent=tz('Parolele nu coincid.'); return; }
+  er.textContent=tz('Se generează cheia…');
+  try{
+    const saltU8=crypto.getRandomValues(new Uint8Array(16)); const salt=_u8b64(saltU8);
+    const key=await vaultDerive(p1, salt);
+    const v=await vaultEncrypt(key, VAULT_VERIFY_TOKEN);
+    const verifier=v.iv+':'+v.blob;
+    const r=await sb.from('vault_keys').insert({tenant_id:state.tenant, user_id:state.session.user.id, salt, verifier});
+    if(r.error) throw r.error;
+    window._vk=key; state._vaultSalt=salt; state._vaultVerifier=verifier; window._vkItems=[];
+    toast('🔐 '+tz('Seif creat. E gata de folosit.')); vaultListScreen();
+  }catch(e){ er.textContent=tz('Eroare:')+' '+esc(e.message||e); }
+}
+function vaultUnlockScreen(){
+  $('content').innerHTML=
+  '<div class="card" style="max-width:480px;margin:1rem auto;padding:1.6rem;text-align:center">'
+  +'<div style="font-size:2.4rem">🔒</div>'
+  +'<h2 style="margin:.2rem 0 .3rem">'+tz('Seif blocat')+'</h2>'
+  +'<p style="color:var(--muted);font-size:.9rem;margin:0 0 1rem">'+tz('Introdu parola-mamă pentru a-l deschide.')+'</p>'
+  +'<input id="v-pw" type="password" autocomplete="current-password" placeholder="'+tz('Parola-mamă')+'" style="width:100%;padding:.6rem;border:1px solid var(--line);border-radius:9px" onkeydown="if(event.key===\'Enter\')vaultUnlock()">'
+  +'<div id="v-err" style="color:var(--red);font-size:.82rem;min-height:1.1rem;margin:.5rem 0"></div>'
+  +'<button class="btn" style="width:100%" onclick="vaultUnlock()">'+tz('Deblochează')+'</button>'
+  +'</div>';
+  setTimeout(()=>{ const e=$('v-pw'); if(e) e.focus(); }, 60);
+}
+async function vaultUnlock(){
+  const pw=$('v-pw').value; const er=$('v-err'); if(!pw){ er.textContent=tz('Introdu parola.'); return; }
+  er.textContent=tz('Se verifică…');
+  try{
+    const key=await vaultDerive(pw, state._vaultSalt);
+    const [iv,blob]=state._vaultVerifier.split(':');
+    let ok=false; try{ ok=(await vaultDecrypt(key, iv, blob))===VAULT_VERIFY_TOKEN; }catch(e){ ok=false; }
+    if(!ok){ er.textContent=tz('Parolă greșită.'); return; }
+    window._vk=key; vaultListScreen();
+  }catch(e){ er.textContent=tz('Eroare:')+' '+esc(e.message||e); }
+}
+function vaultLock(){ window._vk=null; window._vkItems=null; vaultUnlockScreen(); }
+async function vaultListScreen(){
+  $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Se decriptează…')+'</div>';
+  let rows=[];
+  try{ const { data }=await sb.from('vault_items').select('id,iv,blob,updated_at').eq('tenant_id',state.tenant).eq('user_id',state.session.user.id).order('updated_at',{ascending:false}); rows=data||[]; }catch(e){}
+  const items=[];
+  for(const r of rows){ try{ const o=await vaultDecrypt(window._vk, r.iv, r.blob); o._id=r.id; items.push(o); }catch(e){} }
+  window._vkItems=items;
+  vaultRenderList('');
+}
+function vaultRenderList(q){
+  const items=(window._vkItems||[]).filter(o=>{ if(!q) return true; const s=(o.title+' '+(o.username||'')+' '+(o.url||'')+' '+(o.category||'')).toLowerCase(); return s.indexOf(q.toLowerCase())>=0; });
+  let cards=items.map(o=>vaultCard(o)).join('');
+  if(!cards) cards='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+(q?tz('Nimic găsit.'):tz('Seiful e gol. Adaugă prima parolă sau cheie.'))+'</div>';
+  $('content').innerHTML=
+  '<div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.9rem;flex-wrap:wrap">'
+  +'<input id="v-search" placeholder="🔍 '+tz('Caută…')+'" value="'+esc(q||'')+'" oninput="vaultRenderList(this.value)" style="flex:1;min-width:160px;padding:.55rem .7rem;border:1px solid var(--line);border-radius:9px;background:var(--surface)">'
+  +'<button class="btn" onclick="vaultForm(null)">＋ '+tz('Adaugă')+'</button>'
+  +'<button class="btn-ghost" onclick="vaultLock()">🔒 '+tz('Blochează')+'</button>'
+  +'</div>'
+  +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.7rem">🔐 '+tz('Criptat pe dispozitivul tău — doar tu, cu parola-mamă, poți citi aceste date.')+'</div>'
+  +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.7rem">'+cards+'</div>';
+  if(q){ const e=$('v-search'); if(e){ e.focus(); e.setSelectionRange(q.length,q.length); } }
+}
+function vaultCard(o){
+  const cat=o.category?'<span style="font-size:.7rem;background:var(--chip,#eef1f6);color:var(--muted);border-radius:6px;padding:.1rem .4rem">'+esc(o.category)+'</span>':'';
+  const urlLine=o.url?'<a href="'+esc(/^https?:/.test(o.url)?o.url:'https://'+o.url)+'" target="_blank" rel="noopener" style="font-size:.78rem;color:var(--primary);word-break:break-all">'+esc(o.url)+'</a>':'';
+  const userLine=o.username?'<div style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;margin-top:.3rem"><span style="color:var(--muted);font-size:.74rem">'+tz('Utilizator')+':</span> <span data-s="'+esc(o.username)+'" style="word-break:break-all">'+esc(o.username)+'</span> <a onclick="vaultCopy(this.previousElementSibling)" title="'+tz('Copiază')+'" style="cursor:pointer;font-size:.8rem">📋</a></div>':'';
+  const pwLine=o.password?'<div style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;margin-top:.3rem"><span style="color:var(--muted);font-size:.74rem">'+tz('Parolă')+':</span> <span class="v-secret" data-s="'+esc(o.password)+'">••••••••</span> <a onclick="vaultReveal(this)" title="'+tz('Arată')+'" style="cursor:pointer;font-size:.8rem">👁</a> <a onclick="vaultCopy(this.parentNode.querySelector(\'.v-secret\'))" title="'+tz('Copiază')+'" style="cursor:pointer;font-size:.8rem">📋</a></div>':'';
+  const notesLine=o.notes?'<div style="font-size:.78rem;color:var(--muted);margin-top:.4rem;white-space:pre-wrap;word-break:break-word">'+esc(o.notes)+'</div>':'';
+  return '<div class="card" style="padding:.9rem">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem"><b style="word-break:break-word">'+esc(o.title)+'</b><div style="display:flex;gap:.35rem;flex-shrink:0"><a onclick="vaultForm(\''+o._id+'\')" title="'+tz('Editează')+'" style="cursor:pointer">✏️</a><a onclick="vaultDel(\''+o._id+'\')" title="'+tz('Șterge')+'" style="cursor:pointer">🗑</a></div></div>'
+    +(cat?'<div style="margin-top:.25rem">'+cat+'</div>':'')
+    +(urlLine?'<div style="margin-top:.3rem">'+urlLine+'</div>':'')
+    +userLine+pwLine+notesLine
+    +'</div>';
+}
+function vaultReveal(a){ const sp=a.previousElementSibling; if(!sp) return; if(sp.dataset.shown==='1'){ sp.textContent='••••••••'; sp.dataset.shown=''; a.textContent='👁'; } else { sp.textContent=sp.dataset.s; sp.dataset.shown='1'; a.textContent='🙈'; } }
+async function vaultCopy(srcEl){ const text=srcEl?srcEl.dataset.s:''; try{ await navigator.clipboard.writeText(text); toast('📋 '+tz('Copiat.')); }catch(e){ toast(tz('Nu am putut copia.')); } }
+function vaultForm(id){
+  const o=id?(window._vkItems||[]).find(x=>x._id===id)||{}:{};
+  const opts=VAULT_CATS.map(c=>'<option '+(o.category===c?'selected':'')+'>'+esc(c)+'</option>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><div class="modal-head"><h3>🔐 '+(id?esc(tz('Editează')):esc(tz('Adaugă în seif')))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="display:grid;gap:.7rem">'
+    +vfld(tz('Titlu / denumire')+' *','v-title',o.title||'','text','ex: Cont bancă MAIB')
+    +'<div><label style="font-size:.8rem;font-weight:600">'+tz('Categorie')+'</label><select id="v-cat" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)">'+opts+'</select></div>'
+    +vfld(tz('Utilizator / login'),'v-user',o.username||'','text','email, user, IBAN…')
+    +'<div><label style="font-size:.8rem;font-weight:600">'+tz('Parolă / cheie')+'</label><div style="display:flex;gap:.4rem;margin-top:.25rem"><input id="v-pass" type="text" value="'+esc(o.password||'')+'" style="flex:1;padding:.55rem;border:1px solid var(--line);border-radius:9px"><button type="button" class="btn-ghost" onclick="vaultGen()" title="'+tz('Generează parolă tare')+'">🎲</button></div></div>'
+    +vfld(tz('Adresă (URL)'),'v-url',o.url||'','text','ex: maib.md')
+    +'<div><label style="font-size:.8rem;font-weight:600">'+tz('Notițe')+'</label><textarea id="v-notes" rows="3" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem">'+esc(o.notes||'')+'</textarea></div>'
+    +'<div id="v-ferr" style="color:var(--red);font-size:.82rem"></div>'
+    +'</div>'
+    +'<div style="margin-top:1rem;text-align:right"><button class="btn" onclick="vaultSave('+(id?'\''+id+'\'':'null')+')">'+tz('Salvează')+'</button></div>'
+    +'</div></div></div>';
+  setTimeout(()=>{ const e=$('v-title'); if(e) e.focus(); }, 60);
+}
+function vfld(label,id,val,type,ph){ return '<div><label style="font-size:.8rem;font-weight:600">'+label+'</label><input id="'+id+'" type="'+(type||'text')+'" value="'+esc(val)+'" placeholder="'+esc(ph||'')+'" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem"></div>'; }
+function vaultGen(){ const ch='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*?'; const u=crypto.getRandomValues(new Uint8Array(18)); let s=''; for(let i=0;i<u.length;i++) s+=ch[u[i]%ch.length]; const e=$('v-pass'); if(e) e.value=s; }
+async function vaultSave(id){
+  if(!window._vk){ toast(tz('Seif blocat.')); return; }
+  const o={ title:($('v-title').value||'').trim(), category:$('v-cat').value, username:($('v-user').value||'').trim(), password:$('v-pass').value||'', url:($('v-url').value||'').trim(), notes:$('v-notes').value||'' };
+  if(!o.title){ $('v-ferr').textContent=tz('Pune un titlu.'); return; }
+  try{
+    const enc=await vaultEncrypt(window._vk, o);
+    const now=new Date().toISOString();
+    if(id){ const r=await sb.from('vault_items').update({iv:enc.iv, blob:enc.blob, updated_at:now}).eq('id',id); if(r.error) throw r.error; }
+    else { const r=await sb.from('vault_items').insert({tenant_id:state.tenant, user_id:state.session.user.id, iv:enc.iv, blob:enc.blob, updated_at:now}); if(r.error) throw r.error; }
+    closeModal(); toast('✅ '+tz('Salvat în seif.')); vaultListScreen();
+  }catch(e){ $('v-ferr').textContent=tz('Eroare:')+' '+esc(e.message||e); }
+}
+async function vaultDel(id){
+  if(!confirm(tz('Ștergi definitiv această intrare din seif?'))) return;
+  try{ const r=await sb.from('vault_items').delete().eq('id',id); if(r.error) throw r.error; toast('🗑 '+tz('Șters.')); vaultListScreen(); }catch(e){ toast(tz('Eroare:')+' '+esc(e.message||e)); }
+}
 function openPersonalize(){
   const p=czPrefs(); const acc=p.accent||0;
   const sw=PZ_ACCENTS.map((a,i)=>'<div class="pz-swatch'+(i===acc?' on':'')+'" title="'+esc(a[2])+'" style="background:'+a[0]+';color:'+a[0]+'" onclick="pzSetAccent('+i+')"></div>').join('');
@@ -1430,10 +1595,11 @@ function pzTogHide(k){ const p=czPrefs(); p.hidden=p.hidden||[]; const i=p.hidde
 function go(key){
   const m=MODULES[key]; if(!m) return;
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
+  if(key!=='seif' && window._vk){ window._vk=null; window._vkItems=null; } // seiful se blochează când pleci din modul
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1573,7 +1739,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v174';
+const APP_VERSION='cod373-v175';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
