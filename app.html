@@ -1581,8 +1581,32 @@ function openPersonalize(){
     +'<div style="font-weight:700;margin:.2rem 0 .2rem">🔔 '+esc(tz('Notificări push'))+'</div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Primește alerte pentru follow-up clienți chiar și când aplicația e închisă.'))+'</div>'
     +'<button id="pz-push" class="btn-ghost" onclick="pushSubscribe()">🔔 '+esc(tz('Activează notificările push'))+'</button>'
+    +'<hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0">'
+    +'<div style="font-weight:700;margin:.2rem 0 .2rem">🔑 '+esc(tz('Parola contului'))+'</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Setează o parolă ca să te poți loga cu email + parolă pe orice dispozitiv (recomandat dacă ai intrat prin link).'))+'</div>'
+    +'<button class="btn-ghost" onclick="pzPasswordForm()">🔑 '+esc(tz('Schimbă / setează parola'))+'</button>'
     +'</div></div></div>';
   setTimeout(pzInitMedia,0); setTimeout(pushRefreshBtn,0);
+}
+function pzPasswordForm(){
+  const email=(state.session&&state.session.user&&state.session.user.email)||'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px"><div class="modal-head"><h3>🔑 '+esc(tz('Schimbă / setează parola'))+'</h3><button class="x" onclick="openPersonalize()">×</button></div><div class="modal-body">'
+    +(email?'<p style="color:var(--muted);font-size:.85rem">'+esc(tz('Cont'))+': <b>'+esc(email)+'</b></p>':'')
+    +'<div class="field"><label>'+esc(tz('Parolă nouă (min. 6 caractere)'))+'</label><input id="pz-pw1" type="password" autocomplete="new-password" placeholder="••••••••"></div>'
+    +'<div class="field"><label>'+esc(tz('Confirmă parola'))+'</label><input id="pz-pw2" type="password" autocomplete="new-password" placeholder="••••••••" onkeydown="if(event.key===\'Enter\')pzSavePassword()"></div>'
+    +'<div id="pz-pw-msg" style="color:var(--red);font-size:.82rem;min-height:1rem"></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="openPersonalize()">'+esc(tz('Înapoi'))+'</button><button class="btn-primary" id="pz-pw-btn" onclick="pzSavePassword()">'+esc(tz('Salvează parola'))+'</button></div></div></div>';
+  setTimeout(()=>{ const e=$('pz-pw1'); if(e) e.focus(); },50);
+}
+async function pzSavePassword(){
+  const p=$('pz-pw1').value, p2=$('pz-pw2').value, msg=$('pz-pw-msg');
+  if(p.length<6){ msg.textContent=tz('Parola trebuie să aibă minim 6 caractere.'); return; }
+  if(p!==p2){ msg.textContent=tz('Parolele nu coincid.'); return; }
+  $('pz-pw-btn').disabled=true; msg.style.color='var(--muted)'; msg.textContent=tz('Se salvează…');
+  const { error }=await sb.auth.updateUser({ password:p });
+  $('pz-pw-btn').disabled=false;
+  if(error){ msg.style.color='var(--red)'; msg.textContent=error.message; return; }
+  closeModal(); toast('✅ '+tz('Parolă setată. De acum te poți loga cu email + parolă.'));
 }
 function pzSetTheme(v){ const p=czPrefs(); p.theme=v; czSave(p); applyPrefs(); openPersonalize(); }
 function pzSetAccent(i){ const p=czPrefs(); p.accent=i; czSave(p); applyPrefs(); openPersonalize(); }
@@ -1739,7 +1763,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v175';
+const APP_VERSION='cod373-v176';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }

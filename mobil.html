@@ -833,7 +833,27 @@ async function openProfile(){
     +'<div class="fld"><label>Nume complet</label><input id="pf-name" value="'+esc(prof.full_name||'')+'" placeholder="ex: Ion Zidaru"/></div>'
     +'<div class="fld"><label>Telefon</label><input id="pf-phone" value="'+esc(prof.phone||'')+'" placeholder="0__ ___ ___"/></div>'
     +'<button class="btn" id="pf-save" onclick="saveProfile()">Salvează</button>'
+    +'<button class="btn btn-line" style="margin-top:.6rem" onclick="openSetPassword()">🔑 Schimbă / setează parola</button>'
+    +'<div class="hint" style="margin:.3rem 0 0;font-size:.78rem;color:var(--muted,#6b7793)">Setează o parolă ca să te poți loga cu email + parolă pe orice dispozitiv (recomandat dacă ai intrat prin link).</div>'
     +'<button class="btn btn-line" style="margin-top:.6rem" onclick="doLogout()">Ieși din cont</button>');
+}
+function openSetPassword(){
+  openSheet('Schimbă / setează parola',
+    '<div id="sp-msg"></div>'
+    +'<div class="fld"><label>Cont</label><input value="'+esc(S.email||'')+'" disabled/></div>'
+    +'<div class="fld"><label>Parolă nouă (min. 6)</label><input id="sp-p1" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
+    +'<div class="fld"><label>Confirmă parola</label><input id="sp-p2" type="password" autocomplete="new-password" placeholder="••••••••"/></div>'
+    +'<button class="btn" id="sp-btn" onclick="saveNewPassword()">Salvează parola</button>');
+}
+async function saveNewPassword(){
+  const p=$('sp-p1').value, p2=$('sp-p2').value;
+  if(p.length<6){ $('sp-msg').innerHTML='<div class="msg err">Parola trebuie să aibă minim 6 caractere.</div>'; return; }
+  if(p!==p2){ $('sp-msg').innerHTML='<div class="msg err">Parolele nu coincid.</div>'; return; }
+  $('sp-btn').disabled=true;
+  const {error}=await sb.auth.updateUser({password:p});
+  $('sp-btn').disabled=false;
+  if(error){ $('sp-msg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>'; return; }
+  closeSheet(); toast('✅ Parolă setată. De acum te poți loga cu email + parolă.');
 }
 async function saveProfile(){
   const full_name=$('pf-name').value.trim(), phone=$('pf-phone').value.trim();
@@ -867,7 +887,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v175', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v176', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
