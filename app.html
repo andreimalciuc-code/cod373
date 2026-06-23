@@ -359,6 +359,17 @@ function cfgOk(){ return SUPABASE_URL.startsWith('http') && SUPABASE_KEY.startsW
 function $(id){ return document.getElementById(id); }
 function showMsg(el,t,type='err'){ $(el).innerHTML = t ? '<div class="msg '+type+'">'+esc(t)+'</div>' : ''; }
 function toast(m){ const t=$('toast'); $('toast-msg').innerHTML=m; t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),4000); }
+/* Prinde erorile JS necapturate (ex. pe telefonul unui coleg) și le arată — ca să nu mai „înghețe" tăcut.
+   Throttle ca să nu spameze; ignoră zgomotul cunoscut (ResizeObserver, extensii). */
+(function(){
+  let _lastErr=0;
+  function report(msg){ try{ const now=Date.now(); if(now-_lastErr<4000) return; _lastErr=now;
+    if(/ResizeObserver|Script error\.?$/i.test(msg||'')) return;
+    if(typeof toast==='function' && document.getElementById('toast')) toast('⚠️ '+(window.C373t?C373t('A apărut o eroare'):'A apărut o eroare')+': '+String(msg).slice(0,140));
+  }catch(e){} }
+  window.addEventListener('error', function(e){ report(e&&e.message); });
+  window.addEventListener('unhandledrejection', function(e){ const r=e&&e.reason; report(r&&(r.message||r)); });
+})();
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'};
 const COUNTRY_PRESETS={
@@ -1952,7 +1963,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v182';
+const APP_VERSION='cod373-v183';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3060,8 +3071,12 @@ async function renderClienti(){
     +'<input id="crm-q" placeholder="'+esc(C373t('Caută'))+'" oninput="crmFilter(this.value)" value="'+esc(_crmQ)+'" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;min-width:150px"/>'
     +'<span style="flex:1"></span><button class="btn-primary" onclick="crmNew()">＋ '+esc(C373t('Client nou'))+'</button></div>'
     +'<div id="crm-mount"><div class="loading">Se încarcă…</div></div>';
-  const { data, error }=await sb.from('clients').select('id,name,type,phone,email,stage,value,tags,source,stage_since,temperature,created_at,pipeline').order('created_at',{ascending:false});
-  if(error){ $('crm-mount').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
+  let { data, error }=await sb.from('clients').select('id,name,type,phone,email,stage,value,tags,source,stage_since,temperature,created_at,pipeline').order('created_at',{ascending:false});
+  if(error){ // fallback: dacă lipsește o coloană (migrare neaplicată) sau alt motiv, încarcă baza minimă ca să NU rămână gol
+    const fb=await sb.from('clients').select('id,name,type,phone,email,stage,created_at').order('created_at',{ascending:false});
+    if(fb.error){ $('crm-mount').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
+    data=fb.data; toast('⚠️ '+C373t('CRM încărcat în mod restrâns (o actualizare a bazei nu e aplicată).'));
+  }
   const fu={}; try{ const fr=await sb.from('client_activities').select('client_id,due_date,body').eq('kind','task').eq('done',false).order('due_date'); (fr.data||[]).forEach(a=>{ if(!fu[a.client_id]) fu[a.client_id]={due:a.due_date,body:a.body}; }); }catch(e){}
   _crmLast={}; try{ const lr=await sb.from('client_activities').select('client_id,created_at').order('created_at',{ascending:false}); (lr.data||[]).forEach(a=>{ if(!_crmLast[a.client_id]) _crmLast[a.client_id]=a.created_at; }); }catch(e){}
   _crmData=(data||[]).map(c=>Object.assign({},c,{_fu:fu[c.id]||null}));

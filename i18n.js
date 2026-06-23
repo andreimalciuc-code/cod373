@@ -136,6 +136,8 @@
     'Săptămâna viitoare':{ru:'Следующая неделя',de:'Nächste Woche',en:'Next week'},
     'Nicio lucrare planificată în această săptămână.':{ru:'На эту неделю работ не запланировано.',de:'Für diese Woche sind keine Arbeiten geplant.',en:'No work planned for this week.'},
     '👉 Apasă o lucrare ca să vezi ce ai de făcut, pozele și materialele.':{ru:'👉 Нажмите на работу, чтобы увидеть, что делать, фото и материалы.',de:'👉 Tippe auf eine Arbeit, um zu sehen, was zu tun ist, Fotos und Material.',en:'👉 Tap a job to see what to do, photos and materials.'},
+    'A apărut o eroare':{ru:'Произошла ошибка',de:'Ein Fehler ist aufgetreten',en:'An error occurred'},
+    'CRM încărcat în mod restrâns (o actualizare a bazei nu e aplicată).':{ru:'CRM загружен в ограниченном режиме (обновление базы не применено).',de:'CRM im eingeschränkten Modus geladen (ein Datenbank-Update fehlt).',en:'CRM loaded in limited mode (a database update is not applied).'},
     'Subcontractor':{ru:'Субподрядчик',de:'Subunternehmer',en:'Subcontractor'},
     'Compania':{ru:'Компания',de:'Unternehmen',en:'Company'},
     'Carduri carburant':{ru:'Топливные карты',de:'Tankkarten',en:'Fuel cards'},
@@ -1971,6 +1973,11 @@
   /* ── Tooltip instant (elimină complet întârzierea nativă a atributului title) ── */
   function initTips(){
     if(window.__c373tips) return; window.__c373tips=true;
+    // Tooltipurile instant au sens DOAR pe dispozitive cu mouse (hover). Pe telefon/tabletă (touch)
+    // nu există hover, deci sărim complet observerul de „title" — altfel rula la fiecare randare și
+    // încetinea aplicația pe telefon (cauza blocajelor/„frânei"). Titlurile native rămân intacte.
+    var noHover = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    if(noHover) return;
     var tip=null, curEl=null;
     function ensure(){ if(tip) return tip;
       var st=document.createElement('style');
