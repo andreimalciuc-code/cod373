@@ -211,8 +211,9 @@ async function boot(){
   $('who-r').textContent=(mem.tenants?mem.tenants.name:'Firma');
   CUR=((mem.tenants&&mem.tenants.currency)||'MDL').toUpperCase();
   const _lp=mem.tenants&&mem.tenants.logo_url; if(_lp){ try{ const {data:lu}=await sb.storage.from('docs').createSignedUrl(_lp,86400); if(lu&&lu.signedUrl){ const im=$('firm-logo'); im.src=lu.signedUrl; im.style.display=''; } }catch(e){} }
-  // default role: workers/drivers locked to their role; owner/admin/manager can switch
-  if(['worker','driver','client'].includes(mem.role)){ S.role=mem.role; $('roles').classList.add('hidden'); }
+  // Rolurile de teren sunt BLOCATE pe interfața lor (clientul vede doar ce e al lui, muncitorul doar interfața lui etc.);
+  // doar proprietar/admin/responsabil/contabil pot comuta între vederi (preview) prin bara de roluri.
+  if(['worker','driver','client','subcontractor'].includes(mem.role)){ S.role=mem.role; $('roles').classList.add('hidden'); }
   else { S.role='worker'; }
   document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
   $('login').classList.add('hidden');$('app').classList.remove('hidden');
@@ -956,7 +957,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v183', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v186', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
