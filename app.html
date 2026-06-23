@@ -676,7 +676,7 @@ const MODULES = {
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
     select:'id,name,photo_url,qty,default_rent,default_deposit,tool_locations(qty,site_id,store_id,warehouse_id,holder,loan_type,sites(name),stores(name),warehouses(name)),tool_units(id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,photo_url,site_id,warehouse_id,holder,loan_type,sites(name),warehouses(name))',
     columns:[
-      {label:'Foto',get:r=>{ const u=(r.tool_units||[]).find(x=>x.photo_url); const p=(u&&u.photo_url)||r.photo_url; return p?'<img class="lazimg" data-p="'+encodeURIComponent(p)+'" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(p)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:var(--bg)">':'<span style="color:var(--muted)">—</span>'; }},
+      {label:'Foto',get:r=>{ const u=(r.tool_units||[]).find(x=>x.photo_url); const p=(u&&u.photo_url)||r.photo_url; return p?'<img class="lazimg" data-p="'+encodeURIComponent(p)+'" onclick="event.stopPropagation();openImg(\''+encodeURIComponent(p)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:var(--bg)">':'<span style="color:var(--muted)">—</span>'; }},
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
       {label:'Bucăți',get:r=>{ const n=toolCount(r); return n?('<b>'+n+'</b> buc'):'<span style="color:var(--muted)">—</span>'; }},
       {label:'Unde se află',get:r=>toolWhereSummary(r)},
@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v205';
+const APP_VERSION='cod373-v206';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2216,7 +2216,8 @@ async function vehicleLog(vid, vlabel){
   const cover=vr.data&&vr.data.photo_url; const photos=((vr.data&&vr.data.photos)||[]).slice();
   const allP=(cover?[cover]:[]).concat(photos); const urlMap={};
   if(allP.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(allP,3600); (su.data||[]).forEach((x,i)=>{ if(x&&x.signedUrl) urlMap[allP[i]]=x.signedUrl; }); }catch(e){} }
-  const galThumb=(p,isCover)=>'<div style="position:relative;width:88px;height:88px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:var(--bg)">'+(urlMap[p]?'<img src="'+urlMap[p]+'" onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in">':'')+(isCover?'<span style="position:absolute;left:3px;top:3px;background:#2f6bff;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">principală</span>':'')+((canD&&!isCover)?'<button onclick="vehPhotoDel(\''+vid+'\',\''+encodeURIComponent(p)+'\',\''+jsArg(vlabel)+'\')" title="Șterge poza" style="position:absolute;right:2px;top:2px;background:rgba(220,38,38,.92);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:13px;line-height:1">×</button>':'')+'</div>';
+  const _vgid=galReg(allP);
+  const galThumb=(p,isCover)=>'<div style="position:relative;width:88px;height:88px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:var(--bg)">'+(urlMap[p]?'<img src="'+urlMap[p]+'" onclick="openGalleryId(\''+_vgid+'\','+allP.indexOf(p)+')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in">':'')+(isCover?'<span style="position:absolute;left:3px;top:3px;background:#2f6bff;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">principală</span>':'')+((canD&&!isCover)?'<button onclick="vehPhotoDel(\''+vid+'\',\''+encodeURIComponent(p)+'\',\''+jsArg(vlabel)+'\')" title="Șterge poza" style="position:absolute;right:2px;top:2px;background:rgba(220,38,38,.92);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:13px;line-height:1">×</button>':'')+'</div>';
   const galHtml='<div style="margin-bottom:.9rem"><div style="font-weight:700;margin-bottom:.45rem">📷 Poze vehicul</div><div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(cover?galThumb(cover,true):'')+photos.map(p=>galThumb(p,false)).join('')+(canU?'<label class="btn-ghost" style="cursor:pointer;display:flex;align-items:center;justify-content:center;width:88px;height:88px;border:1px dashed var(--line);border-radius:9px;font-size:1.3rem">📤<input type="file" accept="image/*" multiple style="display:none" onchange="vehPhotoAdd(\''+vid+'\',\''+jsArg(vlabel)+'\',this)"/></label>':'')+((!cover&&!photos.length&&!canU)?'<span style="color:var(--muted);font-size:.85rem">Nicio poză.</span>':'')+'</div></div>';
   const kindOpts=Object.keys(VLOG_KIND).map(k=>'<option value="'+k+'">'+esc(VLOG_KIND[k])+'</option>').join('');
   const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Adaugă lucrare</div>'
@@ -2302,7 +2303,7 @@ async function toolUnits(tid, tname){
       +'<td style="text-align:right;white-space:nowrap">'+(u.value!=null?money(u.value):'—')+'</td>'
       +'<td style="text-align:right;white-space:nowrap"><span style="color:'+(dep>=100?'#dc2626':(dep>=60?'#d97706':'#6b7793'))+'">'+dep+'%</span></td>'
       +'<td style="text-align:right;white-space:nowrap"><b>'+money(rem)+'</b></td>'
-      +'<td style="white-space:nowrap">'+(u.photo_url?'<button class="iconbtn" title="Poză" onclick="openDoc(\''+encodeURIComponent(u.photo_url)+'\')">🖼️</button>':'')+(canU?'<button class="iconbtn" title="Editează seria" onclick="toolUnitEdit(\''+u.id+'\')">✏️</button>':'')+'<button class="iconbtn" title="Istoric mișcări" onclick="toolUnitHist(\''+u.id+'\')">🕘</button><button class="iconbtn" title="Etichetă QR" onclick="toolUnitQR(\''+u.id+'\',\''+jsArg((tname||'')+' '+(u.serial_no||''))+'\')">🏷️</button>'+(canD?'<button class="iconbtn danger" title="Șterge seria" onclick="toolUnitDel(\''+u.id+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="6" style="color:var(--muted);padding:1rem">Nicio serie încă. Adaugă mai jos.</td></tr>';
+      +'<td style="white-space:nowrap">'+(u.photo_url?'<button class="iconbtn" title="Poză" onclick="openImg(\''+encodeURIComponent(u.photo_url)+'\')">🖼️</button>':'')+(canU?'<button class="iconbtn" title="Editează seria" onclick="toolUnitEdit(\''+u.id+'\')">✏️</button>':'')+'<button class="iconbtn" title="Istoric mișcări" onclick="toolUnitHist(\''+u.id+'\')">🕘</button><button class="iconbtn" title="Etichetă QR" onclick="toolUnitQR(\''+u.id+'\',\''+jsArg((tname||'')+' '+(u.serial_no||''))+'\')">🏷️</button>'+(canD?'<button class="iconbtn danger" title="Șterge seria" onclick="toolUnitDel(\''+u.id+'\')">🗑</button>':'')+'</td></tr>'; }).join(''):'<tr><td colspan="6" style="color:var(--muted);padding:1rem">Nicio serie încă. Adaugă mai jos.</td></tr>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px"><div class="modal-head"><h3>🔢 Bucăți (serii) — '+esc(tname||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body"><div id="tu-msg"></div>'+legBanner
     +'<div style="background:var(--bg);border-radius:9px;padding:.5rem .7rem;margin-bottom:.7rem;font-size:.85rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🔢 <b>'+units.length+'</b> buc</span><span>💰 valoare <b>'+money(totVal)+'</b></span><span>📉 rămasă (după amortizare) <b>'+money(remVal)+'</b></span></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Serie</th><th>Unde e</th><th style="text-align:right">Valoare</th><th style="text-align:right">Amort.</th><th style="text-align:right">Rămas</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
@@ -5235,7 +5236,7 @@ function delPvMeas(i){ previzCtx.meas.splice(i,1); renderPvMeas(); }
 function pvMeasEdit(i,k,v){ previzCtx.meas[i][k]=v; }
 function pvMeasSvc(i,v){ const m=previzCtx.meas[i]; m.label=v; const s=pvSvcByName(v); m.service_id=s?s.id:''; if(s&&s.unit) m.unit=s.unit; renderPvMeas(); }
 function renderPvPhotos(){ const el=$('pv-photos'); if(!el) return;
-  el.innerHTML=previzCtx.photos.length? '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem">'+previzCtx.photos.map((p,i)=>'<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--bg);border-radius:8px;padding:.25rem .5rem;font-size:.78rem"><a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary)">🖼️ '+(i+1)+'</a><span onclick="delPvPhoto('+i+')" style="cursor:pointer;color:var(--red)" title="șterge">×</span></span>').join('')+'</div>' : '';
+  el.innerHTML=previzCtx.photos.length? '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem">'+previzCtx.photos.map((p,i)=>'<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--bg);border-radius:8px;padding:.25rem .5rem;font-size:.78rem"><a onclick="openGallery(previzCtx.photos,'+i+')" style="cursor:pointer;color:var(--primary)">🖼️ '+(i+1)+'</a><span onclick="delPvPhoto('+i+')" style="cursor:pointer;color:var(--red)" title="șterge">×</span></span>').join('')+'</div>' : '';
 }
 function delPvPhoto(i){ previzCtx.photos.splice(i,1); renderPvPhotos(); }
 /* Adaugă pozele PE LOC (la fața locului) — fiecare captură se încarcă imediat și inputul se resetează,
@@ -5379,6 +5380,35 @@ async function openDoc(encPath){
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   window.open(data.signedUrl,'_blank');
 }
+/* ════ Vizualizator poze (lightbox) — deschide în fereastra curentă + navigare pe săgeți/swipe ════ */
+function galReg(paths){ window._galReg=window._galReg||{}; window._galC=(window._galC||0)+1; const id='gr'+window._galC; window._galReg[id]=(paths||[]).filter(Boolean); return id; }
+function openGalleryId(id,i){ openGallery((window._galReg||{})[id]||[], i); }
+function openImg(encPath){ openGallery([decodeURIComponent(encPath)],0); }   // o singură poză → lightbox în fereastra curentă
+async function openGallery(paths,start){
+  paths=(paths||[]).filter(Boolean); if(!paths.length) return; start=Math.max(0,Math.min(+start||0,paths.length-1));
+  let urls=[]; try{ const su=await sb.storage.from('docs').createSignedUrls(paths,600); urls=(su.data||[]).map(x=>(x&&x.signedUrl)||''); }catch(e){ toast('Eroare la încărcarea pozelor.'); return; }
+  window._gal={paths:paths,urls:urls,i:start};
+  let ov=document.getElementById('img-lb');
+  if(!ov){ ov=document.createElement('div'); ov.id='img-lb'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;touch-action:none';
+    ov.innerHTML='<button id="gl-x" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer">×</button>'
+      +'<button id="gl-prev" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer">‹</button>'
+      +'<img id="gl-img" style="max-width:92vw;max-height:86vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5);object-fit:contain"/>'
+      +'<button id="gl-next" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer">›</button>'
+      +'<div id="gl-cnt" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:999px"></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){ if(e.target===ov) galClose(); });
+    document.getElementById('gl-x').onclick=galClose;
+    document.getElementById('gl-prev').onclick=function(){ galGo(-1); };
+    document.getElementById('gl-next').onclick=function(){ galGo(1); };
+    let sx=0; ov.addEventListener('touchstart',function(e){ sx=e.touches[0].clientX; },{passive:true});
+    ov.addEventListener('touchend',function(e){ const dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>40) galGo(dx<0?1:-1); },{passive:true});
+    document.addEventListener('keydown',function(e){ const o=document.getElementById('img-lb'); if(!o||o.style.display==='none') return; if(e.key==='ArrowLeft')galGo(-1); else if(e.key==='ArrowRight')galGo(1); else if(e.key==='Escape')galClose(); });
+  }
+  ov.style.display='flex'; galShow();
+}
+function galShow(){ const g=window._gal; if(!g) return; const img=document.getElementById('gl-img'); if(img) img.src=g.urls[g.i]||''; const single=g.paths.length<2; const pv=document.getElementById('gl-prev'),nx=document.getElementById('gl-next'),c=document.getElementById('gl-cnt'); if(pv)pv.style.display=single?'none':''; if(nx)nx.style.display=single?'none':''; if(c){ c.style.display=single?'none':''; c.textContent=(g.i+1)+' / '+g.paths.length; } }
+function galGo(d){ const g=window._gal; if(!g) return; g.i=(g.i+d+g.paths.length)%g.paths.length; galShow(); }
+function galClose(){ const ov=document.getElementById('img-lb'); if(ov) ov.style.display='none'; }
 async function downloadDoc(encPath, encName){
   const path=decodeURIComponent(encPath); const name=encName?decodeURIComponent(encName):(path.split('/').pop().replace(/^\d+_/,''));
   toast('⬇ Se descarcă…');
@@ -5487,7 +5517,7 @@ function renderList(){
   // coloană Foto generică: dacă modulul are un câmp de tip „photo", arată miniatura
   const pf=(m.fields||[]).find(f=>f.type==='photo');
   if(pf && !cols.some(c=>c.label==='Foto')){
-    cols=[{label:'Foto',get:r=>{ const p=r[pf.key]; return p?'<img class="lazimg" data-p="'+encodeURIComponent(p)+'" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(p)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:var(--bg)">':'<span style="color:var(--muted)">—</span>'; }}].concat(cols);
+    cols=[{label:'Foto',get:r=>{ const p=r[pf.key]; return p?'<img class="lazimg" data-p="'+encodeURIComponent(p)+'" onclick="event.stopPropagation();openImg(\''+encodeURIComponent(p)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:var(--bg)">':'<span style="color:var(--muted)">—</span>'; }}].concat(cols);
   }
   const bulk=!!m.bulkOrder && canDo(key,'c');
   const cbHead=bulk?'<th style="width:34px;text-align:center"><input type="checkbox" id="bulk-all" onclick="event.stopPropagation();bulkToggleAll(this.checked)"></th>':'';
@@ -5749,7 +5779,7 @@ async function openForm(key,row,preset){
     else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="f-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
     else if(f.type==='select'){ let _o=f.options; if(key==='clienti'&&f.key==='stage'){ const pid=(row&&row.pipeline)||(window._crmPreset&&window._crmPreset.pipeline)||'sales'; try{ _o=crmPipe(pid).stages.map(s=>({value:s.k,label:s.label})); }catch(e){} } body+='<select id="f-'+f.key+'">'+_o.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
-    else if(f.type==='photo'){ body+=(v?'<img class="lazimg" data-p="'+encodeURIComponent(v)+'" onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="display:block;max-width:100%;max-height:180px;border-radius:9px;border:1px solid var(--line);margin-bottom:.5rem;object-fit:contain;background:var(--bg);cursor:zoom-in">':'')+'<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a înlocui poza.</div>':''); }
+    else if(f.type==='photo'){ body+=(v?'<img class="lazimg" data-p="'+encodeURIComponent(v)+'" onclick="openImg(\''+encodeURIComponent(v)+'\')" style="display:block;max-width:100%;max-height:180px;border-radius:9px;border:1px solid var(--line);margin-bottom:.5rem;object-fit:contain;background:var(--bg);cursor:zoom-in">':'')+'<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a înlocui poza.</div>':''); }
     else if(f.type==='file'){ body+=(v?'<div style="margin-bottom:.4rem;display:flex;gap:.8rem"><a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">📎 Deschide</a><a onclick="downloadDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">⬇ Descarcă</a></div>':'')+'<input id="f-'+f.key+'" type="file"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a-l înlocui.</div>':''); }
     else if(f.type==='price2'){ const incl=priceInclVat(); const vr=(row&&row.vat_rate!=null)?(+row.vat_rate):20; const stored=(v===''||v==null)?'':+v; let net='',gross='';
       if(stored!==''){ if(incl){ gross=stored; net=vr?Math.round(stored/(1+vr/100)*100)/100:stored; } else { net=stored; gross=Math.round(stored*(1+vr/100)*100)/100; } }
@@ -6063,7 +6093,7 @@ async function openSiteDetail(siteId){
   const ganttRows=stages.map(st=>{ let bar='';
     if(st.start_date&&st.end_date&&min){ const off=Math.round((new Date(st.start_date)-min)/86400000); const len=Math.max(1,(new Date(st.end_date)-new Date(st.start_date))/86400000+1);
       bar='<div style="position:relative;height:20px;background:var(--bg);border-radius:5px"><div style="position:absolute;left:'+(off/span*100)+'%;width:'+(len/span*100)+'%;height:100%;background:'+(stColor[st.status]||'#94a3b8')+';border-radius:5px" title="'+esc(st.start_date)+' → '+esc(st.end_date)+'"></div></div>'; }
-    const ph=(st.photo_urls||[]).map((p,i)=>'<a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary);font-size:.74rem;margin-right:.4rem">🖼️ poza '+(i+1)+'</a>').join('');
+    const _phid=galReg(st.photo_urls||[]); const ph=(st.photo_urls||[]).map((p,i)=>'<a onclick="openGalleryId(\''+_phid+'\','+i+')" style="cursor:pointer;color:var(--primary);font-size:.74rem;margin-right:.4rem">🖼️ poza '+(i+1)+'</a>').join('');
     return '<tr><td style="min-width:160px"><b>'+esc(st.name)+'</b>'+(st.specialty?'<div style="color:var(--muted);font-size:.72rem">'+esc(st.specialty)+'</div>':'')
       +(st.description?'<div style="color:var(--ink,#374151);font-size:.76rem;margin-top:.15rem">'+esc(st.description)+'</div>':'')
       +(ph?'<div style="margin-top:.15rem">'+ph+'</div>':'')+'</td>'
@@ -6136,7 +6166,7 @@ async function saveStageManual(){
 async function openStageEdit(stageId, siteId){
   const r=await sb.from('site_stages').select('id,name,description,photo_urls,status,progress').eq('id',stageId).single();
   if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
-  const st=r.data; const thumbs=(st.photo_urls||[]).map((p,i)=>'<span style="display:inline-flex;align-items:center;gap:.2rem;background:var(--bg2,#f1f5f9);border-radius:6px;padding:.2rem .4rem;margin:.2rem .2rem 0 0;font-size:.78rem"><a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary)">🖼️ poza '+(i+1)+'</a> <span onclick="stageDropPhoto(\''+stageId+'\',\''+siteId+'\','+i+')" style="cursor:pointer;color:var(--red)" title="șterge">×</span></span>').join('')||'<span style="color:var(--muted);font-size:.8rem">nicio poză</span>';
+  const st=r.data; const _seid=galReg(st.photo_urls||[]); const thumbs=(st.photo_urls||[]).map((p,i)=>'<span style="display:inline-flex;align-items:center;gap:.2rem;background:var(--bg2,#f1f5f9);border-radius:6px;padding:.2rem .4rem;margin:.2rem .2rem 0 0;font-size:.78rem"><a onclick="openGalleryId(\''+_seid+'\','+i+')" style="cursor:pointer;color:var(--primary)">🖼️ poza '+(i+1)+'</a> <span onclick="stageDropPhoto(\''+stageId+'\',\''+siteId+'\','+i+')" style="cursor:pointer;color:var(--red)" title="șterge">×</span></span>').join('')||'<span style="color:var(--muted);font-size:.8rem">nicio poză</span>';
   $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:60" onclick="if(event.target===this)closeWorkPicker()"><div class="modal" style="max-width:480px">'
     +'<div class="modal-head"><h3>📝 '+esc(st.name)+'</h3><button class="x" onclick="closeWorkPicker()">×</button></div>'
     +'<div class="modal-body"><div id="se-msg"></div>'
