@@ -628,11 +628,15 @@ async function openStageMobile(stageId){
   const sh=document.querySelector('.sheet'); if(sh){ sh.innerHTML='<h3>'+esc(st.name||'Pas de lucru')+'<button class="x" onclick="closeSheet()">×</button></h3>'+body; }
 }
 async function setStageStatus(stageId,status){
+  const st=(S.curStages||[]).find(x=>x.id===stageId);
+  const prev=st?{status:st.status,progress:st.progress}:null;
+  // optimist: actualizez pe loc + randez instant, salvez în fundal, revin dacă eșuează
+  if(st){ st.status=status; if(status==='done') st.progress=100; }
+  openStageMobile(stageId);
+  toast(status==='done'?'✅ Pas finalizat.':'▶️ Pas pornit.');
   const patch={status}; if(status==='done') patch.progress=100;
   const {error}=await sb.from('site_stages').update(patch).eq('id',stageId);
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const st=(S.curStages||[]).find(x=>x.id===stageId); if(st){ st.status=status; if(status==='done') st.progress=100; }
-  toast(status==='done'?'✅ Pas finalizat.':'▶️ Pas pornit.'); openStageMobile(stageId);
+  if(error){ if(st&&prev){ st.status=prev.status; st.progress=prev.progress; } toast('Eroare: '+esc(error.message)); openStageMobile(stageId); }
 }
 
 /* PONTAJ (muncitor/manager) */
@@ -963,7 +967,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v187', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v188', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;

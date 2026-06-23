@@ -1610,11 +1610,12 @@ const APPT_KINDS=[
 ];
 function apptKindLabel(k){ const x=APPT_KINDS.find(y=>y.k===k); return x?tz(x.ro):''; }
 async function apptLoadRefs(){
+  if(window._apptRefs && window._apptRefsT && (Date.now()-window._apptRefsT<30000)) return window._apptRefs; // cache 30s — deschideri repetate instant
   const r={clients:[],sites:[],emps:[]};
   try{ const {data}=await sb.from('clients').select('id,name').order('name'); r.clients=data||[]; }catch(e){}
   try{ const {data}=await sb.from('sites').select('id,name').order('name'); r.sites=data||[]; }catch(e){}
   try{ const {data}=await sb.from('employees').select('id,full_name').order('full_name'); r.emps=data||[]; }catch(e){}
-  window._apptRefs=r; return r;
+  window._apptRefs=r; window._apptRefsT=Date.now(); return r;
 }
 function _apptName(id,arr,col){ if(!id) return ''; const x=(arr||[]).find(y=>y.id===id); return x?(x[col]||''):''; }
 function apptTimeStr(a){ if(a.all_day) return tz('Toată ziua'); const p=n=>String(n).padStart(2,'0'); const d=new Date(a.starts_at); let s=p(d.getHours())+':'+p(d.getMinutes()); if(a.ends_at){ const e=new Date(a.ends_at); s+='–'+p(e.getHours())+':'+p(e.getMinutes()); } return s; }
@@ -1978,7 +1979,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v187';
+const APP_VERSION='cod373-v188';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3143,7 +3144,7 @@ function crmCard(c){ const fu=c._fu; const overdue=fu&&fu.due&&fu.due<coToday();
     +(fu?'<div style="font-size:.72rem;margin-top:.2rem;color:'+(overdue?'var(--red)':'var(--primary)')+'">⏰ '+esc(fmtDate(fu.due))+(fu.body?(' · '+esc(String(fu.body).slice(0,22))):'')+'</div>'
         :(open?'<div style="font-size:.7rem;margin-top:.2rem;color:var(--red);font-weight:600">⚠️ '+esc(C373t('fără sarcină — planifică una'))+'</div>':''))+'</div>';
 }
-function crmFilter(v){ _crmQ=v||''; crmRender(); }
+function crmFilter(v){ _crmQ=v||''; clearTimeout(window._crmFt); window._crmFt=setTimeout(crmRender,150); }
 let _crmDragId=null;
 function crmDragStart(ev,id){ _crmDragId=id; ev.dataTransfer.effectAllowed='move'; try{ev.dataTransfer.setData('text/plain',id);}catch(e){} }
 async function caLogSys(clientId,body){ try{ await sb.from('client_activities').insert({tenant_id:state.tenant,client_id:clientId,kind:'note',body:body,done:true,created_by:tuActor()}); }catch(e){} }
@@ -4223,7 +4224,7 @@ async function renderNorme(){
   const { data }=await sb.from('norms').select('code,name,unit,category,unit_price');
   window._norms=data||[]; renderNormeList('');
 }
-function filterNorme(q){ renderNormeList((q||'').toLowerCase()); }
+function filterNorme(q){ const v=(q||'').toLowerCase(); clearTimeout(window._nFt); window._nFt=setTimeout(()=>renderNormeList(v),150); }
 function renderNormeList(q){
   const list=(window._norms||[]).filter(n=>!q||((n.name||'')+' '+(n.code||'')+' '+(n.category||'')).toLowerCase().includes(q));
   const body=list.map(n=>'<tr><td>'+esc(n.code||'')+'</td><td class="tname">'+esc(n.name)+'</td><td>'+esc(n.unit)+'</td><td>'+esc(n.category||'—')+'</td><td>'+money(n.unit_price)+'</td></tr>').join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.5rem">Niciun rezultat.</td></tr>';
