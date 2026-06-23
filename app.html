@@ -527,6 +527,7 @@ const MODULES = {
   previzualizare:{ title:'Previzualizare șantier', sub:'Fișă de vizită pe teren — poze, întrebări, măsurători → PDF și deviz.', icon:'📋', group:'Operațional', custom:true },
   emailuri:{ title:'Mesaje clienți', sub:'Trimite emailuri clienților și primește răspunsurile aici.', icon:'📨', group:'Operațional', custom:true },
   plantafel:{ title:'Planificare echipe', sub:'Cine, pe ce șantier, în ce zi — pe săptămână.', icon:'🗓️', group:'Operațional', custom:true },
+  programari:{ title:'Programări', sub:'Întâlniri, vizite, măsurători, recepții — cu reminder și adăugare în calendarul telefonului.', icon:'📆', group:'Operațional', custom:true },
   postcalc:{ title:'Postcalculație (marjă)', sub:'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.', icon:'📈', group:'Rapoarte', custom:true },
   restante:{ title:'Restanțe & remindere', sub:'Facturi neîncasate scadente — trimite remindere.', icon:'⏰', group:'Rapoarte', custom:true },
   platibil:{ title:'Plăți furnizori', sub:'Scadențar — facturi de la furnizori de plătit.', icon:'💸', group:'Rapoarte', custom:true },
@@ -1568,6 +1569,164 @@ async function vaultDel(id){
   if(!confirm(tz('Ștergi definitiv această intrare din seif?'))) return;
   try{ const r=await sb.from('vault_items').delete().eq('id',id); if(r.error) throw r.error; toast('🗑 '+tz('Șters.')); vaultListScreen(); }catch(e){ toast(tz('Eroare:')+' '+esc(e.message||e)); }
 }
+
+/* ════ PROGRAMĂRI / TERMINE (appointments) — întâlniri, vizite, măsurători, recepții ════
+   .ics (cu reminder VALARM) pentru adăugare în calendarul telefonului (Google/Apple/Outlook). */
+const APPT_KINDS=[
+  {k:'meeting',    ro:'Întâlnire',          icon:'🤝'},
+  {k:'site_visit', ro:'Vizită pe șantier',  icon:'🏗️'},
+  {k:'measure',    ro:'Măsurători',          icon:'📐'},
+  {k:'handover',   ro:'Recepție / predare',  icon:'✅'},
+  {k:'inspection', ro:'Inspecție',           icon:'🔍'},
+  {k:'delivery',   ro:'Livrare',             icon:'🚚'},
+  {k:'internal',   ro:'Ședință internă',     icon:'👥'},
+  {k:'other',      ro:'Altele',              icon:'📌'}
+];
+function apptKindLabel(k){ const x=APPT_KINDS.find(y=>y.k===k); return x?tz(x.ro):''; }
+async function apptLoadRefs(){
+  const r={clients:[],sites:[],emps:[]};
+  try{ const {data}=await sb.from('clients').select('id,name').order('name'); r.clients=data||[]; }catch(e){}
+  try{ const {data}=await sb.from('sites').select('id,name').order('name'); r.sites=data||[]; }catch(e){}
+  try{ const {data}=await sb.from('employees').select('id,full_name').order('full_name'); r.emps=data||[]; }catch(e){}
+  window._apptRefs=r; return r;
+}
+function _apptName(id,arr,col){ if(!id) return ''; const x=(arr||[]).find(y=>y.id===id); return x?(x[col]||''):''; }
+function apptTimeStr(a){ if(a.all_day) return tz('Toată ziua'); const p=n=>String(n).padStart(2,'0'); const d=new Date(a.starts_at); let s=p(d.getHours())+':'+p(d.getMinutes()); if(a.ends_at){ const e=new Date(a.ends_at); s+='–'+p(e.getHours())+':'+p(e.getMinutes()); } return s; }
+async function renderProgramari(){
+  $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Se încarcă…')+'</div>';
+  const refs=await apptLoadRefs();
+  const showPast=!!window._apptPast;
+  const todayIso=coToday(); const t0=new Date(todayIso+'T00:00:00').toISOString();
+  let q=sb.from('appointments').select('*').eq('tenant_id',state.tenant).neq('status','cancelled');
+  q = showPast ? q.lt('starts_at',t0).order('starts_at',{ascending:false}).limit(80) : q.gte('starts_at',t0).order('starts_at',{ascending:true});
+  let rows=[]; try{ const {data,error}=await q; if(error) throw error; rows=data||[]; }catch(e){ $('content').innerHTML='<div class="card" style="padding:1.5rem">'+tz('Eroare:')+' '+esc(e.message||e)+'</div>'; return; }
+  window._appts=rows.map(a=>{ a._client=_apptName(a.client_id,refs.clients,'name'); a._site=_apptName(a.site_id,refs.sites,'name'); a._emp=_apptName(a.assignee,refs.emps,'full_name'); return a; });
+  const head='<div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.9rem;flex-wrap:wrap">'
+    +'<button class="btn" onclick="apptForm(null)">＋ '+tz('Programare nouă')+'</button>'
+    +'<button class="btn-ghost" onclick="window._apptPast='+(!showPast)+';renderProgramari()">'+(showPast?('📆 '+tz('Programări viitoare')):('🕓 '+tz('Programări trecute')))+'</button>'
+    +'</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.7rem">📅 '+tz('Apasă „Adaugă în calendar" ca să pui programarea în calendarul telefonului (cu reminder).')+'</div>';
+  if(!window._appts.length){ $('content').innerHTML=head+'<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+(showPast?tz('Nicio programare trecută.'):tz('Nicio programare. Adaugă prima.'))+'</div>'; return; }
+  if(showPast){ $('content').innerHTML=head+window._appts.map(apptCard).join(''); return; }
+  // grupare: Azi / Mâine / Această săptămână / Mai târziu
+  const dayOf=iso=>isoLocal(new Date(iso));
+  const tom=isoLocal(new Date(new Date(todayIso+'T00:00:00').getTime()+86400000));
+  const wkEnd=isoLocal(new Date(new Date(todayIso+'T00:00:00').getTime()+7*86400000));
+  const g={azi:[],maine:[],sapt:[],later:[]};
+  window._appts.forEach(a=>{ const d=dayOf(a.starts_at); if(d===todayIso)g.azi.push(a); else if(d===tom)g.maine.push(a); else if(d<=wkEnd)g.sapt.push(a); else g.later.push(a); });
+  const sect=(label,arr)=> arr.length?('<div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;margin:.9rem 0 .35rem">'+esc(label)+'</div>'+arr.map(apptCard).join('')):'';
+  $('content').innerHTML=head+sect(tz('Azi'),g.azi)+sect(tz('Mâine'),g.maine)+sect(tz('Această săptămână'),g.sapt)+sect(tz('Mai târziu'),g.later);
+}
+function apptCard(a){
+  const k=APPT_KINDS.find(x=>x.k===a.kind);
+  const badge=k?'<span style="font-size:.7rem;background:var(--chip,#eef1f6);color:var(--muted);border-radius:6px;padding:.1rem .45rem;white-space:nowrap">'+k.icon+' '+esc(apptKindLabel(a.kind))+'</span>':'';
+  const meta=[a._client?('👤 '+esc(a._client)):'', (a._site?('🏗️ '+esc(a._site)):(a.location?('📍 '+esc(a.location)):'')), a._emp?('👷 '+esc(a._emp)):''].filter(Boolean).join(' · ');
+  const done=a.status==='done';
+  return '<div class="card" style="padding:.7rem .85rem;display:flex;gap:.7rem;align-items:flex-start;margin-bottom:.5rem;'+(done?'opacity:.62':'')+'">'
+    +'<div style="min-width:66px;font-weight:700;font-size:.9rem;color:var(--primary)">'+esc(apptTimeStr(a))+'</div>'
+    +'<div style="flex:1;min-width:0">'
+      +'<div style="font-weight:600;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">'+(done?'✅ ':'')+'<span>'+esc(a.title)+'</span>'+badge+'</div>'
+      +(meta?'<div style="font-size:.8rem;color:var(--muted);margin-top:.2rem">'+meta+'</div>':'')
+      +(a.notes?'<div style="font-size:.78rem;color:var(--muted);margin-top:.2rem;white-space:pre-wrap;word-break:break-word">'+esc(a.notes)+'</div>':'')
+      +'<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-top:.45rem;font-size:.8rem">'
+        +'<a onclick="apptDownloadIcs(\''+a.id+'\')" style="cursor:pointer;color:var(--primary)">📅 '+tz('Adaugă în calendar')+'</a>'
+        +(a.client_id?'<a onclick="apptCopyConfirm(\''+a.id+'\')" style="cursor:pointer;color:var(--primary)">📋 '+tz('Copiază confirmarea')+'</a>':'')
+        +(done?'':'<a onclick="apptStatus(\''+a.id+'\',\'done\')" style="cursor:pointer">✓ '+tz('Făcut')+'</a>')
+        +'<a onclick="apptForm(\''+a.id+'\')" style="cursor:pointer">✏️ '+tz('Editează')+'</a>'
+        +'<a onclick="apptStatus(\''+a.id+'\',\'cancelled\')" style="cursor:pointer;color:var(--red)">🚫 '+tz('Anulează')+'</a>'
+      +'</div>'
+    +'</div></div>';
+}
+function apptForm(id){
+  const a=id?(window._appts||[]).find(x=>x.id===id)||{}:{};
+  const refs=window._apptRefs||{clients:[],sites:[],emps:[]};
+  const kindOpts=APPT_KINDS.map(x=>'<option value="'+x.k+'" '+(a.kind===x.k?'selected':'')+'>'+x.icon+' '+esc(tz(x.ro))+'</option>').join('');
+  const cliOpts='<option value="">—</option>'+refs.clients.map(c=>'<option value="'+c.id+'" '+(a.client_id===c.id?'selected':'')+'>'+esc(c.name||'')+'</option>').join('');
+  const siteOpts='<option value="">—</option>'+refs.sites.map(s=>'<option value="'+s.id+'" '+(a.site_id===s.id?'selected':'')+'>'+esc(s.name||'')+'</option>').join('');
+  const empOpts='<option value="">—</option>'+refs.emps.map(e=>'<option value="'+e.id+'" '+(a.assignee===e.id?'selected':'')+'>'+esc(e.full_name||'')+'</option>').join('');
+  const d=a.starts_at?new Date(a.starts_at):null; const p=n=>String(n).padStart(2,'0');
+  const dateV=d?isoLocal(d):coToday();
+  const startV=(d&&!a.all_day)?(p(d.getHours())+':'+p(d.getMinutes())):'09:00';
+  const endV=a.ends_at?(()=>{const e=new Date(a.ends_at);return p(e.getHours())+':'+p(e.getMinutes());})():'';
+  const allday=!!a.all_day;
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:500px"><div class="modal-head"><h3>📆 '+(id?esc(tz('Editează')):esc(tz('Programare nouă')))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="display:grid;gap:.7rem">'
+    +vfld(tz('Titlu')+' *','ap-title',a.title||'','text','ex: Întâlnire cu clientul')
+    +'<div><label style="font-size:.8rem;font-weight:600">'+tz('Tip')+'</label><select id="ap-kind" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)">'+kindOpts+'</select></div>'
+    +'<div style="display:flex;gap:.6rem"><div style="flex:1"><label style="font-size:.8rem;font-weight:600">'+tz('Data')+' *</label><input id="ap-date" type="date" value="'+esc(dateV)+'" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem"></div>'
+    +'<label style="display:flex;align-items:flex-end;gap:.35rem;font-size:.82rem;padding-bottom:.5rem"><input id="ap-allday" type="checkbox" '+(allday?'checked':'')+' onchange="document.getElementById(\'ap-times\').style.display=this.checked?\'none\':\'flex\'">'+tz('Toată ziua')+'</label></div>'
+    +'<div id="ap-times" style="display:'+(allday?'none':'flex')+';gap:.6rem"><div style="flex:1"><label style="font-size:.8rem;font-weight:600">'+tz('Ora început')+'</label><input id="ap-start" type="time" value="'+esc(startV)+'" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem"></div><div style="flex:1"><label style="font-size:.8rem;font-weight:600">'+tz('Ora sfârșit')+'</label><input id="ap-end" type="time" value="'+esc(endV)+'" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem"></div></div>'
+    +'<div><label style="font-size:.8rem;font-weight:600">'+tz('Client')+'</label><select id="ap-client" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)">'+cliOpts+'</select></div>'
+    +'<div style="display:flex;gap:.6rem"><div style="flex:1"><label style="font-size:.8rem;font-weight:600">'+tz('Șantier')+'</label><select id="ap-site" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)">'+siteOpts+'</select></div><div style="flex:1"><label style="font-size:.8rem;font-weight:600">'+tz('Responsabil')+'</label><select id="ap-emp" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)">'+empOpts+'</select></div></div>'
+    +vfld(tz('Locație (adresă)'),'ap-loc',a.location||'','text','dacă nu e pe șantier')
+    +'<div><label style="font-size:.8rem;font-weight:600">'+tz('Notițe')+'</label><textarea id="ap-notes" rows="2" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem">'+esc(a.notes||'')+'</textarea></div>'
+    +'<div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:.82rem"><label style="display:flex;align-items:center;gap:.35rem"><input id="ap-rd" type="checkbox" '+(a.remind_day===false?'':'checked')+'>'+tz('Reminder cu o zi înainte')+'</label><label style="display:flex;align-items:center;gap:.35rem"><input id="ap-rh" type="checkbox" '+(a.remind_hour===false?'':'checked')+'>'+tz('Reminder cu 1 oră înainte')+'</label></div>'
+    +'<div id="ap-err" style="color:var(--red);font-size:.82rem"></div>'
+    +'</div>'
+    +'<div style="margin-top:1rem;text-align:right"><button class="btn" onclick="apptSave('+(id?'\''+id+'\'':'null')+')">'+tz('Salvează')+'</button></div>'
+    +'</div></div></div>';
+  setTimeout(()=>{ const e=$('ap-title'); if(e) e.focus(); },60);
+}
+async function apptSave(id){
+  const title=($('ap-title').value||'').trim(); const err=$('ap-err');
+  if(!title){ err.textContent=tz('Pune un titlu.'); return; }
+  const date=$('ap-date').value; if(!date){ err.textContent=tz('Alege data.'); return; }
+  const allDay=$('ap-allday').checked;
+  let starts_at, ends_at=null;
+  if(allDay){ starts_at=new Date(date+'T00:00:00').toISOString(); }
+  else { const t=$('ap-start').value||'09:00'; starts_at=new Date(date+'T'+t+':00').toISOString(); const te=$('ap-end').value; if(te) ends_at=new Date(date+'T'+te+':00').toISOString(); }
+  const rec={ tenant_id:state.tenant, title, kind:$('ap-kind').value||null, starts_at, ends_at, all_day:allDay,
+    client_id:$('ap-client').value||null, site_id:$('ap-site').value||null, assignee:$('ap-emp').value||null,
+    location:($('ap-loc').value||'').trim()||null, notes:($('ap-notes').value||'').trim()||null,
+    remind_day:$('ap-rd').checked, remind_hour:$('ap-rh').checked };
+  let r;
+  if(id){ r=await sb.from('appointments').update(rec).eq('id',id); }
+  else { rec.created_by=state.session.user.id; rec.status='planned'; r=await sb.from('appointments').insert(rec); }
+  if(r.error){ err.textContent=tz('Eroare:')+' '+esc(r.error.message); return; }
+  closeModal(); toast('✅ '+tz('Programare salvată.')); renderProgramari();
+}
+async function apptStatus(id,st){
+  if(st==='cancelled' && !confirm(tz('Anulezi această programare?'))) return;
+  const r=await sb.from('appointments').update({status:st}).eq('id',id);
+  if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
+  toast('✅ '+tz('Actualizat.')); renderProgramari();
+}
+function _icsDt(iso){ const d=new Date(iso); const p=n=>String(n).padStart(2,'0'); return d.getUTCFullYear()+p(d.getUTCMonth()+1)+p(d.getUTCDate())+'T'+p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds())+'Z'; }
+function _icsEsc(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
+function apptIcs(a){
+  const start=a.starts_at; const end=a.ends_at||new Date(new Date(a.starts_at).getTime()+3600000).toISOString();
+  const loc=a.location||a._site||'';
+  const desc=[a._client?(tz('Client')+': '+a._client):'', a.notes||''].filter(Boolean).join('\\n');
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Cod373//Programari//RO','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT','UID:appt-'+a.id+'@cod373','DTSTAMP:'+_icsDt(new Date().toISOString()),'DTSTART:'+_icsDt(start),'DTEND:'+_icsDt(end),'SUMMARY:'+_icsEsc(a.title)];
+  if(loc) L.push('LOCATION:'+_icsEsc(loc));
+  if(desc) L.push('DESCRIPTION:'+desc);
+  if(a.remind_day!==false){ L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+_icsEsc(a.title),'TRIGGER:-P1D','END:VALARM'); }
+  if(a.remind_hour!==false){ L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+_icsEsc(a.title),'TRIGGER:-PT1H','END:VALARM'); }
+  L.push('END:VEVENT','END:VCALENDAR');
+  return L.join('\r\n');
+}
+function apptDownloadIcs(id){
+  const a=(window._appts||[]).find(x=>x.id===id); if(!a) return;
+  const blob=new Blob([apptIcs(a)],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob); const link=document.createElement('a');
+  link.href=url; link.download=((a.title||'programare').replace(/[^a-zA-Z0-9._-]/g,'_'))+'.ics';
+  document.body.appendChild(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000);
+  toast('📅 '+tz('Fișier .ics descărcat — deschide-l ca să adaugi în calendar.'));
+}
+function apptConfirmText(a){
+  const when=fmtDate(a.starts_at)+(a.all_day?'':(' · '+apptTimeStr(a)));
+  const where=a.location||a._site||'';
+  const firm=(state.firm&&(state.firm.automations&&state.firm.automations.brand_name||state.firm.name))||'';
+  let t=tz('Bună ziua,')+'\n\n'+tz('Vă confirmăm programarea:')+'\n• '+a.title+'\n• '+tz('Data')+': '+when;
+  if(where) t+='\n• '+tz('Locul')+': '+where;
+  t+='\n\n'+tz('Vă mulțumim!');
+  if(firm) t+='\n— '+firm;
+  return t;
+}
+async function apptCopyConfirm(id){
+  const a=(window._appts||[]).find(x=>x.id===id); if(!a) return;
+  try{ await navigator.clipboard.writeText(apptConfirmText(a)); toast('📋 '+tz('Confirmare copiată — o poți trimite pe WhatsApp/email.')); }catch(e){ toast(tz('Nu am putut copia.')); }
+}
 function openPersonalize(){
   const p=czPrefs(); const acc=p.accent||0;
   const sw=PZ_ACCENTS.map((a,i)=>'<div class="pz-swatch'+(i===acc?' on':'')+'" title="'+esc(a[2])+'" style="background:'+a[0]+';color:'+a[0]+'" onclick="pzSetAccent('+i+')"></div>').join('');
@@ -1653,7 +1812,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -1793,7 +1952,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v178';
+const APP_VERSION='cod373-v179';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
