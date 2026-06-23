@@ -409,7 +409,7 @@ async function saveLineDetails(i){
 function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
   let h='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.gross)+'</b></div>';
   if(t.disc>0.005) h+='<div class="totrow"><span class="sub">Reducere</span><b style="color:var(--green)">−'+money(t.disc)+'</b></div>';
-  if(vm!=='none') h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
+  if(vm!=='none'||t.vat>0.005) h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
   h+='<div class="totrow g"><span>Total'+(S.inv.inv_type!=='normal'?' lucrări':'')+'</span><span>'+money(t.total)+'</span></div>';
   if(S.inv.inv_type!=='normal' || S.inv.retention_pct>0){ const d=deTotals();
     if(S.inv.inv_type==='schluss' && (S._absch||[]).length){ (S._absch).forEach(x=>{ h+='<div class="totrow"><span class="sub" style="font-size:.78rem">− Avans '+esc(x.number||'')+'</span><b style="color:#b45309">−'+money(x.total)+'</b></div>'; }); }
@@ -604,7 +604,7 @@ async function pdf(inPlace){
     +'<table><thead><tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr></thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
     +'<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
       +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
-      +(vmode!=='none'?'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>':'')
+      +((vmode!=='none'||t.vat>0.005)?'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>':'')
       +'<div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div>'
       +(de?(((S.inv.inv_type==='schluss')?(S._absch||[]).map(function(x){return '<div><span>− '+T('Avans')+' '+esc(x.number||'')+'</span><b>−'+money(x.total)+'</b></div>';}).join(''):'')+(de.ret>0?'<div><span>− '+T('Reținere garanție')+' '+num2(S.inv.retention_pct)+'%</span><b>−'+money(de.ret)+'</b></div>':'')+'<div class="g"><span>'+(S.inv.inv_type==='schluss'?'Restbetrag / '+T('De plată acum'):T('De plată acum'))+':</span><span>'+money(de.payable)+'</span></div>'):'')
       +'</div>'
