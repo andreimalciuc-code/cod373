@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v193';
+const APP_VERSION='cod373-v194';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3588,7 +3588,7 @@ async function renderPlantafel(){
   const start=new Date(_planMon); const dates=[]; for(let i=0;i<7;i++){ const d=new Date(start); d.setDate(start.getDate()+i); dates.push(isoD(d)); }
   _planDates=dates; const today=isoD(new Date());
   const tgl=(on)=>on?'background:var(--primary-soft,#e8f0ff);color:#1d4ed8;font-weight:700':'';
-  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="planNav(-7)">←</button><b style="margin:0 .5rem">'+fmtDate(dates[0])+' — '+fmtDate(dates[6])+'</b><button class="btn-ghost" onclick="planNav(7)">→</button><button class="btn-ghost" onclick="planNav(0)">Azi</button><span style="flex:1"></span>'
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="planNav(-7)">←</button><b style="margin:0 .5rem;cursor:pointer;border-bottom:1px dashed var(--muted)" onclick="planOpenPicker()" title="Apasă ca să sari la o anumită săptămână">'+fmtDate(dates[0])+' — '+fmtDate(dates[6])+' 📅</b><input type="date" id="pl-datepick" value="'+esc(dates[0])+'" onchange="planGoDate(this.value)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0"><button class="btn-ghost" onclick="planNav(7)">→</button><button class="btn-ghost" onclick="planNav(0)">Azi</button><span style="flex:1"></span>'
     +'<button class="btn-ghost" onclick="planTogHalf()" style="'+tgl(_planHalf)+'">½ Jumătăți de zi</button>'
     +'<button class="btn-ghost" onclick="planTogGroup()" style="'+tgl(_planGroup)+'">👥 Pe echipe</button>'
     +'<button class="btn-ghost" onclick="planTeamsModal()">👷 Echipe</button>'
@@ -3677,6 +3677,8 @@ function planStyle(){ if(document.getElementById('plan-style')) return ''; var c
 function planTogHalf(){ _planHalf=!_planHalf; localStorage.setItem('c373_plan_half',_planHalf?'1':'0'); renderPlantafel(); }
 function planTogGroup(){ _planGroup=!_planGroup; localStorage.setItem('c373_plan_teams',_planGroup?'1':'0'); renderPlantafel(); }
 function planNav(delta){ closePlMenu(); if(delta===0) _planMon=mondayOf(new Date()); else { _planMon=new Date(_planMon); _planMon.setDate(_planMon.getDate()+delta); } renderPlantafel(); }
+function planGoDate(iso){ if(!iso) return; closePlMenu(); _planMon=mondayOf(new Date(iso+'T12:00:00')); renderPlantafel(); }   // sari la săptămâna care conține data aleasă
+function planOpenPicker(){ const i=$('pl-datepick'); if(!i) return; try{ if(i.showPicker){ i.showPicker(); } else { i.style.position='static'; i.style.width='auto'; i.style.height='auto'; i.style.opacity='1'; i.style.pointerEvents='auto'; i.focus(); i.click(); } }catch(e){ try{ i.focus(); i.click(); }catch(_){ } } }
 function planDragStart(ev,payload){ ev.dataTransfer.setData('text/plain',payload); ev.dataTransfer.effectAllowed='move'; }
 function planDrop(ev,kind,id,date,slot){ ev.preventDefault(); if(ev.currentTarget) ev.currentTarget.classList.remove('plover');
   const data=ev.dataTransfer.getData('text/plain')||'';
