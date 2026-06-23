@@ -114,6 +114,11 @@
     'Vă mulțumim!':{ru:'Спасибо!',de:'Vielen Dank!',en:'Thank you!'},
     'Confirmare copiată — o poți trimite pe WhatsApp/email.':{ru:'Подтверждение скопировано — отправьте его в WhatsApp/email.',de:'Bestätigung kopiert — du kannst sie per WhatsApp/E-Mail senden.',en:'Confirmation copied — you can send it via WhatsApp/email.'},
     'Alege data.':{ru:'Выберите дату.',de:'Wähle das Datum.',en:'Choose the date.'},
+    // ── Ofertă → Auftrag + pași de lucru cu poză (șabloane) ──
+    'Creezi acum lucrarea (șantier + pași de lucru) din această ofertă?':{ru:'Создать сейчас работу (объект + шаги работ) из этого КП?',de:'Jetzt den Auftrag (Baustelle + Arbeitsschritte) aus diesem Angebot erstellen?',en:'Create the job now (site + work steps) from this offer?'},
+    'Salvează întâi, apoi „Șablon" ca să refolosești descrierea + poza la toate lucrările viitoare cu același nume.':{ru:'Сначала сохраните, затем «Шаблон», чтобы повторно использовать описание + фото во всех будущих работах с тем же названием.',de:'Zuerst speichern, dann „Vorlage", um Beschreibung + Foto bei allen künftigen Arbeitsschritten mit gleichem Namen wiederzuverwenden.',en:'Save first, then “Template” to reuse the description + photo on all future steps with the same name.'},
+    'Șablon':{ru:'Шаблон',de:'Vorlage',en:'Template'},
+    'Salvat ca șablon — se aplică automat la lucrările viitoare cu „':{ru:'Сохранено как шаблон — применится автоматически к будущим работам «',de:'Als Vorlage gespeichert — wird bei künftigen Arbeitsschritten automatisch angewendet: „',en:'Saved as template — auto-applied to future steps named “'},
     'Subcontractor':{ru:'Субподрядчик',de:'Subunternehmer',en:'Subcontractor'},
     'Compania':{ru:'Компания',de:'Unternehmen',en:'Company'},
     'Carduri carburant':{ru:'Топливные карты',de:'Tankkarten',en:'Fuel cards'},

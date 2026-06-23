@@ -1952,7 +1952,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v179';
+const APP_VERSION='cod373-v180';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3743,7 +3743,9 @@ async function runAutomations(estId){
   try{
     const e=(await sb.from('estimates').select('client_id,total,number,site_id').eq('id',estId).single()).data; if(!e) return;
     let siteId=e.site_id, msg=[];
-    if(au.acc_site && !siteId){ const s=await sb.from('sites').insert({tenant_id:state.tenant,name:'Șantier '+(e.number||''),client_id:e.client_id||null,budget:e.total||0,status:'planned'}).select('id').single(); if(!s.error){ siteId=s.data.id; await sb.from('estimates').update({site_id:siteId}).eq('id',estId); msg.push('șantier creat'); } }
+    if(au.acc_site && !siteId){ const s=await sb.from('sites').insert({tenant_id:state.tenant,name:'Șantier '+(e.number||''),client_id:e.client_id||null,budget:e.total||0,status:'planned'}).select('id').single(); if(!s.error){ siteId=s.data.id; await sb.from('estimates').update({site_id:siteId}).eq('id',estId);
+      let n=0; try{ const works=await buildWorksFromEstimate(estId); n=await genStages(siteId, new Date().toISOString().slice(0,10), works); }catch(_){}
+      msg.push(n?('șantier + '+n+' pași de lucru'):'șantier creat'); } }
     if(au.acc_invoice){ const pct=+au.acc_invoice_pct||30; const amt=Math.round((+e.total||0)*pct/100*100)/100;
       const inv=await sb.from('invoices').insert({tenant_id:state.tenant,client_id:e.client_id||null,site_id:siteId||null,estimate_id:estId,number:'AVANS-'+(e.number||''),status:'draft',issue_date:new Date().toISOString().slice(0,10),subtotal:amt,vat_total:0,total:amt}).select('id').single();
       if(!inv.error){ await sb.from('invoice_items').insert({tenant_id:state.tenant,invoice_id:inv.data.id,name:'Avans '+pct+'% — ofertă '+(e.number||''),qty:1,unit:'buc',unit_price:amt,vat_rate:0,position:1}); msg.push('factură de avans '+pct+'%'); }
@@ -5839,8 +5841,8 @@ function renderWorkPicker(q){ q=(q||'').toLowerCase();
   window._wpFiltered=list;
   $('wp-list').innerHTML='<div class="tbl-wrap"><table class="tbl"><tbody>'+list.map((n,i)=>'<tr><td class="tname">'+esc(n.name)+'<div style="color:var(--muted);font-size:.78rem">'+esc(n.category||'')+' · '+esc(n.unit)+' · '+money(n.unit_price)+'</div></td><td style="text-align:right"><button class="btn-ghost" onclick="addWork('+i+')">＋</button></td></tr>').join('')+'</tbody></table></div>';
 }
-function addWork(i){ const n=(window._wpFiltered||[])[i]; if(!n) return; const a=+( $('wz-area')&&$('wz-area').value)||0;
-  wizCtx.works.push({ name:n.name, qty:a||1, unit:n.unit||'m2', unit_price:+n.unit_price||0, daily_output:+n.daily_output||15, norm_id:n.id, specialty:n.category||'' });
+function addWork(i){ const n=(window._wpFiltered||[])[i]; if(!n) return; const a=+( $('wz-area')&&$('wz-area').value)||0; const tpl=stepTemplate(n.name)||{};
+  wizCtx.works.push({ name:n.name, qty:a||1, unit:n.unit||'m2', unit_price:+n.unit_price||0, daily_output:+n.daily_output||15, norm_id:n.id, specialty:n.category||'', description:tpl.desc||'', photo_url:tpl.photo||null });
   renderWizWorks(); toast('Adăugat: '+esc(n.name)); }
 function closeWorkPicker(){ $('picker-mount').innerHTML=''; }
 async function openWorkServicePicker(){
@@ -5866,7 +5868,8 @@ async function genStages(siteId, startStr, works){
   const rows=works.map((w,idx)=>{ const d=workDays(w); const s=new Date(cur); const e=_addDays(s,d-1); cur=_addDays(e,1);
     return { tenant_id:state.tenant, site_id:siteId, name:w.name, position:idx+1, status:'plan', start_date:_iso(s), end_date:_iso(e), progress:0,
       qty:(+w.qty||null), unit:w.unit||null, norm_id:w.norm_id||null, executor_kind:w.executor_kind||null, executor_id:w.executor_id||null,
-      executor_name:w.executor_name||null, specialty:w.specialty||null, est_cost:(w.unit_price!=null?(+w.qty||0)*(+w.unit_price||0):null) }; });
+      executor_name:w.executor_name||null, specialty:w.specialty||null, est_cost:(w.unit_price!=null?(+w.qty||0)*(+w.unit_price||0):null),
+      description:w.description||null, photo_urls:(w.photo_url?[w.photo_url]:null) }; });
   if(rows.length){ const { error }=await sb.from('site_stages').insert(rows); if(error) throw error; }
   return rows.length;
 }
@@ -5888,14 +5891,22 @@ async function saveSiteWizard(){
 }
 
 /* ---- Ofertă (deviz) → șantier nou cu grafic ---- */
+/* Șabloane „pas de lucru" per firmă (descriere + poză de referință), stocate în tenants.automations.step_photos,
+   cheia = numele lucrării (trim+lowercase). Reutilizabile: le pui o dată, se aplică la toate lucrările viitoare. */
+function stepTemplates(){ const a=automationsCfg(); return (a&&a.step_photos)||{}; }
+function stepTemplate(name){ if(!name) return null; const t=stepTemplates(); return t[(name||'').trim().toLowerCase()]||null; }
+/* Construiește lista de „lucrări" dintr-o ofertă: poziții deviz → pași, completate cu norma + șablonul firmei (descriere/poză). */
+async function buildWorksFromEstimate(estId){
+  const items=await sb.from('estimate_items').select('name,qty,unit,unit_price').eq('estimate_id',estId);
+  await ensureNorms();
+  return (items.data||[]).map(it=>{ const nm=(window._norms||[]).find(n=>n.name===it.name); const tpl=stepTemplate(it.name)||{};
+    return { name:it.name, qty:(+it.qty||1), unit:it.unit||'m2', unit_price:+it.unit_price||0, daily_output:(nm?+nm.daily_output:15)||15, norm_id:nm?nm.id:null, specialty:nm?nm.category:'', description:tpl.desc||'', photo_url:tpl.photo||null }; });
+}
 async function estimateToSite(estId){
   toast('⏳ Se citește oferta…');
   const est=await sb.from('estimates').select('id,number,client_id,site_id,total').eq('id',estId).single();
   if(est.error){ toast('Eroare: '+esc(est.error.message)); return; }
-  const items=await sb.from('estimate_items').select('name,qty,unit,unit_price').eq('estimate_id',estId);
-  await ensureNorms();
-  const works=(items.data||[]).map(it=>{ const nm=(window._norms||[]).find(n=>n.name===it.name);
-    return { name:it.name, qty:(+it.qty||1), unit:it.unit||'m2', unit_price:+it.unit_price||0, daily_output:(nm?+nm.daily_output:15)||15, norm_id:nm?nm.id:null, specialty:nm?nm.category:'' }; });
+  const works=await buildWorksFromEstimate(estId);
   openSiteWizard({ name:'Șantier din oferta '+(est.data.number||''), client_id:est.data.client_id, budget:est.data.total, works });
   toast('Verifică datele și apasă „Creează".');
 }
@@ -6005,7 +6016,8 @@ async function openStageEdit(stageId, siteId){
     +'<div class="field"><label>Descriere (argumentată, compactă)</label><textarea id="se-desc" rows="3">'+esc(st.description||'')+'</textarea></div>'
     +'<div class="field"><label>Poze existente</label><div>'+thumbs+'</div></div>'
     +'<div class="field"><label>Adaugă poze</label><input id="se-photos" type="file" accept="image/*" multiple/></div>'
-    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeWorkPicker()">'+TR('anuleaza')+'</button><button class="btn-primary" id="se-save" onclick="saveStageEdit(\''+stageId+'\',\''+siteId+'\')">Salvează</button></div></div></div>';
+    +'<div style="font-size:.76rem;color:var(--muted);margin-top:.2rem">💡 '+tz('Salvează întâi, apoi „Șablon" ca să refolosești descrierea + poza la toate lucrările viitoare cu același nume.')+'</div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="stageSaveTemplate(\''+stageId+'\')">💾 '+tz('Șablon')+'</button><button class="btn-ghost" onclick="closeWorkPicker()">'+TR('anuleaza')+'</button><button class="btn-primary" id="se-save" onclick="saveStageEdit(\''+stageId+'\',\''+siteId+'\')">Salvează</button></div></div></div>';
 }
 async function saveStageEdit(stageId, siteId){
   const btn=$('se-save'); if(btn){ btn.disabled=true; btn.textContent='Se salvează…'; }
@@ -6015,6 +6027,16 @@ async function saveStageEdit(stageId, siteId){
   const { error }=await sb.from('site_stages').update({ description:($('se-desc').value||'').trim()||null, photo_urls:photos.length?photos:null }).eq('id',stageId);
   if(error){ showMsg('se-msg','Eroare: '+esc(error.message)); if(btn){btn.disabled=false;btn.textContent='Salvează';} return; }
   closeWorkPicker(); toast('✅ Etapă actualizată.'); openSiteDetail(siteId);
+}
+async function stageSaveTemplate(stageId){
+  const r=await sb.from('site_stages').select('name,description,photo_urls').eq('id',stageId).single();
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+  const st=r.data; const key=(st.name||'').trim().toLowerCase(); if(!key){ toast('Etapa nu are nume.'); return; }
+  const au=Object.assign({}, automationsCfg()); au.step_photos=Object.assign({}, au.step_photos||{});
+  au.step_photos[key]={ desc:st.description||'', photo:(st.photo_urls&&st.photo_urls[0])||null, label:st.name };
+  const up=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant));
+  if(up.error){ toast(isNetErr(up.error)?netMsg():('Eroare: '+esc(up.error.message))); return; }
+  state.firm.automations=au; toast('✅ '+tz('Salvat ca șablon — se aplică automat la lucrările viitoare cu „')+esc(st.name)+'".');
 }
 async function stageDropPhoto(stageId, siteId, idx){
   const cur=await sb.from('site_stages').select('photo_urls').eq('id',stageId).single();
@@ -6182,7 +6204,12 @@ async function estimateStatus(estId,status){
   const r=await sbRetry(()=>sb.from('estimates').update({status}).eq('id',estId));
   if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   toast(status==='accepted'?'✅ Ofertă acceptată.':'✖️ Ofertă respinsă.');
-  if(status==='accepted') await runAutomations(estId);
+  if(status==='accepted'){
+    await runAutomations(estId);
+    renderModule('devize');
+    if(!automationsCfg().acc_site){ if(confirm(tz('Creezi acum lucrarea (șantier + pași de lucru) din această ofertă?'))) estimateToSite(estId); }
+    return;
+  }
   renderModule('devize');
 }
 
