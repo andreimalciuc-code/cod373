@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v191';
+const APP_VERSION='cod373-v192';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3683,6 +3683,15 @@ function planDrop(ev,kind,id,date,slot){ ev.preventDefault(); if(ev.currentTarge
   else if(data.indexOf('move:')===0){ const p=data.slice(5).split('|'); const se=p[0],sd=p[1],ss=p[2]||'full'; if(kind==='emp'&&se===id&&sd===date&&ss===slot) return; const src=_planData[se+'|'+sd+'|'+ss]; if(!src) return; planMoveK(se,sd,ss,kind,id,date,slot,src); }
 }
 function planAssignK(kind,id,date,site,note,slot){ if(kind==='team') planAssignTeam(id,date,site,note); else planAssign(id,date,site,note,slot); }
+/* Adaugă un șantier nou pe loc (din meniul de planificare) și planifică direct pe el */
+async function planQuickSite(kind,id,date,slot){
+  closePlMenu();
+  const name=(prompt(C373t('Numele șantierului nou:'))||'').trim(); if(!name) return;
+  const r=await sbRetry(()=>sb.from('sites').insert({tenant_id:state.tenant,name:name,status:'planned'}).select('id').single());
+  if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  planAssignK(kind,id,date,r.data.id,null,slot);  // salvează planificarea + re-randează (noul șantier apare)
+  toast('✅ '+C373t('Șantier creat și planificat.'));
+}
 function planDelQ(empId,date,slot){ let q=sb.from('crew_plan').delete().eq('employee_id',empId).eq('plan_date',date); if(slot) q=q.eq('slot',slot); return q; }
 async function planIns(empId,date,siteId,note,slot){ return sbRetry(()=>sb.from('crew_plan').insert({tenant_id:state.tenant,employee_id:empId,site_id:siteId||null,plan_date:date,note:note||null,slot:slot})); }
 async function planSetSlot(empId,date,siteId,note,slot){
@@ -3716,6 +3725,7 @@ function planCellMenu(ev,kind,id,date,slot){
   let html='<div style="font-size:.76rem;color:var(--muted);font-weight:600;padding:.2rem .55rem .35rem">'+title+' · '+date.slice(8,10)+'.'+date.slice(5,7)+sl+'</div>';
   html+=_planSites.map(s=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',\''+s.id+'\',null,\''+slot+'\')"><span class="pldot" style="background:'+_planColor[s.id]+'"></span>'+esc(s.name)+'</div>').join('');
   if(!_planSites.length) html+='<div style="padding:.4rem .55rem;color:var(--muted);font-size:.82rem">Niciun șantier activ.</div>';
+  html+='<div class="plopt" style="color:var(--primary);font-weight:600" onclick="planQuickSite(\''+kind+'\',\''+id+'\',\''+date+'\',\''+slot+'\')"><span class="pldot" style="background:var(--primary)"></span>➕ '+C373t('Șantier nou…')+'</div>';
   html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div>';
   html+=PLAN_ROLE.map(a=>'<div class="plopt" onclick="planAssignK(\''+kind+'\',\''+id+'\',\''+date+'\',null,\''+a[0]+'\',\''+slot+'\')"><span class="pldot" style="background:'+a[2]+'"></span>'+a[1]+'</div>').join('');
   html+='<div style="height:1px;background:var(--line);margin:.3rem 0"></div>';
