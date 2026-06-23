@@ -522,12 +522,13 @@ async function openSite(id){
           else { const w=Math.max(3,((+new Date(st.end_date)-+new Date(st.start_date))/span)*100);
             bar='<div style="position:absolute;left:'+l+'%;width:'+w+'%;height:100%;border-radius:6px;background:'+(stTint[cls]||stTint.plan)+';overflow:hidden"><div style="position:absolute;left:0;top:0;height:100%;width:'+(st.progress||0)+'%;background:'+(stSolid[cls]||stSolid.plan)+'"></div></div>'; }
         }
-        return '<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div class="row" style="margin-bottom:.35rem"><div class="grow"><b>'+(st.is_milestone?'◆ ':'')+esc(st.name)+'</b>'+(st.start_date?' <span class="s">'+fd(st.start_date)+(st.is_milestone?'':' → '+fd(st.end_date))+'</span>':'')+'</div><b style="font-size:.85rem;color:'+(stSolid[cls]||'#6b7793')+'">'+(st.is_milestone?'◆':(st.progress||0)+'%')+'</b></div>'
+        const ind=(st.description?' 📝':'')+((st.photo_urls&&st.photo_urls.length)?' 📷':'');
+        return '<div onclick="openStageMobile(\''+st.id+'\')" style="padding:.5rem 0;border-bottom:1px solid var(--line);cursor:pointer"><div class="row" style="margin-bottom:.35rem"><div class="grow"><b>'+(st.is_milestone?'◆ ':'')+esc(st.name)+'</b><span style="font-size:.85rem">'+ind+'</span>'+(st.start_date?' <span class="s">'+fd(st.start_date)+(st.is_milestone?'':' → '+fd(st.end_date))+'</span>':'')+'</div><b style="font-size:.85rem;color:'+(stSolid[cls]||'#6b7793')+'">'+(st.is_milestone?'◆':(st.progress||0)+'%')+' ›</b></div>'
           +'<div style="position:relative;height:15px;background:#eef1f6;border-radius:6px">'+bar+'</div></div>';
       }).join('')
       +'<div style="margin-top:.6rem;display:flex;gap:.7rem;flex-wrap:wrap;font-size:.7rem;color:var(--muted)"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#16b364;vertical-align:middle"></i> Finalizat</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#2f6bff;vertical-align:middle"></i> În lucru</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#94a3b8;vertical-align:middle"></i> Planificat</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#ef4444;vertical-align:middle"></i> Întârziat</span><span>◆ Jalon</span></div>';
     } else {
-      stagesHtml=stages.map(st=>'<div class="row" style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div class="grow"><b>'+esc(st.name)+'</b></div><span class="pill '+(stCol[st.status]||'grey')+'">'+(st.progress||0)+'%</span></div>').join('');
+      stagesHtml=stages.map(st=>{ const ind=(st.description?' 📝':'')+((st.photo_urls&&st.photo_urls.length)?' 📷':''); return '<div class="row" onclick="openStageMobile(\''+st.id+'\')" style="padding:.4rem 0;border-bottom:1px solid var(--line);cursor:pointer"><div class="grow"><b>'+esc(st.name)+'</b><span style="font-size:.85rem">'+ind+'</span></div><span class="pill '+(stCol[st.status]||'grey')+'">'+(st.progress||0)+'% ›</span></div>'; }).join('');
     }
   }
   let stockHtml = (stockR.data&&stockR.data.length)
@@ -537,7 +538,7 @@ async function openSite(id){
   const body='<div class="card" style="margin:0 0 .8rem"><div class="row"><div class="grow"><div class="s">Progres lucrare</div></div><b>'+(s.progress||0)+'%</b></div><div class="prog" style="margin-top:.4rem"><span style="width:'+(s.progress||0)+'%"></span></div>'
     +(s.address?'<div class="s" style="margin-top:.6rem">📍 '+esc(s.address)+'</div>':'')+(s.deadline?'<div class="s">📅 Termen: '+esc(s.deadline)+'</div>':'')
     +(openDef?'<div class="s" style="margin-top:.4rem">🔧 '+openDef+' defecte deschise</div>':'')+'</div>'
-    +'<h4 style="margin:.6rem 0 .3rem">📅 Graficul lucrărilor</h4>'+stagesHtml
+    +'<h4 style="margin:.6rem 0 .3rem">📅 Graficul lucrărilor</h4>'+(stages.length&&S.role!=='client'?'<div class="s" style="margin:-.1rem 0 .4rem">👉 Apasă o etapă: vezi ce ai de făcut, pozele și materialele.</div>':'')+stagesHtml
     +(S.role==='client'?'':'<button class="btn btn-soft" style="margin-top:.8rem;width:100%" onclick="window.open(\'grafic.html?site='+id+'\',\'_blank\')">📅 Deschide graficul complet'+(['manager','owner','admin'].includes(S.role)?' (editare)':' (vizualizare)')+'</button>')
     +(S.role==='client'?'':'<h4 style="margin:1rem 0 .3rem">Stoc pe șantier</h4>'+stockHtml)
     +(S.role==='client'
@@ -557,6 +558,36 @@ async function addReview(){
   const { error }=await sb.from('reviews').insert({ tenant_id:S.tenant, site_id:S.curSite, stage_id, user_id:S.session.user.id, author_name:S.uname||S.email, rating, body });
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   toast('✅ Mulțumim pentru feedback!'); openSite(S.curSite);
+}
+/* PAS DE LUCRU (Arbeitsschritt) — ce trebuie făcut + poze de referință + materiale + bifare */
+async function openStageMobile(stageId){
+  const st=(S.curStages||[]).find(x=>x.id===stageId); if(!st) return;
+  openSheet(st.name||'Pas de lucru','<div class="loading">Se încarcă…</div>');
+  let photoHtml=''; const paths=st.photo_urls||[];
+  if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); photoHtml=(su.data||[]).map(x=>(x&&x.signedUrl)?'<img src="'+x.signedUrl+'" onclick="window.open(this.src,\'_blank\')" style="width:100%;border-radius:12px;margin:.4rem 0;cursor:zoom-in"/>':'').join(''); }catch(e){} }
+  let matHtml='<div class="s">—</div>';
+  try{ if(st.norm_id){ const nr=await sb.from('norms').select('code').eq('id',st.norm_id).maybeSingle(); const code=nr.data&&nr.data.code;
+    if(code){ const mr=await sb.from('norm_materials').select('material_name,unit,qty_per_unit,kind').eq('norm_code',code); const mats=mr.data||[]; const q=+st.qty||1;
+      if(mats.length) matHtml=mats.map(m=>'<div class="row" style="padding:.35rem 0;border-bottom:1px solid var(--line)"><div class="grow">'+esc(m.material_name)+(m.kind?' <span class="s">· '+esc(m.kind)+'</span>':'')+'</div><b>'+(Math.round((+m.qty_per_unit||0)*q*100)/100)+' '+esc(m.unit||'')+'</b></div>').join(''); } } }catch(e){}
+  const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
+  const stLbl={plan:'Planificat',active:'În lucru',done:'Gata',delayed:'Întârziat'};
+  const body=''
+    +'<div class="row" style="margin-bottom:.6rem"><span class="pill '+(stCol[st.status]||'grey')+'">'+(stLbl[st.status]||st.status||'—')+'</span>'+(st.qty?'<b style="margin-left:auto">'+esc(st.qty)+' '+esc(st.unit||'')+'</b>':'')+'</div>'
+    +(st.description?'<div class="card" style="margin:0 0 .8rem"><div class="s" style="margin-bottom:.2rem">📝 Ce trebuie făcut</div><div style="white-space:pre-wrap">'+esc(st.description)+'</div></div>':'')
+    +(photoHtml?'<div class="s" style="margin:.2rem 0">📷 Cum trebuie să arate</div>'+photoHtml:'')
+    +'<h4 style="margin:1rem 0 .3rem">🧱 Materiale necesare</h4>'+matHtml
+    +(S.role==='client'?'':'<div style="display:flex;gap:.5rem;margin-top:1.3rem">'
+       +(st.status!=='active'&&st.status!=='done'?'<button class="btn btn-soft" style="flex:1" onclick="setStageStatus(\''+st.id+'\',\'active\')">▶️ Încep</button>':'')
+       +(st.status!=='done'?'<button class="btn" style="flex:1" onclick="setStageStatus(\''+st.id+'\',\'done\')">✅ Gata</button>':'<button class="btn btn-line" style="flex:1" onclick="setStageStatus(\''+st.id+'\',\'active\')">↩️ Redeschide</button>')
+     +'</div>');
+  const sh=document.querySelector('.sheet'); if(sh){ sh.innerHTML='<h3>'+esc(st.name||'Pas de lucru')+'<button class="x" onclick="closeSheet()">×</button></h3>'+body; }
+}
+async function setStageStatus(stageId,status){
+  const patch={status}; if(status==='done') patch.progress=100;
+  const {error}=await sb.from('site_stages').update(patch).eq('id',stageId);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const st=(S.curStages||[]).find(x=>x.id===stageId); if(st){ st.status=status; if(status==='done') st.progress=100; }
+  toast(status==='done'?'✅ Pas finalizat.':'▶️ Pas pornit.'); openStageMobile(stageId);
 }
 
 /* PONTAJ (muncitor/manager) */
@@ -887,7 +918,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v179', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v181', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
