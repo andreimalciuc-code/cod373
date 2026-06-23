@@ -385,6 +385,15 @@ function toast(m){ const t=$('toast'); $('toast-msg').innerHTML=m; t.classList.a
   window.addEventListener('error', function(e){ report(e&&e.message); });
   window.addEventListener('unhandledrejection', function(e){ const r=e&&e.reason; report(r&&(r.message||r)); });
 })();
+/* Nu închide modalul din greșeală când selectezi/copiezi text și „scapi" pe fundal:
+   modalele se închid la clic pe fundal (event.target===overlay), dar o selecție de text care se
+   termină pe fundal declanșa și ea închiderea. Acum închidem DOAR dacă apăsarea a ÎNCEPUT pe fundal. */
+(function(){
+  let downBack=false;
+  const isOv=el=>!!(el&&el.classList&&el.classList.contains('modal-overlay'));
+  document.addEventListener('pointerdown',function(e){ downBack=isOv(e.target); },true);
+  document.addEventListener('click',function(e){ if(isOv(e.target)&&!downBack){ e.stopPropagation(); } },true);
+})();
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'};
 const COUNTRY_PRESETS={
@@ -1979,7 +1988,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v189';
+const APP_VERSION='cod373-v190';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
