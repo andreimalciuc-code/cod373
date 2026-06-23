@@ -41,6 +41,12 @@
   .fld input:focus,.fld select:focus{border-color:var(--primary)}
   .btn{width:100%;background:var(--primary);color:#fff;border:none;padding:.95rem;border-radius:12px;font-weight:700;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.4rem}
   .btn:active{transform:scale(.99)}.btn:disabled{opacity:.6}
+  /* ── Reacție rapidă: anti-întârziere tap pe mobil + feedback instant ── */
+  button,a,select,input,textarea,label,[onclick]{touch-action:manipulation}
+  button,.btn,.mini-btn,.bottom button,[onclick]{-webkit-tap-highlight-color:rgba(47,107,255,.10)}
+  .mini-btn,.bottom button{transition:transform .06s ease,opacity .12s ease}
+  .mini-btn:active,.bottom button:active{transform:scale(.95)}
+  .card[onclick]:active{opacity:.75}
   .btn-soft{background:var(--blue-soft);color:var(--primary)}
   .btn-line{background:#fff;border:1px solid var(--line);color:var(--ink)}
   .msg{padding:.7rem .9rem;border-radius:10px;font-size:.82rem;margin-bottom:.8rem}
@@ -957,7 +963,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v186', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v187', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;

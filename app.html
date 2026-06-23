@@ -123,6 +123,12 @@
   .user-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#2f6bff,#7aa5ff);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
   .btn-ghost{background:var(--surface);border:1px solid var(--line);color:var(--text);padding:.5rem .9rem;border-radius:9px;font-weight:600;font-size:.82rem;cursor:pointer}
   .btn-ghost:hover{background:var(--bg)}
+  /* ── Reacție rapidă: elimină întârzierea de tap pe mobil + feedback instant la apăsare ── */
+  button,a,select,input,textarea,label,[onclick],.nav-item,.crm-card,tr[onclick]{touch-action:manipulation}
+  button,.btn-primary,.btn-ghost,.iconbtn,.nav-item,[onclick]{-webkit-tap-highlight-color:rgba(47,107,255,.10)}
+  .btn-primary,.btn-ghost,.iconbtn{transition:transform .06s ease,filter .12s ease,background .15s ease}
+  .btn-primary:active,.btn-ghost:active,.iconbtn:active{transform:scale(.96);filter:brightness(.94)}
+  .nav-item:active,.crm-card:active,tr[onclick]:active,.card[onclick]:active{opacity:.7}
   .lang-sw{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
   .lang-sw button{border:none;background:var(--surface);padding:.45rem .6rem;font-weight:700;font-size:.76rem;color:var(--muted);cursor:pointer}
   .lang-sw button.on{background:var(--primary);color:#fff}
@@ -1972,7 +1978,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v186';
+const APP_VERSION='cod373-v187';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
