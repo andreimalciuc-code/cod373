@@ -1963,12 +1963,26 @@
 
   function injectSwitcher(){
     if(document.getElementById('c373-lang')) return;
+    // Pe telefon (touch / ecran îngust): comutator PLIAT (un buton mic 🌐), ridicat ca să nu stea
+    // peste bara de jos / alte butoane. Pe desktop: bara completă jos-dreapta (ca până acum).
+    var mobile = (window.matchMedia && window.matchMedia('(hover: none)').matches) || (window.innerWidth<=860);
     var box=document.createElement('div'); box.id='c373-lang';
-    box.style.cssText='position:fixed;bottom:12px;right:12px;z-index:99999;background:#0f1c33;border-radius:999px;padding:3px;display:flex;gap:2px;box-shadow:0 6px 20px rgba(15,28,51,.3);font-family:system-ui,Arial,sans-serif';
+    box.style.cssText='position:fixed;z-index:99999;font-family:system-ui,Arial,sans-serif;display:flex;flex-direction:column;align-items:flex-end;'+(mobile?'bottom:76px;right:10px;':'bottom:12px;right:12px;');
+    var bar=document.createElement('div');
+    bar.style.cssText='background:#0f1c33;border-radius:999px;padding:3px;display:flex;gap:2px;box-shadow:0 6px 20px rgba(15,28,51,.3);'+(mobile?'margin-bottom:6px;display:none;':'');
     Object.keys(LANGS).forEach(function(l){ var b=document.createElement('button'); b.textContent=LANGS[l];
       b.style.cssText='border:none;cursor:pointer;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;'+(l===LANG?'background:#ff8a3d;color:#fff':'background:transparent;color:#cbd5e1');
-      b.onclick=function(){ if(l!==LANG) setLang(l); };
-      box.appendChild(b); });
+      b.onclick=function(){ if(l!==LANG) setLang(l); else bar.style.display='none'; };
+      bar.appendChild(b); });
+    box.appendChild(bar);
+    if(mobile){
+      var tog=document.createElement('button'); tog.textContent='🌐 '+LANGS[LANG];
+      tog.style.cssText='border:none;cursor:pointer;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;background:#0f1c33;color:#fff;box-shadow:0 6px 20px rgba(15,28,51,.3);opacity:.85';
+      tog.onclick=function(){ bar.style.display = (bar.style.display==='none'?'flex':'none'); };
+      box.appendChild(tog);
+      // închide la atingere în altă parte
+      document.addEventListener('click',function(e){ if(box && !box.contains(e.target)) bar.style.display='none'; }, true);
+    }
     document.body.appendChild(box);
   }
 
