@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v195';
+const APP_VERSION='cod373-v196';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2893,33 +2893,45 @@ async function ptReportRun(){
   if(empId) q=q.eq('employee_id',empId);
   const { data, error }=await q;
   if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const rows=(data||[]); if(!rows.length){ toast('Nicio înregistrare în perioada aleasă.'); return; }
+  const rows=(data||[]);
+  // angajații activi (ca să marcăm și zilele lucrătoare FĂRĂ pontaj salvat)
+  let empQ=sb.from('employees').select('id,full_name').eq('active',true); if(empId) empQ=empQ.eq('id',empId);
+  const actEmps=((await empQ).data)||[];
+  if(!rows.length && !actEmps.length){ toast('Nicio înregistrare în perioada aleasă.'); return; }
   closeModal();
-  const byEmp={}; rows.forEach(r=>{ const k=r.employee_id; const e=(byEmp[k]=byEmp[k]||{name:(r.employees&&r.employees.full_name)||'—',rows:[],total:0,sites:{}}); e.rows.push(r); const hrs=+r.hours||0; e.total+=hrs; if(hrs>0){ const sn=(r.sites&&r.sites.name)||(r.absence?ptAbsLabel(r.absence):'— fără șantier —'); e.sites[sn]=(e.sites[sn]||0)+hrs; } });
+  const byEmp={};
+  actEmps.forEach(e=>{ byEmp[e.id]={name:e.full_name||'—',rows:[],total:0,sites:{},days:new Set()}; });
+  rows.forEach(r=>{ const k=r.employee_id; const e=(byEmp[k]=byEmp[k]||{name:(r.employees&&r.employees.full_name)||'—',rows:[],total:0,sites:{},days:new Set()}); e.rows.push(r); e.days.add(r.work_date); const hrs=+r.hours||0; e.total+=hrs; if(hrs>0){ const sn=(r.sites&&r.sites.name)||(r.absence?ptAbsLabel(r.absence):'— fără șantier —'); e.sites[sn]=(e.sites[sn]||0)+hrs; } });
+  // zile lucrătoare (Lu–Vi, fără sărbători) din perioadă — pentru detectarea lipsurilor
+  const workDays=[]; { let d=new Date(from+'T12:00:00'); const end=new Date(to+'T12:00:00'); let guard=0; while(d<=end && guard++<800){ const iso=isoLocal(d); const wd=d.getDay(); if(wd>=1&&wd<=5&&!isHoliday(iso)) workDays.push(iso); d=new Date(d); d.setDate(d.getDate()+1); } }
   const dn=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; const fmt=h=>Math.round((+h||0)*100)/100; const hm=t=>(t||'').slice(0,5); const ro=s=>fmtDate(s);
-  let grand=0, gDays=0, body='';
+  let grand=0, gDays=0, gMiss=0, body='';
   Object.keys(byEmp).sort((a,b)=>byEmp[a].name.localeCompare(byEmp[b].name)).forEach(k=>{
     const e=byEmp[k]; grand+=e.total; gDays+=e.rows.length;
+    const missing=workDays.filter(d=>!e.days.has(d)); gMiss+=missing.length;
     const trs=e.rows.sort((a,b)=>(a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0)).map(r=>{ const dt=new Date(r.work_date+'T12:00:00'); const tag=r.absence||null; const noWork=!!(tag&&ptIsNoWork(tag)); const lbl=tag?ptAbsLabel(tag):null;
       const siteCell = lbl ? ('<b>'+esc(lbl)+'</b>') : esc((r.sites&&r.sites.name)||'—');
       return '<tr><td>'+ro(r.work_date)+'</td><td>'+dn[dt.getDay()]+'</td><td>'+siteCell+'</td><td>'+(noWork?'':esc(hm(r.start_time)))+'</td><td>'+(noWork?'':esc(hm(r.end_time)))+'</td><td>'+(noWork?'':(r.break_min!=null?(r.break_min+' min'):''))+'</td><td style="text-align:right">'+(noWork?'—':fmt(r.hours))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('');
     const siteSum=Object.keys(e.sites).sort().map(sn=>esc(sn)+': <b>'+fmt(e.sites[sn])+'h</b>').join(' · ');
+    const missLine = missing.length ? '<div class="emiss">⚠️ Fără pontaj salvat ('+missing.length+' '+(missing.length===1?'zi lucrătoare':'zile lucrătoare')+'): '+missing.map(d=>ro(d)).join(', ')+'</div>' : '';
     body+='<div class="emp"><h2>'+esc(e.name)+'</h2>'
-      +'<table><thead><tr><th>Data</th><th>Zi</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+trs+'</tbody></table>'
-      +'<div class="esum">Pe șantiere: '+siteSum+'</div>'
-      +'<div class="etot">'+e.rows.length+' zile · Total: <b>'+fmt(e.total)+' ore</b></div></div>'; });
+      +(e.rows.length?('<table><thead><tr><th>Data</th><th>Zi</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+trs+'</tbody></table>'+(siteSum?'<div class="esum">Pe șantiere: '+siteSum+'</div>':''))
+        :'<div style="font-size:11px;color:#6b7793">— nicio înregistrare în perioadă —</div>')
+      +missLine
+      +'<div class="etot">'+e.rows.length+' zile pontate · Total: <b>'+fmt(e.total)+' ore</b>'+(missing.length?(' · <span style="color:#b45309">'+missing.length+' zile fără pontaj</span>'):'')+'</div></div>'; });
   const doc='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Raport pontaj</title><style>'
     +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:24px;margin:0}'
     +'h1{font-size:19px;color:#2f6bff;margin:0 0 2px}h2{font-size:14px;margin:16px 0 6px}'
     +'.muted{color:#6b7793;font-size:12px;margin-bottom:10px}'
     +'table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #e5e9f2;padding:4px 6px;text-align:left}th{background:#f1f5f9}'
     +'.emp{page-break-inside:avoid;margin-bottom:14px}.etot{font-size:12px;margin-top:4px;text-align:right}.esum{font-size:11px;color:#6b7793;margin-top:4px}'
+    +'.emiss{font-size:11px;color:#b45309;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:4px 7px;margin-top:5px}'
     +'.grand{margin-top:16px;font-size:14px;font-weight:700;border-top:2px solid #0f1c33;padding-top:8px}'
     +'@media print{.noprint{display:none}}</style></head><body>'
     +'<h1>'+esc(state.firm.name||'Firma')+' — Raport pontaj</h1>'
     +'<div class="muted">Perioadă: '+ro(from)+' → '+ro(to)+''+(empId&&byEmp[empId]?(' · '+esc(byEmp[empId].name)):' · toți angajații')+' · generat '+fmtDate(coToday())+'</div>'
     +body
-    +'<div class="grand">TOTAL GENERAL: '+fmt(grand)+' ore · '+gDays+' zile-om</div>'
+    +'<div class="grand">TOTAL GENERAL: '+fmt(grand)+' ore · '+gDays+' zile-om'+(gMiss?(' · <span style="color:#b45309">'+gMiss+' zile fără pontaj</span>'):'')+'</div>'
     +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div>'
     +'</body></html>';
   const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
