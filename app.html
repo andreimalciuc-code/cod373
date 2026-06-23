@@ -385,14 +385,12 @@ function toast(m){ const t=$('toast'); $('toast-msg').innerHTML=m; t.classList.a
   window.addEventListener('error', function(e){ report(e&&e.message); });
   window.addEventListener('unhandledrejection', function(e){ const r=e&&e.reason; report(r&&(r.message||r)); });
 })();
-/* Nu închide modalul din greșeală când selectezi/copiezi text și „scapi" pe fundal:
-   modalele se închid la clic pe fundal (event.target===overlay), dar o selecție de text care se
-   termină pe fundal declanșa și ea închiderea. Acum închidem DOAR dacă apăsarea a ÎNCEPUT pe fundal. */
+/* Modalele se închid DOAR prin butonul de închidere (×) / Anulează — niciodată la clic pe fundal.
+   Blocăm clicul pe fundal (înainte de handlerele inline „if(event.target===this)closeX()"), ca să nu
+   se mai închidă din greșeală când selectezi/copiezi text sau atingi marginea. */
 (function(){
-  let downBack=false;
   const isOv=el=>!!(el&&el.classList&&el.classList.contains('modal-overlay'));
-  document.addEventListener('pointerdown',function(e){ downBack=isOv(e.target); },true);
-  document.addEventListener('click',function(e){ if(isOv(e.target)&&!downBack){ e.stopPropagation(); } },true);
+  document.addEventListener('click',function(e){ if(isOv(e.target)){ e.stopPropagation(); } },true);
 })();
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'};
@@ -1988,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v190';
+const APP_VERSION='cod373-v191';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5772,6 +5770,12 @@ async function openForm(key,row,preset){
   // SKU generat automat (doar la adăugare, dacă e gol)
   if(!row && m.autoCode){ const el=$('f-'+m.autoCode.field); if(el && !el.value){ try{ const { count }=await sb.from(m.table).select('id',{count:'exact',head:true}); el.value=m.autoCode.prefix+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){} } }
   const mb=document.querySelector('.modal-body'); if(mb) mb.addEventListener('input',function(){ clearTimeout(window._fdt); window._fdt=setTimeout(fdraftSave,500); });
+  // Șantier nou: pre-completează „Adresă" din „Denumire" (până când editezi manual adresa)
+  if(!row && key==='santiere'){ const nm=$('f-name'), ad=$('f-address');
+    if(nm&&ad){ let adTouched=!!ad.value;
+      ad.addEventListener('input',function(){ adTouched=true; });
+      nm.addEventListener('input',function(){ if(!adTouched) ad.value=nm.value; });
+    } }
   const first=document.querySelector('.modal-body input,.modal-body select,.modal-body textarea'); if(first) setTimeout(()=>first.focus(),50);
 }
 function closeModal(){ $('modal-mount').innerHTML=''; }
