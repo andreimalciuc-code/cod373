@@ -138,6 +138,8 @@
     '👉 Apasă o lucrare ca să vezi ce ai de făcut, pozele și materialele.':{ru:'👉 Нажмите на работу, чтобы увидеть, что делать, фото и материалы.',de:'👉 Tippe auf eine Arbeit, um zu sehen, was zu tun ist, Fotos und Material.',en:'👉 Tap a job to see what to do, photos and materials.'},
     'A apărut o eroare':{ru:'Произошла ошибка',de:'Ein Fehler ist aufgetreten',en:'An error occurred'},
     'CRM încărcat în mod restrâns (o actualizare a bazei nu e aplicată).':{ru:'CRM загружен в ограниченном режиме (обновление базы не применено).',de:'CRM im eingeschränkten Modus geladen (ein Datenbank-Update fehlt).',en:'CRM loaded in limited mode (a database update is not applied).'},
+    'Niciun client în această pâlnie.':{ru:'Нет клиентов в этой воронке.',de:'Keine Kunden in dieser Pipeline.',en:'No clients in this pipeline.'},
+    'fără sarcină':{ru:'без задачи',de:'keine Aufgabe',en:'no task'},
     'Subcontractor':{ru:'Субподрядчик',de:'Subunternehmer',en:'Subcontractor'},
     'Compania':{ru:'Компания',de:'Unternehmen',en:'Company'},
     'Carduri carburant':{ru:'Топливные карты',de:'Tankkarten',en:'Fuel cards'},

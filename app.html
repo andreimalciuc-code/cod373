@@ -1963,7 +1963,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v183';
+const APP_VERSION='cod373-v184';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3085,10 +3085,36 @@ async function renderClienti(){
 function crmNew(){ const p=crmPipe(_crmPipe); window._crmPreset={pipeline:p.id, stage:(p.stages[0]&&p.stages[0].k)||'lead'}; openForm('clienti'); }
 function crmRender(){ const q=_crmQ.toLowerCase(); const pipe=crmPipe(_crmPipe);
   const data=_crmData.filter(c=>((c.pipeline||'sales')===pipe.id) && (!q||(((c.name||'')+' '+(c.tags||'')+' '+(c.phone||'')+' '+(c.email||'')).toLowerCase().indexOf(q)>=0)));
+  // Pe telefon (touch / ecran îngust) → vedere LISTĂ pe etape (mai ușoară și mai rapidă decât tabla Kanban cu tras-mutat).
+  const mobile = window.matchMedia && window.matchMedia('(max-width:760px)').matches;
+  if(mobile){ crmRenderList(pipe, data); return; }
   const cols=pipe.stages.map(st=>{ const items=data.filter(c=>(c.stage||pipe.stages[0].k)===st.k); const tot=items.reduce((s,c)=>s+(+c.value||0),0);
     const cards=items.length?items.map(crmCard).join(''):'<div style="color:var(--muted);font-size:.78rem;padding:.5rem;text-align:center">—</div>';
     return '<div class="crm-col" ondragover="event.preventDefault();this.classList.add(\'crm-over\')" ondragleave="this.classList.remove(\'crm-over\')" ondrop="crmDrop(event,\''+st.k+'\')"><div class="crm-colh" style="border-top:3px solid '+(st.color||'#64748b')+'">'+esc(st.label)+' <span style="color:var(--muted);font-weight:400">('+items.length+')</span>'+(tot?'<div style="font-size:.72rem;color:var(--muted);font-weight:600">'+money(tot)+'</div>':'')+'</div><div class="crm-colb">'+cards+'</div></div>'; }).join('');
   $('crm-mount').innerHTML='<div class="crm-board">'+cols+'</div>';
+}
+function crmStageOpts(pipe,cur){ return pipe.stages.map(s=>'<option value="'+s.k+'" '+(s.k===cur?'selected':'')+'>'+esc(s.label)+'</option>').join(''); }
+function crmRenderList(pipe, data){
+  let html='';
+  pipe.stages.forEach(st=>{ const items=data.filter(c=>(c.stage||pipe.stages[0].k)===st.k); if(!items.length) return;
+    const tot=items.reduce((s,c)=>s+(+c.value||0),0);
+    html+='<div style="display:flex;align-items:center;gap:.5rem;margin:.9rem 0 .35rem"><span style="width:10px;height:10px;border-radius:3px;background:'+(st.color||'#64748b')+'"></span><b style="font-size:.9rem">'+esc(st.label)+'</b><span style="color:var(--muted);font-size:.8rem">('+items.length+')</span>'+(tot?'<span style="margin-left:auto;color:var(--muted);font-size:.8rem;font-weight:600">'+money(tot)+'</span>':'')+'</div>';
+    html+=items.map(c=>crmListRow(c,pipe)).join('');
+  });
+  if(!html) html='<div class="empty" style="padding:1.5rem"><div class="ei">🤝</div>'+C373t('Niciun client în această pâlnie.')+'</div>';
+  $('crm-mount').innerHTML=html;
+}
+function crmListRow(c,pipe){ const fu=c._fu; const overdue=fu&&fu.due&&fu.due<coToday(); const open=(c.stage!=='won'&&c.stage!=='lost'); const ds=crmDays(c);
+  return '<div class="card" style="padding:.6rem .75rem;margin-bottom:.45rem">'
+    +'<div onclick="clientHub(\''+c.id+'\')" style="cursor:pointer">'
+      +'<div style="font-weight:600">'+crmScoreBadge(c)+(c.temperature&&CRM_TEMP[c.temperature]?CRM_TEMP[c.temperature]+' ':'')+esc(c.name)+(c.value!=null?' <span style="color:var(--green);font-weight:600;font-size:.85rem">· '+money(c.value)+'</span>':'')+'</div>'
+      +(c.tags?'<div style="font-size:.72rem;color:var(--muted)">🏷 '+esc(c.tags)+'</div>':'')
+      +(fu?'<div style="font-size:.74rem;margin-top:.15rem;color:'+(overdue?'var(--red)':'var(--primary)')+'">⏰ '+esc(fmtDate(fu.due))+(fu.body?(' · '+esc(String(fu.body).slice(0,30))):'')+'</div>':(open?'<div style="font-size:.72rem;margin-top:.15rem;color:var(--red)">⚠️ '+C373t('fără sarcină')+'</div>':''))
+    +'</div>'
+    +'<div style="display:flex;gap:.5rem;align-items:center;margin-top:.45rem">'
+      +(c.phone?'<a href="tel:'+esc(c.phone)+'" onclick="event.stopPropagation()" style="font-size:.8rem;color:var(--primary);text-decoration:none">📞 '+esc(c.phone)+'</a>':'<span style="font-size:.74rem;color:var(--muted)">'+(open&&ds!=null?'🕒 '+ds+C373t('z în etapă'):'')+'</span>')
+      +'<select onchange="crmSetStage(\''+c.id+'\',this.value)" onclick="event.stopPropagation()" style="margin-left:auto;padding:.3rem .4rem;border:1px solid var(--line);border-radius:8px;font-size:.78rem;background:var(--surface)">'+crmStageOpts(pipe,c.stage||pipe.stages[0].k)+'</select>'
+    +'</div></div>';
 }
 const CRM_TEMP={hot:'🔥',warm:'🌤',cold:'❄️'};
 function crmDays(c){ const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(!base) return null; return Math.max(0,Math.round((new Date(coToday()+'T12:00:00')-new Date(base+'T12:00:00'))/86400000)); }
@@ -3106,10 +3132,11 @@ function crmFilter(v){ _crmQ=v||''; crmRender(); }
 let _crmDragId=null;
 function crmDragStart(ev,id){ _crmDragId=id; ev.dataTransfer.effectAllowed='move'; try{ev.dataTransfer.setData('text/plain',id);}catch(e){} }
 async function caLogSys(clientId,body){ try{ await sb.from('client_activities').insert({tenant_id:state.tenant,client_id:clientId,kind:'note',body:body,done:true,created_by:tuActor()}); }catch(e){} }
-async function crmDrop(ev,stage){ ev.preventDefault(); document.querySelectorAll('.crm-col.crm-over').forEach(n=>n.classList.remove('crm-over')); const id=_crmDragId||((ev.dataTransfer&&ev.dataTransfer.getData('text/plain'))||''); _crmDragId=null; if(!id) return;
-  const c=_crmData.find(x=>x.id===id); if(!c||c.stage===stage) return; const old=c.stage;
+async function crmDrop(ev,stage){ ev.preventDefault(); document.querySelectorAll('.crm-col.crm-over').forEach(n=>n.classList.remove('crm-over')); const id=_crmDragId||((ev.dataTransfer&&ev.dataTransfer.getData('text/plain'))||''); _crmDragId=null; if(!id) return; crmSetStage(id,stage); }
+async function crmSetStage(id,stage){ // mută un client într-o etapă — folosit de Kanban (drag) ȘI de lista mobilă (select)
+  const c=_crmData.find(x=>x.id===id); if(!c||c.stage===stage){ crmRender(); return; } const old=c.stage;
   const patch={stage:stage,stage_since:coToday()};
-  if(stage==='lost'){ const why=prompt(C373t('Motiv pierdut (opțional):'),c.lost_reason||''); if(why===null) return; if(why.trim()){ patch.lost_reason=why.trim(); c.lost_reason=patch.lost_reason; } }
+  if(stage==='lost'){ const why=prompt(C373t('Motiv pierdut (opțional):'),c.lost_reason||''); if(why===null){ crmRender(); return; } if(why.trim()){ patch.lost_reason=why.trim(); c.lost_reason=patch.lost_reason; } }
   c.stage=stage; c.stage_since=coToday(); crmRender();
   const r=await sb.from('clients').update(patch).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); c.stage=old; crmRender(); return; }
   const lbl=k=>{ const pp=crmPipe(c.pipeline||'sales'); const sf=pp.stages.find(s=>s.k===k); return sf?sf.label:(STATUS[k]?STATUS[k][0]:k); };
