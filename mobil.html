@@ -822,6 +822,7 @@ async function uploadSitePhoto(){
   if(up.error){ toast('Eroare: '+esc(up.error.message)); return; }
   const {error}=await sb.from('documents').insert({tenant_id:S.tenant,name:cap,file_url:path,mime:file.type||'image/jpeg',size_bytes:file.size,entity_type:'site',entity_id:site,uploaded_by:S.session.user.id});
   if(error){ toast('Eroare: '+esc(error.message)); return; }
+  try{ f.value=''; }catch(e){}   // reset → poți face imediat următoarea poză
   toast('✅ Poză adăugată la șantier.'); loadPhotos();
 }
 
@@ -967,7 +968,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v202', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v203', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;

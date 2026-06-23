@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v202';
+const APP_VERSION='cod373-v203';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5199,7 +5199,7 @@ async function openPrevizForm(row, meas){
     +'<div class="field"><label>Responsabil vizită</label><input id="pv-surv" value="'+esc((row&&row.surveyor_name)|| (state.session&&state.session.user&&state.session.user.email)||'')+'"/></div>'
     +'<div style="font-weight:700;margin:1rem 0 .4rem">❓ Întrebări cheie</div>'+qHtml
     +'<div style="font-weight:700;margin:1rem 0 .4rem">📐 Volume / măsurători <span class="hint-i" title="Le poți extrage automat în deviz. Ex: Suprafață pereți 120 m², Săpătură 40 m³.">ⓘ</span></div><div id="pv-meas"></div><button type="button" class="addline" onclick="addPvMeas()">＋ adaugă măsurătoare</button>'
-    +'<div style="font-weight:700;margin:1rem 0 .4rem">📷 Poze cu starea actuală</div><div id="pv-photos"></div><input id="pv-files" type="file" accept="image/*" multiple/>'
+    +'<div style="font-weight:700;margin:1rem 0 .4rem">📷 Poze cu starea actuală</div><div id="pv-photos"></div><label class="btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem">📷 Adaugă poză<input id="pv-files" type="file" accept="image/*" multiple onchange="pvAddPhotos(this)" style="display:none"/></label><div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Poți face mai multe poze, una după alta — fiecare se adaugă pe loc.</div>'
     +'<div class="field" style="margin-top:1rem"><label>Alte comentarii</label><textarea id="pv-notes" rows="2">'+esc(row?row.notes:'')+'</textarea></div>'
     +'<div class="field"><label>Stare fișă</label><select id="pv-status"><option value="draft" '+((row&&row.status)!=='done'?'selected':'')+'>Ciornă</option><option value="done" '+((row&&row.status)==='done'?'selected':'')+'>Finalizată</option></select></div>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px">'
@@ -5238,6 +5238,15 @@ function renderPvPhotos(){ const el=$('pv-photos'); if(!el) return;
   el.innerHTML=previzCtx.photos.length? '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem">'+previzCtx.photos.map((p,i)=>'<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--bg);border-radius:8px;padding:.25rem .5rem;font-size:.78rem"><a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary)">🖼️ '+(i+1)+'</a><span onclick="delPvPhoto('+i+')" style="cursor:pointer;color:var(--red)" title="șterge">×</span></span>').join('')+'</div>' : '';
 }
 function delPvPhoto(i){ previzCtx.photos.splice(i,1); renderPvPhotos(); }
+/* Adaugă pozele PE LOC (la fața locului) — fiecare captură se încarcă imediat și inputul se resetează,
+   ca să poți face poză după poză pe tabletă (camera suprascrie inputul la fiecare captură). */
+async function pvAddPhotos(input){
+  if(!input||!input.files||!input.files.length) return;
+  const n=input.files.length; toast('⏳ '+(n>1?('Se încarcă '+n+' poze…'):'Se încarcă poza…'));
+  try{ const added=await uploadPhotos(input); previzCtx.photos=previzCtx.photos.concat(added); renderPvPhotos(); toast('✅ '+added.length+(added.length===1?' poză adăugată.':' poze adăugate.')); }
+  catch(e){ toast('Eroare la încărcarea pozei: '+esc(e.message||e)); }
+  try{ input.value=''; }catch(e){}   // reset → următoarea captură funcționează
+}
 async function savePreviz(){
   const name=($('pv-name').value||'').trim(); if(!name){ showMsg('pv-msg','Denumirea e obligatorie.'); return; }
   const btn=$('pv-save'); if(btn){ btn.disabled=true; btn.textContent='Se salvează…'; }
