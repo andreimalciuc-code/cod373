@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v192';
+const APP_VERSION='cod373-v193';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2774,6 +2774,8 @@ function invoiceReminder(id){
 /* ════ PONTAJ — tabel zilnic (șantier + ore + comentariu per angajat) ════ */
 let _ptDate=null, _ptSites=[], _ptISO='', _ptSaved=new Set();
 function ptDay(delta){ if(!_ptDate) _ptDate=new Date(coToday()+'T12:00:00'); if(delta===0) _ptDate=new Date(coToday()+'T12:00:00'); else { _ptDate=new Date(_ptDate); _ptDate.setDate(_ptDate.getDate()+delta); } renderPontaj(); }
+function ptGoDate(iso){ if(!iso) return; _ptDate=new Date(iso+'T12:00:00'); renderPontaj(); }       // sari direct la o anumită zi
+function ptOpenPicker(){ const i=$('pt-datepick'); if(!i) return; try{ if(i.showPicker){ i.showPicker(); } else { i.style.position='static'; i.style.width='auto'; i.style.height='auto'; i.style.opacity='1'; i.style.pointerEvents='auto'; i.focus(); i.click(); } }catch(e){ try{ i.focus(); i.click(); }catch(_){ } } }
 const PT_ABS=[['concediu','🏖️ Concediu'],['medical','🩺 Medical'],['boala','🤒 Boală'],['invoire','🚪 Învoire'],['liber','🏠 Liber'],['nemotivat','⛔ Nemotivat']]; // NU lucrează → 0 ore
 const PT_MENTION=[['oficiu','🏢 Oficiu'],['sofer','🚚 Șofer'],['director','👔 Director'],['electrician','⚡ Electrician'],['subcontractor','🧑‍🔧 Subcontractor']]; // LUCREAZĂ (nu pe șantier) → orele contează
 const PT_WORKSET=new Set(PT_MENTION.map(a=>a[0])); // doar mențiunile astea lucrează (orele contează)
@@ -2790,7 +2792,7 @@ function ptShowH(empId){ const st=$('pt-s-'+empId).value, en=$('pt-e-'+empId).va
 async function renderPontaj(){
   if(!_ptDate) _ptDate=new Date(coToday()+'T12:00:00'); _ptISO=isoLocal(_ptDate);
   const dn=['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'][new Date(_ptISO+'T12:00:00').getDay()];
-  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="ptDay(-1)">←</button><b style="margin:0 .5rem">'+dn+' '+fmtDate(_ptISO)+'</b><button class="btn-ghost" onclick="ptDay(1)">→</button><button class="btn-ghost" onclick="ptDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="ptFillPlanned()" title="Înregistrează programul de lucru implicit al firmei pentru toți angajații planificați azi (din Planificare echipe)">🕗 Aplică programul celor planificați</button><button class="btn-ghost" onclick="ptReport()" title="Generează un raport pe săptămână / lună, pentru toți sau pentru un angajat">📄 Raport</button></div>'
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="ptDay(-1)">←</button><b style="margin:0 .5rem;cursor:pointer;border-bottom:1px dashed var(--muted)" onclick="ptOpenPicker()" title="Apasă ca să alegi data">'+dn+' '+fmtDate(_ptISO)+' 📅</b><input type="date" id="pt-datepick" value="'+esc(_ptISO)+'" onchange="ptGoDate(this.value)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0"><button class="btn-ghost" onclick="ptDay(1)">→</button><button class="btn-ghost" onclick="ptDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="ptFillPlanned()" title="Înregistrează programul de lucru implicit al firmei pentru toți angajații planificați azi (din Planificare echipe)">🕗 Aplică programul celor planificați</button><button class="btn-ghost" onclick="ptReport()" title="Generează un raport pe săptămână / lună, pentru toți sau pentru un angajat">📄 Raport</button></div>'
     +(isHoliday(_ptISO)?'<div style="background:var(--red-soft);color:var(--red);border-radius:9px;padding:.5rem .8rem;margin-bottom:.7rem;font-weight:600;font-size:.86rem">🎉 '+esc(C373t('Sărbătoare legală'))+': '+esc(isHoliday(_ptISO))+' — '+esc(C373t('zi liberă plătită (orele nelucrate se plătesc la calculul salariilor).'))+'</div>':'')
     +'<div class="panel"><div class="panel-head"><h3>⏱️ Pontaj — '+fmtDate(_ptISO)+'</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
   const [empR,siteR,tsR,cpR,lvR]=await Promise.all([
@@ -3004,7 +3006,7 @@ const PLAN_ABS=[['concediu','🏖️ Concediu','#0ea5e9'],['liber','🏠 Liber',
 const PLAN_ROLE=[['sofer','🚚 Șofer','#16a34a'],['oficiu','🏢 Oficiu','#6366f1']];  // lucrează, dar nu pe șantier (transport / birou)
 function planTag(n){ const r=PLAN_ROLE.find(a=>a[0]===n); if(r) return {a:r,role:true}; const b=PLAN_ABS.find(a=>a[0]===n); return {a:b||['',n,'#94a3b8'],role:false}; }
 function mondayOf(d){ d=new Date(d); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
-function isoD(d){ return new Date(d).toISOString().slice(0,10); }
+function isoD(d){ d=new Date(d); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } // dată LOCALĂ (toISOString=UTC dădea ziua greșită în Plantafel pe fus orar +)
 /* ── fus orar + format dată pe companie (Setări → Regional) ── */
 function coTz(){ return (state.firm&&state.firm.automations&&state.firm.automations.tz)||''; }
 function coDateFmt(){ return (state.firm&&state.firm.automations&&state.firm.automations.date_fmt)||'DD.MM.YYYY'; }
