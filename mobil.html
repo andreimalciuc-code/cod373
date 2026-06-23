@@ -609,7 +609,7 @@ async function openStageMobile(stageId){
   const st=(S.curStages||[]).find(x=>x.id===stageId); if(!st) return;
   openSheet(st.name||'Pas de lucru','<div class="loading">Se încarcă…</div>');
   let photoHtml=''; const paths=st.photo_urls||[];
-  if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); photoHtml=(su.data||[]).map(x=>(x&&x.signedUrl)?'<img src="'+x.signedUrl+'" onclick="window.open(this.src,\'_blank\')" style="width:100%;border-radius:12px;margin:.4rem 0;cursor:zoom-in"/>':'').join(''); }catch(e){} }
+  if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); const purls=(su.data||[]).map(x=>(x&&x.signedUrl)||'').filter(Boolean); const _pid=lbReg(purls); photoHtml=purls.map((u,idx)=>'<img src="'+u+'" onclick="lbOpen(\''+_pid+'\','+idx+')" style="width:100%;border-radius:12px;margin:.4rem 0;cursor:zoom-in"/>').join(''); }catch(e){} }
   let matHtml='<div class="s">—</div>';
   try{ if(st.norm_id){ const nr=await sb.from('norms').select('code').eq('id',st.norm_id).maybeSingle(); const code=nr.data&&nr.data.code;
     if(code){ const mr=await sb.from('norm_materials').select('material_name,unit,qty_per_unit,kind').eq('norm_code',code); const mats=mr.data||[]; const q=+st.qty||1;
@@ -787,6 +787,34 @@ async function sendOrder(){
   S.cart={}; toast('✅ Comandă trimisă la birou ('+items.length+' poziții).'); scrComanda();
 }
 
+/* ── Lightbox poze: deschide în fereastra curentă + săgeți/swipe (URL-uri deja semnate) ── */
+function lbReg(urls){ window._lbReg=window._lbReg||{}; window._lbC=(window._lbC||0)+1; const id='lb'+window._lbC; window._lbReg[id]=(urls||[]).filter(Boolean); return id; }
+function lbOpen(id,i){ openLightbox((window._lbReg||{})[id]||[], i); }
+function openLightbox(urls,start){
+  urls=(urls||[]).filter(Boolean); if(!urls.length) return; start=Math.max(0,Math.min(+start||0,urls.length-1));
+  window._lb={urls:urls,i:start};
+  var ov=document.getElementById('img-lb');
+  if(!ov){ ov=document.createElement('div'); ov.id='img-lb'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.93);display:flex;align-items:center;justify-content:center;touch-action:none';
+    ov.innerHTML='<button id="lbx" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:21px">×</button>'
+      +'<button id="lbp" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px">‹</button>'
+      +'<img id="lbi" style="max-width:94vw;max-height:86vh;border-radius:8px;object-fit:contain"/>'
+      +'<button id="lbn" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px">›</button>'
+      +'<div id="lbc" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:999px"></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){ if(e.target===ov) lbClose(); });
+    document.getElementById('lbx').onclick=lbClose;
+    document.getElementById('lbp').onclick=function(){ lbGo(-1); };
+    document.getElementById('lbn').onclick=function(){ lbGo(1); };
+    var sx=0; ov.addEventListener('touchstart',function(e){ sx=e.touches[0].clientX; },{passive:true});
+    ov.addEventListener('touchend',function(e){ var dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>40) lbGo(dx<0?1:-1); },{passive:true});
+    document.addEventListener('keydown',function(e){ var o=document.getElementById('img-lb'); if(!o||o.style.display==='none')return; if(e.key==='ArrowLeft')lbGo(-1); else if(e.key==='ArrowRight')lbGo(1); else if(e.key==='Escape')lbClose(); });
+  }
+  ov.style.display='flex'; lbShow();
+}
+function lbShow(){ var g=window._lb; if(!g)return; var im=document.getElementById('lbi'); if(im)im.src=g.urls[g.i]||''; var single=g.urls.length<2; var p=document.getElementById('lbp'),n=document.getElementById('lbn'),c=document.getElementById('lbc'); if(p)p.style.display=single?'none':''; if(n)n.style.display=single?'none':''; if(c){c.style.display=single?'none':'';c.textContent=(g.i+1)+' / '+g.urls.length;} }
+function lbGo(d){ var g=window._lb; if(!g)return; g.i=(g.i+d+g.urls.length)%g.urls.length; lbShow(); }
+function lbClose(){ var o=document.getElementById('img-lb'); if(o)o.style.display='none'; }
+
 /* POZE PE ȘANTIER (etape de lucru) */
 async function scrPoze(){
   const isClient=S.role==='client';
@@ -808,7 +836,8 @@ async function loadPhotos(){
   const docs=(data||[]).slice().reverse();
   if(!docs.length){ el.innerHTML='<div class="empty"><div class="ei">📷</div>Nicio poză încă pentru acest șantier.</div>'; return; }
   const items=await Promise.all(docs.map(async d=>{ const s=await sb.storage.from('docs').createSignedUrl(d.file_url,300); return {url:(s.data&&s.data.signedUrl)||'',cap:d.name}; }));
-  el.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">'+items.map(i=>'<div class="card" style="padding:.4rem"><img src="'+esc(i.url)+'" loading="lazy" style="width:100%;height:120px;object-fit:cover;border-radius:8px;background:var(--line)"/><div class="s" style="margin-top:.3rem">'+esc(i.cap)+'</div></div>').join('')+'</div>';
+  const _gid=lbReg(items.map(i=>i.url));
+  el.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">'+items.map((i,idx)=>'<div class="card" style="padding:.4rem"><img src="'+esc(i.url)+'" loading="lazy" onclick="lbOpen(\''+_gid+'\','+idx+')" style="width:100%;height:120px;object-fit:cover;border-radius:8px;background:var(--line);cursor:zoom-in"/><div class="s" style="margin-top:.3rem">'+esc(i.cap)+'</div></div>').join('')+'</div>';
 }
 async function uploadSitePhoto(){
   const f=$('ph-file'); const site=$('ph-site').value;
@@ -968,7 +997,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v206', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v207', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
