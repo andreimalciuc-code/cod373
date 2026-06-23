@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v194';
+const APP_VERSION='cod373-v195';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2889,19 +2889,20 @@ async function ptReportRun(){
   if(!from||!to){ toast('Alege perioada.'); return; }
   if(from>to){ toast('„De la" trebuie să fie înainte de „Până la".'); return; }
   toast('⏳ Generez raportul…');
-  let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,absence,employees!employee_id(full_name),sites!site_id(name)').gte('work_date',from).lte('work_date',to);
+  let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,absence,employees!employee_id(full_name),sites!site_id(name)').gte('work_date',from).lte('work_date',to).limit(5000);
   if(empId) q=q.eq('employee_id',empId);
   const { data, error }=await q;
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   const rows=(data||[]); if(!rows.length){ toast('Nicio înregistrare în perioada aleasă.'); return; }
   closeModal();
-  const byEmp={}; rows.forEach(r=>{ const k=r.employee_id; const e=(byEmp[k]=byEmp[k]||{name:(r.employees&&r.employees.full_name)||'—',rows:[],total:0,sites:{}}); e.rows.push(r); e.total+=+r.hours||0; const sn=(r.sites&&r.sites.name)||'— fără șantier —'; e.sites[sn]=(e.sites[sn]||0)+(+r.hours||0); });
+  const byEmp={}; rows.forEach(r=>{ const k=r.employee_id; const e=(byEmp[k]=byEmp[k]||{name:(r.employees&&r.employees.full_name)||'—',rows:[],total:0,sites:{}}); e.rows.push(r); const hrs=+r.hours||0; e.total+=hrs; if(hrs>0){ const sn=(r.sites&&r.sites.name)||(r.absence?ptAbsLabel(r.absence):'— fără șantier —'); e.sites[sn]=(e.sites[sn]||0)+hrs; } });
   const dn=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; const fmt=h=>Math.round((+h||0)*100)/100; const hm=t=>(t||'').slice(0,5); const ro=s=>fmtDate(s);
   let grand=0, gDays=0, body='';
   Object.keys(byEmp).sort((a,b)=>byEmp[a].name.localeCompare(byEmp[b].name)).forEach(k=>{
     const e=byEmp[k]; grand+=e.total; gDays+=e.rows.length;
-    const trs=e.rows.sort((a,b)=>(a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0)).map(r=>{ const dt=new Date(r.work_date+'T12:00:00'); const ab=r.absence?ptAbsLabel(r.absence):null;
-      return '<tr><td>'+ro(r.work_date)+'</td><td>'+dn[dt.getDay()]+'</td><td>'+(ab?('<b>'+esc(ab)+'</b>'):esc((r.sites&&r.sites.name)||'—'))+'</td><td>'+(ab?'':esc(hm(r.start_time)))+'</td><td>'+(ab?'':esc(hm(r.end_time)))+'</td><td>'+(ab?'':(r.break_min!=null?(r.break_min+' min'):''))+'</td><td style="text-align:right">'+(ab?'—':fmt(r.hours))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('');
+    const trs=e.rows.sort((a,b)=>(a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0)).map(r=>{ const dt=new Date(r.work_date+'T12:00:00'); const tag=r.absence||null; const noWork=!!(tag&&ptIsNoWork(tag)); const lbl=tag?ptAbsLabel(tag):null;
+      const siteCell = lbl ? ('<b>'+esc(lbl)+'</b>') : esc((r.sites&&r.sites.name)||'—');
+      return '<tr><td>'+ro(r.work_date)+'</td><td>'+dn[dt.getDay()]+'</td><td>'+siteCell+'</td><td>'+(noWork?'':esc(hm(r.start_time)))+'</td><td>'+(noWork?'':esc(hm(r.end_time)))+'</td><td>'+(noWork?'':(r.break_min!=null?(r.break_min+' min'):''))+'</td><td style="text-align:right">'+(noWork?'—':fmt(r.hours))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('');
     const siteSum=Object.keys(e.sites).sort().map(sn=>esc(sn)+': <b>'+fmt(e.sites[sn])+'h</b>').join(' · ');
     body+='<div class="emp"><h2>'+esc(e.name)+'</h2>'
       +'<table><thead><tr><th>Data</th><th>Zi</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+trs+'</tbody></table>'
