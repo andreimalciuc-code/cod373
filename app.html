@@ -179,6 +179,7 @@
 
   /* LINE ITEMS */
   .lines{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:.4rem}
+  .lines{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .lines table{width:100%;border-collapse:collapse;font-size:.82rem}
   .lines th{background:var(--bg);text-align:left;padding:.5rem .6rem;font-size:.7rem;text-transform:uppercase;color:var(--muted);font-weight:600}
   .lines td{padding:.35rem .4rem;border-top:1px solid var(--line)}
@@ -200,6 +201,14 @@
     .overlay-nav{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:55}
     .overlay-nav.show{display:block}
     .row-2{grid-template-columns:1fr}
+  }
+  @media(max-width:560px){
+    .modal-overlay{padding:.6rem}
+    .modal-body{padding:1rem}
+    .modal-head{padding:.9rem 1rem}
+    .modal-foot{padding:.8rem 1rem}
+    .lines .li-name input{min-width:120px}
+    .seg{gap:.35rem}
   }
   /* ════ PERSONALIZARE (per utilizator, pe dispozitiv) ════ */
   body.dens-compact{font-size:13px}
@@ -1963,7 +1972,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v184';
+const APP_VERSION='cod373-v185';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -4334,7 +4343,8 @@ function ganttStyle(){ if(document.getElementById('gantt-style')) return ''; var
   +'.gtoday{position:absolute;top:0;width:2px;background:#f04338;z-index:4;pointer-events:none} .gtoday span{position:absolute;top:0;left:3px;font-size:.62rem;color:#f04338;background:var(--surface);padding:0 2px}'
   +'.ghol{position:absolute;top:0;background:#f0433814;border-left:1px dashed #f0433855;z-index:3;pointer-events:none}'
   +'.gsvg{position:absolute;top:0;left:0;z-index:1;pointer-events:none}'
-  +'.glegend{display:flex;flex-wrap:wrap;gap:.8rem;align-items:center;padding:.6rem 1rem;font-size:.76rem} .glegend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:.3rem;vertical-align:-1px}';
+  +'.glegend{display:flex;flex-wrap:wrap;gap:.8rem;align-items:center;padding:.6rem 1rem;font-size:.76rem} .glegend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:.3rem;vertical-align:-1px}'
+  +'@media(max-width:860px){.glegend{display:none}}';
   var st=document.createElement('style'); st.id='gantt-style'; st.textContent=css; document.head.appendChild(st); return ''; }
 function ganttDown(ev,id,mode){ ev.preventDefault(); const bar=ev.currentTarget.closest('.gbar'); if(!bar) return;
   _gDrag={id,mode,x0:ev.clientX,moved:false,el:bar,origLeft:parseFloat(bar.style.left)||0,origWidth:parseFloat(bar.style.width)||_gPx};
