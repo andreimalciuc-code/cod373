@@ -293,9 +293,9 @@ function setRole(r){ S.role=r; S.view='acasa'; document.querySelectorAll('#roles
 
 /* NAV per role */
 const NAV={
-  worker:[['acasa','🏠','Acasă'],['scule','🔧','Scule'],['comanda','🛒','Comandă'],['pontaj','⏱️','Pontaj'],['poze','📷','Poze'],['defecte','🔧','Defecte']],
+  worker:[['acasa','🏠','Acasă'],['program','📋','Program'],['scule','🔧','Scule'],['comanda','🛒','Comandă'],['pontaj','⏱️','Pontaj'],['poze','📷','Poze'],['defecte','🔧','Defecte']],
   driver:[['acasa','🏠','Acasă'],['scule','🔧','Scule'],['livrari','🚚','Livrări']],
-  manager:[['acasa','🏠','Acasă'],['scule','🔧','Scule'],['santiere','🏗️','Șantiere'],['comanda','🛒','Comandă'],['poze','📷','Poze']],
+  manager:[['acasa','🏠','Acasă'],['program','📋','Program'],['scule','🔧','Scule'],['santiere','🏗️','Șantiere'],['comanda','🛒','Comandă'],['poze','📷','Poze']],
   subcontractor:[['acasa','🏗️','Lucrările mele'],['poze','📷','Poze'],['defecte','🔧','Probleme']],
   client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['poze','📷','Poze']]
 };
@@ -303,7 +303,7 @@ function render(){
   const nav=NAV[S.role]||NAV.worker;
   if(!nav.find(n=>n[0]===S.view)) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
+  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
   $('screen').scrollTop=0; fn(); loadNotifCount();
 }
 function goV(v){S.view=v;render();}
@@ -440,6 +440,44 @@ async function scrAcasa(){
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
     +'<div class="scr-title" style="font-size:.95rem">Șantierele tale</div>'
     +(list||'<div class="empty"><div class="ei">🏗️</div>Niciun șantier activ.</div>');
+}
+
+/* PROGRAMUL SĂPTĂMÂNII (Bauprogramm) — pașii de lucru planificați în săptămână, per șantier */
+function weekRange(offset){ const d=new Date(); d.setHours(0,0,0,0); const dow=(d.getDay()+6)%7; const mon=new Date(d); mon.setDate(d.getDate()-dow+(offset||0)*7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); const iso=x=>x.toISOString().slice(0,10); return {start:mon,end:sun,startStr:iso(mon),endStr:iso(sun)}; }
+async function scrProgram(){
+  $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
+  S.progWeek=S.progWeek||0; const wk=weekRange(S.progWeek);
+  const fd=d=>{ const p=String(d).slice(0,10).split('-'); return p[2]+'.'+p[1]; };
+  const isMgr=['manager','owner','admin'].includes(S.role);
+  const {data:allSites}=await sb.from('sites').select('id,name,address,status'); S.sites=allSites||[];
+  const siteName={}; (allSites||[]).forEach(s=>siteName[s.id]=s.name);
+  let siteIds=(allSites||[]).filter(s=>s.status!=='cancelled').map(s=>s.id);
+  let myEmp=null; try{ const e=await sb.from('employees').select('id').eq('user_id',S.session.user.id).maybeSingle(); myEmp=e.data&&e.data.id; }catch(e){}
+  const plannedDays={};
+  if(!isMgr){
+    const mine=new Set();
+    if(myEmp){ try{ const cp=await sb.from('crew_plan').select('site_id,plan_date').eq('employee_id',myEmp).gte('plan_date',wk.startStr).lte('plan_date',wk.endStr); (cp.data||[]).forEach(p=>{ if(p.site_id){ mine.add(p.site_id); (plannedDays[p.site_id]=plannedDays[p.site_id]||[]).push(p.plan_date); } }); }catch(e){} }
+    try{ const stm=await sb.from('site_team').select('site_id,user_id'); (stm.data||[]).filter(r=>r.user_id===S.session.user.id).forEach(r=>mine.add(r.site_id)); }catch(e){}
+    if(mine.size) siteIds=siteIds.filter(id=>mine.has(id));
+  }
+  let stages=[];
+  if(siteIds.length){ try{ const sr=await sb.from('site_stages').select('*').in('site_id',siteIds).not('start_date','is',null).lte('start_date',wk.endStr).gte('end_date',wk.startStr); stages=sr.data||[]; }catch(e){} }
+  S.curStages=stages;
+  const bySite={}; stages.forEach(st=>{ (bySite[st.site_id]=bySite[st.site_id]||[]).push(st); });
+  const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
+  const dowNames=['Du','Lu','Ma','Mi','Jo','Vi','Sâ'];
+  let groups='';
+  Object.keys(bySite).forEach(sid=>{
+    const sts=bySite[sid].slice().sort((a,b)=>(String(a.start_date||'')+(a.position||0)).localeCompare(String(b.start_date||'')+(b.position||0)));
+    let pd=''; if(plannedDays[sid]&&plannedDays[sid].length){ const days=[...new Set(plannedDays[sid])].sort().map(d=>dowNames[new Date(d).getDay()]); pd=' <span class="s">· planificat: '+days.join(', ')+'</span>'; }
+    groups+='<div class="scr-title" style="font-size:.95rem;margin-top:1rem">🏗️ '+esc(siteName[sid]||'Șantier')+pd+'</div>';
+    groups+=sts.map(st=>{ const ind=(st.description?' 📝':'')+((st.photo_urls&&st.photo_urls.length)?' 📷':''); const mine=(myEmp&&st.executor_kind==='angajat'&&st.executor_id===myEmp)?' <span class="pill blue">ție</span>':'';
+      return '<div class="card" onclick="openStageMobile(\''+st.id+'\')" style="cursor:pointer;margin:.4rem 0;padding:.7rem"><div class="row"><div class="grow"><b>'+esc(st.name)+'</b><span style="font-size:.85rem">'+ind+'</span>'+mine+'<div class="s">'+fd(st.start_date)+(st.end_date&&st.end_date!==st.start_date?' → '+fd(st.end_date):'')+'</div></div><span class="pill '+(stCol[st.status]||'grey')+'">'+(st.progress||0)+'% ›</span></div></div>'; }).join('');
+  });
+  if(!stages.length) groups='<div class="empty"><div class="ei">📋</div>Nicio lucrare planificată în această săptămână.</div>';
+  const wkLbl=S.progWeek===0?'Această săptămână':(S.progWeek===1?'Săptămâna viitoare':(S.progWeek>0?('peste '+S.progWeek+' săptămâni'):(Math.abs(S.progWeek)+' săpt. în urmă')));
+  const navWk='<div class="row" style="gap:.5rem;align-items:center;margin:.4rem 0 .2rem"><button class="mini-btn gh" onclick="S.progWeek=(S.progWeek||0)-1;scrProgram()">‹</button><div class="grow" style="text-align:center"><b>'+fd(wk.startStr)+' – '+fd(wk.endStr)+'</b><div class="s">'+wkLbl+'</div></div><button class="mini-btn gh" onclick="S.progWeek=(S.progWeek||0)+1;scrProgram()">›</button></div>';
+  $('screen').innerHTML='<div class="scr-title">📋 Programul săptămânii</div>'+navWk+'<div class="s" style="margin-bottom:.3rem">👉 Apasă o lucrare ca să vezi ce ai de făcut, pozele și materialele.</div>'+groups;
 }
 
 /* RAPORT ZILNIC (jurnal de șantier) */
@@ -918,7 +956,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v181', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v182', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;

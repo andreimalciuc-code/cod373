@@ -129,6 +129,13 @@
     '👉 Apasă o etapă: vezi ce ai de făcut, pozele și materialele.':{ru:'👉 Нажмите на этап: увидите, что делать, фото и материалы.',de:'👉 Tippe auf einen Schritt: du siehst, was zu tun ist, Fotos und Material.',en:'👉 Tap a step: see what to do, photos and materials.'},
     'În lucru':{ru:'В работе',de:'In Arbeit',en:'In progress'},
     'Întârziat':{ru:'Просрочено',de:'Verspätet',en:'Delayed'},
+    // ── Programul săptămânii (Bauprogramm) pe mobil ──
+    'Program':{ru:'План',de:'Plan',en:'Schedule'},
+    '📋 Programul săptămânii':{ru:'📋 План на неделю',de:'📋 Wochenprogramm',en:'📋 This week’s schedule'},
+    'Această săptămână':{ru:'Эта неделя',de:'Diese Woche',en:'This week'},
+    'Săptămâna viitoare':{ru:'Следующая неделя',de:'Nächste Woche',en:'Next week'},
+    'Nicio lucrare planificată în această săptămână.':{ru:'На эту неделю работ не запланировано.',de:'Für diese Woche sind keine Arbeiten geplant.',en:'No work planned for this week.'},
+    '👉 Apasă o lucrare ca să vezi ce ai de făcut, pozele și materialele.':{ru:'👉 Нажмите на работу, чтобы увидеть, что делать, фото и материалы.',de:'👉 Tippe auf eine Arbeit, um zu sehen, was zu tun ist, Fotos und Material.',en:'👉 Tap a job to see what to do, photos and materials.'},
     'Subcontractor':{ru:'Субподрядчик',de:'Subunternehmer',en:'Subcontractor'},
     'Compania':{ru:'Компания',de:'Unternehmen',en:'Company'},
     'Carduri carburant':{ru:'Топливные карты',de:'Tankkarten',en:'Fuel cards'},
