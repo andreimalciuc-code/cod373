@@ -1979,7 +1979,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v188';
+const APP_VERSION='cod373-v189';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2767,11 +2767,15 @@ function invoiceReminder(id){
 /* ════ PONTAJ — tabel zilnic (șantier + ore + comentariu per angajat) ════ */
 let _ptDate=null, _ptSites=[], _ptISO='', _ptSaved=new Set();
 function ptDay(delta){ if(!_ptDate) _ptDate=new Date(coToday()+'T12:00:00'); if(delta===0) _ptDate=new Date(coToday()+'T12:00:00'); else { _ptDate=new Date(_ptDate); _ptDate.setDate(_ptDate.getDate()+delta); } renderPontaj(); }
-const PT_ABS=[['concediu','🏖️ Concediu'],['medical','🩺 Medical'],['boala','🤒 Boală'],['invoire','🚪 Învoire'],['liber','🏠 Liber'],['nemotivat','⛔ Nemotivat']];
-function ptAbsLabel(k){ const a=PT_ABS.find(x=>x[0]===k); return a?a[1]:(k||''); }
-function ptSiteOpts(sel, absSel){ return '<option value="" '+(!sel&&!absSel?'selected':'')+'>— fără / liber —</option>'
-  +_ptSites.map(s=>'<option value="'+s.id+'" '+(!absSel&&sel===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join('')
-  +'<optgroup label="Absență (concediu / boală / etc.)">'+PT_ABS.map(a=>'<option value="abs:'+a[0]+'" '+(absSel===a[0]?'selected':'')+'>'+a[1]+'</option>').join('')+'</optgroup>'; }
+const PT_ABS=[['concediu','🏖️ Concediu'],['medical','🩺 Medical'],['boala','🤒 Boală'],['invoire','🚪 Învoire'],['liber','🏠 Liber'],['nemotivat','⛔ Nemotivat']]; // NU lucrează → 0 ore
+const PT_MENTION=[['oficiu','🏢 Oficiu'],['sofer','🚚 Șofer'],['director','👔 Director'],['electrician','⚡ Electrician'],['subcontractor','🧑‍🔧 Subcontractor']]; // LUCREAZĂ (nu pe șantier) → orele contează
+const PT_WORKSET=new Set(PT_MENTION.map(a=>a[0])); // doar mențiunile astea lucrează (orele contează)
+function ptIsNoWork(k){ return !!k && !PT_WORKSET.has(k); } // orice altă etichetă = absență (0 ore)
+function ptAbsLabel(k){ const a=PT_ABS.find(x=>x[0]===k)||PT_MENTION.find(x=>x[0]===k); return a?a[1]:(k||''); }
+function ptSiteOpts(sel, tagSel){ return '<option value="" '+(!sel&&!tagSel?'selected':'')+'>— fără / liber —</option>'
+  +_ptSites.map(s=>'<option value="'+s.id+'" '+(!tagSel&&sel===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join('')
+  +'<optgroup label="Mențiune (lucrează)">'+PT_MENTION.map(a=>'<option value="m:'+a[0]+'" '+(tagSel===a[0]?'selected':'')+'>'+a[1]+'</option>').join('')+'</optgroup>'
+  +'<optgroup label="Absență (nu lucrează)">'+PT_ABS.map(a=>'<option value="abs:'+a[0]+'" '+(tagSel===a[0]?'selected':'')+'>'+a[1]+'</option>').join('')+'</optgroup>'; }
 function ptBreakOpts(sel){ const std=[[0,'Fără pauză'],[30,'30 min'],[60,'1 oră'],[90,'1 oră 30']]; sel=(sel==null?60:+sel); const has=std.some(o=>o[0]===sel); const extra=has?'':('<option value="'+sel+'" selected>'+sel+' min</option>'); return extra+std.map(o=>'<option value="'+o[0]+'" '+(o[0]===sel?'selected':'')+'>'+o[1]+'</option>').join(''); }
 function ptHours(st,en,br){ if(!st||!en) return 0; const a=st.split(':').map(Number), b=en.split(':').map(Number); if(a.length<2||b.length<2||[a[0],a[1],b[0],b[1]].some(isNaN)) return 0; let m=(b[0]*60+b[1])-(a[0]*60+a[1]); if(m<0) m+=1440; m-=(+br||0); if(m<0) m=0; return Math.round(m/60*100)/100; }
 function ptRecalcTotal(){ let t=0; document.querySelectorAll('.pt-h').forEach(s=>t+=+(s.dataset.h)||0); const el=$('pt-total'); if(el) el.textContent=Math.round(t*100)/100; }
@@ -2795,46 +2799,61 @@ async function renderPontaj(){
   const ts={}; (tsR.data||[]).forEach(t=>{ if(!ts[t.employee_id]) ts[t.employee_id]={site_id:t.site_id,hours:t.hours,note:t.note,start_time:hm(t.start_time),end_time:hm(t.end_time),break_min:t.break_min,absence:t.absence}; });
   _ptSaved=new Set(Object.keys(ts));
   const lv={}; (lvR.data||[]).forEach(l=>{ if(!lv[l.employee_id]) lv[l.employee_id]=l.kind; });  // concedii planificate (HR) care acoperă ziua
-  const plan={}; (cpR.data||[]).forEach(p=>{ if(p.site_id && (p.slot==='full'||!plan[p.employee_id])) plan[p.employee_id]=p.site_id; });
+  // din Planificare echipe: șantier SAU mențiune/absență (note: sofer/oficiu/concediu/liber/boala)
+  const plan={}; (cpR.data||[]).forEach(p=>{ const cur=plan[p.employee_id]; if(cur&&cur._slot==='full'&&p.slot!=='full') return; const v=p.site_id?{site:p.site_id}:(p.note?{tag:p.note}:null); if(v){ v._slot=p.slot; plan[p.employee_id]=v; } });
   if(!emps.length){ $('mod-body').innerHTML='<div class="empty">Niciun angajat activ.</div>'; return; }
   const wk=coWork();
-  const rows=emps.map(e=>{ const saved=!!ts[e.id]; const t=ts[e.id]||{}; const sel=(t.site_id!=null?t.site_id:(plan[e.id]||'')); const sp=e.specialty||e.position;
-    const absVal = saved ? (t.absence||null) : (lv[e.id]||null); const dis=!!absVal;
-    /* rândurile încă nesalvate apar pre-completate cu programul implicit al firmei; cele salvate își păstrează valorile */
-    const st=dis?'':(saved?(t.start_time||''):wk.start), en=dis?'':(saved?(t.end_time||''):wk.end), br=dis?wk.brk:(saved?(t.break_min!=null?+t.break_min:wk.brk):wk.brk);
-    const initH=dis?0:((st&&en)?ptHours(st,en,br):(t.hours!=null?+t.hours:0)); const hasH=(st&&en)||t.hours!=null;
-    const da=dis?' disabled':'';
+  const isWeekend=[0,6].includes(new Date(_ptISO+'T12:00:00').getDay());
+  const rows=emps.map(e=>{ const saved=!!ts[e.id]; const t=ts[e.id]||{}; const sp=e.specialty||e.position; const pl=plan[e.id]||null;
+    // selecția: salvat → din pontaj; nesalvat → din Planificare echipe / concediu HR / weekend implicit liber
+    let site = saved ? (t.site_id||null) : ((pl&&pl.site)||null);
+    let tag  = saved ? (t.absence||null) : null;
+    if(!saved){ if(pl&&pl.tag) tag=pl.tag; else if(lv[e.id]) tag=lv[e.id]; else if(isWeekend && !site) tag='liber'; }
+    const noWork = !!(tag && ptIsNoWork(tag));  // absență reală → 0 ore; mențiunile (oficiu/șofer/...) lucrează
+    const st=noWork?'':(saved?(t.start_time||''):wk.start), en=noWork?'':(saved?(t.end_time||''):wk.end), br=noWork?wk.brk:(saved?(t.break_min!=null?+t.break_min:wk.brk):wk.brk);
+    const initH=noWork?0:((st&&en)?ptHours(st,en,br):(t.hours!=null?+t.hours:0)); const hasH=(st&&en)||t.hours!=null;
+    const da=noWork?' disabled':'';
     return '<tr><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'
-      +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:140px">'+ptSiteOpts(sel,absVal)+'</select></td>'
+      +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:140px">'+ptSiteOpts(site||'',tag||null)+'</select></td>'
       +'<td><input id="pt-s-'+e.id+'" type="time" style="width:104px" value="'+esc(st)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
       +'<td><input id="pt-e-'+e.id+'" type="time" style="width:104px" value="'+esc(en)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
       +'<td><select id="pt-b-'+e.id+'" style="min-width:104px"'+da+' onchange="ptSet(\''+e.id+'\')">'+ptBreakOpts(br)+'</select></td>'
-      +'<td style="white-space:nowrap">'+(dis
-          ? '<b id="pt-h-'+e.id+'" class="pt-h" data-h="0" style="color:var(--primary)">'+esc(ptAbsLabel(absVal))+'</b>'+(saved?'':'<span title="Concediu/absență planificată în HR — apasă pentru a o înregistra în pontaj" style="color:var(--muted);font-size:.7rem"> · planificat</span>')
-          : '<b id="pt-h-'+e.id+'" class="pt-h" data-h="'+(initH||0)+'">'+(hasH?(Math.round(initH*100)/100):'—')+'</b> h'+(saved?'':'<span title="Program implicit — neînregistrat încă; editează rândul sau apasă butonul Aplică programul" style="color:var(--muted);font-size:.7rem"> · prestabilit</span>'))+'</td>'
+      +'<td style="white-space:nowrap">'+(noWork
+          ? '<b id="pt-h-'+e.id+'" class="pt-h" data-h="0" style="color:var(--primary)">'+esc(ptAbsLabel(tag))+'</b>'+(saved?'':'<span title="Implicit (din Planificare echipe / weekend) — neînregistrat încă" style="color:var(--muted);font-size:.7rem"> · planificat</span>')
+          : '<b id="pt-h-'+e.id+'" class="pt-h" data-h="'+(initH||0)+'">'+(hasH?(Math.round(initH*100)/100):'—')+'</b> h'+(saved?'':'<span title="Program implicit — neînregistrat încă; editează sau apasă Aplică programul" style="color:var(--muted);font-size:.7rem"> · prestabilit</span>'))+'</td>'
       +'<td><input id="pt-n-'+e.id+'" value="'+esc(t.note||'')+'" placeholder="comentariu (opțional)" style="min-width:160px;width:100%" onchange="ptSet(\''+e.id+'\')"/></td></tr>'; }).join('');
   $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">Programul implicit al firmei ('+esc(wk.start)+'–'+esc(wk.end)+', pauză '+wk.brk+' min) apare pre-completat — editează la nevoie pe fiecare angajat; se salvează pe loc. „🕗 Aplică programul" înregistrează programul pentru toți cei planificați azi. Schimbi valorile implicite în Setări.</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Angajat</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+rows+'</tbody>'
     +'<tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="5">Total ore</td><td><span id="pt-total">0</span> h</td><td></td></tr></tfoot></table></div>';
   ptRecalcTotal();
 }
-async function ptSet(empId){ const raw=$('pt-site-'+empId).value, note=($('pt-n-'+empId).value||'').trim();
-  let absence=null, site=null; if(raw.indexOf('abs:')===0) absence=raw.slice(4); else site=raw||null;
+async function ptSet(empId){
+  const day=_ptISO;  // FIX: capturăm ziua acum — dacă navighezi între timp, salvarea nu mai pleacă pe ziua greșită
+  const raw=$('pt-site-'+empId).value, note=($('pt-n-'+empId).value||'').trim();
+  let tag=null, site=null, noWork=false;
+  if(raw.indexOf('abs:')===0){ tag=raw.slice(4); noWork=ptIsNoWork(tag); }       // absență (nu lucrează → 0 ore)
+  else if(raw.indexOf('m:')===0){ tag=raw.slice(2); noWork=false; }              // mențiune (lucrează → orele contează)
+  else site=raw||null;
   const ss=$('pt-s-'+empId), ee=$('pt-e-'+empId), bb=$('pt-b-'+empId);
-  [ss,ee,bb].forEach(el=>{ if(el) el.disabled=!!absence; });   // la absență: orele nu se completează
+  [ss,ee,bb].forEach(el=>{ if(el) el.disabled=noWork; });
   let st='', en='', br=0, h=0;
-  if(absence){ const hc=$('pt-h-'+empId); if(hc){ hc.dataset.h=0; hc.textContent=ptAbsLabel(absence); hc.style.color='var(--primary)'; } ptRecalcTotal(); }
+  if(noWork){ const hc=$('pt-h-'+empId); if(hc){ hc.dataset.h=0; hc.textContent=ptAbsLabel(tag); hc.style.color='var(--primary)'; } ptRecalcTotal(); }
   else { st=ss?ss.value:''; en=ee?ee.value:''; br=+(bb?bb.value:0)||0; const hc=$('pt-h-'+empId); if(hc) hc.style.color=''; h=ptShowH(empId); }
-  await sb.from('timesheets').delete().eq('employee_id',empId).eq('work_date',_ptISO);
-  if(absence||h>0||site||note||st||en){ const r=await sbRetry(()=>sb.from('timesheets').insert({tenant_id:state.tenant,employee_id:empId,site_id:site,work_date:_ptISO,hours:h,note:note||null,start_time:st||null,end_time:en||null,break_min:br,absence:absence,approved:false})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
+  await sb.from('timesheets').delete().eq('employee_id',empId).eq('work_date',day);
+  if(tag||h>0||site||note||st||en){ const r=await sbRetry(()=>sb.from('timesheets').insert({tenant_id:state.tenant,employee_id:empId,site_id:site,work_date:day,hours:h,note:note||null,start_time:st||null,end_time:en||null,break_min:br,absence:tag,approved:false})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
   _ptSaved&&_ptSaved.add(empId);
-  toast(absence?('✅ '+ptAbsLabel(absence)+' înregistrat.'):'✅ Pontaj salvat.'); }
+  toast((tag&&noWork)?('✅ '+ptAbsLabel(tag)+' înregistrat.'):'✅ Pontaj salvat.'); }
 async function ptFillPlanned(){
-  const cp=((await sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO)).data)||[];
-  const plan={}; cp.forEach(p=>{ if(p.site_id && (p.slot==='full'||!plan[p.employee_id])) plan[p.employee_id]=p.site_id; });
+  const day=_ptISO;
+  const cp=((await sb.from('crew_plan').select('employee_id,site_id,slot,note').eq('plan_date',day)).data)||[];
+  const plan={}; cp.forEach(p=>{ const cur=plan[p.employee_id]; if(cur&&cur._slot==='full'&&p.slot!=='full') return; const v=p.site_id?{site:p.site_id}:(p.note?{tag:p.note}:null); if(v){ v._slot=p.slot; plan[p.employee_id]=v; } });
   const wk=coWork();
-  let n=0; Object.keys(plan).forEach(id=>{ if(_ptSaved&&_ptSaved.has(id)) return; const se=$('pt-site-'+id), ss=$('pt-s-'+id), ee=$('pt-e-'+id), bb=$('pt-b-'+id); if(se&&ss&&ee){ se.value=plan[id]; ss.value=wk.start; ee.value=wk.end; if(bb) bb.value=String(wk.brk); ptSet(id); _ptSaved.add(id); n++; } });
-  toast(n?('✅ Înregistrat programul '+wk.start+'–'+wk.end+' pentru '+n+' angajați planificați.'):'Toți cei planificați au deja pontaj salvat.'); }
+  let n=0; Object.keys(plan).forEach(id=>{ if(_ptSaved&&_ptSaved.has(id)) return; const pl=plan[id]; const se=$('pt-site-'+id), ss=$('pt-s-'+id), ee=$('pt-e-'+id), bb=$('pt-b-'+id); if(!se) return;
+    if(pl.site){ se.value=pl.site; if(ss)ss.value=wk.start; if(ee)ee.value=wk.end; if(bb)bb.value=String(wk.brk); }
+    else if(pl.tag){ se.value=(ptIsNoWork(pl.tag)?'abs:':'m:')+pl.tag; }
+    else return;
+    ptSet(id); _ptSaved.add(id); n++; });
+  toast(n?('✅ Înregistrat pentru '+n+' angajați planificați.'):'Toți cei planificați au deja pontaj salvat.'); }
 /* ── Raport pontaj pe perioadă (săptămână / lună), per angajat ── */
 async function ptReport(){
   const empR=await sb.from('employees').select('id,full_name,active').order('full_name');
