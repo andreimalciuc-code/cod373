@@ -968,7 +968,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v204', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v205', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
@@ -1055,7 +1055,8 @@ closeSheet=function(){ if(window._qr){ try{ window._qr.stop(); }catch(e){} windo
 
 /* START */
 (async function(){
-  if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+  if('serviceWorker' in navigator){ const _hadCtrl=!!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').catch(()=>{});
+    let _swReloaded=false; navigator.serviceWorker.addEventListener('controllerchange',function(){ if(_swReloaded) return; _swReloaded=true; if(_hadCtrl) location.reload(); }); }
   if(!cfgOk()){$('login').classList.remove('hidden');hideSplash();$('cfg-warn').classList.remove('hidden');$('cfg-warn').innerHTML='⚙️ Configurare incompletă (cheia publishable).';$('l-btn').disabled=true;return;}
   sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   sb.auth.onAuthStateChange((evt)=>{ if(evt==='PASSWORD_RECOVERY'){ mShowReset(); return; } if(evt==='SIGNED_IN' && !S.tenant) boot(); });

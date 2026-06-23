@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v204';
+const APP_VERSION='cod373-v205';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -6626,7 +6626,8 @@ async function printDoc(key,id){
 
 /* ════ START ════ */
 (async function init(){
-  if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+  if('serviceWorker' in navigator){ const _hadCtrl=!!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').catch(()=>{});
+    let _swReloaded=false; navigator.serviceWorker.addEventListener('controllerchange',function(){ if(_swReloaded) return; _swReloaded=true; if(_hadCtrl) location.reload(); }); }
   if(!cfgOk()){
     $('gate').classList.remove('hidden'); hideSplash();
     $('cfg-warn').classList.remove('hidden');
