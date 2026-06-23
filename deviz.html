@@ -208,6 +208,14 @@ function lineNet(l){ const g=(+l.qty||0)*(+l.unit_price||0); return (!l.group &&
 /* TVA efectiv pe linie: în grup sau în mod „pe poziție" → cota liniei; altfel 0 (mod unificat/fără = TVA doar la final) */
 function lineEffVat(l){ const inGroup=!!l.group; if(inGroup) return +l.vat_rate||0; const vm=S.est.vat_mode; if(vm==='line') return +l.vat_rate||0; if(vm==='total') return +S.est.vat_value||0; return 0; }
 function lineGross(l){ return lineNet(l)*(1+lineEffVat(l)/100); }
+/* Selector TVA pe linie: cotele din țara/firma (Setări) + „—" (fără TVA) */
+function vatRates(){ const rs=(S.firm&&S.firm.automations&&S.firm.automations.vat_rates)||[20,8,0]; return rs.map(Number).filter(r=>!isNaN(r)&&r>=0); }
+function vatOptsHtml(cur){ cur=Math.round((+cur||0)*100)/100; let rs=vatRates().filter(r=>r>0); if(cur>0&&rs.indexOf(cur)<0) rs.push(cur); rs=Array.from(new Set(rs)).sort((a,b)=>b-a);
+  return '<option value="0"'+(cur===0?' selected':'')+'>—</option>'+rs.map(r=>'<option value="'+r+'"'+(r===cur?' selected':'')+'>'+num2(r)+'%</option>').join(''); }
+function vatSelectHtml(i,cur){ return '<select id="vt-'+i+'" onchange="lineSetVat('+i+',this.value)" style="width:76px;font-weight:600">'+vatOptsHtml(cur)+'</select>'; }
+function lineSetVat(i,v){ const rate=(v===''?0:+v||0); const l=S.lines[i]; if(!l) return;
+  if(!l.group && S.est.vat_mode==='total'){ S.est.vat_value=rate; S.lines.forEach(x=>{ if(!x.group) x.vat_rate=rate; }); render(); }
+  else { l.vat_rate=rate; refreshLineTotal(i); renderSummary(); } }
 function groupTotals(grp){ let net=0, vat=0; const f=(1-(+grp.disc||0)/100); S.lines.forEach(l=>{ if(l.group===grp.id){ const g=(+l.qty||0)*(+l.unit_price||0); net+=g; vat+=g*f*(+l.vat_rate||0)/100; } }); const base=net*f; return { net:net, base:base, vat:vat, total:base+vat }; }
 function totals(){
   const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none';
@@ -284,7 +292,7 @@ function optBar(){
     +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">Reducere: <select onchange="setDiscMode(this.value)" style="width:auto">'+opt(dm,'none','Fără')+opt(dm,'line','Pe poziție')+opt(dm,'total','La final')+'</select></label>'
     +(dm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.est.disc_value||0)+'" oninput="setDiscVal(this.value)" style="width:78px"/> %</label>':'')
     +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">TVA: <select onchange="setVatMode(this.value)" style="width:auto">'+opt(vm,'none','Fără')+opt(vm,'line','Pe poziție')+opt(vm,'total','Unificat')+'</select></label>'
-    +(vm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.est.vat_value||0)+'" oninput="setVatVal(this.value)" style="width:78px"/> %</label>':'')
+    +(vm==='total'?'<label style="display:flex;align-items:center;gap:.3rem">TVA <select onchange="S.est.vat_value=(+this.value||0);render()" style="width:80px;font-weight:600">'+vatOptsHtml(+S.est.vat_value||0)+'</select></label>':'')
     +(S.groups.length?'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a" title="În PDF: detaliat = materialele apar ca linii separate sub serviciu; incluse = materialele se ascund și costul lor se adaugă în prețul manoperei (totalul rămâne același).">Materiale în PDF: <select onchange="setMatMode(this.value)" style="width:auto">'+opt(mm,'detailed','Detaliate')+opt(mm,'rolled','Incluse în manoperă')+'</select></label>':'')
     +'</div>';
 }
@@ -294,7 +302,7 @@ function setVatMode(v){ S.est.vat_mode=v; render(); }
 function setDiscVal(v){ S.est.disc_value=+v||0; renderSummary(); }
 function setVatVal(v){ S.est.vat_value=+v||0; renderSummary(); }
 function lineRowHtml(i,inGroup){
-  const l=S.lines[i]; const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=inGroup?true:(S.est.vat_mode==='line'); const lt=lineGross(l);
+  const l=S.lines[i]; const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=inGroup?true:(S.est.vat_mode!=='none'); const lt=lineGross(l);
   const thumb=l.photo_url
     ? (S.lineThumbs[l.photo_url]
         ? '<img onclick="lineDetails('+i+')" src="'+S.lineThumbs[l.photo_url]+'" title="Apasă pentru a edita descrierea/poza" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:pointer;vertical-align:middle">'
@@ -311,16 +319,16 @@ function lineRowHtml(i,inGroup){
     +'<td><input list="uom-list" onfocus="umFx(this)" onblur="umBl(this)" value="'+esc(l.unit)+'" oninput="lineEdit('+i+',\'unit\',this.value)"/></td>'
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
     +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
-    +(showVat?'<td><input id="vt-'+i+'" list="vat-list" type="number" step="any" value="'+esc(l.vat_rate)+'" oninput="lineEdit('+i+',\'vat_rate\',this.value)"/></td>':'')
+    +(showVat?'<td>'+vatSelectHtml(i,(!inGroup&&S.est.vat_mode==='total')?(+S.est.vat_value||0):(+l.vat_rate||0))+'</td>':'')
     +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="'+((inGroup||S.est.vat_mode!=='none')?'Total CU TVA pe poziție — scrie suma și prețul unitar (fără TVA) se recalculează invers':'Total pe poziție — scrie suma și prețul unitar se recalculează invers')+'"/></td>'
     +'<td style="white-space:nowrap"><button class="delx" onclick="lineDetails('+i+')" title="Descriere și poză" style="'+((l.description||l.photo_url)?'color:#2f6bff':'')+'">'+((l.description||l.photo_url)?'📝':'＋')+'</button>'
     +(lineCatalogChanged(l)?'<button class="delx" onclick="saveLineToCatalog('+i+')" title="Produsul a fost modificat — actualizează în catalog sau salvează ca nou" style="color:#16a34a">💾</button>':'')
     +'<button class="delx" onclick="delLine('+i+')" title="Șterge linia">×</button></td></tr>';
 }
 function sectionTableHtml(idxs,inGroup,gidv){
-  const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=inGroup?true:(S.est.vat_mode==='line');
+  const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=inGroup?true:(S.est.vat_mode!=='none');
   const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:64px">Cant.</th><th style="width:54px">UM</th><th style="width:86px">Preț</th>'
-    +(showDisc?'<th style="width:54px">Red.%</th>':'')+(showVat?'<th style="width:54px">TVA%</th>':'')
+    +(showDisc?'<th style="width:54px">Red.%</th>':'')+(showVat?'<th style="width:80px">TVA</th>':'')
     +'<th style="width:96px;text-align:right">'+((inGroup||S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:24px"></th></tr>';
   const rows=idxs.map(i=>lineRowHtml(i,inGroup)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
