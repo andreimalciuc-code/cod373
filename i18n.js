@@ -711,6 +711,8 @@
     'Locație salvată.':{ru:'Локация сохранена.',de:'Standort gespeichert.',en:'Location saved.'},
     'Nu am putut obține locația:':{ru:'Не удалось получить локацию:',de:'Standort konnte nicht ermittelt werden:',en:'Could not get location:'},
     'cu ce navighezi?':{ru:'чем навигировать?',de:'womit navigieren?',en:'navigate with?'},
+    'Locație șantier':{ru:'Локация объекта',de:'Baustellen-Standort',en:'Site location'},
+    'Locație / Navigare (GPS)':{ru:'Локация / Навигация (GPS)',de:'Standort / Navigation (GPS)',en:'Location / Navigate (GPS)'},
     'Cod intern (SKU) — generat automat':{ru:'Внутренний код (SKU) — генерируется автоматически',de:'Interner Code (SKU) — automatisch generiert',en:'Internal code (SKU) — auto-generated'},
     'alege sau scrie (ex: buc, m2, kg)':{ru:'выберите или введите (напр.: шт, м2, кг)',de:'wählen oder eingeben (z. B. Stk, m2, kg)',en:'pick or type (e.g. pc, m2, kg)'},
     'Apasă pentru a mări':{ru:'Нажмите для увеличения',de:'Zum Vergrößern klicken',en:'Click to enlarge'},

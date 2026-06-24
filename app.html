@@ -536,7 +536,7 @@ const MODULES = {
 
   santiere:{ title:'Șantiere', sub:'Proiectele firmei.', icon:'🏗️', group:'Operațional', table:'sites',
     newLabel:'Proiect nou', portalable:true, teamable:true, scheduler:true, wizard:true, siteHub:true, orderBy:{col:'created_at',asc:false},
-    select:'id,name,code,address,status,budget,progress,deadline,work_type,area_m2',
+    select:'id,name,code,address,status,budget,progress,deadline,work_type,area_m2,lat,lng',
     columns:[
       {label:'Proiect',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">· '+esc(r.code)+'</small>':'')+(r.work_type?' <small style="color:var(--muted)">· '+(r.work_type==='reparatie'?'reparație':'construcție')+'</small>':'')},
       {label:'Adresă',get:r=>esc(r.address||'—')},
@@ -2011,7 +2011,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v220';
+const APP_VERSION='cod373-v221';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2584,6 +2584,31 @@ async function empLeaveDel(id, empId, empName){ if(!confirm('Ștergi această ab
 
 /* ════ SUBMODULE ȘANTIER (jurnal, etape, stoc, situații, RFI, modificări, recenzii) ════ */
 const SITE_SUBS=['jurnal','etape','stoc','situatii','rfi','modificari','recenzii'];
+/* ── Locație șantier (GPS / link hartă) + navigare cu navigatorul ales ── */
+async function siteLocation(siteId, siteName){
+  window._sloc={id:siteId,name:siteName||'Șantier',lat:null,lng:null};
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>📍 '+esc(C373t('Locație șantier'))+' — '+esc(siteName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'
+    +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem"><button type="button" class="btn-ghost" onclick="slocGrab()" style="white-space:nowrap">📍 '+esc(C373t('Locația mea acum'))+'</button>'
+    +'<input id="sloc-geo" placeholder="'+esc(C373t('sau lipește link Google Maps / „lat, lng"'))+'" oninput="slocParse(this.value)" style="flex:1;min-width:150px"/></div>'
+    +'<div id="sloc-info" style="font-size:.86rem;margin-bottom:.4rem"><span style="color:var(--muted)">'+esc(C373t('Se încarcă…'))+'</span></div>'
+    +'</div>'
+    +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button><button class="btn-primary" id="sloc-save" onclick="slocSave()">'+TR('salveaza')+'</button></div></div></div>';
+  try{ const r=await sb.from('sites').select('lat,lng').eq('id',siteId).single(); if(!r.error&&r.data){ window._sloc.lat=r.data.lat; window._sloc.lng=r.data.lng; } }catch(e){}
+  slocInfo();
+}
+function slocInfo(){ const el=$('sloc-info'); const g=window._sloc; if(!el||!g) return;
+  if(g.lat!=null&&g.lng!=null) el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b> <a onclick="openNav('+g.lat+','+g.lng+',\''+jsArg(g.name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a></span>';
+  else el.innerHTML='<span style="color:var(--muted)">'+esc(C373t('Nicio locație salvată. Apasă „Locația mea acum" pe teren, sau lipește un link de hartă.'))+'</span>'; }
+function slocParse(v){ const c=parseLatLng(v); if(c){ window._sloc.lat=c.lat; window._sloc.lng=c.lng; slocInfo(); } }
+function slocGrab(){ if(!navigator.geolocation){ toast(C373t('Dispozitivul nu permite localizarea.')); return; } toast('📍 '+C373t('Se obține locația…'));
+  navigator.geolocation.getCurrentPosition(function(pos){ window._sloc.lat=+pos.coords.latitude.toFixed(6); window._sloc.lng=+pos.coords.longitude.toFixed(6); slocInfo(); toast('✅ '+C373t('Locație salvată.')); },
+    function(err){ toast(C373t('Nu am putut obține locația:')+' '+esc(err.message||'')); }, {enableHighAccuracy:true,timeout:12000,maximumAge:0}); }
+async function slocSave(){ const g=window._sloc; if(!g) return; const b=$('sloc-save'); if(b){ b.disabled=true; b.textContent='…'; }
+  const u=await sb.from('sites').update({lat:g.lat,lng:g.lng}).eq('id',g.id);
+  if(u.error){ if(b){ b.disabled=false; b.textContent=TR('salveaza'); } toast('Eroare: '+esc(u.error.message)); return; }
+  if(listState&&listState.rows){ const row=listState.rows.find(x=>x.id===g.id); if(row){ row.lat=g.lat; row.lng=g.lng; } }
+  closeModal(); toast('✅ '+C373t('Locație salvată.')); }
 function siteHub(siteId, siteName){
   const btns=SITE_SUBS.filter(k=>MODULES[k]&&canSee(k)).map(k=>{ const m=MODULES[k];
     return '<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="subList(\''+k+'\',\'site_id\',\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">'+m.icon+'</span> '+esc(m.title)+'</button>'; }).join('');
@@ -2591,6 +2616,7 @@ function siteHub(siteId, siteName){
     +'<div class="modal-head"><h3>📂 '+esc(siteName||'Șantier')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><p style="color:var(--muted);font-size:.85rem;margin-top:0">Tot ce ține de acest șantier:</p>'
     +'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteContents(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📦</span> Ce se află aici (instrumente + materiale)</button>'
+    +'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteLocation(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📍</span> '+esc(C373t('Locație / Navigare (GPS)'))+'</button>'
     +btns+'</div></div></div>';
 }
 function _contSection(icon,title,inner,empty){ return '<div style="margin-bottom:1rem"><div style="font-weight:700;margin:.2rem 0 .4rem">'+icon+' '+title+'</div>'+(inner||('<div style="color:var(--muted);font-size:.85rem">'+empty+'</div>'))+'</div>'; }
@@ -5661,6 +5687,7 @@ function rowActions(key,m,r){
   if(m.fields && !m.pageEditor) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
   if(m.invitable&&ADMIN_ROLES.includes(state.role)) a.push({i:'🔑',l:'Dă acces (invitație prin link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
   if(m.siteHub) a.push({i:'📂',l:'Detalii șantier (jurnal, etape, stoc, situații, RFI…)',f:"siteHub('"+id+"','"+jsArg(r.name)+"')"});
+  if(m.siteHub){ if(r.lat!=null&&r.lng!=null) a.push({i:'🧭',l:'Navighează la șantier',f:"openNav("+r.lat+","+r.lng+",'"+jsArg(r.name)+"')"}); a.push({i:'📍',l:'Locație șantier (GPS / link)',f:"siteLocation('"+id+"','"+jsArg(r.name)+"')"}); }
   if(m.siteHub) a.push({i:'📦',l:'Ce se află aici (instrumente + materiale)',f:"siteContents('"+id+"','"+jsArg(r.name)+"')"});
   if(m.warehouseHub) a.push({i:'📦',l:'Ce se află în depozit (instrumente, materiale, flotă)',f:"warehouseContents('"+id+"','"+jsArg(r.name)+"')"});
   if(m.scheduler){ a.push({i:'📅',l:'Grafic lucrări (filă nouă)',f:"window.open('grafic.html?site="+id+"','_blank')"}); a.push({i:'📊',l:'Rezumat rapid (marjă & etape)',f:"openSiteDetail('"+id+"')"}); }
