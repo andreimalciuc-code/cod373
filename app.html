@@ -603,6 +603,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['pending','accepted','en_route','delivered','failed']),default:'pending'},
       {key:'scheduled_at',label:'Programat',type:'date'} ] },
 
+  cunostinte:{ title:'Bază de cunoștințe', sub:'Instruiri, ghiduri și proceduri interne (text + video + fișiere).', icon:'📚', group:'Operațional', custom:true },
   clienti:{ title:'Clienți', sub:'CRM — clienți și pâlnia de vânzări.', icon:'🤝', group:'Operațional', table:'clients', custom:true,
     newLabel:'Client nou', invitable:'client', orderBy:{col:'created_at',asc:false}, topAction:{label:'🟰 Pipeline',fn:'renderClienti()'},
     select:'id,name,type,phone,email,stage,birth_date,value,source,tags,lost_reason,contact',
@@ -1965,6 +1966,110 @@ function pzSetStart(v){ const p=czPrefs(); p.start=v; czSave(p); toast('✅ '+tz
 function pzTogFav(k){ const p=czPrefs(); p.favs=p.favs||[]; const i=p.favs.indexOf(k); if(i>=0) p.favs.splice(i,1); else { p.favs.push(k); if(p.hidden){ const h=p.hidden.indexOf(k); if(h>=0)p.hidden.splice(h,1); } } czSave(p); buildNav(); openPersonalize(); }
 function pzTogHide(k){ const p=czPrefs(); p.hidden=p.hidden||[]; const i=p.hidden.indexOf(k); if(i>=0) p.hidden.splice(i,1); else { p.hidden.push(k); if(p.favs){ const f=p.favs.indexOf(k); if(f>=0)p.favs.splice(f,1); } } czSave(p); buildNav(); openPersonalize(); }
 
+/* ════ BAZĂ DE CUNOȘTINȚE (instruiri / ghiduri / proceduri) — kb_articles ════ */
+const KB_CATS=['Instruire','Procedură','Ghid','SSM / Securitate','Tehnic','Administrativ','Altele'];
+let _kb=[];
+function kbCanEdit(){ return ['owner','admin','manager'].includes(state.role); }
+function kbName(p){ return (p||'').split('/').pop().replace(/^\d+_/,''); }
+async function renderCunostinte(){
+  $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Se încarcă…')+'</div>';
+  const { data, error }=await sb.from('kb_articles').select('*').order('pinned',{ascending:false}).order('created_at',{ascending:false});
+  if(error){ $('content').innerHTML='<div class="card" style="padding:1.5rem;color:var(--red)">'+esc(error.message)+'</div>'; return; }
+  _kb=data||[]; kbRenderList('');
+}
+function kbRenderList(q){
+  q=(q||'').toLowerCase();
+  const items=_kb.filter(a=>!q||((a.title||'')+' '+(a.category||'')+' '+(a.body||'')).toLowerCase().indexOf(q)>=0);
+  let html='<div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.9rem;flex-wrap:wrap">'
+    +'<input id="kb-search" placeholder="🔍 '+tz('Caută în instruiri…')+'" value="'+esc(q||'')+'" oninput="kbRenderList(this.value)" style="flex:1;min-width:160px;padding:.55rem .7rem;border:1px solid var(--line);border-radius:9px;background:var(--surface)">'
+    +(kbCanEdit()?'<button class="btn" onclick="kbForm(null)">＋ '+tz('Articol nou')+'</button>':'')+'</div>';
+  if(!items.length){ html+='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+(q?tz('Nimic găsit.'):tz('Încă nu există instruiri. Adaugă prima — text, video, fișiere.'))+'</div>'; $('content').innerHTML=html; const e=$('kb-search'); if(e&&q){ e.focus(); e.setSelectionRange(q.length,q.length); } return; }
+  const cats={}; items.forEach(a=>{ const c=a.category||tz('Altele'); (cats[c]=cats[c]||[]).push(a); });
+  Object.keys(cats).forEach(c=>{
+    html+='<div style="font-weight:800;color:var(--primary);font-size:.78rem;text-transform:uppercase;letter-spacing:.03em;margin:1rem 0 .4rem">'+esc(c)+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.7rem">';
+    cats[c].forEach(a=>{ const nv=(a.video_urls||[]).length, nf=(a.attachments||[]).length;
+      html+='<div class="card" style="padding:.9rem;cursor:pointer" onclick="kbView(\''+a.id+'\')">'
+        +(a.pinned?'<div style="font-size:.7rem;color:#b45309;font-weight:700;margin-bottom:.2rem">📌 '+tz('Important')+'</div>':'')
+        +'<b style="word-break:break-word">'+esc(a.title)+'</b>'
+        +(a.body?'<div style="font-size:.78rem;color:var(--muted);margin-top:.3rem;line-height:1.4">'+esc(a.body.slice(0,90))+(a.body.length>90?'…':'')+'</div>':'')
+        +((nv||nf)?'<div style="font-size:.74rem;color:var(--muted);margin-top:.45rem">'+(nv?'🎬 '+nv+'  ':'')+(nf?'📎 '+nf:'')+'</div>':'')
+        +'</div>';
+    });
+    html+='</div>';
+  });
+  $('content').innerHTML=html; const e=$('kb-search'); if(e&&q){ e.focus(); e.setSelectionRange(q.length,q.length); }
+}
+async function kbView(id){
+  const a=_kb.find(x=>x.id===id); if(!a) return;
+  let media=''; const vids=a.video_urls||[];
+  if(vids.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(vids,3600); media=(su.data||[]).map(x=>(x&&x.signedUrl)?'<video controls preload="metadata" style="width:100%;border-radius:10px;margin:.5rem 0;background:#000"><source src="'+x.signedUrl+'"></video>':'').join(''); }catch(e){} }
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:680px"><div class="modal-head"><h3>📚 '+esc(a.title)+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +(a.category?'<div style="font-size:.74rem;color:var(--muted);margin-bottom:.5rem">'+esc(a.category)+(a.pinned?' · 📌 '+tz('Important'):'')+'</div>':'')
+    +(a.body?'<div style="white-space:pre-wrap;line-height:1.55;font-size:.92rem">'+esc(a.body)+'</div>':'')
+    +media
+    +((a.attachments&&a.attachments.length)?('<div style="font-weight:700;margin-top:.6rem">📎 '+tz('Fișiere')+'</div>'+attLinks(a.attachments)):'')
+    +'</div>'
+    +(kbCanEdit()?'<div class="modal-foot"><button class="btn-ghost" onclick="kbDel(\''+a.id+'\')">🗑 '+tz('Șterge')+'</button><button class="btn-primary" onclick="kbForm(\''+a.id+'\')">✏️ '+tz('Editează')+'</button></div>':'')
+    +'</div></div>';
+}
+function kbForm(id){
+  if(!kbCanEdit()){ toast('🔒 '+tz('Doar conducerea poate edita.')); return; }
+  const a=id?_kb.find(x=>x.id===id)||{}:{};
+  window._kbEdit={ id:id||null, videos:(a.video_urls||[]).slice(), atts:(a.attachments||[]).slice() };
+  const opts=KB_CATS.map(c=>'<option '+(a.category===c?'selected':'')+'>'+esc(c)+'</option>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:600px"><div class="modal-head"><h3>📚 '+(id?esc(tz('Editează')):esc(tz('Articol nou')))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div class="field"><label>'+esc(tz('Titlu'))+' *</label><input id="kb-title" value="'+esc(a.title||'')+'" placeholder="ex: Instruire SSM la înălțime"></div>'
+    +'<div class="field"><label>'+esc(tz('Categorie'))+'</label><select id="kb-cat" style="width:100%">'+opts+'</select></div>'
+    +'<div class="field"><label>'+esc(tz('Conținut / instrucțiuni'))+'</label><textarea id="kb-body" rows="6">'+esc(a.body||'')+'</textarea></div>'
+    +'<label style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0 .6rem;cursor:pointer"><input type="checkbox" id="kb-pin" '+(a.pinned?'checked':'')+'> '+esc(tz('Marchează ca important (apare sus)'))+'</label>'
+    +'<div style="font-weight:700;margin:.5rem 0 .25rem">🎬 '+esc(tz('Video'))+'</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('Clipuri mp4/mov etc. Recomandat sub ~200 MB per fișier.'))+'</div>'
+    +'<div id="kb-vids"></div>'
+    +'<label class="btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;margin-top:.3rem">🎬 '+esc(tz('Adaugă video'))+'<input id="kb-vfile" type="file" accept="video/*" multiple onchange="kbAddMedia(this,\'videos\')" style="display:none"></label>'
+    +'<div style="font-weight:700;margin:.7rem 0 .25rem">📎 '+esc(tz('Fișiere atașate'))+'</div>'
+    +'<div id="kb-atts"></div>'
+    +'<label class="btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;margin-top:.3rem">📎 '+esc(tz('Adaugă fișier'))+'<input id="kb-afile" type="file" multiple onchange="kbAddMedia(this,\'atts\')" style="display:none"></label>'
+    +'<div id="kb-msg" style="color:var(--red);font-size:.82rem;margin-top:.5rem;min-height:1rem"></div>'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+esc(tz('Anulează'))+'</button><button class="btn-primary" id="kb-save" onclick="kbSave()">'+esc(tz('Salvează'))+'</button></div></div></div>';
+  kbRenderMedia();
+}
+function kbRenderMedia(){
+  const e=window._kbEdit||{videos:[],atts:[]};
+  const vd=$('kb-vids'); if(vd) vd.innerHTML=(e.videos||[]).map((p,i)=>'<div style="font-size:.82rem;display:flex;gap:.4rem;align-items:center;padding:.15rem 0">🎬 '+esc(kbName(p))+' <span onclick="kbDelMedia(\'videos\','+i+')" style="cursor:pointer;color:var(--red)" title="'+esc(tz('Șterge'))+'">✕</span></div>').join('')||'<div style="font-size:.78rem;color:var(--muted)">—</div>';
+  const ad=$('kb-atts'); if(ad) ad.innerHTML=(e.atts||[]).map((p,i)=>'<div style="font-size:.82rem;display:flex;gap:.4rem;align-items:center;padding:.15rem 0">📎 '+esc(kbName(p))+' <span onclick="kbDelMedia(\'atts\','+i+')" style="cursor:pointer;color:var(--red)" title="'+esc(tz('Șterge'))+'">✕</span></div>').join('')||'<div style="font-size:.78rem;color:var(--muted)">—</div>';
+}
+function kbDelMedia(kind,i){ const e=window._kbEdit; if(!e||!e[kind]) return; e[kind].splice(i,1); kbRenderMedia(); }
+async function kbAddMedia(input,kind){
+  const files=(input&&input.files)?Array.from(input.files):[]; if(!files.length) return;
+  const msg=$('kb-msg'); if(msg){ msg.style.color='var(--muted)'; msg.textContent=tz('Se încarcă…'); }
+  try{ for(const f of files){ const path=await kbUploadFile(f); window._kbEdit[kind].push(path); } if(msg) msg.textContent=''; kbRenderMedia(); }
+  catch(e){ if(msg){ msg.style.color='var(--red)'; msg.textContent=tz('Eroare la încărcare:')+' '+esc(e.message||e)+' '+tz('(poate fi prea mare)'); } }
+  input.value='';
+}
+async function kbUploadFile(file){
+  let f=file; if(/^image\//.test(file.type)) f=await compressImage(file,1600,0.72);
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/kb/'+Date.now()+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,f,{contentType:file.type||'application/octet-stream'}); if(up.error) throw up.error;
+  return path;
+}
+async function kbSave(){
+  const msg=$('kb-msg'); const title=($('kb-title').value||'').trim();
+  if(!title){ if(msg){ msg.style.color='var(--red)'; msg.textContent=tz('Pune un titlu.'); } return; }
+  const e=window._kbEdit||{videos:[],atts:[]};
+  const rec={ tenant_id:state.tenant, title, category:$('kb-cat').value||null, body:($('kb-body').value||'').trim()||null, pinned:!!$('kb-pin').checked, video_urls:e.videos.length?e.videos:null, attachments:e.atts.length?e.atts:null, updated_at:new Date().toISOString() };
+  const btn=$('kb-save'); if(btn) btn.disabled=true;
+  try{
+    if(e.id){ const r=await sb.from('kb_articles').update(rec).eq('id',e.id); if(r.error) throw r.error; }
+    else { rec.created_by=state.session.user.id; const r=await sb.from('kb_articles').insert(rec); if(r.error) throw r.error; }
+    closeModal(); toast('✅ '+tz('Salvat.')); renderCunostinte();
+  }catch(err){ if(btn) btn.disabled=false; if(msg){ msg.style.color='var(--red)'; msg.textContent=tz('Eroare:')+' '+esc(err.message||err); } }
+}
+async function kbDel(id){
+  if(!confirm(tz('Ștergi acest articol din baza de cunoștințe?'))) return;
+  const r=await sb.from('kb_articles').delete().eq('id',id); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
+  closeModal(); toast('🗑 '+tz('Șters.')); renderCunostinte();
+}
 function go(key){
   const m=MODULES[key]; if(!m) return;
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
@@ -1972,7 +2077,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -2137,7 +2242,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v226';
+const APP_VERSION='cod373-v227';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
