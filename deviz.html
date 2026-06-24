@@ -446,6 +446,22 @@ async function aiOfferRun(){
     $('ai-msg').textContent=msg;
   }
 }
+async function ldAiDesc(i){
+  const l=S.lines[i]; if(!l) return; const name=(l.name||'').trim(); const ta=$('ld-desc'); if(!ta) return;
+  const msg=$('ld-msg');
+  if(!name){ if(msg) msg.textContent='Scrie întâi denumirea liniei.'; return; }
+  const btn=$('ld-ai'); if(btn){ btn.disabled=true; btn.textContent='✨ …'; } if(msg) msg.textContent='';
+  const cur=(ta.value||'').trim();
+  try{
+    const lang=(window.C373lang||'ro'); const au=(S.firm&&S.firm.automations)||{};
+    const prompt='Scrie o descriere comercială scurtă (1-2 propoziții), profesională, pentru poziția de deviz dintr-o firmă de construcții: "'+name+'".'+(cur?(' Îmbunătățește textul existent: "'+cur+'".'):'')+' Spune ce include / la ce folosește. Răspunde DOAR cu descrierea, fără titlu și fără ghilimele.';
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'chat', input:prompt, lang, currency:(S.firm&&S.firm.currency)||'MDL', tenant_id:S.tenant, key:au.anthropic_key||undefined, model:au.ai_model||'claude-haiku-4-5' } });
+    if(error) throw new Error(error.message||'Eroare AI');
+    if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
+    const txt=((data&&data.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt) ta.value=txt; else if(msg) msg.textContent='AI nu a returnat text.';
+  }catch(e){ let m=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(m)) m='AI nu este configurat (vezi Setări).'; if(msg) msg.textContent=m; }
+  if(btn){ btn.disabled=false; btn.textContent='✨ AI'; }
+}
 function delLine(i){ S.lines.splice(i,1); if(!S.lines.length) S.lines=[blankLine()]; renderLines(); renderSummary(); renderBOM(); }
 /* descriere + poza per pozitie */
 async function lineDetails(i){
@@ -456,7 +472,7 @@ async function lineDetails(i){
     +'<div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.4rem"><div class="field" style="flex:1;margin:0"><label>Preț fără TVA</label><input id="ld-net" type="number" step="any" value="'+esc(l.unit_price||0)+'" oninput="ldSync(\'net\')"/></div>'
     +'<div class="field" style="flex:1;margin:0"><label>Preț cu TVA</label><input id="ld-gross" type="number" step="any" value="'+esc(Math.round((+l.unit_price||0)*(1+(+l.vat_rate||0)/100)*100)/100)+'" oninput="ldSync(\'gross\')"/></div>'
     +'<div class="field" style="width:78px;margin:0"><label>TVA %</label><input id="ld-vat" list="vat-list" type="number" step="any" value="'+esc(l.vat_rate!=null?l.vat_rate:20)+'" oninput="ldSync(\'net\')"/></div></div>'
-    +'<div class="field"><label>Descriere (apare pe ofertă, sub denumire)</label><textarea id="ld-desc" rows="3" placeholder="Ex: Inclusiv pregătirea suprafeței și amorsa. Material: glet de finisaj.">'+esc(l.description||'')+'</textarea></div>'
+    +'<div class="field"><label>Descriere (apare pe ofertă, sub denumire) <button type="button" id="ld-ai" class="btn" style="padding:.12rem .5rem;font-size:.76rem;font-weight:600" onclick="ldAiDesc('+i+')">✨ AI</button></label><textarea id="ld-desc" rows="3" placeholder="Ex: Inclusiv pregătirea suprafeței și amorsa. Material: glet de finisaj.">'+esc(l.description||'')+'</textarea></div>'
     +'<div class="field"><label>Poză (opțional)</label>'+thumb
     +(l.photo_url?'<button class="btn" onclick="lineRemovePhoto('+i+')" style="margin-bottom:.4rem">🗑 Șterge poza</button><br>':'')
     +'<input id="ld-photo" type="file" accept="image/*"/></div>'
