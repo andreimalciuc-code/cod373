@@ -2011,7 +2011,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v214';
+const APP_VERSION='cod373-v215';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2915,15 +2915,17 @@ async function ptReportRun(){
   if(!from||!to){ toast('Alege perioada.'); return; }
   if(from>to){ toast('„De la" trebuie să fie înainte de „Până la".'); return; }
   toast('⏳ Generez raportul…');
+  // Deschidem fereastra SINCRON (după validare, înainte de await) ca să nu fie blocată de browser/PWA.
+  let w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>Raport…</title><style>body{font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;color:#0f1c33;font-size:15px}</style><div>⏳ Se pregătește raportul…</div>'); }catch(e){}
   let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,absence,employees!employee_id(full_name),sites!site_id(name)').gte('work_date',from).lte('work_date',to).limit(5000);
   if(empId) q=q.eq('employee_id',empId);
   const { data, error }=await q;
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  if(error){ try{w.close();}catch(e){} toast('Eroare: '+esc(error.message)); return; }
   const rows=(data||[]);
   // angajații activi (ca să marcăm și zilele lucrătoare FĂRĂ pontaj salvat)
   let empQ=sb.from('employees').select('id,full_name').eq('active',true); if(empId) empQ=empQ.eq('id',empId);
   const actEmps=((await empQ).data)||[];
-  if(!rows.length && !actEmps.length){ toast('Nicio înregistrare în perioada aleasă.'); return; }
+  if(!rows.length && !actEmps.length){ try{w.close();}catch(e){} toast('Nicio înregistrare în perioada aleasă.'); return; }
   closeModal();
   const byEmp={};
   actEmps.forEach(e=>{ byEmp[e.id]={name:e.full_name||'—',rows:[],total:0,sites:{},days:new Set()}; });
@@ -2960,7 +2962,7 @@ async function ptReportRun(){
     +'<div class="grand">TOTAL GENERAL: '+fmt(grand)+' ore · '+gDays+' zile-om'+(gMiss?(' · <span style="color:#b45309">'+gMiss+' zile fără pontaj</span>'):'')+'</div>'
     +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div>'
     +'</body></html>';
-  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
+  if(w&&!w.closed){ try{ w.document.open(); w.document.write(doc); w.document.close(); }catch(e){} } else { const w2=window.open('','_blank'); if(!w2){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } w2.document.write(doc); w2.document.close(); }
 }
 /* ════ PLĂȚI FURNIZORI — scadențar (de plătit) ════ */
 async function renderPlatibil(){
@@ -4498,15 +4500,16 @@ async function seedSiteStages(siteId, workType, startDate, perDays){
 }
 async function ganttSeedTemplate(siteId){ const s=(await sb.from('sites').select('work_type,start_date').eq('id',siteId).single()).data||{}; const ok=await seedSiteStages(siteId, s.work_type, s.start_date); if(ok){ toast('📋 Etape-șablon adăugate.'); renderGantt(); } else toast('Șantierul are deja etape.'); }
 async function ganttPDF(){
+  let w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF…</title><style>body{font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;color:#0f1c33;font-size:15px}</style><div>⏳ Se pregătește documentul…</div>'); }catch(e){}
   toast('⏳ Pregătesc PDF-ul…');
   let siteR,stageR;
-  try{ [siteR,stageR]=await Promise.all([ sb.from('sites').select('id,name,status,start_date,deadline'), sb.from('site_stages').select('id,site_id,name,status,progress,start_date,end_date,position') ]); }catch(e){ toast('Eroare: '+esc(e.message||e)); return; }
+  try{ [siteR,stageR]=await Promise.all([ sb.from('sites').select('id,name,status,start_date,deadline'), sb.from('site_stages').select('id,site_id,name,status,progress,start_date,end_date,position') ]); }catch(e){ try{w.close();}catch(_){} toast('Eroare: '+esc(e.message||e)); return; }
   const sites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const bySite={}; (stageR.data||[]).forEach(st=>{ (bySite[st.site_id]=bySite[st.site_id]||[]).push(st); });
   let lo=null,hi=null; const push=d=>{ if(!d)return; const x=new Date(d); if(isNaN(x))return; if(!lo||x<lo)lo=x; if(!hi||x>hi)hi=x; };
   (stageR.data||[]).forEach(st=>{ push(st.start_date); push(st.end_date); }); sites.forEach(s=>{ push(s.start_date); push(s.deadline); });
   const today=new Date(); today.setHours(0,0,0,0); push(today);
-  if(!lo){ toast('Nicio etapă cu date. Adaugă etape întâi.'); return; }
+  if(!lo){ try{w.close();}catch(e){} toast('Nicio etapă cu date. Adaugă etape întâi.'); return; }
   lo=new Date(lo.getFullYear(),lo.getMonth(),1); hi=new Date(hi.getFullYear(),hi.getMonth()+1,0);
   const totalDays=Math.round((hi-lo)/86400000)+1; const LBL=190, TLW=900, px=Math.max(1.2,TLW/totalDays), W=LBL+TLW;
   const off=d=>Math.round((new Date(d)-lo)/86400000); const col={plan:'#94a3b8',active:'#2f6bff',done:'#16b364',delayed:'#f04338'};
@@ -4532,7 +4535,7 @@ async function ganttPDF(){
     +rows+'</div>'
     +'<div style="margin-top:10px;font-size:11px;color:#6b7793">▮ planificat ▮ în lucru ▮ finalizat ▮ întârziat · linia roșie = azi</div>'
     +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div></body></html>';
-  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(doc); w.document.close();
+  if(w&&!w.closed){ try{ w.document.open(); w.document.write(doc); w.document.close(); }catch(e){} } else { const w2=window.open('','_blank'); if(!w2){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } w2.document.write(doc); w2.document.close(); }
 }
 
 /* ════ HARTĂ FLOTĂ (Leaflet) ════ */
@@ -5297,8 +5300,9 @@ async function savePreviz(){
   }catch(e){ showMsg('pv-msg', isNetErr(e)?netMsg():('Eroare: '+esc(e.message||e))); if(btn){ btn.disabled=false; btn.textContent=TR('salveaza'); } }
 }
 async function previzPDF(id){
+  let w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF…</title><style>body{font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;color:#0f1c33;font-size:15px}</style><div>⏳ Se pregătește documentul…</div>'); }catch(e){}
   toast('⏳ Se pregătește…');
-  const s=(await sb.from('site_surveys').select('*').eq('id',id).single()).data; if(!s){ toast('Eroare.'); return; }
+  const s=(await sb.from('site_surveys').select('*').eq('id',id).single()).data; if(!s){ try{w.close();}catch(e){} toast('Eroare.'); return; }
   const meas=((await sb.from('survey_measurements').select('*').eq('survey_id',id)).data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
   let clientName='—'; if(s.client_id){ const c=await sb.from('clients').select('name').eq('id',s.client_id).single(); clientName=(c.data&&c.data.name)||'—'; }
   let imgs=[]; if(s.photo_urls&&s.photo_urls.length){ const su=await sb.storage.from('docs').createSignedUrls(s.photo_urls,600); imgs=(su.data||[]).map(x=>x.signedUrl).filter(Boolean); }
@@ -5321,7 +5325,7 @@ async function previzPDF(id){
     +(imgs.length?'<h2>'+T('Poze cu starea actuală')+'</h2><div class="imgs">'+imgs.map(u=>'<img src="'+u+'">').join('')+'</div>':'')
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
     +'</body></html>';
-  const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write(html); w.document.close();
+  if(w&&!w.closed){ try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){} } else { const w2=window.open('','_blank'); if(!w2){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } w2.document.write(html); w2.document.close(); }
 }
 function previzToDeviz(id){ window.open('deviz.html?survey='+id,'_blank'); toast('Se deschide oferta cu volumele din fișă…'); }
 async function previzToSite(id){
@@ -5404,9 +5408,13 @@ async function uploadDoc(input){
 }
 async function openDoc(encPath){
   const path=decodeURIComponent(encPath);
+  // Deschidem fereastra SINCRON (în gestul de click) — altfel pop-up-ul e blocat după await (mai ales pe iOS / PWA instalat) și nu se deschide nimic.
+  const w=window.open('','_blank');
+  if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; }
+  try{ w.document.write('<!doctype html><meta charset="utf-8"><title>Document…</title><style>body{font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;color:#0f1c33;font-size:15px}</style><div>⏳ Se deschide documentul…</div>'); }catch(e){}
   const { data, error }=await sb.storage.from('docs').createSignedUrl(path,120);
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  window.open(data.signedUrl,'_blank');
+  if(error||!data||!data.signedUrl){ try{ w.close(); }catch(e){} toast('Eroare: '+esc((error&&error.message)||'fără URL')); return; }
+  try{ w.location.href=data.signedUrl; }catch(e){ try{ w.location=data.signedUrl; }catch(_){} }
 }
 /* ════ Vizualizator poze (lightbox) — deschide în fereastra curentă + navigare pe săgeți/swipe ════ */
 function galReg(paths){ window._galReg=window._galReg||{}; window._galC=(window._galC||0)+1; const id='gr'+window._galC; window._galReg[id]=(paths||[]).filter(Boolean); return id; }
@@ -5467,9 +5475,19 @@ function galPrint(){ const g=window._gal; if(!g)return; const w=window.open('','
 async function downloadDoc(encPath, encName){
   const path=decodeURIComponent(encPath); const name=encName?decodeURIComponent(encName):(path.split('/').pop().replace(/^\d+_/,''));
   toast('⬇ Se descarcă…');
-  const { data, error }=await sb.storage.from('docs').createSignedUrl(path,120,{ download: name||true });
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const a=document.createElement('a'); a.href=data.signedUrl; if(name) a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  try{
+    const { data, error }=await sb.storage.from('docs').createSignedUrl(path,120,{ download: name||true });
+    if(error||!data||!data.signedUrl) throw new Error((error&&error.message)||'fără URL');
+    // Descărcăm blob-ul și folosim un object URL same-origin → descărcare reală, fără blocaje de pop-up/gest.
+    const r=await fetch(data.signedUrl); if(!r.ok) throw new Error('HTTP '+r.status);
+    const b=await r.blob(); const u=URL.createObjectURL(b);
+    const a=document.createElement('a'); a.href=u; a.download=name||'document'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(u); },4000);
+  }catch(e){
+    // Fallback: navigăm către URL-ul cu disposition de descărcare.
+    try{ const { data }=await sb.storage.from('docs').createSignedUrl(path,120,{ download: name||true }); if(data&&data.signedUrl) window.open(data.signedUrl,'_blank'); else toast('Eroare la descărcare.'); }
+    catch(_){ toast('Eroare la descărcare.'); }
+  }
 }
 function newDocVersion(id,ver){ const inp=document.createElement('input'); inp.type='file'; inp.onchange=()=>{ if(inp.files&&inp.files[0]) uploadDocVersion(id,ver,inp.files[0]); }; inp.click(); }
 async function uploadDocVersion(oldId,ver,file){
