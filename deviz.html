@@ -268,7 +268,7 @@ function render(){
       +'</div>'
       +optBar()
     +'</div>'
-    +'<div class="panel"><h3>Note / condiții</h3><textarea id="f-notes" rows="3" placeholder="Ex: Prețurile sunt orientative, valabile 30 de zile. Termen de execuție convenit la semnare." oninput="S.est.notes=this.value">'+esc(S.est.notes||'')+'</textarea></div>'
+    +'<div class="panel"><h3 style="display:flex;align-items:center;gap:.5rem">Note / condiții <button type="button" id="notes-ai" class="btn" style="padding:.12rem .5rem;font-size:.76rem;font-weight:600" onclick="aiNotes()">✨ AI</button> <span id="notes-msg" class="muted" style="font-size:.74rem;font-weight:400"></span></h3><textarea id="f-notes" rows="3" placeholder="Ex: Prețurile sunt orientative, valabile 30 de zile. Termen de execuție convenit la semnare." oninput="S.est.notes=this.value">'+esc(S.est.notes||'')+'</textarea></div>'
     +'</div>'
     +'<div class="right">'
       +'<div class="panel"><h3>Sumar</h3><div id="sum"></div>'
@@ -459,6 +459,21 @@ async function ldAiDesc(i){
     if(error) throw new Error(error.message||'Eroare AI');
     if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
     const txt=((data&&data.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt) ta.value=txt; else if(msg) msg.textContent='AI nu a returnat text.';
+  }catch(e){ let m=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(m)) m='AI nu este configurat (vezi Setări).'; if(msg) msg.textContent=m; }
+  if(btn){ btn.disabled=false; btn.textContent='✨ AI'; }
+}
+async function aiNotes(){
+  const ta=$('f-notes'); if(!ta) return; const msg=$('notes-msg'); const btn=$('notes-ai');
+  if(btn){ btn.disabled=true; btn.textContent='✨ …'; } if(msg) msg.textContent='';
+  const cur=(ta.value||'').trim();
+  const cli=(S.est&&S.est.client_name)?(' Client: "'+S.est.client_name+'".'):'';
+  try{
+    const lang=(window.C373lang||'ro'); const au=(S.firm&&S.firm.automations)||{};
+    const prompt='Scrie note/condiții profesionale pentru o ofertă (deviz) a unei firme de construcții — termen de valabilitate, condiții de plată/avans, termen de execuție, garanție. 2-4 propoziții scurte.'+cli+(cur?(' Pornește de la / îmbunătățește textul existent: "'+cur+'".'):'')+' Răspunde DOAR cu textul, fără titlu și fără ghilimele.';
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'chat', input:prompt, lang, currency:(S.firm&&S.firm.currency)||'MDL', tenant_id:S.tenant, key:au.anthropic_key||undefined, model:au.ai_model||'claude-haiku-4-5' } });
+    if(error) throw new Error(error.message||'Eroare AI');
+    if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
+    const txt=((data&&data.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt){ ta.value=txt; S.est.notes=txt; } else if(msg) msg.textContent='AI nu a returnat text.';
   }catch(e){ let m=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(m)) m='AI nu este configurat (vezi Setări).'; if(msg) msg.textContent=m; }
   if(btn){ btn.disabled=false; btn.textContent='✨ AI'; }
 }

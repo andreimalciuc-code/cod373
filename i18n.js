@@ -81,6 +81,9 @@
     'Scrie întâi denumirea, apoi apasă ✨ AI.':{ru:'Сначала введите название, затем нажмите ✨ ИИ.',de:'Gib zuerst die Bezeichnung ein, dann ✨ KI drücken.',en:'Enter the name first, then tap ✨ AI.'},
     'Descriere generată — editeaz-o dacă vrei.':{ru:'Описание сгенерировано — при желании отредактируйте.',de:'Beschreibung generiert — bei Bedarf bearbeiten.',en:'Description generated — edit it if you like.'},
     'AI nu a returnat text.':{ru:'ИИ не вернул текст.',de:'KI hat keinen Text zurückgegeben.',en:'AI returned no text.'},
+    'Text generat — editează-l dacă vrei.':{ru:'Текст сгенерирован — при желании отредактируйте.',de:'Text generiert — bei Bedarf bearbeiten.',en:'Text generated — edit it if you like.'},
+    'Scrie întâi câteva cuvinte, apoi apasă ✨ AI.':{ru:'Сначала напишите несколько слов, затем нажмите ✨ ИИ.',de:'Schreiben Sie zuerst ein paar Wörter, dann ✨ KI drücken.',en:'Write a few words first, then tap ✨ AI.'},
+    'Îmbunătățește cu AI':{ru:'Улучшить с ИИ',de:'Mit KI verbessern',en:'Improve with AI'},
     'Eroare AI:':{ru:'Ошибка ИИ:',de:'KI-Fehler:',en:'AI error:'},
     // ── Programări / Termine (Termin/Termine doar în germană) ──
     'Programări':{ru:'Встречи',de:'Termine',en:'Appointments'},

@@ -1904,6 +1904,17 @@ async function aiDescribe(fieldKey, moduleKey, btn){
   catch(e){ toast(C373t('Eroare AI:')+' '+esc((e&&e.message)||e)); }
   ta.disabled=false; if(btn){ btn.disabled=false; btn.textContent='✨ '+C373t('Scrie cu AI'); }
 }
+/* Generic: îmbunătățește / generează textul dintr-un textarea după o instrucțiune dată */
+async function aiPolish(taId, instruction, btn){
+  const ta=$(taId); if(!ta) return; const cur=(ta.value||'').trim();
+  if(!cur){ toast(C373t('Scrie întâi câteva cuvinte, apoi apasă ✨ AI.')); ta.focus(); return; }
+  const prompt=instruction+' Text brut de îmbunătățit: "'+cur+'". Răspunde DOAR cu textul final, fără titlu și fără ghilimele.';
+  const o=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='✨ '+C373t('Se generează…'); }
+  ta.disabled=true;
+  try{ const d=await aiCall('chat', prompt); const txt=((d&&d.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt){ ta.value=txt; toast('✨ '+C373t('Text generat — editează-l dacă vrei.')); } else toast(C373t('AI nu a returnat text.')); }
+  catch(e){ toast(C373t('Eroare AI:')+' '+esc((e&&e.message)||e)); }
+  ta.disabled=false; if(btn){ btn.disabled=false; btn.textContent=o||'✨ AI'; }
+}
 function openAI(){
   const hasKey=!!aiKey();
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;display:flex;flex-direction:column;height:min(82vh,680px)"><div class="modal-head"><h3>🤖 Asistent AI</h3><button class="x" onclick="closeModal()">×</button></div>'
@@ -2000,7 +2011,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v213';
+const APP_VERSION='cod373-v214';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3248,7 +3259,7 @@ async function clientHub(id){ window._chId=id;
     +'<div class="row-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:.4rem 0"><div><div style="font-weight:700;font-size:.84rem;margin-bottom:.2rem">📋 '+esc(C373t('Devize'))+'</div>'+estH+'<div style="font-weight:700;font-size:.84rem;margin:.5rem 0 .2rem">🧾 '+esc(C373t('Facturi'))+'</div>'+invH+'<div style="font-weight:700;font-size:.84rem;margin:.5rem 0 .2rem">🏗️ '+esc(C373t('Șantiere'))+'</div>'+siteH+'</div>'
     +'<div><div style="font-weight:700;font-size:.84rem;margin-bottom:.3rem">🗒️ '+esc(C373t('Jurnal interacțiuni'))+'</div>'
     +'<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.5rem .6rem;margin-bottom:.5rem"><div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.35rem">'+Object.keys(CA_KIND).map(k=>'<button class="btn-ghost" style="padding:.25rem .5rem;font-size:.78rem" onclick="caPick(\''+k+'\')">'+CA_KIND[k][0]+' '+esc(C373t(CA_KIND[k][1]))+'</button>').join('')+'</div>'
-    +'<textarea id="ca-body" placeholder="'+esc(C373t('Ce s-a discutat / de făcut…'))+'" style="width:100%;min-height:48px;border:1px solid var(--line);border-radius:8px;padding:.4rem;font-size:.84rem"></textarea>'
+    +'<div style="position:relative"><textarea id="ca-body" placeholder="'+esc(C373t('Ce s-a discutat / de făcut…'))+'" style="width:100%;min-height:48px;border:1px solid var(--line);border-radius:8px;padding:.4rem;font-size:.84rem"></textarea><button type="button" class="btn-ghost" style="position:absolute;right:.3rem;bottom:.3rem;padding:.12rem .45rem;font-size:.74rem" title="'+esc(C373t('Îmbunătățește cu AI'))+'" onclick="aiPolish(\'ca-body\',\'Rescrie clar și concis această notă de jurnal CRM (interacțiune cu un client al unei firme de construcții), păstrând faptele și detaliile importante.\',this)">✨ AI</button></div>'
     +'<div id="ca-due-wrap" style="display:none;margin-top:.3rem"><label style="font-size:.74rem;color:var(--muted)">'+esc(C373t('Scadență follow-up'))+'</label><input id="ca-due" type="date" style="width:100%;padding:.4rem;border:1px solid var(--line);border-radius:8px"/></div>'
     +'<button class="btn-primary" style="width:100%;margin-top:.4rem" id="ca-save" onclick="caSave()">＋ '+esc(C373t('Adaugă în jurnal'))+'</button></div>'
     +tl+'</div></div></div></div></div>';

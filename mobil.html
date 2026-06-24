@@ -497,8 +497,23 @@ async function sheetDailyLog(){
     +'<div class="fld"><label>Data</label><input id="dl-date" type="date" value="'+today()+'"/></div>'
     +'<div class="fld"><label>Vreme</label><input id="dl-weather" placeholder="însorit, ploaie, -2°C..."/></div>'
     +'<div class="fld"><label>Muncitori prezenți</label><input id="dl-crew" type="number" inputmode="numeric" placeholder="8"/></div>'
-    +'<div class="fld"><label>Lucrări efectuate</label><textarea id="dl-work" style="width:100%;min-height:70px;padding:.7rem;border:1px solid var(--line);border-radius:12px"></textarea></div>'
+    +'<div class="fld"><label style="display:flex;align-items:center;gap:.4rem">Lucrări efectuate <button type="button" id="dl-ai" onclick="mobAiPolish(\'dl-work\',\'Rescrie clar și profesional acest raport zilnic de lucrări dintr-un șantier de construcții, păstrând toate faptele.\',this)" style="padding:.1rem .5rem;font-size:.74rem;border:1px solid var(--line);border-radius:8px;background:var(--bg)">✨ AI</button></label><textarea id="dl-work" style="width:100%;min-height:70px;padding:.7rem;border:1px solid var(--line);border-radius:12px"></textarea></div>'
     +'<button class="btn" id="dl-save" onclick="saveDailyLog()">Salvează raportul</button>');
+}
+async function mobAiPolish(taId, instruction, btn){
+  const ta=$(taId); if(!ta) return; const cur=(ta.value||'').trim();
+  if(!cur){ toast('Scrie întâi câteva cuvinte, apoi apasă ✨ AI.'); ta.focus(); return; }
+  const o=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='✨ …'; } ta.disabled=true;
+  try{
+    if(S._au===undefined){ try{ const {data}=await sb.from('tenants').select('automations,currency').eq('id',S.tenant).single(); S._au=(data&&data.automations)||{}; S._cur=(data&&data.currency)||'MDL'; }catch(e){ S._au={}; } }
+    const au=S._au||{};
+    const prompt=instruction+' Text brut: "'+cur+'". Răspunde DOAR cu textul final, fără titlu și fără ghilimele.';
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'chat', input:prompt, lang:(S.lang||'ro'), currency:S._cur||'MDL', tenant_id:S.tenant, key:au.anthropic_key||undefined, model:au.ai_model||'claude-haiku-4-5' } });
+    if(error) throw new Error(error.message||'Eroare AI');
+    if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
+    const txt=((data&&data.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt) ta.value=txt; else toast('AI nu a returnat text.');
+  }catch(e){ let m=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(m)) m='AI nu este configurat (în Setări firmă).'; toast(m); }
+  ta.disabled=false; if(btn){ btn.disabled=false; btn.textContent=o||'✨ AI'; }
 }
 async function saveDailyLog(){
   const d=$('dl-date').value; if(!d){ $('dlg-msg').innerHTML='<div class="msg err">Alege data.</div>'; return; }
@@ -1033,7 +1048,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v211', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v214', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
