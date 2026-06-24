@@ -480,9 +480,14 @@ async function sessGuard(){ try{
 /* Autentificare cu Google / Apple (OAuth). Necesită activarea providerului în Supabase. */
 async function doOAuth(provider){
   rememberFlag();
+  const nm = provider==='google'?'Google':(provider==='apple'?'Apple':provider);
   try{ const { error }=await sb.auth.signInWithOAuth({ provider:provider, options:{ redirectTo: appBase()+'app.html' } });
-    if(error) showMsg('login-msg', error.message); }
-  catch(e){ showMsg('login-msg', (e&&e.message)||String(e)); }
+    if(error) throw error; /* dacă providerul e activ, pagina se redirecționează — nu ajungem mai jos */ }
+  catch(e){ const msg=String((e&&e.message)||e);
+    if(/not enabled|provider|unsupported|disabled|not configured|validation_failed|400|422/i.test(msg))
+      showMsg('login-msg','🚧 '+tz('Autentificarea cu')+' '+nm+' '+tz('e în curs de implementare — ne cerem scuze! Momentan intră cu email + parolă sau „Intră cu link pe email".'),'ok');
+    else showMsg('login-msg', msg);
+  }
 }
 function appBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 async function doForgotPassword(){
@@ -2273,7 +2278,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v235';
+const APP_VERSION='cod373-v236';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
