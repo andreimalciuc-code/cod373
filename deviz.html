@@ -217,7 +217,7 @@ function lineGross(l){ return lineNet(l)*(1+lineEffVat(l)/100); }
 function vatRates(){ const rs=(S.firm&&S.firm.automations&&S.firm.automations.vat_rates)||[20,8,0]; return rs.map(Number).filter(r=>!isNaN(r)&&r>=0); }
 function vatOptsHtml(cur){ cur=Math.round((+cur||0)*100)/100; let rs=vatRates().filter(r=>r>0); if(cur>0&&rs.indexOf(cur)<0) rs.push(cur); rs=Array.from(new Set(rs)).sort((a,b)=>b-a);
   return '<option value="0"'+(cur===0?' selected':'')+'>—</option>'+rs.map(r=>'<option value="'+r+'"'+(r===cur?' selected':'')+'>'+num2(r)+'%</option>').join(''); }
-function vatSelectHtml(i,cur){ return '<select id="vt-'+i+'" onchange="lineSetVat('+i+',this.value)" style="width:76px;font-weight:600">'+vatOptsHtml(cur)+'</select>'; }
+function vatSelectHtml(i,cur){ return '<select id="vt-'+i+'" onchange="lineSetVat('+i+',this.value)" style="width:100%;font-weight:600">'+vatOptsHtml(cur)+'</select>'; }
 function lineSetVat(i,v){ const rate=(v===''?0:+v||0); const l=S.lines[i]; if(!l) return;
   if(!l.group && S.est.vat_mode==='total'){ S.est.vat_value=rate; S.lines.forEach(x=>{ if(!x.group) x.vat_rate=rate; }); render(); }
   else { l.vat_rate=rate; refreshLineTotal(i); renderSummary(); } }
@@ -332,9 +332,9 @@ function lineRowHtml(i,inGroup){
 }
 function sectionTableHtml(idxs,inGroup,gidv){
   const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=inGroup?true:(S.est.vat_mode!=='none');
-  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:88px">Cant.</th><th style="width:88px">UM</th><th style="width:86px">Preț</th>'
-    +(showDisc?'<th style="width:54px">Red.%</th>':'')+(showVat?'<th style="width:80px">TVA</th>':'')
-    +'<th style="width:96px;text-align:right">'+((inGroup||S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:24px"></th></tr>';
+  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:92px">Cant.</th><th style="width:96px">UM</th><th style="width:104px">Preț</th>'
+    +(showDisc?'<th style="width:68px">Red.%</th>':'')+(showVat?'<th style="width:86px">TVA</th>':'')
+    +'<th style="width:116px;text-align:right">'+((inGroup||S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:24px"></th></tr>';
   const rows=idxs.map(i=>lineRowHtml(i,inGroup)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
 }
@@ -342,7 +342,7 @@ function uomOptions(){ return uomList().map(u=>'<option value="'+esc(u)+'"></opt
 /* Unități de măsură: lista din bază + Setări (automations.units) + catalog + adăugate în sesiune */
 function uomList(){ const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct']; const cu=(S.firm&&S.firm.automations&&S.firm.automations.units)||[]; const cat=(S.catalog||[]).map(c=>c.unit).filter(Boolean); const ex=window._extraUnits||[]; return Array.from(new Set(base.concat(cu).concat(cat).concat(ex))); }
 function unitOptsHtml(cur){ cur=(cur||'').trim(); let us=uomList(); if(cur && us.indexOf(cur)<0) us=[cur].concat(us); return us.map(u=>'<option value="'+esc(u)+'"'+(u===cur?' selected':'')+'>'+esc(u)+'</option>').join('')+'<option value="__new">＋ alta…</option>'; }
-function unitSelectHtml(i,cur){ return '<select onchange="lineSetUnit('+i+',this.value)" style="width:84px">'+unitOptsHtml(cur)+'</select>'; }
+function unitSelectHtml(i,cur){ return '<select onchange="lineSetUnit('+i+',this.value)" style="width:100%">'+unitOptsHtml(cur)+'</select>'; }
 async function persistUnit(u){ try{ const au=Object.assign({}, S.firm.automations||{}); const units=Array.isArray(au.units)?au.units.slice():[]; if(units.indexOf(u)>=0) return; units.push(u); au.units=units; S.firm.automations=au; const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id; if(tid) await sb.from('tenants').update({automations:au}).eq('id',tid); }catch(e){} }
 function lineSetUnit(i,v){ const l=S.lines[i]; if(!l) return; if(v==='__new'){ const u=(prompt('Unitate de măsură nouă (ex: ml, oră, sac):')||'').trim(); if(!u){ render(); return; } window._extraUnits=window._extraUnits||[]; if(window._extraUnits.indexOf(u)<0) window._extraUnits.push(u); l.unit=u; persistUnit(u); render(); return; } l.unit=v; scheduleDraft(); }
 function vatListHtml(){ const rs=(S.firm&&S.firm.automations&&S.firm.automations.vat_rates)||[20,8,0]; return '<datalist id="vat-list">'+rs.map(r=>'<option value="'+esc(r)+'"></option>').join('')+'</datalist>'; }
