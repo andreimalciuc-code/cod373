@@ -76,6 +76,12 @@
     'Parolă setată.':{ru:'Пароль установлен.',de:'Passwort festgelegt.',en:'Password set.'},
     'Rezervat proprietarului — implicit nebifat. Bifează doar dacă vrei să dai acces.':{ru:'Зарезервировано для владельца — по умолчанию не отмечено. Отметьте, только если хотите дать доступ.',de:'Dem Inhaber vorbehalten — standardmäßig nicht angehakt. Nur anhaken, wenn du Zugriff geben willst.',en:'Reserved for the owner — unchecked by default. Tick only if you want to grant access.'},
     'Acces restricționat pentru rolul tău.':{ru:'Доступ ограничен для вашей роли.',de:'Zugriff für deine Rolle eingeschränkt.',en:'Access restricted for your role.'},
+    'Scrie cu AI':{ru:'Написать с ИИ',de:'Mit KI schreiben',en:'Write with AI'},
+    'Se generează…':{ru:'Генерируется…',de:'Wird generiert…',en:'Generating…'},
+    'Scrie întâi denumirea, apoi apasă ✨ AI.':{ru:'Сначала введите название, затем нажмите ✨ ИИ.',de:'Gib zuerst die Bezeichnung ein, dann ✨ KI drücken.',en:'Enter the name first, then tap ✨ AI.'},
+    'Descriere generată — editeaz-o dacă vrei.':{ru:'Описание сгенерировано — при желании отредактируйте.',de:'Beschreibung generiert — bei Bedarf bearbeiten.',en:'Description generated — edit it if you like.'},
+    'AI nu a returnat text.':{ru:'ИИ не вернул текст.',de:'KI hat keinen Text zurückgegeben.',en:'AI returned no text.'},
+    'Eroare AI:':{ru:'Ошибка ИИ:',de:'KI-Fehler:',en:'AI error:'},
     // ── Programări / Termine (Termin/Termine doar în germană) ──
     'Programări':{ru:'Встречи',de:'Termine',en:'Appointments'},
     'Întâlniri, vizite, măsurători, recepții — cu reminder și adăugare în calendarul telefonului.':{ru:'Встречи, выезды, замеры, приёмки — с напоминанием и добавлением в календарь телефона.',de:'Termine, Vor-Ort-Besuche, Aufmaße, Abnahmen — mit Erinnerung und Eintrag in den Handykalender.',en:'Meetings, visits, measurements, handovers — with a reminder and add-to-phone-calendar.'},

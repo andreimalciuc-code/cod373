@@ -1890,6 +1890,20 @@ async function aiCall(mode, input, history, image){
   if(!data||data.ok!==true){ const e=new Error((data&&(data.message||data.detail))||'Eroare AI'); e.code=data&&data.error; e.data=data; throw e; }
   return data;
 }
+/* Generează/îmbunătățește descrierea unui produs/serviciu cu AI (pe baza denumirii din formular) */
+async function aiDescribe(fieldKey, moduleKey, btn){
+  const ta=$('f-'+fieldKey); if(!ta) return;
+  const nameEl=$('f-name'); const name=(nameEl&&nameEl.value||'').trim();
+  if(!name){ toast(C373t('Scrie întâi denumirea, apoi apasă ✨ AI.')); if(nameEl) nameEl.focus(); return; }
+  const kind = moduleKey==='servicii' ? 'serviciu / lucrare de construcții' : (moduleKey==='materiale' ? 'material de construcții' : ((MODULES[moduleKey]&&MODULES[moduleKey].title)||'produs'));
+  const cur=(ta.value||'').trim();
+  const prompt='Scrie o descriere comercială scurtă (2-3 propoziții), clară și profesională, pentru un '+kind+' dintr-o firmă de construcții. Denumire: "'+name+'".'+(cur?(' Îmbunătățește / pornește de la textul existent: "'+cur+'".'):'')+' Spune la ce se folosește, ce include și calitate/specificații relevante. Răspunde DOAR cu descrierea, fără titlu și fără ghilimele.';
+  if(btn){ btn.disabled=true; btn.textContent='✨ '+C373t('Se generează…'); }
+  ta.disabled=true;
+  try{ const d=await aiCall('chat', prompt); const txt=((d&&d.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt){ ta.value=txt; toast('✨ '+C373t('Descriere generată — editeaz-o dacă vrei.')); } else toast(C373t('AI nu a returnat text.')); }
+  catch(e){ toast(C373t('Eroare AI:')+' '+esc((e&&e.message)||e)); }
+  ta.disabled=false; if(btn){ btn.disabled=false; btn.textContent='✨ '+C373t('Scrie cu AI'); }
+}
 function openAI(){
   const hasKey=!!aiKey();
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;display:flex;flex-direction:column;height:min(82vh,680px)"><div class="modal-head"><h3>🤖 Asistent AI</h3><button class="x" onclick="closeModal()">×</button></div>'
@@ -1986,7 +2000,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v211';
+const APP_VERSION='cod373-v212';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5805,7 +5819,7 @@ async function openForm(key,row,preset){
     if(!row && f.key==='annual_leave_days' && (v===''||v==null)){ const da=state.firm&&state.firm.automations&&state.firm.automations.default_annual_leave; if(da!=null) v=da; }
     if(key==='clienti' && f.key==='stage' && !row && window._crmPreset && window._crmPreset.stage){ v=window._crmPreset.stage; }
     body+='<div class="field"><label>'+esc(f.label)+(f.required?' *':'')+(f.hint?' <span class="hint-i" title="'+esc(f.hint)+'">ⓘ</span>':'')+'</label>';
-    if(f.type==='textarea') body+='<textarea id="f-'+f.key+'">'+esc(v)+'</textarea>';
+    if(f.type==='textarea') body+='<textarea id="f-'+f.key+'">'+esc(v)+'</textarea>'+(f.key==='description'?'<button type="button" class="btn-ghost" style="margin-top:.35rem;font-size:.8rem" onclick="aiDescribe(\''+f.key+'\',\''+key+'\',this)">✨ '+esc(C373t('Scrie cu AI'))+'</button>':'');
     else if(f.type==='checkbox') body+='<div class="chk"><input type="checkbox" id="f-'+f.key+'" '+(v?'checked':'')+'/> <span style="font-size:.85rem;color:var(--muted)">Da</span></div>';
     else if(f.type==='select'){ let _o=f.options; if(key==='clienti'&&f.key==='stage'){ const pid=(row&&row.pipeline)||(window._crmPreset&&window._crmPreset.pipeline)||'sales'; try{ _o=crmPipe(pid).stages.map(s=>({value:s.k,label:s.label})); }catch(e){} } body+='<select id="f-'+f.key+'">'+_o.map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; }
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
