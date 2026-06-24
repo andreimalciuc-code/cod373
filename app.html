@@ -1954,7 +1954,7 @@ async function pzSaveEmail(){
   const cur=(state.session&&state.session.user&&state.session.user.email)||'';
   if(em.toLowerCase()===cur.toLowerCase()){ msg.textContent=tz('Acesta e deja emailul tău.'); return; }
   $('pz-em-btn').disabled=true; msg.style.color='var(--muted)'; msg.textContent=tz('Se trimite…');
-  const { error }=await sb.auth.updateUser({ email:em });
+  const { error }=await sb.auth.updateUser({ email:em }, { emailRedirectTo: appBase()+'app.html' });
   $('pz-em-btn').disabled=false;
   if(error){ msg.style.color='var(--red)'; msg.textContent=error.message; return; }
   closeModal(); toast('✉️ '+tz('Ți-am trimis un link de confirmare pe noul email. Deschide-l ca să se aplice schimbarea.'));
@@ -2249,7 +2249,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v231';
+const APP_VERSION='cod373-v232';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
