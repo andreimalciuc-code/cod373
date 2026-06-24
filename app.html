@@ -2011,7 +2011,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v216';
+const APP_VERSION='cod373-v217';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5433,7 +5433,7 @@ async function openGallery(paths,start){
         +'<button id="gl-pr" title="Tipărește" '+tb+'>🖨</button><button id="gl-nw" title="Deschide în filă nouă" '+tb+'>↗</button>'
         +'<button id="gl-x" title="Închide (Esc)" '+tb+'>×</button></div>'
       +'<button id="gl-prev" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:2">‹</button>'
-      +'<img id="gl-img" draggable="false" style="max-width:94vw;max-height:90vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5);object-fit:contain;transition:transform .08s ease;will-change:transform;user-select:none"/>'
+      +'<img id="gl-img" draggable="false" decoding="async" style="max-width:94vw;max-height:90vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5);object-fit:contain;transition:transform .08s ease;will-change:transform;user-select:none"/>'
       +'<button id="gl-next" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:2">›</button>'
       +'<div id="gl-cnt" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:999px;z-index:2"></div>';
     document.body.appendChild(ov);
@@ -5467,7 +5467,9 @@ async function openGallery(paths,start){
 function galDist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
 function galApply(){ const g=window._gal,img=document.getElementById('gl-img'); if(img&&g){ img.style.transform='translate('+g.tx+'px,'+g.ty+'px) scale('+g.scale+') rotate('+g.rot+'deg)'; img.style.cursor=g.scale>1?'grab':'default'; } }
 function galZoom(d){ const g=window._gal; if(!g)return; g.scale=Math.min(5,Math.max(1,Math.round((g.scale+d)*100)/100)); if(g.scale===1){ g.tx=0; g.ty=0; } galApply(); }
-function galShow(){ const g=window._gal; if(!g) return; g.scale=1; g.rot=0; g.tx=0; g.ty=0; const img=document.getElementById('gl-img'); if(img) img.src=g.urls[g.i]||''; galApply(); const single=g.paths.length<2; const pv=document.getElementById('gl-prev'),nx=document.getElementById('gl-next'),c=document.getElementById('gl-cnt'); if(pv)pv.style.display=single?'none':''; if(nx)nx.style.display=single?'none':''; if(c){ c.style.display=single?'none':''; c.textContent=(g.i+1)+' / '+g.paths.length; } }
+function galShow(){ const g=window._gal; if(!g) return; g.scale=1; g.rot=0; g.tx=0; g.ty=0; const img=document.getElementById('gl-img'); if(img){ img.src=g.urls[g.i]||''; if(img.decode) img.decode().catch(function(){}); } galApply(); const single=g.paths.length<2; const pv=document.getElementById('gl-prev'),nx=document.getElementById('gl-next'),c=document.getElementById('gl-cnt'); if(pv)pv.style.display=single?'none':''; if(nx)nx.style.display=single?'none':''; if(c){ c.style.display=single?'none':''; c.textContent=(g.i+1)+' / '+g.paths.length; } galPreload(); }
+/* preîncarcă pozele din jur (±2) ca navigarea pe săgeți să fie instantă; păstrează referințele ca să rămână în cache */
+function galPreload(){ const g=window._gal; if(!g||g.paths.length<2) return; g._pre=g._pre||{}; [1,-1,2,-2].forEach(function(o){ const j=(g.i+o+g.paths.length)%g.paths.length; const u=g.urls[j]; if(u && !g._pre[j]){ const im=new Image(); im.decoding='async'; im.src=u; g._pre[j]=im; } }); }
 function galGo(d){ const g=window._gal; if(!g) return; g.i=(g.i+d+g.paths.length)%g.paths.length; galShow(); }
 function galClose(){ const ov=document.getElementById('img-lb'); if(ov) ov.style.display='none'; }
 async function galDownload(){ const g=window._gal; if(!g)return; const url=g.urls[g.i]; try{ const r=await fetch(url); const b=await r.blob(); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='poza-'+(g.i+1)+'.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},3000); toast('⬇ '+tz('Poză descărcată.')); }catch(e){ window.open(url,'_blank'); } }

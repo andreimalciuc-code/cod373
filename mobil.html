@@ -860,7 +860,8 @@ function openLightbox(urls,start){
 function lbDist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
 function lbApply(){ var g=window._lb,im=document.getElementById('lbi'); if(im&&g){ im.style.transform='translate('+g.tx+'px,'+g.ty+'px) scale('+g.scale+') rotate('+g.rot+'deg)'; } }
 function lbZoom(d){ var g=window._lb; if(!g)return; g.scale=Math.min(5,Math.max(1,Math.round((g.scale+d)*100)/100)); if(g.scale===1){g.tx=0;g.ty=0;} lbApply(); }
-function lbShow(){ var g=window._lb; if(!g)return; g.scale=1;g.rot=0;g.tx=0;g.ty=0; var im=document.getElementById('lbi'); if(im)im.src=g.urls[g.i]||''; lbApply(); var single=g.urls.length<2; var p=document.getElementById('lbp'),n=document.getElementById('lbn'),c=document.getElementById('lbc'); if(p)p.style.display=single?'none':''; if(n)n.style.display=single?'none':''; if(c){c.style.display=single?'none':'';c.textContent=(g.i+1)+' / '+g.urls.length;} }
+function lbShow(){ var g=window._lb; if(!g)return; g.scale=1;g.rot=0;g.tx=0;g.ty=0; var im=document.getElementById('lbi'); if(im){im.src=g.urls[g.i]||''; if(im.decode) im.decode().catch(function(){});} lbApply(); var single=g.urls.length<2; var p=document.getElementById('lbp'),n=document.getElementById('lbn'),c=document.getElementById('lbc'); if(p)p.style.display=single?'none':''; if(n)n.style.display=single?'none':''; if(c){c.style.display=single?'none':'';c.textContent=(g.i+1)+' / '+g.urls.length;} lbPreload(); }
+function lbPreload(){ var g=window._lb; if(!g||g.urls.length<2)return; g._pre=g._pre||{}; [1,-1,2,-2].forEach(function(o){ var j=(g.i+o+g.urls.length)%g.urls.length; var u=g.urls[j]; if(u&&!g._pre[j]){ var im=new Image(); im.decoding='async'; im.src=u; g._pre[j]=im; } }); }
 function lbGo(d){ var g=window._lb; if(!g)return; g.i=(g.i+d+g.urls.length)%g.urls.length; lbShow(); }
 function lbClose(){ var o=document.getElementById('img-lb'); if(o)o.style.display='none'; }
 async function lbDownload(){ var g=window._lb; if(!g)return; var url=g.urls[g.i]; try{ var r=await fetch(url); var b=await r.blob(); var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='poza-'+(g.i+1)+'.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},3000); toast('⬇ Poză descărcată.'); }catch(e){ window.open(url,'_blank'); } }
@@ -1048,7 +1049,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v214', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v217', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
