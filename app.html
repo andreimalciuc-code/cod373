@@ -2003,8 +2003,9 @@ function kbRenderList(q){
 }
 async function kbView(id){
   const a=_kb.find(x=>x.id===id); if(!a) return;
-  let media=''; const vids=a.video_urls||[];
-  if(vids.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(vids,3600); media=(su.data||[]).map(x=>(x&&x.signedUrl)?'<video controls preload="metadata" style="width:100%;border-radius:10px;margin:.5rem 0;background:#000"><source src="'+x.signedUrl+'"></video>':'').join(''); }catch(e){} }
+  let media=''; const allv=a.video_urls||[]; const links=allv.filter(v=>/^https?:/i.test(v)); const stored=allv.filter(v=>!/^https?:/i.test(v));
+  if(stored.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(stored,3600); media+=(su.data||[]).map(x=>(x&&x.signedUrl)?'<video controls preload="metadata" style="width:100%;border-radius:10px;margin:.5rem 0;background:#000"><source src="'+x.signedUrl+'"></video>':'').join(''); }catch(e){} }
+  links.forEach(function(u){ const emb=kbEmbed(u); if(emb) media+='<div style="position:relative;padding-bottom:56.25%;height:0;margin:.5rem 0"><iframe src="'+emb+'" style="position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px" allow="autoplay;fullscreen;picture-in-picture" allowfullscreen></iframe></div>'; else media+='<a href="'+esc(u)+'" target="_blank" rel="noopener" style="color:var(--primary);display:block;margin:.3rem 0">🔗 '+esc(u)+'</a>'; });
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:680px"><div class="modal-head"><h3>📚 '+esc(a.title)+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +(a.category?'<div style="font-size:.74rem;color:var(--muted);margin-bottom:.5rem">'+esc(a.category)+(a.pinned?' · 📌 '+tz('Important'):'')+'</div>':'')
     +(a.body?'<div style="white-space:pre-wrap;line-height:1.55;font-size:.92rem">'+esc(a.body)+'</div>':'')
@@ -2028,6 +2029,7 @@ function kbForm(id){
     +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('Clipuri mp4/mov etc. Recomandat sub ~200 MB per fișier.'))+'</div>'
     +'<div id="kb-vids"></div>'
     +'<label class="btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;margin-top:.3rem">🎬 '+esc(tz('Adaugă video'))+'<input id="kb-vfile" type="file" accept="video/*" multiple onchange="kbAddMedia(this,\'videos\')" style="display:none"></label>'
+    +'<div style="display:flex;gap:.4rem;margin-top:.4rem"><input id="kb-vlink" placeholder="'+esc(tz('sau lipește link YouTube / Vimeo'))+'" style="flex:1;padding:.5rem;border:1px solid var(--line);border-radius:9px"><button type="button" class="btn-ghost" onclick="kbAddLink()">🔗 '+esc(tz('Adaugă link'))+'</button></div>'
     +'<div style="font-weight:700;margin:.7rem 0 .25rem">📎 '+esc(tz('Fișiere atașate'))+'</div>'
     +'<div id="kb-atts"></div>'
     +'<label class="btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;margin-top:.3rem">📎 '+esc(tz('Adaugă fișier'))+'<input id="kb-afile" type="file" multiple onchange="kbAddMedia(this,\'atts\')" style="display:none"></label>'
@@ -2037,10 +2039,14 @@ function kbForm(id){
 }
 function kbRenderMedia(){
   const e=window._kbEdit||{videos:[],atts:[]};
-  const vd=$('kb-vids'); if(vd) vd.innerHTML=(e.videos||[]).map((p,i)=>'<div style="font-size:.82rem;display:flex;gap:.4rem;align-items:center;padding:.15rem 0">🎬 '+esc(kbName(p))+' <span onclick="kbDelMedia(\'videos\','+i+')" style="cursor:pointer;color:var(--red)" title="'+esc(tz('Șterge'))+'">✕</span></div>').join('')||'<div style="font-size:.78rem;color:var(--muted)">—</div>';
+  const vd=$('kb-vids'); if(vd) vd.innerHTML=(e.videos||[]).map((p,i)=>'<div style="font-size:.82rem;display:flex;gap:.4rem;align-items:center;padding:.15rem 0">'+(/^https?:/i.test(p)?'🔗 '+esc(p):'🎬 '+esc(kbName(p)))+' <span onclick="kbDelMedia(\'videos\','+i+')" style="cursor:pointer;color:var(--red)" title="'+esc(tz('Șterge'))+'">✕</span></div>').join('')||'<div style="font-size:.78rem;color:var(--muted)">—</div>';
   const ad=$('kb-atts'); if(ad) ad.innerHTML=(e.atts||[]).map((p,i)=>'<div style="font-size:.82rem;display:flex;gap:.4rem;align-items:center;padding:.15rem 0">📎 '+esc(kbName(p))+' <span onclick="kbDelMedia(\'atts\','+i+')" style="cursor:pointer;color:var(--red)" title="'+esc(tz('Șterge'))+'">✕</span></div>').join('')||'<div style="font-size:.78rem;color:var(--muted)">—</div>';
 }
 function kbDelMedia(kind,i){ const e=window._kbEdit; if(!e||!e[kind]) return; e[kind].splice(i,1); kbRenderMedia(); }
+function kbAddLink(){ const inp=$('kb-vlink'); if(!inp) return; const u=(inp.value||'').trim(); const msg=$('kb-msg');
+  if(!/^https?:\/\//i.test(u)){ if(msg){ msg.style.color='var(--red)'; msg.textContent=tz('Lipește un link valid (începe cu http).'); } return; }
+  window._kbEdit.videos.push(u); inp.value=''; if(msg) msg.textContent=''; kbRenderMedia(); }
+function kbEmbed(url){ let m; if((m=url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/))) return 'https://www.youtube.com/embed/'+m[1]; if((m=url.match(/vimeo\.com\/(?:video\/)?(\d+)/))) return 'https://player.vimeo.com/video/'+m[1]; return null; }
 async function kbAddMedia(input,kind){
   const files=(input&&input.files)?Array.from(input.files):[]; if(!files.length) return;
   const msg=$('kb-msg'); if(msg){ msg.style.color='var(--muted)'; msg.textContent=tz('Se încarcă…'); }
@@ -2243,7 +2249,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v228';
+const APP_VERSION='cod373-v229';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
