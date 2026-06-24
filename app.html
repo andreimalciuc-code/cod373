@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v209';
+const APP_VERSION='cod373-v210';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2251,7 +2251,7 @@ async function vehicleLogDel(id, vid, vlabel){ if(!confirm('Ștergi această în
 async function vehPhotoAdd(vid, vlabel, input){ const files=input&&input.files?[...input.files]:[]; if(!files.length) return;
   toast('⏳ Încarc '+files.length+' poză(e)…');
   const cur=await sb.from('vehicles').select('photos').eq('id',vid).maybeSingle(); const arr=((cur.data&&cur.data.photos)||[]).slice();
-  for(const f of files){ if(f.size>8*1024*1024){ toast('O poză depășește 8 MB — sărită.'); continue; } const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/fleet/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) arr.push(path); }
+  for(let f of files){ if(f.size>25*1024*1024){ toast('O poză depășește 25 MB — sărită.'); continue; } f=await compressImage(f,1600,0.72); const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/fleet/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) arr.push(path); }
   const r=await sbRetry(()=>sb.from('vehicles').update({photos:arr}).eq('id',vid)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   toast('✅ Poze adăugate.'); vehicleLog(vid, vlabel); }
 async function vehPhotoDel(vid, encPath, vlabel){ if(!confirm('Ștergi această poză?')) return; const path=decodeURIComponent(encPath);
@@ -6170,9 +6170,22 @@ async function addStagePrompt(siteId,pos){
     +'<div class="field"><label>Poze (poți alege mai multe)</label><input id="as-photos" type="file" accept="image/*" multiple/></div>'
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="closeWorkPicker()">'+TR('anuleaza')+'</button><button class="btn-primary" id="as-save" onclick="saveStageManual()">Adaugă</button></div></div></div>';
 }
+/* Comprimă/redimensionează poza pe dispozitiv ÎNAINTE de upload → fișiere ~10× mai mici, se încarcă rapid.
+   Ținta: max 1600px latură lungă, JPEG calitate ~0.72. Documentația de șantier rămâne perfect lizibilă. */
+async function compressImage(file, maxDim, quality){
+  try{
+    if(!file || !/^image\//.test(file.type||'') || /(gif|svg)/i.test(file.type||'') || !window.createImageBitmap) return file;
+    const bmp=await createImageBitmap(file); let w=bmp.width, h=bmp.height;
+    const scale=Math.min(1,(maxDim||1600)/Math.max(w,h)); w=Math.round(w*scale); h=Math.round(h*scale);
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(bmp,0,0,w,h); if(bmp.close) bmp.close();
+    const blob=await new Promise(res=>cv.toBlob(res,'image/jpeg',quality||0.72));
+    if(!blob || blob.size>=file.size) return file;
+    return new File([blob],(file.name||'poza').replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
+  }catch(e){ return file; }
+}
 async function uploadPhotos(input){
   const out=[]; const files=(input&&input.files)?Array.from(input.files):[];
-  for(const file of files){ const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/'+Date.now()+'_'+safe;
+  for(let file of files){ file=await compressImage(file,1600,0.72); const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/'+Date.now()+'_'+safe;
     const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'}); if(up.error) throw up.error; out.push(path); }
   return out;
 }
@@ -6297,7 +6310,7 @@ async function saveRecord(){
   const key=formCtx.key, m=MODULES[key];
   const payload={ tenant_id: state.tenant };
   for(const f of m.fields){
-    if(f.type==='photo'||f.type==='file'){ const el=$('f-'+f.key); if(el && el.files && el.files[0]){ const file=el.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/'+Date.now()+'_'+safe; showMsg('form-msg',''); const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'}); if(up.error){ showMsg('form-msg','Eroare la încărcarea fișierului: '+up.error.message); return; } payload[f.key]=path; } continue; }
+    if(f.type==='photo'||f.type==='file'){ const el=$('f-'+f.key); if(el && el.files && el.files[0]){ let file=el.files[0]; if(f.type==='photo') file=await compressImage(file,1600,0.72); const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/'+Date.now()+'_'+safe; showMsg('form-msg',''); const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'}); if(up.error){ showMsg('form-msg','Eroare la încărcarea fișierului: '+up.error.message); return; } payload[f.key]=path; } continue; }
     if($('f-'+f.key)===null) continue; // câmp ascuns (ex. rol fără acces) — nu-l atinge
     const v=fieldValue(f); if(v!==null) payload[f.key]=v; else if(f.type==='checkbox') payload[f.key]=false;
   }

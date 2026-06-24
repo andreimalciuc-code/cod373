@@ -731,7 +731,7 @@ async function saveDefect(){
   $('d-save').disabled=true;
   let photoPath=null; const pf=$('d-photo');
   if(pf && pf.files && pf.files[0]){
-    const file=pf.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    let file=pf.files[0]; file=await compressImage(file,1600,0.72); const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
     photoPath=S.tenant+'/defects/'+Date.now()+'_'+safe;
     const up=await sb.storage.from('docs').upload(photoPath,file,{contentType:file.type||'image/jpeg'});
     if(up.error){ $('smsg').innerHTML='<div class="msg err">Eroare poză: '+esc(up.error.message)+'</div>'; $('d-save').disabled=false; return; }
@@ -788,6 +788,18 @@ async function sendOrder(){
 }
 
 /* ── Lightbox poze: deschide în fereastra curentă + săgeți/swipe (URL-uri deja semnate) ── */
+/* Comprimă poza pe dispozitiv înainte de upload (~1600px, JPEG ~0.72) → fișiere mult mai mici, încărcare rapidă */
+async function compressImage(file, maxDim, quality){
+  try{
+    if(!file || !/^image\//.test(file.type||'') || /(gif|svg)/i.test(file.type||'') || !window.createImageBitmap) return file;
+    const bmp=await createImageBitmap(file); let w=bmp.width, h=bmp.height;
+    const scale=Math.min(1,(maxDim||1600)/Math.max(w,h)); w=Math.round(w*scale); h=Math.round(h*scale);
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(bmp,0,0,w,h); if(bmp.close) bmp.close();
+    const blob=await new Promise(res=>cv.toBlob(res,'image/jpeg',quality||0.72));
+    if(!blob || blob.size>=file.size) return file;
+    return new File([blob],(file.name||'poza').replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
+  }catch(e){ return file; }
+}
 function lbReg(urls){ window._lbReg=window._lbReg||{}; window._lbC=(window._lbC||0)+1; const id='lb'+window._lbC; window._lbReg[id]=(urls||[]).filter(Boolean); return id; }
 function lbOpen(id,i){ openLightbox((window._lbReg||{})[id]||[], i); }
 function openLightbox(urls,start){
@@ -868,7 +880,7 @@ async function uploadSitePhoto(){
   if(!site){ toast('Alege întâi șantierul.'); return; }
   if(!f.files||!f.files[0])return;
   const cap=(prompt('Etapa / descriere (ex: Turnare beton, Zidărie etaj 2):','Poză șantier')||'Poză șantier').trim();
-  const file=f.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  let file=f.files[0]; file=await compressImage(file,1600,0.72); const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
   const path=S.tenant+'/sites/'+site+'/'+Date.now()+'_'+safe;
   toast('⏳ Se încarcă poza…');
   const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
@@ -1021,7 +1033,7 @@ async function submitTicket(){
   const message=($('sup-message').value||'').trim();
   if(!message){ $('sup-msg').textContent='Scrie un mesaj ca să putem ajuta.'; return; }
   const rec={ tenant_id:S.tenant, subject:($('sup-subject').value||'').trim()||null, category:$('sup-cat').value||null,
-    message, module:'mobil', app_version:'cod373-v209', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
+    message, module:'mobil', app_version:'cod373-v210', user_agent:(navigator.userAgent||'').slice(0,300), url:location.href.split('?')[0] };
   const btn=$('sup-send'); if(btn) btn.disabled=true;
   try{
     const { error }=await sb.from('support_tickets').insert(rec); if(error) throw error;
