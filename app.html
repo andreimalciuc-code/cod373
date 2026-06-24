@@ -2278,7 +2278,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v237';
+const APP_VERSION='cod373-v238';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -7092,18 +7092,38 @@ async function removeFromTeam(id,siteId){
 
 /* ════ PORTAL CLIENT — generează link partajabil ════ */
 async function genPortal(siteId){
+  let site={},cl={}; try{ const sr=await sb.from('sites').select('name,clients(name,phone,email)').eq('id',siteId).single(); site=sr.data||{}; cl=(site&&site.clients)||{}; }catch(e){}
   const { data, error }=await sb.from('client_portal_links').insert({ tenant_id:state.tenant, site_id:siteId, show_costs:false }).select('token').single();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   const url=location.origin+'/portal.html?token='+data.token;
+  window._portalLink={ token:data.token, url:url, phone:(cl.phone||''), email:(cl.email||''), site:(site.name||''), client:(cl.name||'') };
+  const sendBtn=(ic,lab,fn,on)=>'<button class="btn-ghost" onclick="'+fn+'"'+(on?'':' disabled title="Clientul nu are acest contact salvat"')+' style="display:flex;align-items:center;gap:.35rem'+(on?'':';opacity:.5')+'">'+ic+' '+esc(lab)+'</button>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'
-    +'<div class="modal-head"><h3>🔗 Link portal client</h3><button class="x" onclick="closeModal()">×</button></div>'
-    +'<div class="modal-body"><p style="color:var(--muted);margin-bottom:1rem">Trimite acest link clientului. Vede progresul lucrării, fără cont și fără prețuri (le poți activa ulterior).</p>'
-    +'<div class="field"><input id="portal-url" readonly value="'+esc(url)+'" style="font-size:.82rem"/></div></div>'
-    +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">Închide</button>'
-    +'<button class="btn-ghost" onclick="window.open($(\'portal-url\').value,\'_blank\')">Deschide</button>'
-    +'<button class="btn-primary" onclick="copyPortal()">Copiază link</button></div></div></div>';
+    +'<div class="modal-head"><h3>🔗 '+esc(tz('Acces client (portal)'))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'
+    +'<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;margin-bottom:.8rem;font-size:.84rem"><b>'+esc(tz('Clientul vede:'))+'</b><br>✅ '+esc(tz('progresul general al lucrării'))+'<br>✅ '+esc(tz('graficul lucrărilor / etapele'))+'<br>'+esc(tz('Fără cont, fără login. Nu vede prețuri decât dacă activezi mai jos.'))+'</div>'
+    +'<label style="display:flex;align-items:center;gap:.5rem;margin-bottom:.9rem;cursor:pointer;font-size:.9rem"><input type="checkbox" id="portal-costs" onchange="portalSetCosts(this.checked)"> 💰 '+esc(tz('Arată și detaliile financiare (bugetul contractat)'))+'</label>'
+    +'<div class="field"><label style="font-size:.8rem;color:var(--muted)">'+esc(tz('Link'))+'</label><input id="portal-url" readonly value="'+esc(url)+'" style="font-size:.82rem"/></div>'
+    +'<div style="font-weight:700;font-size:.84rem;margin:.6rem 0 .4rem">'+esc(tz('Trimite clientului'))+(cl.name?(' — '+esc(cl.name)):'')+'</div>'
+    +'<div style="display:flex;gap:.5rem;flex-wrap:wrap">'
+      +sendBtn('🟢','WhatsApp','portalSend(\'wa\')',true)
+      +sendBtn('✉️','Email','portalSend(\'email\')',!!cl.email)
+      +sendBtn('💬','SMS','portalSend(\'sms\')',!!cl.phone)
+      +'<button class="btn-ghost" onclick="copyPortal()">📋 '+esc(tz('Copiază link'))+'</button>'
+    +'</div>'
+    +(cl.phone||cl.email?'':'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">ℹ️ '+esc(tz('Adaugă telefon/email la client ca să poți trimite direct pe WhatsApp/SMS/Email.'))+'</div>')
+    +'</div>'
+    +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+esc(tz('Închide'))+'</button>'
+    +'<button class="btn-primary" onclick="window.open($(\'portal-url\').value,\'_blank\')">'+esc(tz('Deschide ca clientul'))+'</button></div></div></div>';
 }
-function copyPortal(){ const i=$('portal-url'); i.select(); try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); } toast('📋 Link copiat.'); }
+function portalMsg(){ const p=window._portalLink||{}; return (p.client?('Bună ziua, '+p.client+'! '):'Bună ziua! ')+'Urmăriți progresul lucrării'+(p.site?(' „'+p.site+'"'):'')+' aici: '+p.url; }
+function portalSend(how){ const p=window._portalLink||{}; const txt=portalMsg();
+  if(how==='wa'){ const ph=(p.phone||'').replace(/[^0-9]/g,''); window.open('https://wa.me/'+ph+'?text='+encodeURIComponent(txt),'_blank'); }
+  else if(how==='sms'){ location.href='sms:'+(p.phone||'')+'?&body='+encodeURIComponent(txt); }
+  else if(how==='email'){ location.href='mailto:'+(p.email||'')+'?subject='+encodeURIComponent('Acces la lucrarea'+(p.site?(' „'+p.site+'"'):''))+'&body='+encodeURIComponent(txt); }
+}
+function portalSetCosts(on){ const p=window._portalLink||{}; if(!p.token) return; sb.from('client_portal_links').update({show_costs:!!on}).eq('token',p.token).then(({error})=>{ if(error){ toast('Eroare: '+esc(error.message)); return; } toast(on?('✅ '+tz('Bugetul va fi vizibil clientului.')):tz('Bugetul e ascuns clientului.')); }); }
+function copyPortal(){ const i=$('portal-url'); i.select(); try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); } toast('📋 '+tz('Link copiat.')); }
 
 /* ════ TIPĂRIRE / PDF (factură, deviz) ════ */
 function openEditorPdf(page,id){ window.open(page+'?id='+encodeURIComponent(id)+'&print=1','_blank'); }
