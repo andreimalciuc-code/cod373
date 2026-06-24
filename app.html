@@ -2249,7 +2249,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v233';
+const APP_VERSION='cod373-v234';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5664,8 +5664,9 @@ function previzToDeviz(id){ window.open('deviz.html?survey='+id,'_blank'); toast
 async function previzToSite(id){
   const s=(await sb.from('site_surveys').select('*').eq('id',id).single()).data; if(!s){ toast('Eroare.'); return; }
   const budget=(s.answers&&s.answers.buget_client)?+s.answers.buget_client:null;
-  openSiteWizard({ name:s.name, client_id:s.client_id, address:s.address, area_m2:s.area_m2, budget:budget, works:[] });
-  toast('Completează și creează șantierul.');
+  const geo=(s.answers&&s.answers._geo&&s.answers._geo.lat!=null)?s.answers._geo:null;
+  openSiteWizard({ name:s.name, client_id:s.client_id, address:s.address, area_m2:s.area_m2, budget:budget, works:[], geo:geo });
+  toast(geo?'Completează și creează șantierul (locația din fișă se preia automat).':'Completează și creează șantierul.');
 }
 
 /* ════ ACTE & DOCUMENTE (Supabase Storage, bucket „docs") ════ */
@@ -6358,7 +6359,7 @@ function bomTable(works, title){
 
 /* ---- Wizard creare șantier cu grafic ---- */
 async function openSiteWizard(prefill){
-  wizCtx={ works:(prefill&&prefill.works)||[] };
+  wizCtx={ works:(prefill&&prefill.works)||[], geo:(prefill&&prefill.geo)||null };
   const clients=await loadRefOptions('clients'); await ensureNorms(); await ensureExecutors(); await ensureNormMaterials();
   const p=prefill||{};
   const body=''
@@ -6488,6 +6489,7 @@ async function saveSiteWizard(){
     const ins=await sb.from('sites').insert({ tenant_id:state.tenant, name, client_id:$('wz-client').value||null,
       work_type:$('wz-wt').value||null, area_m2:(+$('wz-area').value||null), budget:(+$('wz-budget').value||null),
       address:($('wz-addr').value||'').trim()||null, start_date:start, status:'planned', progress:0,
+      lat:(wizCtx.geo&&wizCtx.geo.lat!=null?+wizCtx.geo.lat:null), lng:(wizCtx.geo&&wizCtx.geo.lng!=null?+wizCtx.geo.lng:null),
       responsible_ids: resp.length?resp:null }).select('id').single();
     if(ins.error) throw ins.error;
     const n=await genStages(ins.data.id, start, wizCtx.works);
