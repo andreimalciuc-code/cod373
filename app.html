@@ -1485,6 +1485,7 @@ function vaultSetupScreen(){
   +'<input id="v-pw1" type="password" autocomplete="new-password" style="width:100%;padding:.6rem;margin:.3rem 0 .8rem;border:1px solid var(--line);border-radius:9px">'
   +'<label style="font-size:.82rem;font-weight:600">'+tz('Repetă parola-mamă')+'</label>'
   +'<input id="v-pw2" type="password" autocomplete="new-password" style="width:100%;padding:.6rem;margin:.3rem 0 .4rem;border:1px solid var(--line);border-radius:9px">'
+  +'<label style="display:flex;gap:.5rem;align-items:flex-start;font-size:.84rem;margin:.2rem 0 .7rem;cursor:pointer;background:#fff4e5;border:1px solid #ffd8a8;border-radius:9px;padding:.6rem .7rem;color:#7a4f01"><input type="checkbox" id="v-ack" style="margin-top:.2rem;flex-shrink:0"> <span>'+tz('Am notat parola-mamă într-un loc sigur și înțeleg că, dacă o uit, datele NU pot fi recuperate de nimeni — nici de noi, nici de server.')+'</span></label>'
   +'<div id="v-err" style="color:var(--red);font-size:.82rem;min-height:1.1rem;margin-bottom:.6rem"></div>'
   +'<button class="btn" style="width:100%" onclick="vaultCreate()">'+tz('Creează seiful')+'</button>'
   +'</div>';
@@ -1493,6 +1494,7 @@ async function vaultCreate(){
   const p1=$('v-pw1').value, p2=$('v-pw2').value; const er=$('v-err');
   if(p1.length<8){ er.textContent=tz('Parola-mamă trebuie să aibă cel puțin 8 caractere.'); return; }
   if(p1!==p2){ er.textContent=tz('Parolele nu coincid.'); return; }
+  if(!$('v-ack')||!$('v-ack').checked){ er.textContent=tz('Bifează că ai notat parola-mamă într-un loc sigur — nu există recuperare.'); return; }
   er.textContent=tz('Se generează cheia…');
   try{
     const saltU8=crypto.getRandomValues(new Uint8Array(16)); const salt=_u8b64(saltU8);
@@ -1616,6 +1618,7 @@ function vaultChangePassScreen(){
   if(!window._vk){ toast(tz('Deblochează seiful întâi.')); return; }
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>🔑 '+esc(tz('Schimbă parola-mamă'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +'<p style="color:var(--muted);font-size:.86rem;margin-top:0">'+esc(tz('Se vor recripta toate intrările cu noua parolă. Ține dispozitivul deschis până se termină.'))+'</p>'
+    +'<div style="background:#fff4e5;border:1px solid #ffd8a8;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;color:#7a4f01;margin-bottom:.7rem">⚠️ '+esc(tz('Reține bine parola nouă — dacă o uiți, datele NU pot fi recuperate.'))+'</div>'
     +'<label style="font-size:.82rem;font-weight:600">'+esc(tz('Parola nouă'))+'</label><input id="vcp-1" type="password" autocomplete="new-password" style="width:100%;padding:.6rem;margin:.3rem 0 .7rem;border:1px solid var(--line);border-radius:9px">'
     +'<label style="font-size:.82rem;font-weight:600">'+esc(tz('Repetă parola nouă'))+'</label><input id="vcp-2" type="password" autocomplete="new-password" style="width:100%;padding:.6rem;margin:.3rem 0 .4rem;border:1px solid var(--line);border-radius:9px">'
     +'<div id="vcp-err" style="color:var(--red);font-size:.82rem;min-height:1.1rem;margin-bottom:.5rem"></div>'
@@ -2103,7 +2106,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v223';
+const APP_VERSION='cod373-v224';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
