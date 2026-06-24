@@ -2019,10 +2019,10 @@ function kbForm(id){
   if(!kbCanEdit()){ toast('🔒 '+tz('Doar conducerea poate edita.')); return; }
   const a=id?_kb.find(x=>x.id===id)||{}:{};
   window._kbEdit={ id:id||null, videos:(a.video_urls||[]).slice(), atts:(a.attachments||[]).slice() };
-  const opts=KB_CATS.map(c=>'<option '+(a.category===c?'selected':'')+'>'+esc(c)+'</option>').join('');
+  const _kbCats=Array.from(new Set(KB_CATS.concat((_kb||[]).map(x=>x.category).filter(Boolean)))); const opts=_kbCats.map(c=>'<option value="'+esc(c)+'"></option>').join('');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:600px"><div class="modal-head"><h3>📚 '+(id?esc(tz('Editează')):esc(tz('Articol nou')))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +'<div class="field"><label>'+esc(tz('Titlu'))+' *</label><input id="kb-title" value="'+esc(a.title||'')+'" placeholder="ex: Instruire SSM la înălțime"></div>'
-    +'<div class="field"><label>'+esc(tz('Categorie'))+'</label><select id="kb-cat" style="width:100%">'+opts+'</select></div>'
+    +'<div class="field"><label>'+esc(tz('Categorie'))+'</label><input id="kb-cat" list="kb-cat-dl" value="'+esc(a.category||'')+'" placeholder="'+esc(tz('alege din listă sau scrie o categorie nouă'))+'" style="width:100%"><datalist id="kb-cat-dl">'+opts+'</datalist></div>'
     +'<div class="field"><label>'+esc(tz('Conținut / instrucțiuni'))+'</label><textarea id="kb-body" rows="6">'+esc(a.body||'')+'</textarea></div>'
     +'<label style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0 .6rem;cursor:pointer"><input type="checkbox" id="kb-pin" '+(a.pinned?'checked':'')+'> '+esc(tz('Marchează ca important (apare sus)'))+'</label>'
     +'<div style="font-weight:700;margin:.5rem 0 .25rem">🎬 '+esc(tz('Video'))+'</div>'
@@ -2249,7 +2249,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v229';
+const APP_VERSION='cod373-v230';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
