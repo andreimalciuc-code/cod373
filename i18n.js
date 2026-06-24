@@ -698,6 +698,7 @@
     'Serviciu / manoperă':{ru:'Услуга / работа',de:'Leistung / Arbeit',en:'Service / labor'},
     'Unități de măsură':{ru:'Единицы измерения',de:'Maßeinheiten',en:'Units of measure'},
     'Previzualizare':{ru:'Просмотр',de:'Vorschau',en:'Preview'},
+    'Previzualizare (PDF)':{ru:'Просмотр (PDF)',de:'Vorschau (PDF)',en:'Preview (PDF)'},
     'Cod intern (SKU) — generat automat':{ru:'Внутренний код (SKU) — генерируется автоматически',de:'Interner Code (SKU) — automatisch generiert',en:'Internal code (SKU) — auto-generated'},
     'alege sau scrie (ex: buc, m2, kg)':{ru:'выберите или введите (напр.: шт, м2, кг)',de:'wählen oder eingeben (z. B. Stk, m2, kg)',en:'pick or type (e.g. pc, m2, kg)'},
     'Apasă pentru a mări':{ru:'Нажмите для увеличения',de:'Zum Vergrößern klicken',en:'Click to enlarge'},

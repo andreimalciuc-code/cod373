@@ -2011,7 +2011,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v215';
+const APP_VERSION='cod373-v216';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5620,6 +5620,7 @@ function rowActions(key,m,r){
   if(m.subEquip){ a.push({i:'🦺',l:'Echipamentul angajatului',f:"empEquip('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'⏱️',l:'Pontajul angajatului',f:"empPontaj('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🛡️',l:'SSM / Securitate angajat',f:"empSSM('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🏖️',l:'Concedii / absențe',f:"empLeave('"+id+"','"+jsArg(r.full_name)+"')"}); }
   if(m.acceptReject&&canDo(key,'u')){ if(r.status!=='accepted') a.push({i:'✅',l:'Marchează oferta acceptată',f:"estimateStatus('"+id+"','accepted')"}); if(r.status!=='rejected') a.push({i:'✖️',l:'Marchează oferta respinsă',f:"estimateStatus('"+id+"','rejected')",d:true}); }
   if(m.toSite) a.push({i:'🏗️',l:'Creează șantier din ofertă',f:"estimateToSite('"+id+"')"});
+  if(m.pageEditor) a.push({i:'👁',l:'Previzualizare (PDF)',f:"openEditorPdf('"+m.pageEditor+"','"+id+"')"});
   if(m.pageEditor) a.push({i:'📋',l:'Deschide / editează (filă nouă)',f:"window.open('"+m.pageEditor+"?id="+id+"','_blank')"});
   if(m.convertible) a.push({i:'🧾',l:'Creează factură din deviz',f:"estimateToInvoice('"+id+"')"});
   if(m.efactura){ const cc=(state.firm&&state.firm.country)||'MD';

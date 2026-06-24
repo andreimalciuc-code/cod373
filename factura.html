@@ -141,9 +141,14 @@ async function loadInvoice(id){
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   if(S.inv.inv_type!=='normal') loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
-  S.lines=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
+  const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
+  // Auto-curățare: elimină liniile EXACT identice (corupere veche dintr-o regulă RLS care bloca ștergerea la salvarea făcută de manager/contabil → liniile se dublau).
+  const _seen=new Set(); const _before=mapped.length;
+  S.lines=mapped.filter(l=>{ const k=[l.name,l.qty,l.unit,l.unit_price,l.vat_rate,l.disc,l.group,l.description||'',l.photo_url||''].join('¦'); if(_seen.has(k)) return false; _seen.add(k); return true; });
+  const _removed=_before-S.lines.length;
   reorderLinesBySection();
   if(!S.lines.length) S.lines=[blankLine()];
+  if(_removed>0) setTimeout(function(){ toast('⚠️ Am eliminat '+_removed+' linii dublate (eroare mai veche). Verifică totalul și apasă „Salvează" ca să se corecteze definitiv.'); },500);
 }
 async function fromEstimate(eid){
   const e=await sb.from('estimates').select('client_id,title,disc_mode,disc_value,vat_mode,vat_value,groups,materials_mode,skonto_off,skonto_pct').eq('id',eid).single();
@@ -590,7 +595,10 @@ async function save(thenPdf){
   try{
     if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('invoices').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
-    await sb.from('invoice_items').delete().eq('invoice_id',S.id);
+    const del=await sb.from('invoice_items').delete().eq('invoice_id',S.id); if(del.error) throw del.error;
+    // Verificăm că ștergerea chiar a avut loc — altfel inserarea ar dubla liniile (protecție anti-corupere).
+    const chk=await sb.from('invoice_items').select('id',{count:'exact',head:true}).eq('invoice_id',S.id);
+    if(chk.count){ $('btn-save').disabled=false; toast('Nu am putut rescrie liniile (drepturi insuficiente pentru rolul tău). Cere owner-ului să aplice ultima actualizare sau să salveze el factura.'); return; }
     const items=valid.map((l,i)=>({tenant_id:S.tenant,invoice_id:S.id,name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,kind:l.kind||'service',position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('invoice_items').insert(items); if(im.error) throw im.error;
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Factură salvată.'+(dp>0?' Reducere '+dp+'%':'')); if(thenPdf) pdf();

@@ -152,8 +152,13 @@ async function loadEstimate(id){
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
   const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null }; });
-  S.lines=mapped; reorderLinesBySection();
+  // Auto-curățare: elimină liniile EXACT identice (corupere veche dintr-o regulă RLS care bloca ștergerea la salvarea făcută de manager/contabil → liniile se dublau la fiecare salvare).
+  const _seen=new Set(); const _before=mapped.length;
+  const deduped=mapped.filter(l=>{ const k=[l.name,l.qty,l.unit,l.unit_price,l.vat_rate,l.disc,l.group,l.description||'',l.photo_url||''].join('¦'); if(_seen.has(k)) return false; _seen.add(k); return true; });
+  const _removed=_before-deduped.length;
+  S.lines=deduped; reorderLinesBySection();
   if(!S.lines.length) S.lines=[blankLine()];
+  if(_removed>0) setTimeout(function(){ toast('⚠️ Am eliminat '+_removed+' linii dublate (eroare mai veche). Verifică totalul și apasă „Salvează" ca să se corecteze definitiv.'); },500);
 }
 async function fromSurvey(sid){
   const sv=await sb.from('site_surveys').select('name,client_id,area_m2').eq('id',sid).single();
@@ -661,7 +666,10 @@ async function save(thenPdf){
   try{
     if(S.id){ const u=await sb.from('estimates').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('estimates').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'deviz.html?id='+S.id); }
-    await sb.from('estimate_items').delete().eq('estimate_id',S.id);
+    const del=await sb.from('estimate_items').delete().eq('estimate_id',S.id); if(del.error) throw del.error;
+    // Verificăm că ștergerea chiar a avut loc — altfel inserarea ar dubla liniile (protecție anti-corupere).
+    const chk=await sb.from('estimate_items').select('id',{count:'exact',head:true}).eq('estimate_id',S.id);
+    if(chk.count){ $('btn-save').disabled=false; toast('Nu am putut rescrie liniile (drepturi insuficiente pentru rolul tău). Cere owner-ului să aplice ultima actualizare sau să salveze el oferta.'); return; }
     const items=valid.map((l,i)=>({tenant_id:tid,estimate_id:S.id,kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
     const im=await sb.from('estimate_items').insert(items); if(im.error) throw im.error;
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Ofertă salvată.'+(dp>0?' Reducere '+dp+'%':''));
