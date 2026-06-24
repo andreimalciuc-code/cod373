@@ -1537,6 +1537,7 @@ async function vaultListScreen(){
   const items=[];
   for(const r of rows){ try{ const o=await vaultDecrypt(window._vk, r.iv, r.blob); o._id=r.id; items.push(o); }catch(e){} }
   window._vkItems=items;
+  vaultArmIdle();
   vaultRenderList('');
 }
 function vaultRenderList(q){
@@ -1551,7 +1552,12 @@ function vaultRenderList(q){
   +'<button class="btn-ghost" onclick="vaultHide()" title="'+tz('Ascunde seiful din meniu')+'">🙈</button>'
   +'<button class="btn-ghost" onclick="vaultLock()">🔒 '+tz('Blochează')+'</button>'
   +'</div>'
-  +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.7rem">🔐 '+tz('Criptat pe dispozitivul tău — doar tu, cu parola-mamă, poți citi aceste date.')+'</div>'
+  +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.5rem">🔐 '+tz('Criptat pe dispozitivul tău — doar tu, cu parola-mamă, poți citi aceste date.')+'</div>'
+  +'<div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;font-size:.8rem;color:var(--muted);margin-bottom:.7rem">'
+    +'<label style="display:flex;align-items:center;gap:.3rem">🔒 '+tz('Auto-blocare')+': <select onchange="vaultSetIdleMin(this.value)" style="padding:.2rem .35rem;border:1px solid var(--line);border-radius:7px;background:var(--surface)">'+[1,2,5,10,15,30].map(x=>'<option value="'+x+'" '+(vaultIdleMin()===x?'selected':'')+'>'+x+' min</option>').join('')+'<option value="0" '+(vaultIdleMin()===0?'selected':'')+'>'+tz('Niciodată')+'</option></select></label>'
+    +'<a onclick="vaultExport()" style="cursor:pointer;color:var(--primary)">⬇ '+tz('Backup criptat')+'</a>'
+    +'<a onclick="vaultImport()" style="cursor:pointer;color:var(--primary)">⬆ '+tz('Restaurează din backup')+'</a>'
+  +'</div>'
   +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.7rem">'+cards+'</div>';
   if(q){ const e=$('v-search'); if(e){ e.focus(); e.setSelectionRange(q.length,q.length); } }
 }
@@ -1658,6 +1664,36 @@ function vaultHide(){
 }
 function vaultHashCheck(){ if((location.hash||'').toLowerCase()==='#seif'){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} if(typeof go==='function' && state && state.tenant) go('seif'); } }
 window.addEventListener('hashchange', vaultHashCheck);
+/* ── Auto-blocare la inactivitate ── */
+function vaultIdleMin(){ const p=czPrefs(); return (p.vaultLockMin===0||p.vaultLockMin>0)?p.vaultLockMin:5; } // implicit 5 min; 0 = niciodată
+function vaultSetIdleMin(v){ const p=czPrefs(); p.vaultLockMin=(v===''||v==null)?5:+v; czSave(p); vaultArmIdle(); toast('🔒 '+tz('Auto-blocare actualizată.')); }
+let _vaultIdleTimer=null, _vaultIdleBound=false;
+function _vaultIdleReset(){ if(!window._vk) return; if(_vaultIdleTimer) clearTimeout(_vaultIdleTimer); const min=vaultIdleMin(); if(!min) return; _vaultIdleTimer=setTimeout(vaultIdleLock, min*60000); }
+function vaultIdleLock(){ if(!window._vk) return; window._vk=null; window._vkItems=null; if(typeof curModuleKey==='function' && curModuleKey()==='seif') vaultUnlockScreen(); toast('🔒 '+tz('Seif blocat automat (inactivitate).')); }
+function vaultArmIdle(){ if(!_vaultIdleBound){ ['mousemove','keydown','click','touchstart','scroll'].forEach(function(ev){ document.addEventListener(ev,_vaultIdleReset,{passive:true}); }); _vaultIdleBound=true; } _vaultIdleReset(); }
+/* ── Backup criptat: export (descărcare) + restaurare (import) ── */
+async function vaultExport(){
+  if(!window._vk){ toast(tz('Deblochează seiful întâi.')); return; }
+  const meta=await vaultMeta(); if(!meta){ toast(tz('Nimic de exportat.')); return; }
+  let rows=[]; try{ const { data }=await sb.from('vault_items').select('iv,blob,updated_at').eq('tenant_id',state.tenant).eq('user_id',state.session.user.id); rows=data||[]; }catch(e){}
+  const out={ app:'cod373-vault', v:1, exported_at:new Date().toISOString(), salt:meta.salt, verifier:meta.verifier, items:rows.map(r=>({iv:r.iv,blob:r.blob,updated_at:r.updated_at})) };
+  const blob=new Blob([JSON.stringify(out)],{type:'application/json'}); const u=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=u; a.download='seif-cod373-'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); },3000);
+  toast('⬇ '+tz('Backup criptat descărcat. Păstrează-l într-un loc sigur — nu poate fi citit fără parola-mamă.'));
+}
+function vaultImport(){ const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json,.json'; inp.onchange=function(){ if(inp.files&&inp.files[0]) vaultDoImport(inp.files[0]); }; inp.click(); }
+async function vaultDoImport(file){
+  if(!window._vk){ toast(tz('Deblochează (sau creează) seiful întâi, apoi importă.')); return; }
+  let data; try{ data=JSON.parse(await file.text()); }catch(e){ toast(tz('Fișier invalid.')); return; }
+  if(!data||data.app!=='cod373-vault'||!Array.isArray(data.items)){ toast(tz('Nu pare un backup de seif Cod373.')); return; }
+  const pw=prompt(tz('Parola-mamă cu care a fost făcut acest backup:')); if(!pw) return;
+  let bkKey; try{ bkKey=await vaultDerive(pw, data.salt); const parts=String(data.verifier).split(':'); const ok=(await vaultDecrypt(bkKey, parts[0], parts[1]))===VAULT_VERIFY_TOKEN; if(!ok){ toast(tz('Parolă greșită pentru acest backup.')); return; } }
+  catch(e){ toast(tz('Parolă greșită pentru acest backup.')); return; }
+  toast(tz('Se restaurează…')); let n=0;
+  try{ for(const it of data.items){ try{ const o=await vaultDecrypt(bkKey, it.iv, it.blob); const enc=await vaultEncrypt(window._vk, o); const r=await sb.from('vault_items').insert({tenant_id:state.tenant,user_id:state.session.user.id,iv:enc.iv,blob:enc.blob,updated_at:it.updated_at||new Date().toISOString()}); if(!r.error) n++; }catch(_){} }
+    toast('✅ '+n+' '+tz('intrări restaurate în seif.')); vaultListScreen();
+  }catch(e){ toast(tz('Eroare la restaurare:')+' '+esc(e.message||e)); }
+}
 
 /* ════ PROGRAMĂRI / TERMINE (appointments) — întâlniri, vizite, măsurători, recepții ════
    .ics (cu reminder VALARM) pentru adăugare în calendarul telefonului (Google/Apple/Outlook). */
@@ -2067,7 +2103,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v222';
+const APP_VERSION='cod373-v223';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
