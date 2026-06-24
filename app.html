@@ -1879,6 +1879,7 @@ function openPersonalize(){
   Object.keys(MODULES).filter(k=>!MODULES[k].hidden&&canSee(k)).forEach(k=>{ opts+='<option value="'+k+'"'+(startCur===k?' selected':'')+'>'+esc(mt(k).title)+'</option>'; });
   const th=p.theme==='dark'?'dark':'light';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>🎨 '+esc(tz('Personalizare'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--primary);font-weight:800;margin:.1rem 0 .55rem">🎨 '+esc(tz('Aspect'))+'</div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Temă'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(th==='light'?'on':'')+'" onclick="pzSetTheme(\'light\')">☀️ '+esc(tz('Luminos'))+'</button><button class="'+(th==='dark'?'on':'')+'" onclick="pzSetTheme(\'dark\')">🌙 '+esc(tz('Întunecat'))+'</button></div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Culoare de accent'))+'</div><div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">'+sw+'</div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Densitate tabele'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(dens==='comfy'?'on':'')+'" onclick="pzSetDens(\'comfy\')">'+esc(tz('Confortabil'))+'</button><button class="'+(dens==='compact'?'on':'')+'" onclick="pzSetDens(\'compact\')">'+esc(tz('Compact'))+'</button></div>'
@@ -1886,6 +1887,7 @@ function openPersonalize(){
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Pagina de start'))+'</div><select onchange="pzSetStart(this.value)" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-bottom:1rem;background:var(--surface);color:var(--text)">'+opts+'</select>'
     +'<div style="font-weight:700;margin:.2rem 0 .2rem">'+esc(tz('Module în meniu'))+'</div><div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('⭐ pune favoritele sus · 👁 ascunde din meniu'))+'<br>'+esc(tz('🖱️ Trage modulele direct în bara din stânga ca să le rearanjezi.'))+'</div>'+mods
     +'<hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0">'
+    +'<div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--primary);font-weight:800;margin:.1rem 0 .55rem">👤 '+esc(tz('Contul meu'))+'</div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Avatar'))+'</div>'
     +'<div style="display:flex;align-items:center;gap:.8rem;margin-bottom:1rem"><div id="pz-av" style="width:54px;height:54px;border-radius:50%;background:var(--primary-soft);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--primary);flex-shrink:0"></div>'
     +'<button class="btn-ghost" onclick="pzAvatarPick()">📷 '+esc(tz('Încarcă poză'))+'</button>'
@@ -1903,6 +1905,10 @@ function openPersonalize(){
     +'<div style="font-weight:700;margin:.2rem 0 .2rem">🔑 '+esc(tz('Parola contului'))+'</div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Setează o parolă ca să te poți loga cu email + parolă pe orice dispozitiv (recomandat dacă ai intrat prin link).'))+'</div>'
     +'<button class="btn-ghost" onclick="pzPasswordForm()">🔑 '+esc(tz('Schimbă / setează parola'))+'</button>'
+    +(canSee('setari')?('<hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0">'
+      +'<div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--primary);font-weight:800;margin:.1rem 0 .35rem">⚙️ '+esc(tz('Firmă'))+'</div>'
+      +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Date firmă, TVA, integrări, membri, export contabil etc. (la nivel de companie).'))+'</div>'
+      +'<button class="btn-ghost" onclick="closeModal();go(\'setari\')">⚙️ '+esc(tz('Deschide Setări firmă'))+'</button>'):'')
     +'</div></div></div>';
   setTimeout(pzInitMedia,0); setTimeout(pushRefreshBtn,0);
 }
@@ -2106,7 +2112,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v224';
+const APP_VERSION='cod373-v225';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
