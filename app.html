@@ -286,7 +286,11 @@
       <div id="login-msg"></div>
       <div class="field"><label>Email</label><input id="login-email" type="email" autocomplete="email" placeholder="nume@firma.md" /></div>
       <div class="field"><label>Parolă</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></div>
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.84rem;color:var(--muted);margin:-.2rem 0 .7rem;cursor:pointer"><input type="checkbox" id="login-remember" checked> Ține-mă minte pe acest dispozitiv</label>
       <button class="btn-primary btn-block" id="btn-login" onclick="doLogin()">Intră în cont</button>
+      <div style="display:flex;align-items:center;gap:.6rem;margin:.9rem 0;color:var(--muted);font-size:.8rem"><span style="flex:1;height:1px;background:var(--line)"></span>sau<span style="flex:1;height:1px;background:var(--line)"></span></div>
+      <button class="btn-ghost btn-block" onclick="doOAuth('google')" style="display:flex;align-items:center;justify-content:center;gap:.5rem"><span style="font-weight:800;color:#4285F4">G</span> Continuă cu Google</button>
+      <button class="btn-ghost btn-block" onclick="doOAuth('apple')" style="display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:.5rem">🍎 Continuă cu Apple</button>
       <p class="alt" style="margin-top:.7rem"><a onclick="doForgotPassword()">Am uitat parola</a> · <a onclick="doMagicLogin()">Intră cu link pe email</a></p>
       <p class="alt">Nu ai cont? <a onclick="showScreen('signup')">Creează firmă nouă</a></p>
     </div>
@@ -302,7 +306,10 @@
       <div class="field"><label>Confirmă parola</label><input id="su-pass2" type="password" autocomplete="new-password" placeholder="••••••••" /></div>
       <div class="field"><div class="chk"><input type="checkbox" id="su-consent"/> <span style="font-size:.84rem;color:var(--muted)">Sunt de acord cu <a href="privacy.html" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600">Politica de confidențialitate</a> și prelucrarea datelor.</span></div></div>
       <button class="btn-primary btn-block" id="btn-signup" onclick="doSignup()">Creează cont</button>
-      <p class="alt">Ai deja cont? <a onclick="showScreen('login')">Autentifică-te</a></p>
+      <div style="display:flex;align-items:center;gap:.6rem;margin:.9rem 0;color:var(--muted);font-size:.8rem"><span style="flex:1;height:1px;background:var(--line)"></span>sau<span style="flex:1;height:1px;background:var(--line)"></span></div>
+      <button class="btn-ghost btn-block" onclick="doOAuth('google')" style="display:flex;align-items:center;justify-content:center;gap:.5rem"><span style="font-weight:800;color:#4285F4">G</span> Continuă cu Google</button>
+      <button class="btn-ghost btn-block" onclick="doOAuth('apple')" style="display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:.5rem">🍎 Continuă cu Apple</button>
+      <p class="alt" style="margin-top:.7rem">Ai deja cont? <a onclick="showScreen('login')">Autentifică-te</a></p>
     </div>
 
     <div id="screen-onboard" class="hidden">
@@ -454,13 +461,29 @@ async function doSignup(){
 async function doLogin(){
   const email=$('login-email').value.trim(), pass=$('login-pass').value;
   if(!email||!pass){ showMsg('login-msg','Completează email și parolă.'); return; }
-  $('btn-login').disabled=true; showMsg('login-msg','');
+  $('btn-login').disabled=true; showMsg('login-msg',''); rememberFlag();
   const { error } = await sb.auth.signInWithPassword({ email,password:pass });
   $('btn-login').disabled=false;
   if(error){ showMsg('login-msg',error.message); return; }
   await boot();
 }
-async function doLogout(){ const m='Sigur vrei să ieși din cont?'; if(!confirm(window.C373t?C373t(m):m)) return; await sb.auth.signOut(); location.reload(); }
+async function doLogout(){ const m='Sigur vrei să ieși din cont?'; if(!confirm(window.C373t?C373t(m):m)) return; try{ localStorage.removeItem('c373_sessOnly'); }catch(e){} await sb.auth.signOut(); location.reload(); }
+/* „Ține-mă minte" — implicit DA (sesiunea persistă). Dacă e debifat → delogare la închiderea browserului. */
+function rememberFlag(){ try{ const c=$('login-remember'); const remember=c?c.checked:true; if(remember){ localStorage.removeItem('c373_sessOnly'); } else { localStorage.setItem('c373_sessOnly','1'); } sessionStorage.setItem('c373_sessAlive','1'); }catch(e){} }
+async function sessGuard(){ try{
+  if(localStorage.getItem('c373_sessOnly')==='1' && !sessionStorage.getItem('c373_sessAlive')){
+    // browserul a fost închis (sessionStorage s-a șters) → ieșim din cont
+    localStorage.removeItem('c373_sessOnly'); await sb.auth.signOut();
+  }
+  sessionStorage.setItem('c373_sessAlive','1');
+}catch(e){} }
+/* Autentificare cu Google / Apple (OAuth). Necesită activarea providerului în Supabase. */
+async function doOAuth(provider){
+  rememberFlag();
+  try{ const { error }=await sb.auth.signInWithOAuth({ provider:provider, options:{ redirectTo: appBase()+'app.html' } });
+    if(error) showMsg('login-msg', error.message); }
+  catch(e){ showMsg('login-msg', (e&&e.message)||String(e)); }
+}
 function appBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 async function doForgotPassword(){
   const email=($('login-email').value||'').trim();
@@ -473,7 +496,7 @@ async function doForgotPassword(){
 async function doMagicLogin(){
   const email=($('login-email').value||'').trim();
   if(!email){ showMsg('login-msg','Scrie întâi emailul, apoi apasă „Intră cu link pe email".'); $('login-email').focus(); return; }
-  showMsg('login-msg','Se trimite…');
+  showMsg('login-msg','Se trimite…'); rememberFlag();
   const { error }=await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: appBase()+'app.html', shouldCreateUser:false } });
   if(error){ showMsg('login-msg', error.message); return; }
   showMsg('login-msg','📧 Ți-am trimis un link de logare pe email. Dă click pe el și intri direct, fără parolă.','ok');
@@ -1248,6 +1271,7 @@ async function maybeShowInvite(){
 }
 async function boot(){
   applyPrefs();
+  await sessGuard();
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login'); maybeShowInvite(); hideSplash(); return; }
   state.session = session;
@@ -2249,7 +2273,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v234';
+const APP_VERSION='cod373-v235';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
