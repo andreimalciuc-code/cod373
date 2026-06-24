@@ -2278,7 +2278,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v236';
+const APP_VERSION='cod373-v237';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -2380,6 +2380,7 @@ async function emailCompose(prefill){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'
     +'<div class="modal-head"><h3>✉️ Mesaj nou</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div id="em-msg"></div>'
+    +'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:.5rem .7rem;font-size:.8rem;color:#9a3412;margin-bottom:.7rem">🚧 '+esc(tz('Trimiterea automată prin email e în curs de implementare — ne cerem scuze! Mesajul se salvează în conversație, dar momentan nu pleacă automat la client.'))+'</div>'
     +'<div class="field"><label>Client</label><select id="em-client" onchange="emailPickClient()">'+opts+'</select></div>'
     +'<div class="row-2"><div class="field"><label>Către (email) *</label><input id="em-to" type="email" placeholder="client@email.md"/></div><div class="field"><label>Nume</label><input id="em-name"/></div></div>'
     +'<div class="field"><label>Subiect</label><input id="em-subject"/></div>'
@@ -3762,7 +3763,9 @@ async function calcAiLines(mode, text, image){ toast('🤖 Interpretez documentu
     _calc.extra=(_calc.extra||[]).concat(lines.map(l=>({name:String(l.name),qty:+l.qty||0,unit:String(l.unit||'buc'),price:+l.price||0})));
     if($('calc-res')) calcRun(); else renderCalculator();
     toast('✅ Am extras '+lines.length+' poziții din document — verifică-le și ajustează.');
-  }catch(e){ const msg=(e&&e.message)||String(e); toast('AI: '+esc(msg)+(/Lipse|image|exception/i.test(msg)?' (vederea pe imagini se activează după update-ul funcției AI)':'')); } }
+  }catch(e){ const msg=(e&&e.message)||String(e);
+    if(image||mode==='takeoff'||/Lipse|image|exception|vision/i.test(msg)) toast('🚧 '+tz('Citirea planurilor/pozelor cu AI e în curs de implementare — ne cerem scuze! Momentan folosește un PDF cu text sau scrie descrierea lucrării.'));
+    else toast('AI: '+esc(msg)); } }
 /* ── Din scanare 3D (model de cameră RoomPlan/Polycam) → deviz exact, fără AI ── */
 function _cn(x){ const n=parseFloat(x); return isNaN(n)?0:n; }
 function calcRoomModel(model){ try{
