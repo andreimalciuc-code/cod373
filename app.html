@@ -1986,7 +1986,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v207';
+const APP_VERSION='cod373-v208';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5090,11 +5090,12 @@ let previzList=[], previzClients={};
 async function renderPreviz(){
   $('content').innerHTML='<div class="seg"><button class="btn-primary" style="margin-left:auto" onclick="openPrevizForm()">📋 Previzualizare nouă</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>Fișe de vizită șantier</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
-  const { data, error }=await sb.from('site_surveys').select('id,name,address,visit_date,work_type,area_m2,status,client_id,photo_urls,created_at');
+  const [svR, cl]=await Promise.all([ sb.from('site_surveys').select('id,name,address,visit_date,work_type,area_m2,status,client_id,photo_urls,created_at'), loadRefOptions('clients') ]);
+  const { data, error }=svR;
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   const rows=sortRows(data||[],'created_at',false);
   if(!rows.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📋</div><div>Nicio fișă de vizită încă.</div><div style="margin-top:1rem"><button class="btn-primary" onclick="openPrevizForm()">📋 Creează prima fișă</button></div></div>'; return; }
-  const cl=await loadRefOptions('clients'); const cm={}; cl.forEach(o=>cm[o.value]=o.label);
+  const cm={}; cl.forEach(o=>cm[o.value]=o.label);
   previzList=rows; previzClients=cm; // cache pentru meniul de opțiuni
   const body=rows.map(r=>'<tr onclick="previzActions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+((r.photo_urls&&r.photo_urls.length)?('🖼️ '):'')+esc(r.name)+(r.area_m2?' <small style="color:var(--muted)">· '+r.area_m2+' m²</small>':'')+'</td>'
     +'<td>'+esc(cm[r.client_id]||'—')+'</td><td>'+dt(r.visit_date)+'</td><td>'+esc(r.work_type==='reparatie'?'reparație':(r.work_type==='constructie'?'construcție':'—'))+'</td><td>'+pill(r.status)+'</td>'
@@ -5129,11 +5130,13 @@ function previzActions(id){
 /* previzualizare read-only a fișei, direct în aplicație */
 async function previzView(id){
   $('modal-mount').innerHTML='<div class="modal-overlay"><div class="modal" style="max-width:640px"><div class="modal-body"><div class="loading">Se încarcă…</div></div></div></div>';
-  const s=(await sb.from('site_surveys').select('*').eq('id',id).single()).data;
+  const [sR,mR]=await Promise.all([ sb.from('site_surveys').select('*').eq('id',id).single(), sb.from('survey_measurements').select('*').eq('survey_id',id) ]);
+  const s=sR.data;
   if(!s){ toast('Eroare la încărcare.'); closeModal(); return; }
-  const meas=((await sb.from('survey_measurements').select('*').eq('survey_id',id)).data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
-  let clientName='—'; if(s.client_id){ const c=await sb.from('clients').select('name').eq('id',s.client_id).single(); clientName=(c.data&&c.data.name)||'—'; }
-  let imgs=[]; if(s.photo_urls&&s.photo_urls.length){ const su=await sb.storage.from('docs').createSignedUrls(s.photo_urls,600); imgs=(su.data||[]).map(x=>x.signedUrl).filter(Boolean); }
+  const meas=((mR.data)||[]).sort((a,b)=>(a.position||0)-(b.position||0));
+  const [cR,suR]=await Promise.all([ s.client_id?sb.from('clients').select('name').eq('id',s.client_id).single():Promise.resolve({data:null}), (s.photo_urls&&s.photo_urls.length)?sb.storage.from('docs').createSignedUrls(s.photo_urls,600):Promise.resolve({data:[]}) ]);
+  const clientName=(cR.data&&cR.data.name)||'—';
+  let imgs=(suR.data||[]).map(x=>x.signedUrl).filter(Boolean);
   const wt=s.work_type==='reparatie'?'Reparație':(s.work_type==='constructie'?'Construcție':'—');
   const rowKV=(k,v)=>'<div style="display:flex;gap:.6rem;padding:.35rem 0;border-bottom:1px solid var(--line);font-size:.9rem"><div style="color:var(--muted);min-width:130px">'+esc(k)+'</div><div style="font-weight:600">'+v+'</div></div>';
   const qRows=QKEYS.filter(q=>s.answers&&s.answers[q.key]!=null&&s.answers[q.key]!=='').map(q=>rowKV(q.label, esc(s.answers[q.key]))).join('');
@@ -5152,7 +5155,7 @@ async function previzView(id){
     +(qRows?H('❓ Întrebări cheie')+qRows:'')
     +(mRows?H('📐 Volume / măsurători')+mRows:'')
     +(s.notes?H('💬 Comentarii')+'<div style="font-size:.9rem;white-space:pre-wrap">'+esc(s.notes)+'</div>':'')
-    +(imgs.length?H('📷 Poze ('+imgs.length+')')+'<div style="display:flex;flex-wrap:wrap;gap:.5rem">'+imgs.map(u=>'<a href="'+u+'" target="_blank" rel="noopener"><img src="'+u+'" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>').join('')+'</div>':'')
+    +(imgs.length?H('📷 Poze ('+imgs.length+')')+'<div style="display:flex;flex-wrap:wrap;gap:.5rem">'+(function(){const _vid=galReg(s.photo_urls);return imgs.map((u,i)=>'<img src="'+u+'" onclick="openGalleryId(\''+_vid+'\','+i+')" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in">').join('');})()+'</div>':'')
     +'</div>'
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">Închide</button>'
     +'<button class="btn-ghost" onclick="previzPDF(\''+id+'\')">🖨 PDF</button>'
@@ -5387,28 +5390,55 @@ function openImg(encPath){ openGallery([decodeURIComponent(encPath)],0); }   // 
 async function openGallery(paths,start){
   paths=(paths||[]).filter(Boolean); if(!paths.length) return; start=Math.max(0,Math.min(+start||0,paths.length-1));
   let urls=[]; try{ const su=await sb.storage.from('docs').createSignedUrls(paths,600); urls=(su.data||[]).map(x=>(x&&x.signedUrl)||''); }catch(e){ toast('Eroare la încărcarea pozelor.'); return; }
-  window._gal={paths:paths,urls:urls,i:start};
+  window._gal={paths:paths,urls:urls,i:start,scale:1,rot:0,tx:0,ty:0};
   let ov=document.getElementById('img-lb');
-  if(!ov){ ov=document.createElement('div'); ov.id='img-lb'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;touch-action:none';
-    ov.innerHTML='<button id="gl-x" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer">×</button>'
-      +'<button id="gl-prev" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer">‹</button>'
-      +'<img id="gl-img" style="max-width:92vw;max-height:86vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5);object-fit:contain"/>'
-      +'<button id="gl-next" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer">›</button>'
-      +'<div id="gl-cnt" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:999px"></div>';
+  if(!ov){ ov=document.createElement('div'); ov.id='img-lb'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.93);display:flex;align-items:center;justify-content:center;touch-action:none;overflow:hidden';
+    const tb='style="background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:9px;width:40px;height:40px;font-size:18px;cursor:pointer"';
+    ov.innerHTML='<div style="position:absolute;top:10px;right:12px;display:flex;gap:6px;z-index:2">'
+        +'<button id="gl-zo" title="Micșorează (−)" '+tb+'>−</button><button id="gl-zi" title="Mărește (+)" '+tb+'>+</button>'
+        +'<button id="gl-rot" title="Rotește" '+tb+'>⟳</button><button id="gl-dl" title="Salvează (descarcă)" '+tb+'>⬇</button>'
+        +'<button id="gl-pr" title="Tipărește" '+tb+'>🖨</button><button id="gl-nw" title="Deschide în filă nouă" '+tb+'>↗</button>'
+        +'<button id="gl-x" title="Închide (Esc)" '+tb+'>×</button></div>'
+      +'<button id="gl-prev" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:2">‹</button>'
+      +'<img id="gl-img" draggable="false" style="max-width:94vw;max-height:90vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5);object-fit:contain;transition:transform .08s ease;will-change:transform;user-select:none"/>'
+      +'<button id="gl-next" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:2">›</button>'
+      +'<div id="gl-cnt" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:999px;z-index:2"></div>';
     document.body.appendChild(ov);
     ov.addEventListener('click',function(e){ if(e.target===ov) galClose(); });
     document.getElementById('gl-x').onclick=galClose;
     document.getElementById('gl-prev').onclick=function(){ galGo(-1); };
     document.getElementById('gl-next').onclick=function(){ galGo(1); };
-    let sx=0; ov.addEventListener('touchstart',function(e){ sx=e.touches[0].clientX; },{passive:true});
-    ov.addEventListener('touchend',function(e){ const dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>40) galGo(dx<0?1:-1); },{passive:true});
-    document.addEventListener('keydown',function(e){ const o=document.getElementById('img-lb'); if(!o||o.style.display==='none') return; if(e.key==='ArrowLeft')galGo(-1); else if(e.key==='ArrowRight')galGo(1); else if(e.key==='Escape')galClose(); });
+    document.getElementById('gl-zi').onclick=function(){ galZoom(0.3); };
+    document.getElementById('gl-zo').onclick=function(){ galZoom(-0.3); };
+    document.getElementById('gl-rot').onclick=function(){ const g=window._gal; if(g){ g.rot=(g.rot+90)%360; galApply(); } };
+    document.getElementById('gl-dl').onclick=galDownload;
+    document.getElementById('gl-pr').onclick=galPrint;
+    document.getElementById('gl-nw').onclick=function(){ const g=window._gal; if(g) window.open(g.urls[g.i],'_blank'); };
+    const gimg=document.getElementById('gl-img');
+    gimg.addEventListener('dblclick',function(){ const g=window._gal; if(!g)return; g.scale=(g.scale>1?1:2); g.tx=0;g.ty=0; galApply(); });
+    gimg.addEventListener('wheel',function(e){ e.preventDefault(); galZoom(e.deltaY<0?0.2:-0.2); },{passive:false});
+    let drag=false,sx=0,sy=0,stx=0,sty=0;
+    const down=function(x,y){ const g=window._gal; if(!g)return; drag=true; sx=x;sy=y; stx=g.tx;sty=g.ty; };
+    const move=function(x,y){ if(!drag)return; const g=window._gal; if(g.scale>1){ g.tx=stx+(x-sx); g.ty=sty+(y-sy); galApply(); } };
+    const up=function(x){ if(!drag)return; const g=window._gal; drag=false; if(g.scale<=1 && Math.abs(x-sx)>40) galGo(x-sx<0?1:-1); };
+    gimg.addEventListener('mousedown',function(e){ e.preventDefault(); down(e.clientX,e.clientY); });
+    window.addEventListener('mousemove',function(e){ move(e.clientX,e.clientY); });
+    window.addEventListener('mouseup',function(e){ up(e.clientX); });
+    gimg.addEventListener('touchstart',function(e){ const g=window._gal; if(!g)return; const t=e.touches[0]; down(t.clientX,t.clientY); if(e.touches.length===2){ g._pinch=galDist(e.touches); g._ps=g.scale; } },{passive:true});
+    gimg.addEventListener('touchmove',function(e){ const g=window._gal; if(!g)return; if(e.touches.length===2 && g._pinch){ const d=galDist(e.touches); g.scale=Math.min(5,Math.max(1, g._ps*(d/g._pinch))); galApply(); } else { const t=e.touches[0]; move(t.clientX,t.clientY); } },{passive:true});
+    gimg.addEventListener('touchend',function(e){ const g=window._gal; if(g) g._pinch=0; up(((e.changedTouches[0]||{}).clientX)||sx); },{passive:true});
+    document.addEventListener('keydown',function(e){ const o=document.getElementById('img-lb'); if(!o||o.style.display==='none') return; if(e.key==='ArrowLeft')galGo(-1); else if(e.key==='ArrowRight')galGo(1); else if(e.key==='Escape')galClose(); else if(e.key==='+'||e.key==='=')galZoom(0.3); else if(e.key==='-')galZoom(-0.3); });
   }
   ov.style.display='flex'; galShow();
 }
-function galShow(){ const g=window._gal; if(!g) return; const img=document.getElementById('gl-img'); if(img) img.src=g.urls[g.i]||''; const single=g.paths.length<2; const pv=document.getElementById('gl-prev'),nx=document.getElementById('gl-next'),c=document.getElementById('gl-cnt'); if(pv)pv.style.display=single?'none':''; if(nx)nx.style.display=single?'none':''; if(c){ c.style.display=single?'none':''; c.textContent=(g.i+1)+' / '+g.paths.length; } }
+function galDist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
+function galApply(){ const g=window._gal,img=document.getElementById('gl-img'); if(img&&g){ img.style.transform='translate('+g.tx+'px,'+g.ty+'px) scale('+g.scale+') rotate('+g.rot+'deg)'; img.style.cursor=g.scale>1?'grab':'default'; } }
+function galZoom(d){ const g=window._gal; if(!g)return; g.scale=Math.min(5,Math.max(1,Math.round((g.scale+d)*100)/100)); if(g.scale===1){ g.tx=0; g.ty=0; } galApply(); }
+function galShow(){ const g=window._gal; if(!g) return; g.scale=1; g.rot=0; g.tx=0; g.ty=0; const img=document.getElementById('gl-img'); if(img) img.src=g.urls[g.i]||''; galApply(); const single=g.paths.length<2; const pv=document.getElementById('gl-prev'),nx=document.getElementById('gl-next'),c=document.getElementById('gl-cnt'); if(pv)pv.style.display=single?'none':''; if(nx)nx.style.display=single?'none':''; if(c){ c.style.display=single?'none':''; c.textContent=(g.i+1)+' / '+g.paths.length; } }
 function galGo(d){ const g=window._gal; if(!g) return; g.i=(g.i+d+g.paths.length)%g.paths.length; galShow(); }
 function galClose(){ const ov=document.getElementById('img-lb'); if(ov) ov.style.display='none'; }
+async function galDownload(){ const g=window._gal; if(!g)return; const url=g.urls[g.i]; try{ const r=await fetch(url); const b=await r.blob(); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='poza-'+(g.i+1)+'.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},3000); toast('⬇ '+tz('Poză descărcată.')); }catch(e){ window.open(url,'_blank'); } }
+function galPrint(){ const g=window._gal; if(!g)return; const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write('<html><head><title>Poză</title></head><body style="margin:0;text-align:center"><img src="'+g.urls[g.i]+'" style="max-width:100%" onload="setTimeout(function(){window.print()},150)"></body></html>'); w.document.close(); }
 async function downloadDoc(encPath, encName){
   const path=decodeURIComponent(encPath); const name=encName?decodeURIComponent(encName):(path.split('/').pop().replace(/^\d+_/,''));
   toast('⬇ Se descarcă…');
