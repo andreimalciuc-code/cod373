@@ -332,7 +332,7 @@ function lineRowHtml(i,inGroup){
 }
 function sectionTableHtml(idxs,inGroup,gidv){
   const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=inGroup?true:(S.est.vat_mode!=='none');
-  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:64px">Cant.</th><th style="width:88px">UM</th><th style="width:86px">Preț</th>'
+  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:88px">Cant.</th><th style="width:88px">UM</th><th style="width:86px">Preț</th>'
     +(showDisc?'<th style="width:54px">Red.%</th>':'')+(showVat?'<th style="width:80px">TVA</th>':'')
     +'<th style="width:96px;text-align:right">'+((inGroup||S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:24px"></th></tr>';
   const rows=idxs.map(i=>lineRowHtml(i,inGroup)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
