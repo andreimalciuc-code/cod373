@@ -5697,7 +5697,7 @@ function addMemberForm(){
     +'<div class="modal-body"><div id="mem-msg"></div>'
     +'<div class="field"><label>Email-ul colegului</label><input id="mem-email" type="email" placeholder="coleg@firma.md"/></div>'
     +'<div class="field"><label>Rol</label><select id="mem-role">'+roleOpts+'</select></div>'
-    +'<p style="font-size:.8rem;color:var(--muted)">Persoana trebuie să-și fi creat întâi un cont (signup). Apoi o adaugi aici.</p></div>'
+    +'<p style="font-size:.8rem;color:var(--muted)">Dacă persoana are deja cont, o adaug pe loc. Dacă nu — îți generez automat un <b>link de invitație</b> de trimis (își pune o parolă și intră).</p></div>'
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">Anulează</button><button class="btn-primary" id="mem-save" onclick="saveMember()">Adaugă</button></div></div></div>';
 }
 async function saveMember(){
@@ -5706,7 +5706,22 @@ async function saveMember(){
   const { data, error }=await sb.rpc('add_member_by_email',{ p_email:email, p_role:$('mem-role').value });
   $('mem-save').disabled=false;
   if(error){ showMsg('mem-msg', error.message); return; }
-  if(data==='NOUSER'){ showMsg('mem-msg','Nu există cont cu acest email. Roagă persoana să-și facă întâi cont, apoi adaug-o.'); return; }
+  if(data==='NOUSER'){
+    // persoana nu are cont încă → generăm automat un link de invitație de trimis
+    const role=$('mem-role').value;
+    showMsg('mem-msg','Persoana nu are încă cont — îți generez un link de invitație…','ok');
+    const { data:tok, error:e2 }=await sb.rpc('create_invite',{ p_role:role, p_email:email, p_entity_type:null, p_entity_id:null, p_note:null, p_perms:null });
+    if(e2){ showMsg('mem-msg','Eroare: '+esc(e2.message)); return; }
+    const link=inviteLink(tok); const wa='https://wa.me/?text='+encodeURIComponent('Salut! Ai acces la aplicația firmei. Deschide linkul, pune-ți o parolă și intri: '+link);
+    const mb=document.querySelector('#modal-mount .modal-body');
+    if(mb) mb.innerHTML='<p style="color:var(--green,#16a34a);font-weight:600">✅ Link de invitație creat pentru '+esc(email)+'</p>'
+      +'<p style="font-size:.85rem;color:var(--muted)">Persoana nu avea cont — trimite-i linkul (WhatsApp/SMS/email). Îl deschide, își pune o parolă și intră direct ca <b>'+esc(ROLE_LABELS[role]||role)+'</b>.</p>'
+      +'<div class="field"><input id="inv-link" readonly value="'+esc(link)+'" onclick="this.select()" style="font-size:.8rem"/></div>'
+      +'<button class="btn-primary btn-block" onclick="copyInvite(\''+tok+'\')">📋 Copiază linkul</button>'
+      +'<a class="btn-ghost btn-block" style="margin-top:.5rem;display:block;text-align:center;text-decoration:none" href="'+wa+'" target="_blank" rel="noopener">📲 Trimite pe WhatsApp</a>';
+    if(typeof renderInvites==='function' && $('inv-body')) renderInvites();
+    return;
+  }
   closeModal(); toast('✅ Membru adăugat.'); renderUtilizatori();
 }
 async function changeRole(uid,role){ const { error }=await sb.rpc('set_member_role',{ p_user:uid, p_role:role }); if(error){ toast('Eroare: '+esc(error.message)); } else toast('✅ Rol actualizat.'); }
