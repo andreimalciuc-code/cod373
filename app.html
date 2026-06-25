@@ -2292,7 +2292,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v247';
+const APP_VERSION='cod373-v250';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -6018,10 +6018,10 @@ function renderList(){
   }
   const bulk=!!m.bulkOrder && canDo(key,'c');
   const cbHead=bulk?'<th style="width:34px;text-align:center"><input type="checkbox" id="bulk-all" onclick="event.stopPropagation();bulkToggleAll(this.checked)"></th>':'';
-  const head='<tr>'+cbHead+cols.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th></th></tr>';
-  const body=data.map(r=>{ const acts=rowActions(key,m,r);
+  const head='<tr>'+cbHead+'<th style="width:42px;text-align:right;color:var(--muted)">'+esc(tz('Nr.'))+'</th>'+cols.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th></th></tr>';
+  const body=data.map((r,idx)=>{ const acts=rowActions(key,m,r);
     const cb=bulk?'<td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" class="bulk-cb" '+(_bulkSel[r.id]?'checked':'')+' onclick="event.stopPropagation();bulkToggle(\''+r.id+'\',this.checked)"></td>':'';
-    return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cb+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
+    return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cb+'<td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td>'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
       +'<td><div class="rowact">'+acts.map(a=>'<button class="iconbtn'+(a.d?' danger':'')+'" title="'+esc(a.l)+'" onclick="event.stopPropagation();'+a.f+'">'+a.i+'</button>').join('')+'</div></td></tr>';
   }).join('');
   const hint=bulk?'👉 Bifează poziții și apasă „🛒 '+esc(m.bulkOrder.label||'Creează comandă')+'" sus, sau apasă pe un rând pentru opțiuni.':'👉 Apasă pe un rând pentru toate opțiunile.';
