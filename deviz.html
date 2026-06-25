@@ -334,9 +334,9 @@ function lineRowHtml(i,inGroup){
 }
 function sectionTableHtml(idxs,inGroup,gidv){
   const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=inGroup?true:(S.est.vat_mode!=='none');
-  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:100px">Cant.</th><th style="width:104px">UM</th><th style="width:122px">Preț</th>'
+  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:84px">Cant.</th><th style="width:84px">UM</th><th style="width:98px">Preț</th>'
     +(showDisc?'<th style="width:68px">Red.%</th>':'')+(showVat?'<th style="width:86px">TVA</th>':'')
-    +'<th style="width:136px;text-align:right">'+((inGroup||S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:24px"></th></tr>';
+    +'<th style="width:120px;text-align:right">'+((inGroup||S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:104px"></th></tr>';
   const rows=idxs.map(i=>lineRowHtml(i,inGroup)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
 }
