@@ -999,18 +999,19 @@ async function uploadSitePhoto(){
 }
 
 /* NOTIFICĂRI */
+function notifIsField(){ return ['worker','driver','client','subcontractor'].includes(S.role); }
 async function loadNotifCount(){
-  try{ const {data}=await sb.from('notifications').select('id,created_at');
+  try{ let q=sb.from('notifications').select('id,created_at'); if(notifIsField()) q=q.eq('user_id',S.session.user.id); const {data}=await q;
     const seen=+(localStorage.getItem('c373_notif_seen')||0);
     const n=(data||[]).filter(x=>new Date(x.created_at).getTime()>seen).length;
     const b=$('notif-badge'); if(b){ if(n>0){ b.textContent=n>9?'9+':n; b.style.display='inline-block'; } else b.style.display='none'; }
   }catch(e){}
 }
 async function openNotif(){
-  const {data}=await sb.from('notifications').select('id,title,body,entity_type,created_at');
+  let q=sb.from('notifications').select('id,title,body,entity_type,created_at'); if(notifIsField()) q=q.eq('user_id',S.session.user.id); const {data}=await q;
   const list=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1)).slice(0,40);
   localStorage.setItem('c373_notif_seen', Date.now()); loadNotifCount();
-  const ic={material_order:'🛒',estimate:'📄',invoice:'🧾',defect:'🔧'};
+  const ic={material_order:'🛒',estimate:'📄',invoice:'🧾',defect:'🔧',crew_plan:'📋',delivery:'🚚',message:'💬'};
   const html=list.length? list.map(n=>'<div class="card" style="margin:0 0 .6rem"><div class="row"><div class="grow"><div class="t">'+(ic[n.entity_type]||'🔔')+' '+esc(n.title)+'</div>'+(n.body?'<div class="s">'+esc(n.body)+'</div>':'')+'</div><div class="s" style="white-space:nowrap;font-size:.7rem">'+esc((n.created_at||'').slice(5,16).replace('T',' '))+'</div></div></div>').join('') : '<div class="empty"><div class="ei">🔔</div>Nicio notificare.</div>';
   openSheet('🔔 Notificări', html);
 }
