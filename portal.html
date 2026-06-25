@@ -78,9 +78,10 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
     const m={invalid:'Link invalid sau revocat.',expired:'Linkul a expirat.',nosite:'Proiectul nu mai este disponibil.'}[data&&data.error]||'Link indisponibil.';
     center('🔒',m); return;
   }
-  const s=data.site, stages=data.stages||[];
   CUR=(data.currency||'MDL').toUpperCase();
   const fmtd=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0].slice(2)):d; };
+  if(data.mode==='offer'){ renderOffer(data); return; }
+  const s=data.site, stages=data.stages||[];
   let stagesHtml='';
   if(stages.length){
     const dated=stages.filter(st=>st.start_date&&st.end_date);
@@ -143,6 +144,35 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
     +stagesHtml+photoHtml+ordersHtml+hoursHtml+costHtml
     +'<div class="card" style="background:var(--blue-soft);border:none"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
 })();
+function renderOffer(data){
+  var o=data.offer||{}, lines=data.lines||[]; var cur=(data.currency||'MDL').toUpperCase();
+  function m(n){ return (Math.round((+n||0)*100)/100).toLocaleString('ro-RO')+' '+cur; }
+  var rows=lines.map(function(l){ return '<tr><td>'+esc(l.name)+'</td><td style="text-align:right;white-space:nowrap">'+esc(l.qty)+' '+esc(l.unit||'')+'</td><td style="text-align:right;white-space:nowrap">'+m(l.unit_price)+'</td><td style="text-align:right;white-space:nowrap"><b>'+m(l.total)+'</b></td></tr>'; }).join('');
+  var html='<div class="hero"><div class="lab">Ofertă'+(o.number?(' nr. '+esc(o.number)):'')+'</div><h1>'+esc(o.title||'Ofertă de preț')+'</h1>'+(o.client?'<div class="addr">👤 '+esc(o.client)+'</div>':'')+'</div>'
+    +'<div class="card"><h3>Detaliile ofertei</h3><table style="width:100%;border-collapse:collapse;font-size:.9rem"><thead><tr><th style="text-align:left;padding:.3rem 0">Denumire</th><th style="text-align:right">Cant.</th><th style="text-align:right">Preț</th><th style="text-align:right">Total</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div style="text-align:right;margin-top:.6rem;font-size:1.15rem"><b>Total: '+m(o.total)+'</b></div>'
+    +(o.notes?'<div style="margin-top:.6rem;color:var(--muted);white-space:pre-wrap;font-size:.86rem">'+esc(o.notes)+'</div>':'')+'</div>';
+  if(data.accepted){
+    html+='<div class="card" style="background:var(--blue-soft);border:none;text-align:center"><b>✅ Ofertă acceptată</b><div style="color:var(--muted);margin-top:.3rem">Lucrarea a pornit. Reîncarcă pagina ca să vezi progresul.</div></div>';
+  } else {
+    html+='<div class="card"><h3>Accept și pornește lucrarea</h3>'
+      +'<div style="color:var(--muted);font-size:.88rem;margin-bottom:.6rem">Dacă ești de acord cu oferta, scrie-ți numele și apasă butonul. Lucrarea va începe, iar aici vei urmări progresul.</div>'
+      +'<input id="acc-name" placeholder="Numele tău" style="width:100%;padding:.7rem;border:1px solid var(--line);border-radius:10px;margin-bottom:.6rem;font-size:1rem">'
+      +'<div id="acc-msg" style="color:#dc2626;font-size:.85rem;min-height:1rem"></div>'
+      +'<button id="acc-btn" onclick="acceptOffer()" style="width:100%;padding:.9rem;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:1rem;font-weight:700;cursor:pointer">✅ Accept și pornește lucrarea</button></div>';
+  }
+  document.getElementById('content').innerHTML=html;
+}
+async function acceptOffer(){
+  var token=new URLSearchParams(location.search).get('token');
+  var name=(document.getElementById('acc-name').value||'').trim();
+  if(!name){ document.getElementById('acc-msg').textContent='Scrie-ți numele ca să confirmi acceptarea.'; return; }
+  var b=document.getElementById('acc-btn'); if(b){ b.disabled=true; b.textContent='Se procesează…'; }
+  try{ var r=await sb.rpc('portal_accept_offer',{p_token:token, p_signer:name});
+    if(r.error || (r.data && r.data.error)) throw new Error('fail');
+    location.reload();
+  }catch(e){ var mEl=document.getElementById('acc-msg'); if(mEl) mEl.textContent='A apărut o eroare. Încearcă din nou.'; if(b){ b.disabled=false; b.textContent='✅ Accept și pornește lucrarea'; } }
+}
 </script>
 <script src="i18n.js"></script>
 </body>

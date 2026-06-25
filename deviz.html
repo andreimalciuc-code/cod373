@@ -62,6 +62,7 @@
   <div class="spacer"></div>
   <button class="btn" onclick="goBack()">↩ Înapoi</button>
   <button class="btn" id="btn-prev" onclick="pdf()">👁 Previzualizare</button>
+  <button class="btn" id="btn-sendcl" onclick="sendOfferPortal()">🤝 Trimite clientului</button>
   <button class="btn primary" id="btn-save" onclick="save()">💾 Salvează</button>
 </header>
 <div id="root"><div class="center">Se încarcă…</div></div>
@@ -595,6 +596,31 @@ function quickAddService(i){
   setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
 }
 function closeM(){ $('modal-mount').innerHTML=''; }
+async function sendOfferPortal(){
+  if(!S.id){ toast('Salvează întâi oferta, apoi trimite-o clientului.'); return; }
+  let cl={}; try{ if(S.est.client_id){ const c=await sb.from('clients').select('name,phone,email').eq('id',S.est.client_id).single(); cl=c.data||{}; } }catch(e){}
+  const ins=await sb.from('client_portal_links').insert({tenant_id:S.tenant, estimate_id:S.id, show_stages:true}).select('token').single();
+  if(ins.error){ toast('Eroare: '+(ins.error.message||ins.error)); return; }
+  const url=base()+'portal.html?token='+ins.data.token;
+  const label=S.est.title||(S.est.number?('Oferta '+S.est.number):'Oferta');
+  const msg='Bună ziua'+(cl.name?(', '+cl.name):'')+'! Vă trimit oferta „'+label+'". O puteți vedea și accepta aici: '+url;
+  const ph=(cl.phone||'').replace(/[^0-9]/g,'');
+  const wa='https://wa.me/'+ph+'?text='+encodeURIComponent(msg);
+  const sms='sms:'+(cl.phone||'')+'?&body='+encodeURIComponent(msg);
+  const mail='mailto:'+(cl.email||'')+'?subject='+encodeURIComponent('Ofertă '+(S.est.number||''))+'&body='+encodeURIComponent(msg);
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>🤝 Trimite oferta clientului</h3>'
+    +'<p style="color:#6b7793;font-size:.86rem;margin:.2rem 0 .6rem">Clientul vede oferta în portal și o poate accepta — atunci se pornește automat șantierul (cu etapele din ofertă) și portalul îi arată progresul.</p>'
+    +'<input readonly value="'+esc(url)+'" style="width:100%;font-size:.82rem" onclick="this.select()"/>'
+    +'<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem">'
+      +'<a class="btn" href="'+esc(wa)+'" target="_blank">🟢 WhatsApp</a>'
+      +(cl.email?'<a class="btn" href="'+esc(mail)+'">✉️ Email</a>':'')
+      +(cl.phone?'<a class="btn" href="'+esc(sms)+'">💬 SMS</a>':'')
+      +'<button class="btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(url)+');toast(\'📋 Link copiat.\')">📋 Copiază</button>'
+      +'<button class="btn" onclick="window.open('+JSON.stringify(url)+',\'_blank\')">👁 Deschide</button>'
+    +'</div>'
+    +'<div style="text-align:right;margin-top:.8rem"><button class="btn" onclick="closeM()">Închide</button></div>'
+    +'</div></div>';
+}
 async function saveQuickService(i){
   const name=($('qa-name').value||'').trim(); if(!name){ $('qa-msg').textContent='Denumirea e obligatorie.'; return; }
   const type=$('qa-type').value, unit=($('qa-unit').value||'buc').trim(), price=+$('qa-price').value||0;

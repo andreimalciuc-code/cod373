@@ -2278,7 +2278,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v241';
+const APP_VERSION='cod373-v245';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -6000,6 +6000,7 @@ function rowActions(key,m,r){
   if(m.teamable) a.push({i:'👥',l:'Acces / echipă',f:"siteTeam('"+id+"')"});
   if(m.portalable) a.push({i:'🔗',l:'Link portal client',f:"genPortal('"+id+"')"});
   if(m.subEquip){ a.push({i:'🦺',l:'Echipamentul angajatului',f:"empEquip('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'⏱️',l:'Pontajul angajatului',f:"empPontaj('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🛡️',l:'SSM / Securitate angajat',f:"empSSM('"+id+"','"+jsArg(r.full_name)+"')"}); a.push({i:'🏖️',l:'Concedii / absențe',f:"empLeave('"+id+"','"+jsArg(r.full_name)+"')"}); }
+  if(m.acceptReject) a.push({i:'🤝',l:'Trimite oferta clientului (acceptare în portal)',f:"genOfferPortal('"+id+"')"});
   if(m.acceptReject&&canDo(key,'u')){ if(r.status!=='accepted') a.push({i:'✅',l:'Marchează oferta acceptată',f:"estimateStatus('"+id+"','accepted')"}); if(r.status!=='rejected') a.push({i:'✖️',l:'Marchează oferta respinsă',f:"estimateStatus('"+id+"','rejected')",d:true}); }
   if(m.toSite) a.push({i:'🏗️',l:'Creează șantier din ofertă',f:"estimateToSite('"+id+"')"});
   if(m.pageEditor) a.push({i:'👁',l:'Previzualizare (PDF)',f:"openEditorPdf('"+m.pageEditor+"','"+id+"')"});
@@ -7122,7 +7123,32 @@ async function genPortal(siteId){
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+esc(tz('Închide'))+'</button>'
     +'<button class="btn-primary" onclick="window.open($(\'portal-url\').value,\'_blank\')">'+esc(tz('Deschide ca clientul'))+'</button></div></div></div>';
 }
-function portalMsg(){ const p=window._portalLink||{}; return (p.client?('Bună ziua, '+p.client+'! '):'Bună ziua! ')+'Urmăriți progresul lucrării'+(p.site?(' „'+p.site+'"'):'')+' aici: '+p.url; }
+function portalMsg(){ const p=window._portalLink||{}; const hi=(p.client?('Bună ziua, '+p.client+'! '):'Bună ziua! ');
+  if(p.kind==='offer') return hi+'Vă trimit oferta'+(p.site?(' „'+p.site+'"'):'')+'. O puteți vedea și accepta aici: '+p.url;
+  return hi+'Urmăriți progresul lucrării'+(p.site?(' „'+p.site+'"'):'')+' aici: '+p.url; }
+async function genOfferPortal(estimateId){
+  let est={},cl={}; try{ const er=await sb.from('estimates').select('number,title,client_id,clients(name,phone,email)').eq('id',estimateId).single(); est=er.data||{}; cl=(est&&est.clients)||{}; }catch(e){}
+  const { data, error }=await sb.from('client_portal_links').insert({ tenant_id:state.tenant, estimate_id:estimateId, show_stages:true }).select('token').single();
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const url=appBase()+'portal.html?token='+data.token;
+  const label=est.title||(est.number?('Oferta '+est.number):'Oferta');
+  window._portalLink={ token:data.token, url:url, kind:'offer', phone:(cl.phone||''), email:(cl.email||''), site:label, client:(cl.name||'') };
+  const sendBtn=(ic,lab,fn,on)=>'<button class="btn-ghost" onclick="'+fn+'"'+(on?'':' disabled title="Clientul nu are acest contact salvat"')+' style="display:flex;align-items:center;gap:.35rem'+(on?'':';opacity:.5')+'">'+ic+' '+esc(lab)+'</button>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'
+    +'<div class="modal-head"><h3>🤝 '+esc(tz('Trimite oferta clientului'))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'
+    +'<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem;margin-bottom:.8rem;font-size:.88rem">'+esc(tz('Clientul deschide linkul, vede oferta (poziții + total) și apasă „Accept și pornește lucrarea". Atunci oferta devine acceptată, se creează automat șantierul (activ, cu etape din ofertă) și portalul îi arată progresul.'))+'</div>'
+    +'<div class="field"><label style="font-size:.8rem;color:var(--muted)">'+esc(tz('Link'))+'</label><input id="portal-url" readonly value="'+esc(url)+'" style="font-size:.82rem"/></div>'
+    +'<div style="font-weight:700;font-size:.84rem;margin:.6rem 0 .4rem">'+esc(tz('Trimite clientului'))+(cl.name?(' — '+esc(cl.name)):'')+'</div>'
+    +'<div style="display:flex;gap:.5rem;flex-wrap:wrap">'
+      +sendBtn('🟢','WhatsApp','portalSend(\'wa\')',true)
+      +sendBtn('✉️','Email','portalSend(\'email\')',!!cl.email)
+      +sendBtn('💬','SMS','portalSend(\'sms\')',!!cl.phone)
+      +'<button class="btn-ghost" onclick="copyPortal()">📋 '+esc(tz('Copiază link'))+'</button>'
+    +'</div></div>'
+    +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+esc(tz('Închide'))+'</button>'
+    +'<button class="btn-primary" onclick="window.open($(\'portal-url\').value,\'_blank\')">'+esc(tz('Deschide ca clientul'))+'</button></div></div></div>';
+}
 function portalSend(how){ const p=window._portalLink||{}; const txt=portalMsg();
   if(how==='wa'){ const ph=(p.phone||'').replace(/[^0-9]/g,''); window.open('https://wa.me/'+ph+'?text='+encodeURIComponent(txt),'_blank'); }
   else if(how==='sms'){ location.href='sms:'+(p.phone||'')+'?&body='+encodeURIComponent(txt); }
