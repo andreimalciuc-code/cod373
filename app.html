@@ -2292,7 +2292,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v251';
+const APP_VERSION='cod373-v252';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -5475,7 +5475,7 @@ async function renderPreviz(){
   if(!rows.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📋</div><div>Nicio fișă de vizită încă.</div><div style="margin-top:1rem"><button class="btn-primary" onclick="openPrevizForm()">📋 Creează prima fișă</button></div></div>'; return; }
   const cm={}; cl.forEach(o=>cm[o.value]=o.label);
   previzList=rows; previzClients=cm; // cache pentru meniul de opțiuni
-  const body=rows.map(r=>'<tr onclick="previzActions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+((r.photo_urls&&r.photo_urls.length)?('🖼️ '):'')+esc(r.name)+(r.area_m2?' <small style="color:var(--muted)">· '+r.area_m2+' m²</small>':'')+'</td>'
+  const body=rows.map((r,idx)=>'<tr onclick="previzActions(\''+r.id+'\')" style="cursor:pointer"><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td><td class="tname">'+((r.photo_urls&&r.photo_urls.length)?('🖼️ '):'')+esc(r.name)+(r.area_m2?' <small style="color:var(--muted)">· '+r.area_m2+' m²</small>':'')+'</td>'
     +'<td>'+esc(cm[r.client_id]||'—')+'</td><td>'+dt(r.visit_date)+'</td><td>'+esc(r.work_type==='reparatie'?'reparație':(r.work_type==='constructie'?'construcție':'—'))+'</td><td>'+pill(r.status)+'</td>'
     +'<td><div class="rowact">'
     +'<button class="iconbtn" title="Previzualizare (vezi fișa)" onclick="event.stopPropagation();previzView(\''+r.id+'\')">👁</button>'
@@ -5486,7 +5486,7 @@ async function renderPreviz(){
     +(canDo('previzualizare','d')?'<button class="iconbtn danger" title="Șterge fișa" onclick="event.stopPropagation();delPreviz(\''+r.id+'\')">🗑</button>':'')
     +'</div></td></tr>').join('');
   $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem .2rem;font-size:.8rem;color:var(--muted)">👉 Apasă pe o fișă pentru opțiuni (previzualizare, PDF, deviz, editare…)</div>'
-    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fișă</th><th>Client</th><th>Data vizitei</th><th>Tip</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:42px;text-align:right;color:var(--muted)">'+esc(tz('Nr.'))+'</th><th>Fișă</th><th>Client</th><th>Data vizitei</th><th>Tip</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 /* meniul de opțiuni pentru o fișă (apare la apăsarea pe rând) */
 function previzActions(id){
