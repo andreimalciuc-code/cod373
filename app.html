@@ -2916,12 +2916,30 @@ async function siteLocation(siteId, siteName){
   slocInfo();
 }
 function slocInfo(){ const el=$('sloc-info'); const g=window._sloc; if(!el||!g) return;
-  if(g.lat!=null&&g.lng!=null) el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b> <a onclick="openNav('+g.lat+','+g.lng+',\''+jsArg(g.name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a></span>';
+  if(g.lat!=null&&g.lng!=null){ const acc=g.acc; const warn=(acc!=null&&acc>100); const accTxt=(acc!=null)?(' <span style="color:'+(warn?'#b45309':'var(--muted)')+';font-weight:600;font-size:.82rem">±'+acc+' m'+(warn?' ⚠️':'')+'</span>'):'';
+    el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b>'+accTxt+' <a onclick="openNav('+g.lat+','+g.lng+',\''+jsArg(g.name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a></span>'
+      +(warn?'<div style="font-size:.76rem;color:#b45309;margin-top:.35rem">'+esc(C373t('Precizie slabă — probabil ești pe calculator (locație din WiFi/internet, nu GPS). Pentru exactitate, capturează pe telefon, afară, la fața locului; sau lipește un link Google Maps cu pinul fix exact.'))+'</div>':''); }
   else el.innerHTML='<span style="color:var(--muted)">'+esc(C373t('Nicio locație salvată. Apasă „Locația mea acum" pe teren, sau lipește un link de hartă.'))+'</span>'; }
-function slocParse(v){ const c=parseLatLng(v); if(c){ window._sloc.lat=c.lat; window._sloc.lng=c.lng; slocInfo(); } }
-function slocGrab(){ if(!navigator.geolocation){ toast(C373t('Dispozitivul nu permite localizarea.')); return; } toast('📍 '+C373t('Se obține locația…'));
-  navigator.geolocation.getCurrentPosition(function(pos){ window._sloc.lat=+pos.coords.latitude.toFixed(6); window._sloc.lng=+pos.coords.longitude.toFixed(6); slocInfo(); toast('✅ '+C373t('Locație salvată.')); },
-    function(err){ toast(C373t('Nu am putut obține locația:')+' '+esc(err.message||'')); }, {enableHighAccuracy:true,timeout:12000,maximumAge:0}); }
+function slocParse(v){ const c=parseLatLng(v); if(c){ window._sloc.lat=c.lat; window._sloc.lng=c.lng; window._sloc.acc=null; slocInfo(); } }
+function slocGrab(){ toast('📍 '+C373t('Se obține locația… ține dispozitivul afară câteva secunde.'));
+  geoBestFix(function(b){ window._sloc.lat=b.lat; window._sloc.lng=b.lng; window._sloc.acc=b.acc; slocInfo(); toast('✅ '+C373t('Locație obținută')+' (±'+b.acc+' m).'); },
+    function(b){ window._sloc.lat=b.lat; window._sloc.lng=b.lng; window._sloc.acc=b.acc; slocInfo(); }); }
+/* Obține cel mai BUN fix GPS pe câteva secunde (lasă GPS-ul să se „încălzească") — nu primul fix grosier de pe WiFi/celulă.
+   onDone(best) la final; onProgress(best) la fiecare îmbunătățire. best={lat,lng,acc(m)}. */
+function geoBestFix(onDone, onProgress){
+  if(!navigator.geolocation){ toast(C373t('Dispozitivul nu permite localizarea.')); return; }
+  let best=null, wid=null, t=null, done=false;
+  function fin(){ if(done) return; done=true; if(wid!=null){ try{navigator.geolocation.clearWatch(wid);}catch(e){} } if(t) clearTimeout(t); if(best&&onDone) onDone(best); }
+  try{
+    wid=navigator.geolocation.watchPosition(function(pos){
+      const a=pos.coords.accuracy||99999;
+      if(!best || a<best.acc){ best={lat:+pos.coords.latitude.toFixed(6), lng:+pos.coords.longitude.toFixed(6), acc:Math.round(a)}; if(onProgress) onProgress(best); }
+      if(a<=15) fin();                       // suficient de precis → ne oprim devreme
+    }, function(err){ if(!best && !done){ done=true; if(wid!=null){ try{navigator.geolocation.clearWatch(wid);}catch(e){} } if(t) clearTimeout(t); toast(C373t('Nu am putut obține locația:')+' '+esc(err.message||'')); } },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+    t=setTimeout(fin, 14000);                // după 14s luăm cel mai bun fix de până acum
+  }catch(e){ toast(C373t('Nu am putut obține locația:')+' '+esc(e.message||String(e))); }
+}
 async function slocSave(){ const g=window._sloc; if(!g) return; const b=$('sloc-save'); if(b){ b.disabled=true; b.textContent='…'; }
   const u=await sb.from('sites').update({lat:g.lat,lng:g.lng}).eq('id',g.id);
   if(u.error){ if(b){ b.disabled=false; b.textContent=TR('salveaza'); } toast('Eroare: '+esc(u.error.message)); return; }
@@ -5756,13 +5774,14 @@ async function openPrevizForm(row, meas){
 }
 /* ── Locație șantier (GPS) + alegerea navigatorului (ca pe WhatsApp) ── */
 function pvGeoInfo(){ const el=$('pv-geo-info'); if(!el) return; const g=previzCtx&&previzCtx._geo;
-  if(g&&g.lat!=null&&g.lng!=null){ el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b> <a onclick="openNav('+g.lat+','+g.lng+',\''+jsArg((previzCtx&&previzCtx._geoLbl)||'Șantier')+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a> <span onclick="pvClearGeo()" style="cursor:pointer;color:var(--red)" title="'+esc(C373t('Șterge locația'))+'">✕</span></span>'; }
+  if(g&&g.lat!=null&&g.lng!=null){ const acc=g.acc; const warn=(acc!=null&&acc>100); const accTxt=(acc!=null)?(' <span style="color:'+(warn?'#b45309':'var(--muted)')+';font-weight:600;font-size:.82rem">±'+acc+' m'+(warn?' ⚠️':'')+'</span>'):'';
+    el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b>'+accTxt+' <a onclick="openNav('+g.lat+','+g.lng+',\''+jsArg((previzCtx&&previzCtx._geoLbl)||'Șantier')+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a> <span onclick="pvClearGeo()" style="cursor:pointer;color:var(--red)" title="'+esc(C373t('Șterge locația'))+'">✕</span></span>'
+      +(warn?'<div style="font-size:.76rem;color:#b45309;margin-top:.35rem">'+esc(C373t('Precizie slabă — probabil ești pe calculator (locație din WiFi/internet, nu GPS). Pentru exactitate, capturează pe telefon, afară, la fața locului; sau lipește un link Google Maps cu pinul fix exact.'))+'</div>':''); }
   else el.innerHTML='<span style="color:var(--muted);font-size:.8rem">'+esc(C373t('Nicio locație salvată. Apasă „Locația mea acum" pe teren, sau lipește un link de hartă.'))+'</span>'; }
 function pvClearGeo(){ if(previzCtx){ previzCtx._geo=null; } const i=$('pv-geo'); if(i) i.value=''; pvGeoInfo(); }
-function pvGrabLoc(){ if(!navigator.geolocation){ toast(C373t('Dispozitivul nu permite localizarea.')); return; }
-  toast('📍 '+C373t('Se obține locația…'));
-  navigator.geolocation.getCurrentPosition(function(pos){ previzCtx._geo={lat:+pos.coords.latitude.toFixed(6),lng:+pos.coords.longitude.toFixed(6)}; pvGeoInfo(); toast('✅ '+C373t('Locație salvată.')); },
-    function(err){ toast(C373t('Nu am putut obține locația:')+' '+esc(err.message||'')); }, {enableHighAccuracy:true,timeout:12000,maximumAge:0}); }
+function pvGrabLoc(){ toast('📍 '+C373t('Se obține locația… ține dispozitivul afară câteva secunde.'));
+  geoBestFix(function(b){ previzCtx._geo={lat:b.lat,lng:b.lng,acc:b.acc}; pvGeoInfo(); toast('✅ '+C373t('Locație obținută')+' (±'+b.acc+' m).'); },
+    function(b){ previzCtx._geo={lat:b.lat,lng:b.lng,acc:b.acc}; pvGeoInfo(); }); }
 /* extrage lat,lng dintr-un link Google Maps / Apple / Waze sau dintr-un text „lat, lng" */
 function pvParseGeo(v){ const c=parseLatLng(v); if(c){ previzCtx._geo=c; pvGeoInfo(); } }
 function parseLatLng(v){ v=(v||'').trim(); if(!v) return null;
