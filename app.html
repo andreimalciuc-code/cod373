@@ -5588,7 +5588,7 @@ async function renderInvites(){
     +'<td><div class="rowact">'+(i.status==='pending'?((i.email?'<button class="iconbtn" title="Trimite linkul din nou pe email" onclick="resendInvite(\''+i.token+'\',\''+jsArg(i.email)+'\')">📧</button>':'')+'<button class="iconbtn" title="Copiază linkul" onclick="copyInvite(\''+i.token+'\')">📋</button><button class="iconbtn danger" title="Anulează" onclick="revokeInvite(\''+i.id+'\')">🚫</button>'):'')+'</div></td></tr>'; }).join('');
   $('inv-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Rol</th><th>Email</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
-function inviteLink(token){ const m=location.href.split('?')[0].replace(/\/[^/]*$/,'/'); return m+'app.html?invite='+token; }
+function inviteLink(token){ const m=location.href.split('?')[0].replace(/\/[^/]*$/,'/'); return m+'acces.html?invite='+token; }
 function copyInvite(token){ const l=inviteLink(token); navigator.clipboard.writeText(l).then(()=>toast('✅ Link copiat: '+l)).catch(()=>prompt('Copiază linkul:',l)); }
 async function revokeInvite(id){ if(!confirm('Anulezi această invitație? Linkul nu va mai funcționa.')) return; const { error }=await sb.rpc('revoke_invite',{p_id:id}); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Invitație anulată.'); renderInvites(); }
 

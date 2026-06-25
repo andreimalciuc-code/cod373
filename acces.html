@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="robots" content="noindex" />
+<title>Acces — Cod373</title>
+<style>
+  :root{--bg:#f4f6fb;--surface:#fff;--line:#e3e8f0;--text:#0f1c33;--muted:#6b7793;--primary:#2f6bff;--red:#dc2626;--green:#16a34a}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.1rem}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;max-width:380px;width:100%;padding:1.4rem 1.3rem 1.5rem;box-shadow:0 10px 40px rgba(15,28,51,.07)}
+  .logo{display:flex;align-items:center;gap:.5rem;justify-content:center;margin-bottom:1rem}
+  .logo .lg{background:var(--primary);color:#fff;font-weight:800;border-radius:9px;padding:.25rem .5rem;font-size:.92rem;letter-spacing:.02em}
+  .logo .nm{font-weight:800;font-size:1.15rem}.logo .nm span{color:var(--primary)}
+  h2{font-size:1.15rem;margin:.2rem 0 .15rem;text-align:center}
+  .sub{color:var(--muted);font-size:.86rem;text-align:center;margin:0 0 1rem}
+  .banner{background:#eef2ff;border:1px solid var(--primary);border-radius:12px;padding:.7rem .85rem;margin-bottom:.9rem}
+  .banner b{display:block;font-size:.98rem}.banner .s{color:#2c4a9c;font-size:.82rem;margin-top:.1rem}
+  label{display:block;font-size:.82rem;font-weight:600;margin:.55rem 0 .25rem}
+  input{width:100%;padding:.7rem .8rem;border:1px solid var(--line);border-radius:11px;font-size:1rem;outline:none;background:#fff}
+  input:focus{border-color:var(--primary)}
+  .pwwrap{position:relative}
+  .pweye{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;font-size:1.1rem;opacity:.55;padding:.2rem}
+  .btn{width:100%;padding:.85rem;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:1rem;font-weight:700;cursor:pointer;margin-top:.9rem}
+  .btn[disabled]{opacity:.6}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--text)}
+  .alt{text-align:center;font-size:.85rem;color:var(--muted);margin:.8rem 0 0}
+  .alt a{color:var(--primary);font-weight:600;cursor:pointer;text-decoration:none}
+  .hint{font-size:.76rem;color:var(--muted);margin-top:.25rem}
+  .msg{border-radius:10px;padding:.55rem .7rem;font-size:.85rem;margin-bottom:.2rem}
+  .msg.err{background:#fdecec;color:var(--red);border:1px solid #f6c9c9}
+  .msg.ok{background:#e9f7ef;color:var(--green);border:1px solid #bfe6cd}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><div class="lg">C373</div><div class="nm">Cod<span>373</span></div></div>
+    <div id="box"><div class="sub">Se încarcă…</div></div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
+const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
+function msg(t,k){ const m=$('acc-msg'); if(m) m.innerHTML=t?'<div class="msg '+(k||'err')+'">'+esc(t)+'</div>':''; }
+const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Lucrător',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
+const FIELD=['worker','driver','client','subcontractor'];
+const token=new URLSearchParams(location.search).get('invite');
+
+function eyeWrap(id){ return '<div class="pwwrap"><input id="'+id+'" type="password" autocomplete="new-password" placeholder="••••••••"/><button type="button" class="pweye" onclick="var i=document.getElementById(\''+id+'\');if(i.type===\'password\'){i.type=\'text\';this.textContent=\'🙈\'}else{i.type=\'password\';this.textContent=\'👁\'}">👁</button></div>'; }
+
+async function init(){
+  try{ const { data:{ session } }=await sb.auth.getSession(); if(session){ return finish(); } }catch(e){}
+  if(token){
+    try{ const { data }=await sb.rpc('invite_info',{p_token:token}); const inf=(data&&data[0])||null;
+      if(inf && inf.status==='pending'){ return renderInvite(inf); }
+    }catch(e){}
+  }
+  renderLogin();
+}
+
+function renderInvite(inf){
+  $('box').innerHTML='<div class="banner"><b>Ai fost invitat la „'+esc(inf.tenant_name||'firmă')+'" 🎉</b><div class="s">Rol: '+esc(ROLE_LABELS[inf.role]||inf.role)+' · creează-ți accesul (20 sec.)</div></div>'
+    +'<div id="acc-msg"></div>'
+    +'<label>Email</label><input id="a-email" type="email" autocomplete="email" placeholder="nume@email.md" value="'+esc(inf.email||'')+'"/>'
+    +'<label>Telefon (opțional)</label><input id="a-phone" type="tel" autocomplete="tel" placeholder="069 123 456"/><div class="hint">Dacă îl pui, te poți loga și cu telefon + parolă.</div>'
+    +'<label>Alege o parolă (min. 6)</label>'+eyeWrap('a-pass')
+    +'<button class="btn" id="a-btn" onclick="doInvite()">Creează acces și intră</button>'
+    +'<p class="alt">Ai deja cont? <a onclick="renderLogin()">Autentifică-te</a></p>';
+}
+
+function renderLogin(){
+  $('box').innerHTML='<h2>Intră în cont</h2><p class="sub">Autentifică-te ca să continui.</p>'
+    +'<div id="acc-msg"></div>'
+    +'<label>Email sau telefon</label><input id="a-id" type="text" autocomplete="username" placeholder="nume@firma.md sau 069..."/>'
+    +'<label>Parolă</label>'+eyeWrap('a-pass')
+    +'<button class="btn" id="a-btn" onclick="doLogin()">Intră</button>'
+    +'<p class="alt"><a onclick="doMagic()">Intră cu link pe email</a> · <a onclick="doForgot()">Am uitat parola</a></p>'
+    +(token?'<p class="alt"><a onclick="reInvite()">‹ Înapoi la invitație</a></p>':'');
+  const p=$('a-pass'); if(p) p.setAttribute('autocomplete','current-password');
+}
+async function reInvite(){ try{ const { data }=await sb.rpc('invite_info',{p_token:token}); const inf=(data&&data[0])||null; if(inf&&inf.status==='pending') return renderInvite(inf); }catch(e){} renderLogin(); }
+
+async function doInvite(){
+  const email=($('a-email').value||'').trim().toLowerCase(), pass=$('a-pass').value||'', phone=($('a-phone').value||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ msg('Scrie un email valid.'); return; }
+  if(pass.length<6){ msg('Parola trebuie să aibă minim 6 caractere.'); return; }
+  $('a-btn').disabled=true; msg('Se creează accesul…','ok');
+  const { data, error }=await sb.auth.signUp({ email, password:pass });
+  if(error){ $('a-btn').disabled=false;
+    if(/registered|already/i.test(error.message||'')){ msg('Există deja un cont cu acest email — autentifică-te cu parola ta.'); setTimeout(()=>{ renderLogin(); const i=$('a-id'); if(i) i.value=email; },1200); }
+    else msg(error.message); return; }
+  let session=data&&data.session;
+  if(!session){ const r=await sb.auth.signInWithPassword({ email, password:pass });
+    if(r.error){ $('a-btn').disabled=false;
+      if(/not confirmed/i.test(r.error.message||'')){ msg('Contul s-a creat, dar firma cere confirmarea pe email. Roagă administratorul să oprească „Confirm email" în Supabase, apoi reîncearcă.'); }
+      else msg(r.error.message); return; }
+    session=r.data&&r.data.session; }
+  if(phone){ try{ const uid=(session&&session.user&&session.user.id)||((await sb.auth.getUser()).data.user||{}).id; if(uid) await sb.from('profiles').update({phone}).eq('id',uid); }catch(e){} }
+  finish();
+}
+
+async function doLogin(){
+  let id=($('a-id').value||'').trim(), pass=$('a-pass').value||'';
+  if(!id||!pass){ msg('Completează emailul/telefonul și parola.'); return; }
+  $('a-btn').disabled=true; msg('Se conectează…','ok');
+  if(!id.includes('@')){ // telefon → rezolvă emailul
+    try{ const r=await sb.rpc('email_for_phone',{p_phone:id}); if(r.data){ id=r.data; } else { $('a-btn').disabled=false; msg('Nu am găsit cont cu acest telefon. Încearcă cu emailul.'); return; } }
+    catch(e){ $('a-btn').disabled=false; msg('Încearcă cu emailul.'); return; }
+  }
+  const { error }=await sb.auth.signInWithPassword({ email:id.toLowerCase(), password:pass });
+  if(error){ $('a-btn').disabled=false; msg(/Invalid login/i.test(error.message||'')?'Email sau parolă greșite. (Dacă ai fost invitat și n-ai pus încă parolă, folosește „Intră cu link pe email".)':error.message); return; }
+  finish();
+}
+async function doMagic(){ const id=($('a-id')&&$('a-id').value||'').trim(); if(!id||!id.includes('@')){ msg('Scrie întâi emailul.'); return; }
+  const { error }=await sb.auth.signInWithOtp({ email:id.toLowerCase(), options:{ emailRedirectTo: base()+'acces.html'+(token?('?invite='+encodeURIComponent(token)):'') , shouldCreateUser:false } });
+  msg(error?error.message:'📧 Ți-am trimis un link de logare pe email. Deschide-l.', error?'err':'ok');
+}
+async function doForgot(){ const id=($('a-id')&&$('a-id').value||'').trim(); if(!id||!id.includes('@')){ msg('Scrie întâi emailul.'); return; }
+  const { error }=await sb.auth.resetPasswordForEmail(id.toLowerCase(), { redirectTo: base()+'app.html' });
+  msg(error?error.message:'📧 Ți-am trimis un link de resetare a parolei pe email.', error?'err':'ok');
+}
+
+async function finish(){
+  if(token){ try{ await sb.rpc('redeem_invite',{p_token:token}); }catch(e){} }
+  let role=null;
+  try{ const { data:mem }=await sb.from('memberships').select('role').eq('active',true).limit(1).maybeSingle(); role=mem&&mem.role; }catch(e){}
+  location.replace(FIELD.includes(role)?'mobil.html':'app.html');
+}
+
+sb.auth.onAuthStateChange((evt)=>{ if(evt==='SIGNED_IN'){ /* la revenirea din magic link */ } });
+init();
+</script>
+</body>
+</html>
