@@ -148,7 +148,7 @@
       <button class="out" onclick="doLogout()">Ieși</button>
     </div>
     <div class="roles" id="roles">
-      <button data-role="worker" class="on" onclick="setRole('worker')">👷 Muncitor</button>
+      <button data-role="worker" class="on" onclick="setRole('worker')">👷 Lucrător</button>
       <button data-role="driver" onclick="setRole('driver')">🚚 Șofer</button>
       <button data-role="manager" onclick="setRole('manager')">📋 Responsabil</button>
     </div>
@@ -443,7 +443,7 @@ async function scrAcasa(){
     ? '<button class="mini-btn pr" onclick="goV(\'livrari\')">🚚 Livrări</button> <button class="mini-btn go" onclick="sendLocation()">📍 Trimite locația</button>'
     : '<button class="mini-btn pr" onclick="goV(\'comanda\')">🛒 Comandă</button> <button class="mini-btn go" onclick="goV(\'poze\')">📷 Poză</button> <button class="mini-btn gh" onclick="goV(\'pontaj\')">⏱️ Pontaj</button> <button class="mini-btn gh" onclick="sheetDailyLog()">📓 Raport zilnic</button>';
   $('screen').innerHTML='<div class="scr-title">Salut! 👋</div>'
-    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">Rol: '+({worker:'Muncitor',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator')+(S.role==='worker'||S.role==='driver'?' · fără prețuri':'')+'</div></div>'
+    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">Rol: '+({worker:'Lucrător',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator')+(S.role==='worker'||S.role==='driver'?' · fără prețuri':'')+'</div></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
     +'<div class="scr-title" style="font-size:.95rem">Șantierele tale</div>'
     +(list||'<div class="empty"><div class="ei">🏗️</div>Niciun șantier activ.</div>');
@@ -496,7 +496,7 @@ async function sheetDailyLog(){
     +'<div class="fld"><label>Șantier</label><select id="dl-site"><option value="">— alege —</option>'+so+'</select></div>'
     +'<div class="fld"><label>Data</label><input id="dl-date" type="date" value="'+today()+'"/></div>'
     +'<div class="fld"><label>Vreme</label><input id="dl-weather" placeholder="însorit, ploaie, -2°C..."/></div>'
-    +'<div class="fld"><label>Muncitori prezenți</label><input id="dl-crew" type="number" inputmode="numeric" placeholder="8"/></div>'
+    +'<div class="fld"><label>Lucrători prezenți</label><input id="dl-crew" type="number" inputmode="numeric" placeholder="8"/></div>'
     +'<div class="fld"><label style="display:flex;align-items:center;gap:.4rem">Lucrări efectuate <button type="button" id="dl-ai" onclick="mobAiPolish(\'dl-work\',\'Rescrie clar și profesional acest raport zilnic de lucrări dintr-un șantier de construcții, păstrând toate faptele.\',this)" style="padding:.1rem .5rem;font-size:.74rem;border:1px solid var(--line);border-radius:8px;background:var(--bg)">✨ AI</button></label><textarea id="dl-work" style="width:100%;min-height:70px;padding:.7rem;border:1px solid var(--line);border-radius:12px"></textarea></div>'
     +'<button class="btn" id="dl-save" onclick="saveDailyLog()">Salvează raportul</button>');
 }
