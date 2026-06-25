@@ -857,7 +857,9 @@ const MODULES = {
 
   devize:{ title:'Devize', sub:'Estimări și oferte de preț.', icon:'📋', group:'Finanțe', table:'estimates',
     newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', acceptReject:true, orderBy:{col:'created_at',asc:false},
-    select:'id,number,title,status,subtotal,vat_total,total,valid_until,clients!client_id(name),sites!site_id(name)',
+    dateFilter:{field:'created_at'}, chipsReplaceStatus:true,
+    quickChips:[ {key:'',label:'Toate'}, {key:'draft',label:'Ciornă',test:r=>r.status==='draft'}, {key:'sent',label:'Trimise',test:r=>r.status==='sent'}, {key:'accepted',label:'Acceptate',test:r=>r.status==='accepted'}, {key:'rejected',label:'Respinse',test:r=>r.status==='rejected'} ],
+    select:'id,number,title,status,subtotal,vat_total,total,valid_until,clients!client_id(name,idno),sites!site_id(name)',
     columns:[
       {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
       {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
@@ -878,7 +880,9 @@ const MODULES = {
   facturi:{ title:'Facturi', sub:'Facturi emise + e-Factura.', icon:'🧾', group:'Finanțe', table:'invoices',
     newLabel:'Factură nouă', printable:'FACTURĂ FISCALĂ', efactura:true, pageEditor:'factura.html', orderBy:{col:'created_at',asc:false},
     enumFilter:{key:'inv_type', all:'Toate tipurile', map:{normal:'Normală',abschlag:'Abschlag',schluss:'Schluss'}},
-    select:'id,number,title,status,total,issue_date,due_date,efactura_status,inv_type,clients(name)',
+    dateFilter:{field:'issue_date'},
+    quickChips:[ {key:'',label:'Toate'}, {key:'unpaid',label:'Neplătite',test:r=>r.status!=='paid'&&r.status!=='cancelled'}, {key:'overdue',label:'Restante',test:r=>r.status==='overdue'||(r.due_date&&r.status!=='paid'&&r.status!=='cancelled'&&String(r.due_date).slice(0,10)<coToday())}, {key:'paid',label:'Plătite',test:r=>r.status==='paid'} ],
+    select:'id,number,title,status,total,issue_date,due_date,efactura_status,inv_type,clients(name,idno)',
     columns:[
       {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
       {label:'Tip',get:r=>{ const m={abschlag:['Abschlag','#7a5af8'],schluss:['Schluss','#16b364']}[r.inv_type]; return m?'<span style="background:'+m[1]+';color:#fff;border-radius:6px;padding:.1rem .4rem;font-size:.72rem;font-weight:600">'+m[0]+'</span>':'<span style="color:var(--muted);font-size:.78rem">—</span>'; }},
@@ -6108,7 +6112,9 @@ async function renderModule(key){
     +'<input id="list-search" placeholder="'+TR('cauta')+'" oninput="onListSearch(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;outline:none;min-width:200px"/>'
     +'<button class="btn-ghost" title="Ghid pentru acest modul" onclick="openModuleGuide(\''+key+'\')">❓ Ghid</button>'
     +(m.topAction?'<button class="btn-ghost" onclick="'+m.topAction.fn+'">'+m.topAction.label+'</button>':'');
-  if(statusField){ bar+='<select id="list-status" onchange="onListStatus(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">'+TR('toate')+'</option>'+statusField.options.map(o=>'<option value="'+o.value+'">'+esc(LANG==='ru'&&STATUS_RU[o.value]?STATUS_RU[o.value]:o.label)+'</option>').join('')+'</select>'; }
+  if(statusField && !(m.quickChips&&m.chipsReplaceStatus)){ bar+='<select id="list-status" onchange="onListStatus(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">'+TR('toate')+'</option>'+statusField.options.map(o=>'<option value="'+o.value+'">'+esc(LANG==='ru'&&STATUS_RU[o.value]?STATUS_RU[o.value]:o.label)+'</option>').join('')+'</select>'; }
+  if(m.dateFilter){ bar+=periodSelectHtml(); }
+  if(m.quickChips){ bar+='<span id="list-chips" style="display:inline-flex;gap:.35rem;flex-wrap:wrap">'+chipsHtml(m)+'</span>'; }
   if(m.catFilter){ bar+='<select id="list-cat" onchange="onListCat(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">Toate categoriile</option></select>'; }
   if(m.supplierFilter){ bar+='<select id="list-supplier" onchange="onListSupplier(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">Toți furnizorii</option></select>'; }
   if(m.storeFilter){ bar+='<select id="list-store" onchange="onListStore(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)"><option value="">Toate magazinele</option></select>'; }
@@ -6128,7 +6134,7 @@ async function renderModule(key){
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   let rows=data||[];
   if(m.orderBy) rows=sortRows(rows,m.orderBy.col,m.orderBy.asc);
-  listState={ key, m, rows, q:'', status:'', statusField, allSuppliers:null, allStores:null };
+  listState={ key, m, rows, q:'', status:'', chip:'', period:'', statusField, allSuppliers:null, allStores:null };
   renderList();
   // populează filtrele cu TOȚI furnizorii / TOATE magazinele din bază (nu doar cei legați de materiale)
   if(m.supplierFilter){ sb.from('suppliers').select('name').then(r=>{ if(listState.m===m){ listState.allSuppliers=(r.data||[]).map(x=>x.name).filter(Boolean); renderList(); } }).catch(()=>{}); }
@@ -6136,6 +6142,19 @@ async function renderModule(key){
 }
 function onListSearch(v){ listState.q=(v||'').toLowerCase(); renderList(); }
 function onListStatus(v){ listState.status=v||''; renderList(); }
+/* ── Chips de filtrare rapidă + filtru pe perioadă (inspirate din sirius.expert) ── */
+const PERIOD_PRESETS=[['','📅 Orice perioadă'],['tm','Luna asta'],['lm','Luna trecută'],['ty','Anul curent'],['l30','Ultimele 30 zile']];
+function periodSelectHtml(){ return '<select id="list-period" onchange="onListPeriod(this.value)" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;background:var(--surface)">'+PERIOD_PRESETS.map(o=>'<option value="'+o[0]+'"'+((listState.period||'')===o[0]?' selected':'')+'>'+esc(C373t(o[1]))+'</option>').join('')+'</select>'; }
+function onListPeriod(v){ listState.period=v||''; renderList(); }
+function chipsHtml(m){ return (m.quickChips||[]).map(c=>{ const on=((listState.chip||'')===c.key); return '<button type="button" onclick="onListChip(\''+c.key+'\')" style="padding:.35rem .75rem;border:1px solid '+(on?'var(--primary)':'var(--line)')+';background:'+(on?'var(--primary)':'transparent')+';color:'+(on?'#fff':'var(--text,inherit)')+';border-radius:999px;font-size:.8rem;cursor:pointer;white-space:nowrap">'+esc(C373t(c.label))+'</button>'; }).join(''); }
+function onListChip(k){ listState.chip=((listState.chip===k)&&k)?'':k; const el=$('list-chips'); if(el&&listState.m) el.innerHTML=chipsHtml(listState.m); renderList(); }
+function periodRange(p){ if(!p) return null; const d=new Date(coToday()+'T12:00:00'); const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); let from,to;
+  if(p==='tm'){ from=iso(new Date(d.getFullYear(),d.getMonth(),1)); to=iso(new Date(d.getFullYear(),d.getMonth()+1,0)); }
+  else if(p==='lm'){ from=iso(new Date(d.getFullYear(),d.getMonth()-1,1)); to=iso(new Date(d.getFullYear(),d.getMonth(),0)); }
+  else if(p==='ty'){ from=iso(new Date(d.getFullYear(),0,1)); to=iso(new Date(d.getFullYear(),11,31)); }
+  else if(p==='l30'){ const f=new Date(d); f.setDate(d.getDate()-30); from=iso(f); to=iso(d); }
+  else return null;
+  return {from,to}; }
 let _bulkSel={};
 function bulkToggle(id,ck){ if(ck) _bulkSel[id]=1; else delete _bulkSel[id]; updateBulkBtn(); }
 function bulkToggleAll(ck){ const data=bulkVisibleRows(); data.forEach(r=>{ if(ck) _bulkSel[r.id]=1; else delete _bulkSel[r.id]; }); renderList(); }
@@ -6162,6 +6181,8 @@ function renderList(){
   if(m.storeFilter){ const sel=$('list-store'); if(sel){ const sts=Array.from(new Set([].concat.apply([],rows.map(rowStoreNames)).concat(listState.allStores||[]))).sort((a,b)=>a.localeCompare(b)); sel.innerHTML='<option value="">'+(sts.length?'Toate magazinele':'Niciun magazin — adaugă în Catalog → Magazine')+'</option>'+sts.map(c=>'<option value="'+esc(c)+'"'+(listState.store===c?' selected':'')+'>'+esc(c)+'</option>').join(''); } if(listState.store) data=data.filter(r=>rowStoreNames(r).indexOf(listState.store)>-1); }
   if(m.locFilter && listState.loc) data=data.filter(r=>locMatch(r,listState.loc));
   if(status&&statusField) data=data.filter(r=>String(r[statusField.key])===status);
+  if(m.quickChips && listState.chip){ const c=m.quickChips.find(x=>x.key===listState.chip); if(c&&c.test){ try{ data=data.filter(c.test); }catch(e){} } }
+  if(m.dateFilter && listState.period){ const rg=periodRange(listState.period); if(rg){ const fld=m.dateFilter.field; data=data.filter(r=>{ const v=(r[fld]||'').slice(0,10); return v && v>=rg.from && v<=rg.to; }); } }
   if(m.enumFilter && listState.enumv){ data=data.filter(r=>String(r[m.enumFilter.key]||'normal')===listState.enumv); }
   if(q) data=data.filter(r=>JSON.stringify(r).toLowerCase().includes(q));
   if($('list-count')) $('list-count').textContent=data.length+' '+(data.length===1?TR('rez1'):TR('rezN'));
