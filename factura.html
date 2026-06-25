@@ -15,7 +15,8 @@
   .pill.draft{ background:#eef2ff; color:#3730a3; } .pill.sent{ background:#fef9c3; color:#854d0e; } .pill.paid{ background:#dcfce7; color:#15803d; } .pill.overdue{ background:#fee2e2; color:#b91c1c; } .pill.cancelled{ background:#f1f5f9; color:#64748b; }
   .btn{ border:1px solid var(--line); background:#fff; border-radius:9px; padding:.5rem .8rem; font-size:.85rem; cursor:pointer; color:var(--ink); white-space:nowrap; }
   .btn:hover{ background:#f1f5f9; } .btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); } .btn.green{ background:var(--green); color:#fff; border-color:var(--green); }
-  .wrap{ max-width:1240px; margin:0 auto; padding:1.1rem; display:grid; grid-template-columns:1fr 320px; gap:1.1rem; align-items:start; }
+  .wrap{ max-width:1440px; margin:0 auto; padding:1.1rem; display:grid; grid-template-columns:1fr 320px; gap:1.1rem; align-items:start; }
+  .lines{ table-layout:fixed; }
   @media(max-width:880px){ .wrap{ grid-template-columns:1fr; } }
   .panel{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:1.1rem; margin-bottom:1.1rem; }
   .panel h3{ margin:0 0 .8rem; font-size:.95rem; }
@@ -51,7 +52,7 @@
   <span id="hd-status"></span>
   <div class="spacer"></div>
   <button class="btn" onclick="goBack()">↩ Înapoi</button>
-  <button class="btn" id="btn-pdf" onclick="pdf()">🖨 PDF</button>
+  <button class="btn" id="btn-prev" onclick="pdf()">👁 Previzualizare</button>
   <button class="btn primary" id="btn-save" onclick="save()">💾 Salvează</button>
 </header>
 <div id="root"><div class="center">Se încarcă…</div></div>
@@ -321,9 +322,9 @@ function lineRowHtml(i,inGroup){
 }
 function sectionTableHtml(idxs,inGroup,gidv){
   const showDisc=!inGroup&&S.inv.disc_mode==='line', showVat=inGroup?true:(S.inv.vat_mode!=='none');
-  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:92px">Cant.</th><th style="width:96px">UM</th><th style="width:104px">Preț</th>'
+  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:100px">Cant.</th><th style="width:104px">UM</th><th style="width:122px">Preț</th>'
     +(showDisc?'<th style="width:68px">Red.%</th>':'')+(showVat?'<th style="width:86px">TVA</th>':'')
-    +'<th style="width:116px;text-align:right">'+((inGroup||S.inv.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:24px"></th></tr>';
+    +'<th style="width:136px;text-align:right">'+((inGroup||S.inv.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:24px"></th></tr>';
   const rows=idxs.map(i=>lineRowHtml(i,inGroup)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
 }

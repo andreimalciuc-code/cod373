@@ -2278,7 +2278,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v240';
+const APP_VERSION='cod373-v241';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -7095,7 +7095,7 @@ async function genPortal(siteId){
   let site={},cl={}; try{ const sr=await sb.from('sites').select('name,clients(name,phone,email)').eq('id',siteId).single(); site=sr.data||{}; cl=(site&&site.clients)||{}; }catch(e){}
   const { data, error }=await sb.from('client_portal_links').insert({ tenant_id:state.tenant, site_id:siteId, show_costs:false }).select('token').single();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const url=location.origin+'/portal.html?token='+data.token;
+  const url=appBase()+'portal.html?token='+data.token;
   window._portalLink={ token:data.token, url:url, siteId:siteId, phone:(cl.phone||''), email:(cl.email||''), site:(site.name||''), client:(cl.name||'') };
   const sendBtn=(ic,lab,fn,on)=>'<button class="btn-ghost" onclick="'+fn+'"'+(on?'':' disabled title="Clientul nu are acest contact salvat"')+' style="display:flex;align-items:center;gap:.35rem'+(on?'':';opacity:.5')+'">'+ic+' '+esc(lab)+'</button>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'
