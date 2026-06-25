@@ -1286,6 +1286,9 @@ async function boot(){
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('login'); maybeShowInvite(); hideSplash(); return; }
   state.session = session;
+  // getSession() dă JWT-ul LOCAL (cache) — nu reflectă o schimbare de email confirmată recent pe server.
+  // Cerem userul autoritativ de pe server ca emailul afișat să fie mereu cel real.
+  try{ const { data:{ user:_srvUser } }=await sb.auth.getUser(); if(_srvUser && _srvUser.email){ state.session.user=_srvUser; } }catch(e){}
   const tok=getInviteToken();
   let _justJoined=false;
   if(tok){ try{ const { data:res }=await sb.rpc('redeem_invite',{p_token:tok}); if(res==='OK'){ toast('✅ Acces activat la firmă.'); _justJoined=true; } if(res==='OK'||res==='USED'||res==='NOTFOUND') clearInviteToken(); }catch(e){} }
@@ -7387,7 +7390,17 @@ async function printDoc(key,id){
   }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   // daca sesiunea soseste dupa load (ex. magic link din email), pornim boot-ul
-  sb.auth.onAuthStateChange((evt)=>{ if(evt==='PASSWORD_RECOVERY'){ showResetPasswordForm(); return; } if(evt==='SIGNED_IN' && !state.tenant) boot(); });
+  sb.auth.onAuthStateChange((evt, sess)=>{
+    if(evt==='PASSWORD_RECOVERY'){ showResetPasswordForm(); return; }
+    if(evt==='SIGNED_IN' && !state.tenant){ boot(); return; }
+    // schimbare de email confirmată (sau token reîmprospătat) cât timp ești deja în aplicație → actualizăm sesiunea + emailul afișat
+    if(sess && state.tenant && (evt==='USER_UPDATED'||evt==='TOKEN_REFRESHED'||evt==='SIGNED_IN')){
+      const _old=(state.session&&state.session.user&&state.session.user.email)||'';
+      state.session=sess;
+      const _new=(sess.user&&sess.user.email)||'';
+      if(evt==='USER_UPDATED' && _new && _old && _new.toLowerCase()!==_old.toLowerCase()){ toast('✅ '+(window.tz?tz('Adresa de email a fost schimbată.'):'Adresa de email a fost schimbată.')); }
+    }
+  });
   // plasă de siguranță: dacă boot-ul se blochează, arătăm pagina de start după 9s ca să nu rămână splash-ul
   setTimeout(function(){ if(document.getElementById('splash')){ var a=$('app'); if(a&&a.classList.contains('hidden')) $('gate').classList.remove('hidden'); hideSplash(); } }, 9000);
   try{ await boot(); }catch(e){ $('gate').classList.remove('hidden'); showScreen('login'); hideSplash(); }

@@ -778,6 +778,7 @@
     'Acesta e deja emailul tău.':{ru:'Это уже ваш email.',de:'Das ist bereits deine E-Mail.',en:'That is already your email.'},
     'Se trimite…':{ru:'Отправляется…',de:'Wird gesendet…',en:'Sending…'},
     'Ți-am trimis un link de confirmare pe noul email. Deschide-l ca să se aplice schimbarea.':{ru:'Мы отправили ссылку подтверждения на новый email. Откройте её, чтобы применить изменение.',de:'Wir haben einen Bestätigungslink an die neue E-Mail gesendet. Öffne ihn, damit die Änderung wirksam wird.',en:'We sent a confirmation link to the new email. Open it to apply the change.'},
+    'Adresa de email a fost schimbată.':{ru:'Адрес email изменён.',de:'Die E-Mail-Adresse wurde geändert.',en:'The email address has been changed.'},
     'Persoană fizică':{ru:'Физическое лицо',de:'Privatperson',en:'Individual'},
     'Persoană juridică':{ru:'Юридическое лицо',de:'Juristische Person',en:'Company'},
     'Articol nou':{ru:'Новая статья',de:'Neuer Artikel',en:'New article'},
