@@ -61,6 +61,7 @@
   <span id="hd-status"></span>
   <div class="spacer"></div>
   <button class="btn" onclick="goBack()">↩ Înapoi</button>
+  <button class="btn" id="btn-plan" onclick="togglePlan()">📐 Plan</button>
   <button class="btn" id="btn-prev" onclick="pdf()">👁 Previzualizare</button>
   <button class="btn" id="btn-sendcl" onclick="sendOfferPortal()">🤝 Trimite clientului</button>
   <button class="btn primary" id="btn-save" onclick="save()">💾 Salvează</button>
@@ -151,7 +152,7 @@ async function loadEstimate(id){
   S.id=id; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'',
     disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null),
-    signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null };
+    signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null, plan_url:e.data.plan_url||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
   const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null }; });
@@ -596,6 +597,47 @@ function quickAddService(i){
   setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
 }
 function closeM(){ $('modal-mount').innerHTML=''; }
+/* ── Planul casei: panou flotant (mutabil/redimensionabil) în editor ── */
+function togglePlan(){ if(!S.est.plan_url){ planPick(); return; } const p=$('plan-panel'); if(p){ p.remove(); return; } showPlanPanel(); }
+function planPick(){ const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.png,.jpg,.jpeg,.svg,.plan,image/*,application/pdf,image/svg+xml'; inp.onchange=function(){ if(inp.files&&inp.files[0]) attachPlan(inp.files[0]); }; inp.click(); }
+async function attachPlan(file){
+  toast('⏳ Se încarcă planul…');
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=S.tenant+'/plans/'+Date.now()+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'}); if(up.error){ toast('Eroare: '+(up.error.message||up.error)); return; }
+  S.est.plan_url=path;
+  if(S.id){ try{ await sb.from('estimates').update({plan_url:path}).eq('id',S.id); }catch(e){} }
+  toast('✅ Plan atașat.'); showPlanPanel();
+}
+async function showPlanPanel(){
+  const path=S.est.plan_url; if(!path) return;
+  let url=''; try{ const {data}=await sb.storage.from('docs').createSignedUrl(path,3600); url=(data&&data.signedUrl)||''; }catch(e){}
+  const ext=(path.split('.').pop()||'').toLowerCase(); const isImg=['png','jpg','jpeg','gif','webp','svg'].indexOf(ext)>=0;
+  let body;
+  if(ext==='pdf') body='<iframe src="'+esc(url)+'" style="width:100%;height:100%;border:0;background:#fff"></iframe>';
+  else if(isImg) body='<div style="width:100%;height:100%;overflow:auto;background:#1b1b1b;display:flex;align-items:flex-start;justify-content:center"><img id="plan-img" src="'+esc(url)+'" style="max-width:100%;transform-origin:top center"></div>';
+  else body='<div style="padding:1rem;color:#bbb;font-size:.85rem">Fișier atașat (.'+esc(ext)+') — nu poate fi previzualizat aici. <a href="'+esc(url)+'" target="_blank" style="color:#7fb0ff">Deschide</a></div>';
+  let p=$('plan-panel'); if(p) p.remove();
+  const bt='style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:14px"';
+  p=document.createElement('div'); p.id='plan-panel';
+  p.style.cssText='position:fixed;right:16px;bottom:16px;width:min(460px,88vw);height:min(540px,72vh);min-width:240px;min-height:200px;background:#fff;border:1px solid #c8cfdb;border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.35);z-index:9000;display:flex;flex-direction:column;overflow:hidden;resize:both';
+  p.innerHTML='<div id="plan-hd" style="display:flex;align-items:center;gap:.35rem;padding:.4rem .55rem;background:#0f1c33;color:#fff;cursor:move;font-size:.84rem;font-weight:600;flex-shrink:0">📐 Planul casei'
+    +'<span style="margin-left:auto;display:flex;gap:.3rem">'
+    +(isImg?('<button '+bt+' title="Mărește" onclick="planZoom(0.25)">＋</button><button '+bt+' title="Micșorează" onclick="planZoom(-0.25)">−</button>'):'')
+    +'<button '+bt+' title="Schimbă planul" onclick="planPick()">🔄</button>'
+    +'<button '+bt+' title="Închide" onclick="var e=document.getElementById(\'plan-panel\');if(e)e.remove()">×</button></span></div>'
+    +'<div style="flex:1;overflow:hidden">'+body+'</div>';
+  document.body.appendChild(p); window._planZoom=1; planDrag(p, $('plan-hd'));
+}
+function planZoom(d){ window._planZoom=Math.min(6,Math.max(0.25,(window._planZoom||1)+d)); const im=$('plan-img'); if(im){ im.style.maxWidth='none'; im.style.transform='scale('+window._planZoom+')'; } }
+function planDrag(panel, handle){ let sx=0,sy=0,sl=0,st=0,drag=false;
+  const start=(x,y)=>{ drag=true; sx=x; sy=y; const r=panel.getBoundingClientRect(); sl=r.left; st=r.top; panel.style.right='auto'; panel.style.bottom='auto'; panel.style.left=sl+'px'; panel.style.top=st+'px'; };
+  const move=(x,y)=>{ if(!drag)return; panel.style.left=(sl+x-sx)+'px'; panel.style.top=Math.max(0,st+y-sy)+'px'; };
+  handle.addEventListener('mousedown',e=>{ if(e.target.tagName==='BUTTON')return; start(e.clientX,e.clientY); e.preventDefault(); });
+  window.addEventListener('mousemove',e=>move(e.clientX,e.clientY)); window.addEventListener('mouseup',()=>{drag=false;});
+  handle.addEventListener('touchstart',e=>{ if(e.target.tagName==='BUTTON')return; const t=e.touches[0]; start(t.clientX,t.clientY); },{passive:true});
+  handle.addEventListener('touchmove',e=>{ const t=e.touches[0]; move(t.clientX,t.clientY); },{passive:true});
+  handle.addEventListener('touchend',()=>{drag=false;},{passive:true});
+}
 async function sendOfferPortal(){
   if(!S.id){ toast('Salvează întâi oferta, apoi trimite-o clientului.'); return; }
   let cl={}; try{ if(S.est.client_id){ const c=await sb.from('clients').select('name,phone,email').eq('id',S.est.client_id).single(); cl=c.data||{}; } }catch(e){}
@@ -692,7 +734,7 @@ async function save(thenPdf){
     issue_date:S.est.issue_date||null, valid_until:S.est.valid_until||null, notes:S.est.notes||null,
     groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
     disc_mode:S.est.disc_mode||'none', disc_value:+S.est.disc_value||0, vat_mode:S.est.vat_mode||'none', vat_value:+S.est.vat_value||0, materials_mode:S.est.materials_mode||'detailed', skonto_off:!!S.est.skonto_off, skonto_pct:(S.est.skonto_pct!=null&&S.est.skonto_pct!==''?+S.est.skonto_pct:null),
-    subtotal:t.sub, vat_total:t.vat, total:t.total };
+    subtotal:t.sub, vat_total:t.vat, total:t.total, plan_url:S.est.plan_url||null };
   try{
     if(S.id){ const u=await sb.from('estimates').update(rec).eq('id',S.id); if(u.error) throw u.error; }
     else { const ins=await sb.from('estimates').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'deviz.html?id='+S.id); }
