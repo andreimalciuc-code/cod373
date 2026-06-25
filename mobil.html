@@ -438,13 +438,15 @@ async function scrAcasa(){
   $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
   const {data:all}=await sb.from('sites').select('id,name,address,status,progress,deadline');
   S.sites=all||[];
+  let mySpec=''; if(S.role!=='manager'){ try{ const _e=await sb.from('employees').select('specialty,position').eq('user_id',S.session.user.id).maybeSingle(); if(_e.data) mySpec=String(_e.data.specialty||_e.data.position||'').trim(); }catch(e){} }
+  const roleSub=mySpec||({worker:'Lucrător',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator');
   const sites=(all||[]).filter(s=>['planned','active','paused'].includes(s.status));
   const list=sites.map(s=>'<div class="card" onclick="openSite(\''+s.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+' ›</div><div class="s">'+esc(s.address||'fără adresă')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div></div>').join('');
   const acts=S.role==='driver'
-    ? '<button class="mini-btn pr" onclick="goV(\'livrari\')">🚚 Livrări</button> <button class="mini-btn go" onclick="sendLocation()">📍 Trimite locația</button>'
-    : '<button class="mini-btn pr" onclick="goV(\'comanda\')">🛒 Comandă</button> <button class="mini-btn go" onclick="goV(\'poze\')">📷 Poză</button> <button class="mini-btn gh" onclick="goV(\'pontaj\')">⏱️ Pontaj</button> <button class="mini-btn gh" onclick="sheetDailyLog()">📓 Raport zilnic</button>';
+    ? '<button class="mini-btn pr" onclick="goV(\'livrari\')">🚚 Livrări</button> <button class="mini-btn go" onclick="sendLocation()">📍 Trimite locația</button> <button class="mini-btn gh" onclick="openChat()">💬 Chat</button>'
+    : '<button class="mini-btn pr" onclick="goV(\'comanda\')">🛒 Comandă</button> <button class="mini-btn go" onclick="goV(\'poze\')">📷 Poză</button> <button class="mini-btn gh" onclick="goV(\'pontaj\')">⏱️ Pontaj</button> <button class="mini-btn gh" onclick="openChat()">💬 Chat</button> <button class="mini-btn gh" onclick="sheetDailyLog()">📓 Raport zilnic</button>';
   $('screen').innerHTML='<div class="scr-title">Salut! 👋</div>'
-    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">Rol: '+({worker:'Lucrător',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator')+(S.role==='worker'||S.role==='driver'?' · fără prețuri':'')+'</div></div>'
+    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">'+esc(roleSub)+'</div></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
     +(S.role==='worker'?'<div id="azi-block"></div>':'')
     +'<div class="scr-title" style="font-size:.95rem">Șantierele tale</div>'
