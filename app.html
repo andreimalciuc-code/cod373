@@ -1942,6 +1942,9 @@ function openPersonalize(){
     +'<div style="font-weight:700;margin:.9rem 0 .2rem">🔑 '+esc(tz('Parola contului'))+'</div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Setează o parolă ca să te poți loga cu email + parolă pe orice dispozitiv (recomandat dacă ai intrat prin link).'))+'</div>'
     +'<button class="btn-ghost" onclick="pzPasswordForm()">🔑 '+esc(tz('Schimbă / setează parola'))+'</button>'
+    +'<div style="font-weight:700;margin:.9rem 0 .2rem">🔒 '+esc(tz('Securitate sesiuni'))+'</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Te deconectează de pe toate celelalte dispozitive unde ești logat (ex. calculatorul de birou) — sesiunea curentă rămâne activă. Recomandat după ce ai schimbat emailul sau parola.'))+'</div>'
+    +'<button class="btn-ghost" onclick="pzSignOutOthers()">🔒 '+esc(tz('Deconectează celelalte dispozitive'))+'</button>'
     +'<div style="font-weight:700;margin:.9rem 0 .2rem">🔔 '+esc(tz('Notificări push'))+'</div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Primește alerte pentru follow-up clienți chiar și când aplicația e închisă.'))+'</div>'
     +'<button id="pz-push" class="btn-ghost" onclick="pushSubscribe()">🔔 '+esc(tz('Activează notificările push'))+'</button>'
@@ -1995,7 +1998,14 @@ async function pzSavePassword(){
   const { error }=await sb.auth.updateUser({ password:p, data:{ pw_set:true } });
   $('pz-pw-btn').disabled=false;
   if(error){ msg.style.color='var(--red)'; msg.textContent=error.message; return; }
-  closeModal(); toast('✅ '+tz('Parolă setată. De acum te poți loga cu email + parolă.'));
+  // securitate: după schimbarea parolei, închidem automat sesiunile de pe celelalte dispozitive (sesiunea curentă rămâne)
+  try{ await sb.auth.signOut({ scope:'others' }); }catch(e){}
+  closeModal(); toast('✅ '+tz('Parolă setată. De acum te poți loga cu email + parolă.')+' '+tz('Celelalte dispozitive au fost deconectate.'));
+}
+async function pzSignOutOthers(){
+  if(!confirm(C373t('Deconectezi toate celelalte dispozitive? Sesiunea de aici rămâne activă.'))) return;
+  try{ const { error }=await sb.auth.signOut({ scope:'others' }); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🔒 '+tz('Celelalte dispozitive au fost deconectate.')); }
+  catch(e){ toast(isNetErr(e)?netMsg():('Eroare: '+esc(e.message||String(e)))); }
 }
 function pzEmailForm(){
   const email=(state.session&&state.session.user&&state.session.user.email)||'';
