@@ -2417,7 +2417,7 @@ async function renderEmailuri(){
   emailThreads=sortRows(data||[],'last_message_at',false);
   if(!emailThreads.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📨</div><div>Nicio conversație încă.</div><div style="margin-top:1rem"><button class="btn-primary" onclick="emailCompose()">✉️ Scrie primul mesaj</button></div></div>'; return; }
   const body=emailThreads.map(t=>'<tr onclick="openEmailThread(\''+t.id+'\')" style="cursor:pointer"><td class="tname">'+esc(t.subject||'(fără subiect)')+'</td><td>'+esc(t.to_name||t.to_email||'—')+'</td><td>'+(t.status==='closed'?'<span class="pill cancelled">Închisă</span>':'<span class="pill active">Deschisă</span>')+'</td><td>'+esc((t.last_message_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join('');
-  $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem;font-size:.8rem;color:var(--muted)">👉 Apasă pe o conversație ca s-o deschizi.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Subiect</th><th>Client</th><th>Stare</th><th>Ultima activitate</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută subiect sau client…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.8rem;color:var(--muted)">👉 Apasă pe o conversație ca s-o deschizi.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Subiect</th><th>Client</th><th>Stare</th><th>Ultima activitate</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 async function emailCompose(prefill){
   const { data:cl }=await sb.from('clients').select('id,name,email');
@@ -3085,9 +3085,9 @@ async function renderPostcalc(){
   const mcol=v=>'<b style="color:'+(v<0?'#dc2626':'#16a34a')+'">'+money(v)+'</b>';
   const rows=list.map(x=>'<tr onclick="postcalcDetail(\''+x.s.id+'\',\''+esc(x.s.name).replace(/\x27/g,"")+'\')" style="cursor:pointer"><td class="tname">'+esc(x.s.name)+'</td>'
     +'<td>'+money(x.s.budget||0)+'</td><td>'+money(x.a.est)+'</td><td>'+money(x.a.fact)+'</td><td>'+money(x.a.mat)+'</td><td>'+money(x.a.lab)+'</td><td>'+mcol(x.marja)+'</td><td><b>'+x.mp+'%</b></td></tr>').join('');
-  $('mod-body').innerHTML='<div style="padding:.4rem 1.2rem;font-size:.78rem;color:var(--muted)">Marjă = (Facturat sau Ofertat) − Costuri (materiale + manoperă). Manopera = ore pontate × tarif orar al angajatului.</div>'
+  $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută șantier…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.78rem;color:var(--muted)">Marjă = (Facturat sau Ofertat) − Costuri (materiale + manoperă). Manopera = ore pontate × tarif orar al angajatului.</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Șantier</th><th>Buget</th><th>Ofertat</th><th>Facturat</th><th>Cost mat.</th><th>Manoperă</th><th>Marjă</th><th>%</th></tr></thead><tbody>'+rows
-    +'<tr style="border-top:2px solid var(--line);font-weight:700"><td>TOTAL</td><td></td><td></td><td>'+money(tF)+'</td><td colspan="2">'+money(tC)+' costuri</td><td>'+mcol(tM)+'</td><td></td></tr></tbody></table></div>';
+    +'<tr data-nofilter style="border-top:2px solid var(--line);font-weight:700"><td>TOTAL</td><td></td><td></td><td>'+money(tF)+'</td><td colspan="2">'+money(tC)+' costuri</td><td>'+mcol(tM)+'</td><td></td></tr></tbody></table></div>';
 }
 async function postcalcDetail(siteId, siteName){
   const [invR,moR,tsR,empR,estR]=await Promise.all([
@@ -3124,7 +3124,7 @@ async function renderRestante(){
   const rows=overdue.map(i=>{ const d=days(i.due_date); const sev=d>30?'#dc2626':(d>7?'#d97706':'#6b7280');
     return '<tr><td class="tname">'+esc(i.number||'—')+'</td><td>'+esc(i.clients?i.clients.name:'—')+'</td><td>'+money(i.total)+'</td><td>'+dt(i.due_date)+'</td><td style="color:'+sev+';font-weight:700">'+d+' zile</td>'
       +'<td><div class="rowact"><button class="iconbtn" title="Marchează plătită" onclick="invoicePaid(\''+i.id+'\')" style="color:#16a34a">✅</button><button class="iconbtn" title="Trimite reminder pe email" onclick="invoiceReminder(\''+i.id+'\')">📧</button></div></td></tr>'; }).join('');
-  $('mod-body').innerHTML='<div style="padding:.5rem 1.2rem;font-size:.9rem">Total restant: <b style="color:#dc2626">'+money(tot)+'</b> · '+overdue.length+' facturi</div>'
+  $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută factură sau client…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.9rem">Total restant: <b style="color:#dc2626">'+money(tot)+'</b> · '+overdue.length+' facturi</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Factură</th><th>Client</th><th>Sumă</th><th>Scadență</th><th>Întârziere</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 async function invoicePaid(id){ if(!confirm('Marchezi factura ca încasată?')) return; const r=await sbRetry(()=>sb.from('invoices').update({status:'paid'}).eq('id',id)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } toast('✅ Factură încasată.'); renderRestante(); }
@@ -3436,7 +3436,7 @@ async function renderPlatibil(){
     else { const d=days(i.due_date); if(d<0){ const dd=-d; st='<span style="color:'+(dd>30?'#dc2626':(dd>7?'#d97706':'#dc2626'))+';font-weight:700">restant '+dd+' zile</span>'; } else if(d===0){ st='<span style="color:#d97706;font-weight:700">scadent azi</span>'; } else { st='<span style="color:'+(d<=7?'#d97706':'#16a34a')+'">în '+d+' zile</span>'; } }
     return '<tr><td class="tname">'+esc(i.suppliers?i.suppliers.name:'—')+'</td><td>'+esc(i.number||'—')+'</td><td>'+money(i.total)+'</td><td>'+dt(i.due_date)+'</td><td>'+st+'</td>'
       +'<td><div class="rowact"><button class="iconbtn" title="Marchează plătită" onclick="supInvoicePaid(\''+i.id+'\')" style="color:#16a34a">✅</button></div></td></tr>'; }).join('');
-  $('mod-body').innerHTML='<div style="padding:.5rem 1.2rem;font-size:.9rem;display:flex;gap:1.4rem;flex-wrap:wrap">'
+  $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută furnizor sau factură…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.9rem;display:flex;gap:1.4rem;flex-wrap:wrap">'
       +'<span>Total de plătit: <b>'+money(tot)+'</b></span>'
       +'<span>din care restant: <b style="color:#dc2626">'+money(overdueTot)+'</b></span>'
       +'<span>scadent ≤7 zile: <b style="color:#d97706">'+money(soon)+'</b></span>'
@@ -5895,7 +5895,7 @@ async function renderDocumente(){
     +'<button class="iconbtn" title="Descarcă" onclick="event.stopPropagation();downloadDoc(\''+encodeURIComponent(r.file_url)+'\',\''+encodeURIComponent(r.name||'')+'\')">⬇</button>'
     +'<button class="iconbtn" title="Versiune nouă" onclick="event.stopPropagation();newDocVersion(\''+r.id+'\','+ver+')">🔄</button>'
     +'<button class="iconbtn danger" title="Șterge" onclick="event.stopPropagation();delDoc(\''+r.id+'\',\''+encodeURIComponent(r.file_url)+'\')">🗑</button></div></td></tr>'; }).join('');
-  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un fișier pentru opțiuni. 📅 = termen de valabilitate.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:42px;text-align:right;color:var(--muted)">'+esc(tz('Nr.'))+'</th><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th>'+esc(tz('Valabil până'))+'</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută după nume sau tip…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .35rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un fișier pentru opțiuni. 📅 = termen de valabilitate.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:42px;text-align:right;color:var(--muted)">'+esc(tz('Nr.'))+'</th><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th>'+esc(tz('Valabil până'))+'</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 function docValidCell(r){ if(!r.valid_until) return '<span style="color:var(--muted)">—</span>'; const today=new Date(); today.setHours(0,0,0,0); const exp=new Date(r.valid_until+'T12:00:00'); const days=Math.floor((exp-today)/86400000); const col=days<0?'#dc2626':(days<=30?'#d97706':'#16a34a'); const note=days<0?(' · '+tz('expirat')):(days<=30?(' · '+(days===0?tz('azi'):(days+'z'))):''); return '<span style="color:'+col+';font-weight:600;white-space:nowrap">'+esc(fmtDate(r.valid_until))+esc(note)+'</span>'; }
 async function docValidity(id){
@@ -6097,6 +6097,10 @@ function onListEnum(v){ listState.enumv=v||''; renderList(); }
 function rowStoreNames(r){ return (r.material_stores||[]).map(x=>x.stores&&x.stores.name).filter(Boolean); }
 function rowSupplierNames(r){ return (r.material_suppliers||[]).map(x=>x.suppliers&&x.suppliers.name).filter(Boolean); }
 
+/* Căutare generică pentru listele custom (cele care nu trec prin renderModule):
+   filtrează rândurile <tbody tr> dintr-un container după text, fără reîncărcare. */
+function uiSearchBox(scopeId, ph){ return '<input type="search" oninput="uiFilter(\''+scopeId+'\',this.value)" placeholder="'+esc(ph||(window.C373t?C373t('Caută…'):'Caută…'))+'" aria-label="'+esc(C373t('Caută…'))+'" style="padding:.5rem .8rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem;min-width:min(260px,70vw);outline:none;background:var(--surface)">'; }
+function uiFilter(scopeId,q){ const s=document.getElementById(scopeId); if(!s) return; q=(q||'').trim().toLowerCase(); let n=0; s.querySelectorAll('tbody tr').forEach(tr=>{ if(tr.hasAttribute('data-nofilter')) return; const hit=!q||(tr.textContent||'').toLowerCase().indexOf(q)>=0; tr.style.display=hit?'':'none'; if(hit)n++; }); const c=document.getElementById(scopeId+'-cnt'); if(c) c.textContent=q?(n+' '+(n===1?C373t('rezultat'):C373t('rezultate'))):''; }
 async function renderModule(key){
   const m=MODULES[key]; _bulkSel={};
   const statusField=m.fields.find(f=>['status','stage'].includes(f.key)&&f.type==='select')||null;
