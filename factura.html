@@ -32,6 +32,7 @@
   .lines td{ padding:.25rem .25rem; vertical-align:top; border-bottom:1px solid #f1f4fa; }
   .lines td input{ padding:.45rem .5rem; } .grip{ cursor:grab; color:#c2cbdb; padding:.4rem .1rem; }
   .ta-wrap{ position:relative; }
+  .lines td textarea.lname{ width:100%; padding:.45rem .5rem; resize:none; overflow:hidden; line-height:1.3; min-height:2.2em; white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:.88rem; }
   .dd{ position:absolute; z-index:40; left:0; right:0; top:100%; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 30px rgba(15,28,51,.14); max-height:280px; overflow:auto; margin-top:2px; }
   .dd .it{ padding:.5rem .7rem; cursor:pointer; display:flex; gap:.5rem; align-items:center; font-size:.85rem; border-bottom:1px solid #f4f6fb; }
   .dd .it:hover{ background:#eff4ff; } .dd .it .nm{ flex:1; } .dd .it .pr{ color:var(--muted); font-size:.78rem; white-space:nowrap; } .dd .add{ color:var(--primary); font-weight:700; }
@@ -307,7 +308,7 @@ function lineRowHtml(i,inGroup){
     +'<td style="text-align:center"><input type="checkbox" '+(l._sel?'checked':'')+' onchange="toggleSel('+i+',this.checked)" title="bifează pentru grupare"></td>'
     +'<td class="grip">≡</td>'
     +'<td style="text-align:center;vertical-align:middle">'+thumb+'</td>'
-    +'<td><div class="ta-wrap"><input value="'+esc(l.name)+'" placeholder="Caută sau scrie…" oninput="lineSearch('+i+',this.value)" onfocus="lineSearch('+i+',this.value)" onblur="hideDD('+i+')" autocomplete="off"/><div class="dd" id="dd-'+i+'" style="display:none"></div></div>'
+    +'<td><div class="ta-wrap"><textarea class="lname" rows="1" placeholder="Caută sau scrie…" oninput="lineSearch('+i+',this.value);taGrow(this)" onfocus="lineSearch('+i+',this.value)" onblur="hideDD('+i+')" onkeydown="if(event.key===\'Enter\'){event.preventDefault();}" autocomplete="off">'+esc(l.name)+'</textarea><div class="dd" id="dd-'+i+'" style="display:none"></div></div>'
     +(l.description?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita" style="cursor:pointer;margin-top:5px;font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
     +'</td>'
     +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
@@ -357,8 +358,10 @@ function renderLines(){
   });
   html+='</div>';
   $('lines-wrap').innerHTML=html;
-  initLineSort();
+  initLineSort(); lnameSize();
 }
+function taGrow(el){ if(!el) return; el.style.height='auto'; el.style.height=(el.scrollHeight)+'px'; }
+function lnameSize(){ try{ document.querySelectorAll('.lines textarea.lname').forEach(taGrow); }catch(e){} }
 function initLineSort(){
   document.querySelectorAll('#lines-wrap .lbody').forEach(tb=>{ Sortable.create(tb,{ group:'fclines', handle:'.grip', animation:150, onEnd:rebuildLinesFromDOM }); });
   const gw=$('groups-wrap'); if(gw) Sortable.create(gw,{ handle:'.ggrip', animation:150, onEnd:rebuildGroupsFromDOM });
