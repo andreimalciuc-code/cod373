@@ -1095,7 +1095,7 @@ async function openProfile(){
     +'<button class="btn btn-line" style="margin-top:.6rem" onclick="doLogout()">Ieși din cont</button>');
   setTimeout(mPushRefresh,0);
 }
-const M_VAPID='BP-pbvgwlGRCq-MHlsDb3lXLC97nLOw9DmrePoNVB80QeyW9eZ5zpWPPpVMTs1Hrjlq5mL4Dv73lYnT3zBBfq-k';
+const M_VAPID='BIBlTc5mZv7oUB8mz_T-byVuJ7ydxhJjaju5eQuY1jUTPQpHTEkDg72k5ve_xjOZAGwYtzSIhAYdBPnHNqejC9c';
 function _b64u8(s){ const pad='='.repeat((4-s.length%4)%4); const b=(s+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(b); const a=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i); return a; }
 async function mPushRefresh(){ const b=$('pf-push'); if(!b) return; if(!('serviceWorker' in navigator)||!('PushManager' in window)){ b.style.display='none'; return; } try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); b.textContent=sub?'🔕 Dezactivează notificările push':'🔔 Activează notificările push'; }catch(e){} }
 async function mPushToggle(){

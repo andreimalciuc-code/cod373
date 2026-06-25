@@ -1470,7 +1470,7 @@ function pzInitMedia(){
   pzSigInit();
 }
 /* ════ NOTIFICĂRI PUSH (Web Push) ════ */
-const VAPID_PUBLIC='BP-pbvgwlGRCq-MHlsDb3lXLC97nLOw9DmrePoNVB80QeyW9eZ5zpWPPpVMTs1Hrjlq5mL4Dv73lYnT3zBBfq-k';
+const VAPID_PUBLIC='BIBlTc5mZv7oUB8mz_T-byVuJ7ydxhJjaju5eQuY1jUTPQpHTEkDg72k5ve_xjOZAGwYtzSIhAYdBPnHNqejC9c';
 function _b64ToU8(b){ const pad='='.repeat((4-b.length%4)%4); const s=(b+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(s); const u=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++) u[i]=raw.charCodeAt(i); return u; }
 function pushSupported(){ return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window); }
 async function pushRefreshBtn(){ const b=$('pz-push'); if(!b) return; if(!pushSupported()){ b.textContent='🔕 '+tz('Indisponibil pe acest dispozitiv'); b.disabled=true; return; }
