@@ -2292,7 +2292,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v250';
+const APP_VERSION='cod373-v251';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3492,15 +3492,15 @@ function crmRenderList(pipe, data){
   pipe.stages.forEach(st=>{ const items=data.filter(c=>(c.stage||pipe.stages[0].k)===st.k); if(!items.length) return;
     const tot=items.reduce((s,c)=>s+(+c.value||0),0);
     html+='<div style="display:flex;align-items:center;gap:.5rem;margin:.9rem 0 .35rem"><span style="width:10px;height:10px;border-radius:3px;background:'+(st.color||'#64748b')+'"></span><b style="font-size:.9rem">'+esc(st.label)+'</b><span style="color:var(--muted);font-size:.8rem">('+items.length+')</span>'+(tot?'<span style="margin-left:auto;color:var(--muted);font-size:.8rem;font-weight:600">'+money(tot)+'</span>':'')+'</div>';
-    html+=items.map(c=>crmListRow(c,pipe)).join('');
+    html+=items.map((c,i)=>crmListRow(c,pipe,i+1)).join('');
   });
   if(!html) html='<div class="empty" style="padding:1.5rem"><div class="ei">🤝</div>'+C373t('Niciun client în această pâlnie.')+'</div>';
   $('crm-mount').innerHTML=html;
 }
-function crmListRow(c,pipe){ const fu=c._fu; const overdue=fu&&fu.due&&fu.due<coToday(); const open=(c.stage!=='won'&&c.stage!=='lost'); const ds=crmDays(c);
+function crmListRow(c,pipe,nr){ const fu=c._fu; const overdue=fu&&fu.due&&fu.due<coToday(); const open=(c.stage!=='won'&&c.stage!=='lost'); const ds=crmDays(c);
   return '<div class="card" style="padding:.6rem .75rem;margin-bottom:.45rem">'
     +'<div onclick="clientHub(\''+c.id+'\')" style="cursor:pointer">'
-      +'<div style="font-weight:600">'+crmScoreBadge(c)+(c.temperature&&CRM_TEMP[c.temperature]?CRM_TEMP[c.temperature]+' ':'')+esc(c.name)+(c.value!=null?' <span style="color:var(--green);font-weight:600;font-size:.85rem">· '+money(c.value)+'</span>':'')+'</div>'
+      +'<div style="font-weight:600">'+(nr?'<span style="color:var(--muted);font-weight:400;margin-right:.3rem">#'+nr+'</span>':'')+crmScoreBadge(c)+(c.temperature&&CRM_TEMP[c.temperature]?CRM_TEMP[c.temperature]+' ':'')+esc(c.name)+(c.value!=null?' <span style="color:var(--green);font-weight:600;font-size:.85rem">· '+money(c.value)+'</span>':'')+'</div>'
       +(c.tags?'<div style="font-size:.72rem;color:var(--muted)">🏷 '+esc(c.tags)+'</div>':'')
       +(fu?'<div style="font-size:.74rem;margin-top:.15rem;color:'+(overdue?'var(--red)':'var(--primary)')+'">⏰ '+esc(fmtDate(fu.due))+(fu.body?(' · '+esc(String(fu.body).slice(0,30))):'')+'</div>':(open?'<div style="font-size:.72rem;margin-top:.15rem;color:var(--red)">⚠️ '+C373t('fără sarcină')+'</div>':''))
     +'</div>'
@@ -5737,13 +5737,13 @@ async function renderDocumente(){
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   const docs=sortRows(data||[],'created_at',false); docsList=docs;
   if(!docs.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📄</div><div>Niciun fișier încă.</div><div style="margin-top:1rem"><label class="btn-primary" style="cursor:pointer">＋ Încarcă primul fișier<input type="file" style="display:none" onchange="uploadDoc(this)"/></label></div></div>'; return; }
-  const body=docs.map(r=>{ const isImg=(r.mime||'').startsWith('image/'); const ver=r.version||1;
-    return '<tr onclick="docOptions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td><td>'+docValidCell(r)+'</td>'
+  const body=docs.map((r,idx)=>{ const isImg=(r.mime||'').startsWith('image/'); const ver=r.version||1;
+    return '<tr onclick="docOptions(\''+r.id+'\')" style="cursor:pointer"><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td><td>'+docValidCell(r)+'</td>'
     +'<td><div class="rowact"><button class="iconbtn" title="Termen de valabilitate" onclick="event.stopPropagation();docValidity(\''+r.id+'\')">📅</button><button class="iconbtn" title="Deschide" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(r.file_url)+'\')">👁</button>'
     +'<button class="iconbtn" title="Descarcă" onclick="event.stopPropagation();downloadDoc(\''+encodeURIComponent(r.file_url)+'\',\''+encodeURIComponent(r.name||'')+'\')">⬇</button>'
     +'<button class="iconbtn" title="Versiune nouă" onclick="event.stopPropagation();newDocVersion(\''+r.id+'\','+ver+')">🔄</button>'
     +'<button class="iconbtn danger" title="Șterge" onclick="event.stopPropagation();delDoc(\''+r.id+'\',\''+encodeURIComponent(r.file_url)+'\')">🗑</button></div></td></tr>'; }).join('');
-  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un fișier pentru opțiuni. 📅 = termen de valabilitate.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th>'+esc(tz('Valabil până'))+'</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un fișier pentru opțiuni. 📅 = termen de valabilitate.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:42px;text-align:right;color:var(--muted)">'+esc(tz('Nr.'))+'</th><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th>'+esc(tz('Valabil până'))+'</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 function docValidCell(r){ if(!r.valid_until) return '<span style="color:var(--muted)">—</span>'; const today=new Date(); today.setHours(0,0,0,0); const exp=new Date(r.valid_until+'T12:00:00'); const days=Math.floor((exp-today)/86400000); const col=days<0?'#dc2626':(days<=30?'#d97706':'#16a34a'); const note=days<0?(' · '+tz('expirat')):(days<=30?(' · '+(days===0?tz('azi'):(days+'z'))):''); return '<span style="color:'+col+';font-weight:600;white-space:nowrap">'+esc(fmtDate(r.valid_until))+esc(note)+'</span>'; }
 async function docValidity(id){
