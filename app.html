@@ -327,6 +327,16 @@
       <p class="sub" style="text-align:center;margin:.6rem 0 0;font-size:.78rem">Poți completa restul detaliilor oricând în <b>Setări</b>.</p>
       <p class="alt"><a onclick="doLogout()">Ieși din cont</a></p>
     </div>
+
+    <div id="screen-invite" class="hidden">
+      <div style="background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:12px;padding:.7rem .9rem;margin-bottom:.9rem"><div style="font-weight:700" id="inv-h">Ai fost invitat 🎉</div><div class="sub" id="inv-sub" style="margin:.15rem 0 0">Creează-ți accesul — durează 20 de secunde.</div></div>
+      <div id="inv2-msg"></div>
+      <div class="field"><label>Email</label><input id="inv2-email" type="email" autocomplete="email" placeholder="nume@email.md" /></div>
+      <div class="field"><label>Telefon (opțional)</label><input id="inv2-phone" type="tel" autocomplete="tel" placeholder="069 123 456" /><div class="sub" style="font-size:.76rem;margin-top:.25rem">Dacă îl pui, te poți loga și cu telefonul + parola.</div></div>
+      <div class="field"><label>Alege o parolă (min. 6 caractere)</label><input id="inv2-pass" type="password" autocomplete="new-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doInviteSignup()" /></div>
+      <button class="btn-primary btn-block" id="btn-invite" onclick="doInviteSignup()">Creează acces și intră</button>
+      <p class="alt" style="margin-top:.7rem">Ai deja cont? <a onclick="showScreen('login')">Autentifică-te</a> — îți păstrăm invitația.</p>
+    </div>
   </div>
  </div>
 </div>
@@ -420,7 +430,7 @@ let CUR='MDL'; function curUnit(){ return CURSYM[CUR]||CUR; }
 function money(n){ return n==null||n===''?'—':Number(n).toLocaleString('ro-RO',{minimumFractionDigits:0,maximumFractionDigits:2})+' '+curUnit(); }
 function dt(d){ if(!d) return '—'; const s=String(d); return /^\d{4}-\d{2}-\d{2}/.test(s)? esc(fmtDate(s)) : esc(s); }
 function sortRows(rows,col,asc){ return rows.slice().sort((a,b)=>{ let x=a[col],y=b[col]; if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1; if(x<y)return asc?-1:1; if(x>y)return asc?1:-1; return 0; }); }
-function showScreen(n){ ['login','signup','onboard'].forEach(s=>$('screen-'+s).classList.toggle('hidden',s!==n)); }
+function showScreen(n){ ['login','signup','onboard','invite'].forEach(s=>{ const el=$('screen-'+s); if(el) el.classList.toggle('hidden',s!==n); }); }
 function hideSplash(){ var s=document.getElementById('splash'); if(!s) return; s.style.opacity='0'; setTimeout(function(){ if(s&&s.parentNode) s.parentNode.removeChild(s); },280); }
 function openNav(){ $('sidebar').classList.add('open'); $('overlay-nav').classList.add('show'); }
 function closeNav(){ $('sidebar').classList.remove('open'); $('overlay-nav').classList.remove('show'); }
@@ -1279,11 +1289,34 @@ function clearInviteToken(){ try{ localStorage.removeItem('c373_invite'); }catch
 async function maybeShowInvite(){
   const tok=getInviteToken(); if(!tok) return;
   try{ const { data }=await sb.rpc('invite_info',{p_token:tok}); const inf=(data&&data[0])||null;
-    if(inf && inf.status==='pending'){ showScreen('signup');
-      const em=$('su-email'); if(em && inf.email){ em.value=inf.email; }
-      showMsg('signup-msg','Ai fost invitat la „'+esc(inf.tenant_name)+'" ca '+(ROLE_LABELS[inf.role]||inf.role)+'. Creează-ți contul ca să primești acces.','ok');
+    if(inf && inf.status==='pending'){
+      showScreen('invite');
+      const h=$('inv-h'), sub=$('inv-sub'), em=$('inv2-email');
+      if(h) h.textContent='Ai fost invitat la „'+(inf.tenant_name||'firmă')+'" 🎉';
+      if(sub) sub.textContent='Rol: '+(ROLE_LABELS[inf.role]||inf.role)+'. Creează-ți accesul — durează 20 de secunde.';
+      if(em && inf.email){ em.value=inf.email; }
     } else if(inf && inf.status!=='pending'){ clearInviteToken(); }
   }catch(e){}
+}
+async function doInviteSignup(){
+  const email=($('inv2-email').value||'').trim().toLowerCase();
+  const pass=$('inv2-pass').value||'', phone=($('inv2-phone').value||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showMsg('inv2-msg','Scrie un email valid.'); return; }
+  if(pass.length<6){ showMsg('inv2-msg','Parola trebuie să aibă minim 6 caractere.'); return; }
+  $('btn-invite').disabled=true; showMsg('inv2-msg','Se creează accesul…','ok'); try{ rememberFlag(); }catch(e){}
+  const { data, error }=await sb.auth.signUp({ email, password:pass });
+  if(error){ $('btn-invite').disabled=false;
+    if(/already registered|already exists|registered/i.test(error.message||'')){ showMsg('inv2-msg','Există deja un cont cu acest email. Apasă „Autentifică-te" mai jos — îți păstrăm invitația.'); }
+    else showMsg('inv2-msg', error.message);
+    return; }
+  let session=data&&data.session;
+  if(!session){ const r=await sb.auth.signInWithPassword({ email, password:pass });
+    if(r.error){ $('btn-invite').disabled=false;
+      if(/not confirmed/i.test(r.error.message||'')){ showMsg('inv2-msg','Contul s-a creat, dar firma cere încă confirmarea pe email. Roagă administratorul să oprească „Confirm email" în Supabase, apoi reîncearcă.'); }
+      else showMsg('inv2-msg', r.error.message); return; }
+    session=r.data&&r.data.session; }
+  if(phone){ try{ const uid=(session&&session.user&&session.user.id)||((await sb.auth.getUser()).data.user||{}).id; if(uid) await sb.from('profiles').update({phone}).eq('id',uid); }catch(e){} }
+  boot(); // consumă tokenul de invitație din localStorage și face redeem_invite
 }
 async function boot(){
   applyPrefs();
