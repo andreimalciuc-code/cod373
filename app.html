@@ -1026,6 +1026,8 @@ const MODULES = {
       {key:'hours',label:'Ore lucrate',type:'number',default:8},
       {key:'approved',label:'Aprobat',type:'checkbox',default:false} ] },
 
+  pontajsim:{ title:'Pontaj — simulator cost', sub:'Maculator privat: orele reale × tarife brut/net (doar simulare).', icon:'🧮', group:'Echipă', custom:true },
+
   ssm:{ title:'SSM / Securitate', sub:'Instructaje și echipament de protecție.', icon:'🦺', group:'Echipă', table:'ssm_records', hidden:true,
     newLabel:'Înregistrare SSM', orderBy:{col:'created_at',asc:false},
     select:'id,kind,title,valid_until,status,employees(full_name)',
@@ -1226,7 +1228,7 @@ const ADMIN_KEYS=['utilizatori','setari'];
 const ADMIN_ROLES=['owner','admin'];
 /* Module „rezervate proprietarului": implicit invizibile pentru oricine NU e proprietar;
    devin vizibile DOAR dacă proprietarul le bifează explicit în permisiuni. */
-const OWNER_GATED_KEYS=['setari','seif'];
+const OWNER_GATED_KEYS=['setari','seif','pontajsim'];
 const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Muncitor',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
 /* Permisiuni granulare. Codificare in state.perms (text[]):
    - null / gol            -> fara restrictie suplimentara (decide rolul)
@@ -2127,7 +2129,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
 }
@@ -3274,6 +3276,101 @@ async function ptReportRun(){
     +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div>'
     +'</body></html>';
   if(w&&!w.closed){ try{ w.document.open(); w.document.write(doc); w.document.close(); }catch(e){} } else { const w2=window.open('','_blank'); if(!w2){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } w2.document.write(doc); w2.document.close(); }
+}
+/* ════ PONTAJ — SIMULATOR DE COST (maculator privat, owner-gated) ════
+   Orele se preiau din pontajul REAL (read-only). Tarifele brut/net sunt doar
+   pentru simulare (tabel pontaj_sim) și NU afectează salariile reale. */
+let _psDate=null, _psRates={};
+function psDay(delta){ if(!_psDate) _psDate=new Date(coToday()+'T12:00:00'); if(delta===0) _psDate=new Date(coToday()+'T12:00:00'); else { _psDate=new Date(_psDate); _psDate.setDate(_psDate.getDate()+delta); } renderPontajSim(); }
+function psGoDate(iso){ if(!iso) return; _psDate=new Date(iso+'T12:00:00'); renderPontajSim(); }
+function psOpenPicker(){ const i=$('ps-datepick'); if(!i) return; try{ if(i.showPicker){ i.showPicker(); } else { i.style.position='static'; i.style.width='auto'; i.style.height='auto'; i.style.opacity='1'; i.style.pointerEvents='auto'; i.focus(); i.click(); } }catch(e){ try{ i.focus(); i.click(); }catch(_){ } } }
+function psNum(v){ v=parseFloat(String(v==null?'':v).replace(',','.')); return isFinite(v)?v:0; }
+function psRecalc(){ let th=0,tg=0,tn=0; document.querySelectorAll('tr[data-ps-emp]').forEach(tr=>{ const id=tr.getAttribute('data-ps-emp'); const h=+(tr.getAttribute('data-ps-h'))||0; const ge=$('ps-g-'+id), ne=$('ps-n-'+id); const g=psNum(ge&&ge.value), n=psNum(ne&&ne.value); const cg=Math.round(h*g*100)/100, cn=Math.round(h*n*100)/100; const cgEl=$('ps-cg-'+id), cnEl=$('ps-cn-'+id); if(cgEl) cgEl.textContent=h?money(cg):'—'; if(cnEl) cnEl.textContent=h?money(cn):'—'; th+=h; tg+=cg; tn+=cn; }); const a=$('ps-th'),b=$('ps-tcg'),c=$('ps-tcn'); if(a)a.textContent=Math.round(th*100)/100; if(b)b.textContent=money(Math.round(tg*100)/100); if(c)c.textContent=money(Math.round(tn*100)/100); }
+async function psRateSave(empId){ const ge=$('ps-g-'+empId), ne=$('ps-n-'+empId); const g=psNum(ge&&ge.value), n=psNum(ne&&ne.value); _psRates[empId]={g:g,n:n}; psRecalc(); const r=await sbRetry(()=>sb.from('pontaj_sim').upsert({tenant_id:state.tenant,employee_id:empId,rate_gross:g,rate_net:n,updated_at:new Date().toISOString()},{onConflict:'tenant_id,employee_id'})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); } else { toast('✅ '+C373t('Tarif salvat (simulare).')); } }
+async function renderPontajSim(){
+  if(state.role!=='owner' && !canSee('pontajsim')){ $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem">🔒 '+tz('Acces restricționat pentru rolul tău.')+'</div>'; return; }
+  if(!_psDate) _psDate=new Date(coToday()+'T12:00:00'); const iso=isoLocal(_psDate);
+  const dn=['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'][new Date(iso+'T12:00:00').getDay()];
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="psDay(-1)">←</button><b style="margin:0 .5rem;cursor:pointer;border-bottom:1px dashed var(--muted)" onclick="psOpenPicker()" title="Apasă ca să alegi data">'+dn+' '+fmtDate(iso)+' 📅</b><input type="date" id="ps-datepick" value="'+esc(iso)+'" onchange="psGoDate(this.value)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0"><button class="btn-ghost" onclick="psDay(1)">→</button><button class="btn-ghost" onclick="psDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="psReport()" title="Raport de cost pe perioadă (orele reale × tarifele simulate)">📄 '+C373t('Raport cost')+'</button></div>'
+    +'<div class="panel"><div class="panel-head"><h3>🧮 '+C373t('Pontaj — simulator cost')+' — '+fmtDate(iso)+'</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  const [empR,tsR,rtR]=await Promise.all([
+    sb.from('employees').select('id,full_name,active,specialty,position,hourly_rate'),
+    sb.from('timesheets').select('employee_id,site_id,hours,absence,sites!site_id(name)').eq('work_date',iso),
+    sb.from('pontaj_sim').select('employee_id,rate_gross,rate_net')
+  ]);
+  const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
+  const ts={}; (tsR.data||[]).forEach(t=>{ if(!ts[t.employee_id]) ts[t.employee_id]=t; });
+  _psRates={}; (rtR.data||[]).forEach(r=>{ _psRates[r.employee_id]={g:+r.rate_gross||0,n:+r.rate_net||0}; });
+  if(!emps.length){ $('mod-body').innerHTML='<div class="empty">'+C373t('Niciun angajat activ.')+'</div>'; return; }
+  const rows=emps.map((e,idx)=>{ const t=ts[e.id]; const h=t?(+t.hours||0):0; const sp=e.specialty||e.position; const saved=_psRates[e.id];
+    const g=saved?saved.g:(+e.hourly_rate||0); const n=saved?saved.n:Math.round((+e.hourly_rate||0)*0.79*100)/100;
+    const site=t?(t.absence?ptAbsLabel(t.absence):(t.sites?t.sites.name:'—')):'—';
+    return '<tr data-ps-emp="'+e.id+'" data-ps-h="'+h+'"><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td>'
+      +'<td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'
+      +'<td style="color:var(--muted);white-space:nowrap">'+esc(site)+'</td>'
+      +'<td style="white-space:nowrap"><b>'+(t?(Math.round(h*100)/100):'—')+'</b> h</td>'
+      +'<td><input id="ps-g-'+e.id+'" type="number" step="0.01" min="0" inputmode="decimal" value="'+g+'" style="width:96px" oninput="psRecalc()" onchange="psRateSave(\''+e.id+'\')"/></td>'
+      +'<td><input id="ps-n-'+e.id+'" type="number" step="0.01" min="0" inputmode="decimal" value="'+n+'" style="width:96px" oninput="psRecalc()" onchange="psRateSave(\''+e.id+'\')"/></td>'
+      +'<td style="white-space:nowrap"><b id="ps-cg-'+e.id+'">—</b></td>'
+      +'<td style="white-space:nowrap"><b id="ps-cn-'+e.id+'" style="color:var(--primary)">—</b></td>'
+      +'</tr>'; }).join('');
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">🧮 '+C373t('Maculator privat: orele sunt preluate din Pontajul real (read-only). Tarifele brut/net sunt doar pentru simulare — nu schimbă salariile reale. Tariful se salvează per angajat și se aplică tuturor zilelor.')+'</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:42px;text-align:right;color:var(--muted)">'+esc(tz('Nr.'))+'</th><th>'+C373t('Angajat')+'</th><th>'+C373t('Șantier')+'</th><th>'+C373t('Ore')+'</th><th>'+C373t('Tarif brut/oră')+'</th><th>'+C373t('Tarif net/oră')+'</th><th>'+C373t('Cost brut')+'</th><th>'+C373t('Cost net')+'</th></tr></thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="3">'+C373t('Total')+'</td><td><span id="ps-th">0</span> h</td><td></td><td></td><td><span id="ps-tcg">—</span></td><td><span id="ps-tcn" style="color:var(--primary)">—</span></td></tr></tfoot></table></div>';
+  psRecalc();
+}
+async function psReport(){
+  const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); const d=new Date(coToday()+'T12:00:00');
+  const mFrom=iso(new Date(d.getFullYear(),d.getMonth(),1)), mTo=iso(new Date(d.getFullYear(),d.getMonth()+1,0));
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>📄 '+C373t('Raport cost')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div class="field"><label>'+C373t('Perioadă')+'</label><select id="ps-rep-period" onchange="psRepPreset(this.value)"><option value="month">'+C373t('Luna curentă')+'</option><option value="week">'+C373t('Săptămâna curentă')+'</option><option value="lastmonth">'+C373t('Luna trecută')+'</option><option value="custom">'+C373t('Interval personalizat')+'</option></select></div>'
+    +'<div style="display:flex;gap:.6rem"><div class="field" style="flex:1"><label>'+C373t('De la')+'</label><input type="date" id="ps-rep-from" value="'+mFrom+'"/></div><div class="field" style="flex:1"><label>'+C373t('Până la')+'</label><input type="date" id="ps-rep-to" value="'+mTo+'"/></div></div>'
+    +'<button class="btn-primary" style="width:100%;margin-top:.4rem" onclick="psReportRun()">📄 '+C373t('Generează raport')+'</button>'
+    +'</div></div></div>';
+}
+function psRepPreset(v){ const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); const d=new Date(coToday()+'T12:00:00'); let f,t;
+  if(v==='week'){ const day=(d.getDay()+6)%7; const mon=new Date(d); mon.setDate(d.getDate()-day); const sun=new Date(mon); sun.setDate(mon.getDate()+6); f=iso(mon); t=iso(sun); }
+  else if(v==='month'){ f=iso(new Date(d.getFullYear(),d.getMonth(),1)); t=iso(new Date(d.getFullYear(),d.getMonth()+1,0)); }
+  else if(v==='lastmonth'){ f=iso(new Date(d.getFullYear(),d.getMonth()-1,1)); t=iso(new Date(d.getFullYear(),d.getMonth(),0)); }
+  else return;
+  if($('ps-rep-from')) $('ps-rep-from').value=f; if($('ps-rep-to')) $('ps-rep-to').value=t;
+}
+async function psReportRun(){
+  const from=$('ps-rep-from').value, to=$('ps-rep-to').value;
+  if(!from||!to){ toast(C373t('Alege perioada.')); return; }
+  if(from>to){ toast('„De la" trebuie să fie înainte de „Până la".'); return; }
+  toast('⏳ '+C373t('Generez raportul…'));
+  let w=window.open('','_blank'); if(!w){ toast(C373t('Permite ferestrele pop-up pentru această pagină.')); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>Raport…</title><style>body{font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;color:#0f1c33;font-size:15px}</style><div>⏳ …</div>'); }catch(e){}
+  const [tsR,empR,rtR]=await Promise.all([
+    sb.from('timesheets').select('employee_id,hours,absence').gte('work_date',from).lte('work_date',to).limit(20000),
+    sb.from('employees').select('id,full_name,hourly_rate').eq('active',true),
+    sb.from('pontaj_sim').select('employee_id,rate_gross,rate_net')
+  ]);
+  if(tsR.error||empR.error){ try{w.close();}catch(e){} toast('Eroare: '+esc((tsR.error||empR.error).message)); return; }
+  const rate={}; (rtR.data||[]).forEach(r=>{ rate[r.employee_id]={g:+r.rate_gross||0,n:+r.rate_net||0}; });
+  const emp={}; (empR.data||[]).forEach(e=>{ emp[e.id]={name:e.full_name||'—',hr:+e.hourly_rate||0}; });
+  const acc={}; (tsR.data||[]).forEach(t=>{ if(t.absence && ptIsNoWork(t.absence)) return; const h=+t.hours||0; if(h<=0) return; (acc[t.employee_id]=acc[t.employee_id]||{h:0}).h+=h; });
+  const ids=Object.keys(acc); if(!ids.length){ try{w.close();}catch(e){} toast(C373t('Nicio înregistrare în perioada aleasă.')); return; }
+  closeModal();
+  const fmt=h=>Math.round((+h||0)*100)/100; const ro=s=>fmtDate(s);
+  let gH=0,gG=0,gN=0;
+  const trs=ids.map(id=>{ const e=emp[id]||{name:'—',hr:0}; const rt=rate[id]||{g:e.hr,n:Math.round(e.hr*0.79*100)/100}; const h=acc[id].h; const cg=Math.round(h*rt.g*100)/100, cn=Math.round(h*rt.n*100)/100; gH+=h; gG+=cg; gN+=cn;
+    return {name:e.name,h:h,g:rt.g,n:rt.n,cg:cg,cn:cn}; }).sort((a,b)=>a.name.localeCompare(b.name))
+    .map(r=>'<tr><td>'+esc(r.name)+'</td><td style="text-align:right">'+fmt(r.h)+'</td><td style="text-align:right">'+money(r.g)+'</td><td style="text-align:right">'+money(r.n)+'</td><td style="text-align:right">'+money(r.cg)+'</td><td style="text-align:right"><b>'+money(r.cn)+'</b></td></tr>').join('');
+  const doc='<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>Raport cost (simulare)</title><style>'
+    +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:24px;margin:0}'
+    +'h1{font-size:19px;color:#2f6bff;margin:0 0 2px}.muted{color:#6b7793;font-size:12px;margin-bottom:10px}'
+    +'table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #e5e9f2;padding:5px 7px;text-align:left}th{background:#f1f5f9}'
+    +'tfoot td{font-weight:700;border-top:2px solid #0f1c33}.note{font-size:11px;color:#b45309;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:6px 9px;margin:10px 0}'
+    +'@media print{.noprint{display:none}}</style></head><body>'
+    +'<h1>'+esc(state.firm.name||'Firma')+' — '+C373t('Raport cost')+' ('+C373t('simulare')+')</h1>'
+    +'<div class="muted">'+C373t('Perioadă')+': '+ro(from)+' → '+ro(to)+' · '+C373t('generat')+' '+fmtDate(coToday())+'</div>'
+    +'<div class="note">🧮 '+C373t('Estimare bazată pe tarifele simulate (maculator). NU reflectă salariile reale.')+'</div>'
+    +'<table><thead><tr><th>'+C373t('Angajat')+'</th><th style="text-align:right">'+C373t('Ore')+'</th><th style="text-align:right">'+C373t('Tarif brut/oră')+'</th><th style="text-align:right">'+C373t('Tarif net/oră')+'</th><th style="text-align:right">'+C373t('Cost brut')+'</th><th style="text-align:right">'+C373t('Cost net')+'</th></tr></thead><tbody>'+trs+'</tbody>'
+    +'<tfoot><tr><td>'+C373t('Total')+'</td><td style="text-align:right">'+fmt(gH)+'</td><td></td><td></td><td style="text-align:right">'+money(Math.round(gG*100)/100)+'</td><td style="text-align:right">'+money(Math.round(gN*100)/100)+'</td></tr></tfoot></table>'
+    +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 '+C373t('Tipărește / Salvează PDF')+'</button></div>'
+    +'</body></html>';
+  if(w&&!w.closed){ try{ w.document.open(); w.document.write(doc); w.document.close(); }catch(e){} } else { const w2=window.open('','_blank'); if(!w2){ toast(C373t('Permite ferestrele pop-up pentru această pagină.')); return; } w2.document.write(doc); w2.document.close(); }
 }
 /* ════ PLĂȚI FURNIZORI — scadențar (de plătit) ════ */
 async function renderPlatibil(){
@@ -4522,6 +4619,11 @@ function renderGhid(){
     ]},
     {ic:'⏱️',t:['Pontaj','Учёт времени','Zeiterfassung','Timesheet'],subs:[
       [['Înregistrează ore','Записать часы','Stunden erfassen','Log hours'],['Cine, pe ce șantier, câte ore, în ce zi. Se completează ușor din aplicația de teren și intră în calculul salariilor și al postcalculației.','Кто, на каком объекте, сколько часов, в какой день. Удобно заполняется из мобильного приложения и учитывается в зарплате и постфактумном расчёте.','Wer, auf welcher Baustelle, wie viele Stunden, an welchem Tag. Bequem aus der Feld-App, fließt in Lohn und Nachkalkulation ein.','Who, on which site, how many hours, on which day. Easy to fill from the field app and feeds payroll and post-calculation.']]
+    ]},
+    {ic:'🧮',t:['Pontaj — simulator cost (privat)','Табель — симулятор затрат (личный)','Zeiterfassung — Kostensimulator (privat)','Timesheet — cost simulator (private)'],subs:[
+      [['La ce folosește','Для чего это','Wozu','What it’s for'],['Un „maculator" privat, vizibil doar ție (și cui îi dai acces din Utilizatori). Preia automat orele reale din Pontaj și îți arată cât te-ar costa manopera la diferite tarife — fără să atingă salariile reale.','Личный «черновик», видимый только вам (и тем, кому вы дали доступ в «Пользователях»). Берёт реальные часы из табеля и показывает, во сколько обойдётся труд при разных ставках — не затрагивая реальные зарплаты.','Ein privater „Notizblock", nur für dich sichtbar (und für die, denen du in Benutzer Zugriff gibst). Übernimmt die echten Stunden aus der Zeiterfassung und zeigt, was die Arbeit zu verschiedenen Sätzen kosten würde — ohne die echten Löhne anzutasten.','A private „scratchpad", visible only to you (and whoever you grant access in Users). It pulls the real hours from the Timesheet and shows what labor would cost at different rates — without touching real salaries.']],
+      [['Tarife brut/net','Ставки брутто/нетто','Brutto-/Netto-Sätze','Gross/net rates'],['Setezi tariful pe oră brut și net pentru fiecare angajat (se pre-completează din fișă). Costul brut și net se calculează pe loc; jos vezi totalurile. Tariful se salvează per angajat și se aplică tuturor zilelor.','Задаёте часовую ставку брутто и нетто для каждого сотрудника (предзаполняется из карточки). Затраты брутто и нетто считаются сразу; внизу — итоги. Ставка сохраняется по сотруднику и применяется ко всем дням.','Du legst den Brutto- und Netto-Stundensatz je Mitarbeiter fest (aus der Karte vorausgefüllt). Brutto- und Netto-Kosten werden sofort berechnet; unten die Summen. Der Satz wird je Mitarbeiter gespeichert und gilt für alle Tage.','You set the gross and net hourly rate per employee (prefilled from their card). Gross and net cost compute instantly; totals at the bottom. The rate is saved per employee and applies to all days.']],
+      [['Raport de cost','Отчёт по затратам','Kostenbericht','Cost report'],['Butonul „📄 Raport cost" generează, pe săptămână sau lună, costul total de manoperă (orele reale × tarifele simulate), per angajat și general — gata de tipărit/PDF.','Кнопка «📄 Отчёт по затратам» формирует за неделю или месяц общую стоимость труда (реальные часы × смоделированные ставки) по сотрудникам и итого — готово к печати/PDF.','Die Schaltfläche „📄 Kostenbericht" erstellt für Woche oder Monat die gesamten Arbeitskosten (echte Stunden × simulierte Sätze), je Mitarbeiter und gesamt — druck-/PDF-fertig.','The „📄 Cost report" button builds, per week or month, the total labor cost (real hours × simulated rates), per employee and overall — ready to print/PDF.']]
     ]},
     {ic:'💰',t:['Salarii','Зарплаты','Löhne','Payroll'],subs:[
       [['Calculează salariile','Рассчитать зарплату','Löhne berechnen','Calculate payroll'],['Alegi luna și apeși „Calculează". Impozitul (12%), CNAM (9%) și CNAS (24%) se aplică automat. Rezultatul e vizibil doar rolurilor financiare.','Выбираете месяц и нажимаете «Рассчитать». Подоходный (12%), CNAM (9%) и CNAS (24%) применяются автоматически. Результат виден только финансовым ролям.','Du wählst den Monat und klickst auf „Berechnen". Steuer (12%), CNAM (9%) und CNAS (24%) werden automatisch angewandt. Das Ergebnis sehen nur Finanzrollen.','Pick the month and click „Calculate". Income tax (12%), CNAM (9%) and CNAS (24%) are applied automatically. The result is visible only to financial roles.']]
