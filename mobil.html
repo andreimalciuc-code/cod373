@@ -1089,7 +1089,25 @@ async function openProfile(){
     +'<button class="btn" id="pf-save" onclick="saveProfile()">Salvează</button>'
     +'<button class="btn btn-line" style="margin-top:.6rem" onclick="openSetPassword()">🔑 Schimbă / setează parola</button>'
     +'<div class="hint" style="margin:.3rem 0 0;font-size:.78rem;color:var(--muted,#6b7793)">Setează o parolă ca să te poți loga cu email + parolă pe orice dispozitiv (recomandat dacă ai intrat prin link).</div>'
+    +'<button class="btn btn-line" id="pf-push" style="margin-top:.6rem" onclick="mPushToggle()">🔔 Activează notificările push</button>'
+    +'<div class="hint" style="margin:.3rem 0 0;font-size:.78rem;color:var(--muted,#6b7793)">Primești pe telefon când ești planificat pe un șantier, ai o livrare sau un mesaj — chiar dacă aplicația e închisă.</div>'
     +'<button class="btn btn-line" style="margin-top:.6rem" onclick="doLogout()">Ieși din cont</button>');
+  setTimeout(mPushRefresh,0);
+}
+const M_VAPID='BP-pbvgwlGRCq-MHlsDb3lXLC97nLOw9DmrePoNVB80QeyW9eZ5zpWPPpVMTs1Hrjlq5mL4Dv73lYnT3zBBfq-k';
+function _b64u8(s){ const pad='='.repeat((4-s.length%4)%4); const b=(s+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(b); const a=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i); return a; }
+async function mPushRefresh(){ const b=$('pf-push'); if(!b) return; if(!('serviceWorker' in navigator)||!('PushManager' in window)){ b.style.display='none'; return; } try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); b.textContent=sub?'🔕 Dezactivează notificările push':'🔔 Activează notificările push'; }catch(e){} }
+async function mPushToggle(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){ toast('Dispozitivul nu suportă notificări push.'); return; }
+  try{ const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription();
+    if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} toast('🔕 Notificări dezactivate.'); mPushRefresh(); return; }
+    const perm=await Notification.requestPermission(); if(perm!=='granted'){ toast('Permite notificările din setările telefonului/browserului.'); return; }
+    sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_b64u8(M_VAPID)});
+    const k=(sub.toJSON&&sub.toJSON().keys)||{};
+    const r=await sb.from('push_subscriptions').upsert({tenant_id:S.tenant,user_id:S.session.user.id,endpoint:sub.endpoint,p256dh:k.p256dh||null,auth:k.auth||null},{onConflict:'endpoint'});
+    if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+    toast('🔔 Notificări push activate.'); mPushRefresh();
+  }catch(e){ toast('Eroare: '+esc(e.message||String(e))); }
 }
 function openSetPassword(){
   openSheet('Schimbă / setează parola',
