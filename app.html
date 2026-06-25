@@ -2292,7 +2292,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v252';
+const APP_VERSION='cod373-v253';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -3129,8 +3129,9 @@ async function renderPontaj(){
   $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="ptDay(-1)">←</button><b style="margin:0 .5rem;cursor:pointer;border-bottom:1px dashed var(--muted)" onclick="ptOpenPicker()" title="Apasă ca să alegi data">'+dn+' '+fmtDate(_ptISO)+' 📅</b><input type="date" id="pt-datepick" value="'+esc(_ptISO)+'" onchange="ptGoDate(this.value)" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0"><button class="btn-ghost" onclick="ptDay(1)">→</button><button class="btn-ghost" onclick="ptDay(0)">Azi</button><span style="flex:1"></span><button class="btn-ghost" onclick="ptFillPlanned()" title="Înregistrează programul de lucru implicit al firmei pentru toți angajații planificați azi (din Planificare echipe)">🕗 Aplică programul celor planificați</button><button class="btn-ghost" onclick="ptReport()" title="Generează un raport pe săptămână / lună, pentru toți sau pentru un angajat">📄 Raport</button></div>'
     +(isHoliday(_ptISO)?'<div style="background:var(--red-soft);color:var(--red);border-radius:9px;padding:.5rem .8rem;margin-bottom:.7rem;font-weight:600;font-size:.86rem">🎉 '+esc(C373t('Sărbătoare legală'))+': '+esc(isHoliday(_ptISO))+' — '+esc(C373t('zi liberă plătită (orele nelucrate se plătesc la calculul salariilor).'))+'</div>':'')
     +'<div class="panel"><div class="panel-head"><h3>⏱️ Pontaj — '+fmtDate(_ptISO)+'</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  const showRate=(typeof canSee==='function') && canSee('salarii'); // tarif/oră doar pt cont principal + cei cu acces la salarii
   const [empR,siteR,tsR,cpR,lvR]=await Promise.all([
-    sb.from('employees').select('id,full_name,active,specialty,position'),
+    sb.from('employees').select('id,full_name,active,specialty,position'+(showRate?',hourly_rate':'')),
     sb.from('sites').select('id,name,status'),
     sb.from('timesheets').select('employee_id,site_id,hours,note,start_time,end_time,break_min,absence').eq('work_date',_ptISO),
     sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO),
@@ -3147,7 +3148,7 @@ async function renderPontaj(){
   if(!emps.length){ $('mod-body').innerHTML='<div class="empty">Niciun angajat activ.</div>'; return; }
   const wk=coWork();
   const isWeekend=[0,6].includes(new Date(_ptISO+'T12:00:00').getDay());
-  const rows=emps.map(e=>{ const saved=!!ts[e.id]; const t=ts[e.id]||{}; const sp=e.specialty||e.position; const pl=plan[e.id]||null;
+  const rows=emps.map((e,idx)=>{ const saved=!!ts[e.id]; const t=ts[e.id]||{}; const sp=e.specialty||e.position; const pl=plan[e.id]||null;
     // selecția: salvat → din pontaj; nesalvat → din Planificare echipe / concediu HR / weekend implicit liber
     let site = saved ? (t.site_id||null) : ((pl&&pl.site)||null);
     let tag  = saved ? (t.absence||null) : null;
@@ -3156,7 +3157,7 @@ async function renderPontaj(){
     const st=noWork?'':(saved?(t.start_time||''):wk.start), en=noWork?'':(saved?(t.end_time||''):wk.end), br=noWork?wk.brk:(saved?(t.break_min!=null?+t.break_min:wk.brk):wk.brk);
     const initH=noWork?0:((st&&en)?ptHours(st,en,br):(t.hours!=null?+t.hours:0)); const hasH=(st&&en)||t.hours!=null;
     const da=noWork?' disabled':'';
-    return '<tr><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'
+    return '<tr><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'
       +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:140px">'+ptSiteOpts(site||'',tag||null)+'</select></td>'
       +'<td><input id="pt-s-'+e.id+'" type="time" style="width:104px" value="'+esc(st)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
       +'<td><input id="pt-e-'+e.id+'" type="time" style="width:104px" value="'+esc(en)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
@@ -3164,10 +3165,12 @@ async function renderPontaj(){
       +'<td style="white-space:nowrap">'+(noWork
           ? '<b id="pt-h-'+e.id+'" class="pt-h" data-h="0" style="color:var(--primary)">'+esc(ptAbsLabel(tag))+'</b>'+(saved?'':'<span title="Implicit (din Planificare echipe / weekend) — neînregistrat încă" style="color:var(--muted);font-size:.7rem"> · planificat</span>')
           : '<b id="pt-h-'+e.id+'" class="pt-h" data-h="'+(initH||0)+'">'+(hasH?(Math.round(initH*100)/100):'—')+'</b> h'+(saved?'':'<span title="Program implicit — neînregistrat încă; editează sau apasă Aplică programul" style="color:var(--muted);font-size:.7rem"> · prestabilit</span>'))+'</td>'
-      +'<td><input id="pt-n-'+e.id+'" value="'+esc(t.note||'')+'" placeholder="comentariu (opțional)" style="min-width:160px;width:100%" onchange="ptSet(\''+e.id+'\')"/></td></tr>'; }).join('');
+      +'<td><input id="pt-n-'+e.id+'" value="'+esc(t.note||'')+'" placeholder="comentariu (opțional)" style="min-width:160px;width:100%" onchange="ptSet(\''+e.id+'\')"/></td>'
+      +(showRate?('<td style="white-space:nowrap;font-size:.8rem">'+((+e.hourly_rate)?(money(+e.hourly_rate)+' <span style="color:var(--muted)">/ '+money(Math.round(+e.hourly_rate*0.79*100)/100)+' net</span>'):'<span style="color:var(--muted)">—</span>')+'</td>'):'')
+      +'</tr>'; }).join('');
   $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">Programul implicit al firmei ('+esc(wk.start)+'–'+esc(wk.end)+', pauză '+wk.brk+' min) apare pre-completat — editează la nevoie pe fiecare angajat; se salvează pe loc. „🕗 Aplică programul" înregistrează programul pentru toți cei planificați azi. Schimbi valorile implicite în Setări.</div>'
-    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Angajat</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th></tr></thead><tbody>'+rows+'</tbody>'
-    +'<tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="5">Total ore</td><td><span id="pt-total">0</span> h</td><td></td></tr></tfoot></table></div>';
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:42px;text-align:right;color:var(--muted)">'+esc(tz('Nr.'))+'</th><th>Angajat</th><th>Șantier</th><th>Început</th><th>Sfârșit</th><th>Pauză</th><th>Ore</th><th>Comentariu</th>'+(showRate?('<th>'+esc(tz('Tarif/oră (brut · net)'))+'</th>'):'')+'</tr></thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="6">Total ore</td><td><span id="pt-total">0</span> h</td><td></td>'+(showRate?'<td></td>':'')+'</tr></tfoot></table></div>';
   ptRecalcTotal();
 }
 async function ptSet(empId){

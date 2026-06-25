@@ -835,6 +835,7 @@
     'Telefon salvat — te poți loga și cu el.':{ru:'Телефон сохранён — можно входить по нему.',de:'Telefon gespeichert — Anmeldung damit möglich.',en:'Phone saved — you can log in with it.'},
     'Telefon șters.':{ru:'Телефон удалён.',de:'Telefon gelöscht.',en:'Phone removed.'},
     'Nr.':{ru:'№',de:'Nr.',en:'No.'},
+    'Tarif/oră (brut · net)':{ru:'Ставка/час (брутто · нетто)',de:'Std.-Satz (brutto · netto)',en:'Rate/hour (gross · net)'},
     'Link':{ru:'Ссылка',de:'Link',en:'Link'},
     'e în curs de implementare — ne cerem scuze! Momentan intră cu email + parolă sau „Intră cu link pe email".':{ru:'в разработке — приносим извинения! Пока войдите по email + паролю или «Войти по ссылке на email».',de:'ist in Arbeit — wir bitten um Entschuldigung! Melde dich vorerst mit E-Mail + Passwort oder „Mit Link per E-Mail anmelden" an.',en:'is under development — sorry! For now sign in with email + password or „Sign in with an email link".'},
     'alege din listă sau scrie o categorie nouă':{ru:'выберите из списка или впишите новую категорию',de:'aus Liste wählen oder neue Kategorie eingeben',en:'pick from list or type a new category'},
