@@ -113,6 +113,12 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
   if(data.show_costs && s.budget!=null){
     costHtml='<div class="card"><h3>Detalii financiare</h3><div class="kv"><span class="k">Buget contractat</span><b>'+money(s.budget)+'</b></div></div>';
   }
+  let photoHtml='';
+  if(data.photos && data.photos.length){
+    photoHtml='<div class="card"><h3>Poze de pe șantier</h3><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem">'
+      +data.photos.map(function(u){ return '<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" loading="lazy" style="width:100%;height:110px;object-fit:cover;border-radius:10px;border:1px solid var(--line);cursor:zoom-in"></a>'; }).join('')
+      +'</div></div>';
+  }
   document.getElementById('content').innerHTML=
     '<div class="hero"><div class="lab">Proiectul dumneavoastră</div><h1>'+esc(s.name)+'</h1>'
     +(s.address?'<div class="addr">📍 '+esc(s.address)+'</div>':'')
@@ -120,7 +126,7 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
     +'<div class="pmeta"><span>Progres lucrări</span><span><b>'+(s.progress||0)+'%</b></span></div></div>'
     +'<div style="margin-top:1rem"><span class="pill">'+esc((SL[s.status]||['—'])[0])+'</span>'
     +(s.deadline?' <span class="pill">Termen: '+esc(s.deadline)+'</span>':'')+'</div></div>'
-    +stagesHtml+costHtml
+    +stagesHtml+photoHtml+costHtml
     +'<div class="card" style="background:var(--blue-soft);border:none"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
 })();
 </script>
