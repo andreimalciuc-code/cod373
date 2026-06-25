@@ -307,6 +307,7 @@ const NAV={
   client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['poze','📷','Poze']]
 };
 function render(){
+  clearInterval(window._pjTimer);
   const nav=NAV[S.role]||NAV.worker;
   if(!nav.find(n=>n[0]===S.view)) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
@@ -655,7 +656,53 @@ async function setStageStatus(stageId,status){
 }
 
 /* PONTAJ (muncitor/manager) */
+function mHours(st,en,br){ if(!st||!en) return 0; const a=String(st).split(':').map(Number),b=String(en).split(':').map(Number); if(a.length<2||b.length<2) return 0; let m=(b[0]*60+b[1])-(a[0]*60+a[1]); if(m<0)m+=1440; m-=(+br||0); if(m<0)m=0; return Math.round(m/60*100)/100; }
+function hhmm(d){ d=d||new Date(); const p=n=>String(n).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes()); }
+function mElapsed(st){ if(!st) return ''; const a=String(st).split(':').map(Number); const now=new Date(); let m=(now.getHours()*60+now.getMinutes())-(a[0]*60+a[1]); if(m<0)m+=1440; return Math.floor(m/60)+'h '+(m%60)+'m'; }
 async function scrPontaj(){
+  if(S.role!=='worker') return scrPontajMgr();
+  $('screen').innerHTML='<div class="scr-title">⏱️ Pontajul meu</div><div id="pj"><div class="loading">Se încarcă…</div></div>';
+  const d=today();
+  let myEmp=null,myName=''; try{ const e=await sb.from('employees').select('id,full_name').eq('user_id',S.session.user.id).maybeSingle(); if(e.data){ myEmp=e.data.id; myName=e.data.full_name; } }catch(e){}
+  if(!myEmp){ $('pj').innerHTML='<div class="empty"><div class="ei">⏱️</div>Contul tău nu e legat de un angajat. Roagă biroul să te adauge ca angajat ca să poți ponta.</div>'; return; }
+  let plannedSite=null,plannedName=''; try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ plannedSite=cp.data.site_id; plannedName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){}
+  let ts=null; try{ const r=await sb.from('timesheets').select('id,start_time,end_time,break_min,hours,site_id,sites(name)').eq('employee_id',myEmp).eq('work_date',d).maybeSingle(); ts=r.data||null; }catch(e){}
+  let sites=[]; try{ const sr=await sb.from('sites').select('id,name,status').order('name'); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'&&s.status!=='done'); }catch(e){}
+  S._pj={ emp:myEmp, name:myName, date:d, plannedSite, plannedName, ts, sites };
+  renderPontajWorker();
+  // ultimele zile (rezumat)
+  try{ const rec=await sb.from('timesheets').select('work_date,hours,start_time,end_time,sites(name)').eq('employee_id',myEmp).order('work_date',{ascending:false}).limit(8); const rows=(rec.data||[]).filter(r=>r.work_date!==d);
+    const lst=$('pj-recent'); if(lst&&rows.length){ lst.innerHTML='<div class="s" style="margin:1rem 0 .3rem">Ultimele zile</div>'+rows.map(r=>'<div class="card" style="padding:.6rem"><div class="row"><div class="grow"><div class="t">'+esc(r.work_date)+' · '+esc(r.hours||0)+'h</div><div class="s">'+(r.start_time?esc(String(r.start_time).slice(0,5))+'–'+esc(String(r.end_time||'').slice(0,5)):'')+(r.sites&&r.sites.name?(' · '+esc(r.sites.name)):'')+'</div></div></div></div>').join(''); } }catch(e){}
+}
+function renderPontajWorker(){
+  const P=S._pj; const el=$('pj'); if(!el) return; clearInterval(window._pjTimer);
+  const siteName=(P.ts&&P.ts.sites&&P.ts.sites.name)||P.plannedName||'';
+  const planLine=P.plannedName?('<div class="card" style="background:#eef2ff;border-color:#2f6bff"><div class="t">🏗️ '+esc(P.plannedName)+'</div><div class="s">Șantierul tău planificat azi</div></div>'):'';
+  let h='';
+  if(!P.ts || !P.ts.start_time){
+    let sitePick=''; if(!P.plannedSite){ sitePick='<div class="fld"><label>Pe ce șantier lucrezi azi?</label><select id="pj-site"><option value="">— alege —</option>'+(P.sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('')+'</select></div>'; }
+    h=planLine+sitePick+'<button class="btn" style="background:#16a34a;font-size:1.2rem;padding:1.05rem" onclick="pjStart()">▶️ Începe ziua</button><div class="s" style="text-align:center;margin-top:.5rem">Apasă când ai ajuns și începi lucrul.</div>';
+  } else if(!P.ts.end_time){
+    h=planLine+'<div class="card" style="text-align:center"><div class="s">Lucrezi din</div><div class="t" style="font-size:1.7rem;line-height:1.2">'+esc(String(P.ts.start_time).slice(0,5))+'</div><div class="s" id="pj-elapsed">⏱️ …</div>'
+      +(siteName?'<div class="s" style="margin-top:.2rem">🏗️ '+esc(siteName)+'</div>':'')
+      +'<div class="row" style="justify-content:center;gap:.6rem;margin:.8rem 0;align-items:center"><button class="mini-btn gh" onclick="pjBreakAdd(-15)">−15</button><div>☕ Pauză <b>'+(P.ts.break_min||0)+'</b> min</div><button class="mini-btn gh" onclick="pjBreakAdd(15)">+15</button></div>'
+      +'<button class="btn" style="background:#dc2626;font-size:1.15rem;padding:1rem" onclick="pjFinish()">⏹ Am terminat ziua</button></div>';
+    setTimeout(()=>{ const e=$('pj-elapsed'); if(e) e.textContent='⏱️ '+mElapsed(P.ts.start_time); },10);
+    window._pjTimer=setInterval(()=>{ const e=$('pj-elapsed'); if(!e){ clearInterval(window._pjTimer); return; } e.textContent='⏱️ '+mElapsed(P.ts.start_time); },30000);
+  } else {
+    h=planLine+'<div class="card" style="background:#ecfdf5;border-color:#16a34a"><div class="t">✅ Azi: '+esc(P.ts.hours)+' h</div><div class="s">'+esc(String(P.ts.start_time).slice(0,5))+'–'+esc(String(P.ts.end_time).slice(0,5))+' · pauză '+(P.ts.break_min||0)+' min'+(siteName?(' · 🏗️ '+esc(siteName)):'')+'</div></div><button class="btn gh" onclick="pjReopen()">↩️ Reia / corectează</button>';
+  }
+  el.innerHTML='<div class="s" style="margin-bottom:.5rem">📅 Azi · '+esc(P.date)+'</div>'+h+'<div id="pj-recent"></div>';
+}
+async function pjStart(){ const P=S._pj; const site=P.plannedSite||($('pj-site')&&$('pj-site').value)||null; if(!site){ toast('Alege întâi șantierul.'); return; } const st=hhmm();
+  await sb.from('timesheets').delete().eq('employee_id',P.emp).eq('work_date',P.date);
+  const {data,error}=await sb.from('timesheets').insert({tenant_id:S.tenant,employee_id:P.emp,site_id:site,work_date:P.date,start_time:st,break_min:60,hours:0,approved:false}).select('id,start_time,end_time,break_min,hours,site_id,sites(name)').single();
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  P.ts=data; toast('▶️ Ai început ziua la '+st); renderPontajWorker(); }
+async function pjBreakAdd(delta){ const P=S._pj; if(!P.ts) return; const br=Math.max(0,(+P.ts.break_min||0)+delta); P.ts.break_min=br; renderPontajWorker(); try{ await sb.from('timesheets').update({break_min:br}).eq('id',P.ts.id); }catch(e){} }
+async function pjFinish(){ const P=S._pj; if(!P.ts) return; const en=hhmm(); const hrs=mHours(P.ts.start_time,en,P.ts.break_min); const {error}=await sb.from('timesheets').update({end_time:en,hours:hrs}).eq('id',P.ts.id); if(error){ toast('Eroare: '+esc(error.message)); return; } P.ts.end_time=en; P.ts.hours=hrs; toast('⏹ Gata! Ai pontat '+hrs+' h.'); renderPontajWorker(); }
+async function pjReopen(){ const P=S._pj; if(!P.ts) return; await sb.from('timesheets').update({end_time:null,hours:0}).eq('id',P.ts.id); P.ts.end_time=null; P.ts.hours=0; renderPontajWorker(); }
+async function scrPontajMgr(){
   $('screen').innerHTML='<div class="scr-title">Pontaj</div><button class="btn" onclick="sheetPontaj()">＋ Pontează ore</button><div id="pj" style="margin-top:1rem"><div class="loading">Se încarcă…</div></div>';
   const {data}=await sb.from('timesheets').select('id,work_date,hours,approved,employee_id,site_id');
   const em=await nameMap('employees','full_name'); const sm=await nameMap('sites','name');
