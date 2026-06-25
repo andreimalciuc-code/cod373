@@ -7441,6 +7441,31 @@ async function printDoc(key,id){
   try{ geoScan(document); }catch(e){}
 })();
 </script>
+<script>
+/* 👁 „Arată parola" — se aplică automat pe TOATE câmpurile type=password (acum și cele generate dinamic). */
+(function(){
+  function enhance(inp){
+    if(!inp || inp.getAttribute('data-eye')) return;
+    inp.setAttribute('data-eye','1');
+    var p=inp.parentNode; if(!p) return;
+    var w=document.createElement('span'); w.className='pw-wrap';
+    w.style.cssText='position:relative;display:block;flex:1 1 auto;min-width:0;width:100%';
+    p.insertBefore(w, inp); w.appendChild(inp);
+    inp.style.width='100%'; inp.style.flex=''; inp.style.paddingRight='2.3rem'; inp.style.boxSizing='border-box';
+    var b=document.createElement('button');
+    b.type='button'; b.tabIndex=-1; b.className='pw-eye';
+    b.title=(window.tz?tz('Arată / ascunde parola'):'Arată / ascunde parola');
+    b.setAttribute('aria-label', b.title);
+    b.textContent='👁';
+    b.style.cssText='position:absolute;right:.45rem;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;font-size:1.05rem;line-height:1;opacity:.55;padding:.15rem .25rem;z-index:2';
+    b.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); var show=(inp.type==='password'); inp.type=show?'text':'password'; b.textContent=show?'🙈':'👁'; b.style.opacity=show?'.95':'.55'; try{ inp.focus(); }catch(_){} });
+    w.appendChild(b);
+  }
+  function scan(root){ try{ (root||document).querySelectorAll('input[type="password"]:not([data-eye])').forEach(enhance); }catch(e){} }
+  function init(){ scan(document); try{ var mo=new MutationObserver(function(muts){ for(var i=0;i<muts.length;i++){ if(muts[i].addedNodes&&muts[i].addedNodes.length){ scan(document); break; } } }); mo.observe(document.body,{childList:true,subtree:true}); }catch(e){} }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+})();
+</script>
 <script src="i18n.js"></script>
 <script>/* marcheaza limba activa in selectorul de pe pagina de start */
 (function(){ try{ var l=(window.C373lang&&C373lang())||localStorage.getItem('c373_lang')||'ro';

@@ -786,6 +786,7 @@
     'Schimbare de email în așteptare către':{ru:'Ожидается смена email на',de:'Ausstehende E-Mail-Änderung zu',en:'Pending email change to'},
     'Trebuie confirmată pe AMBELE adrese (și cea actuală, și cea nouă) — verifică inboxul + Spam la amândouă. Schimbarea se aplică doar după ce dai clic pe ambele linkuri.':{ru:'Нужно подтвердить на ОБОИХ адресах (и текущем, и новом) — проверьте входящие и Спам на обоих. Изменение применится только после перехода по обеим ссылкам.',de:'Muss an BEIDEN Adressen bestätigt werden (aktuelle und neue) — prüfe Posteingang + Spam bei beiden. Die Änderung wird erst wirksam, nachdem du auf beide Links geklickt hast.',en:'Must be confirmed on BOTH addresses (current and new) — check inbox + Spam on both. The change applies only after you click both links.'},
     'Emailul real de pe server':{ru:'Реальный email на сервере',de:'Echte E-Mail auf dem Server',en:'Actual email on the server'},
+    'Arată / ascunde parola':{ru:'Показать / скрыть пароль',de:'Passwort anzeigen / verbergen',en:'Show / hide password'},
     'Persoană fizică':{ru:'Физическое лицо',de:'Privatperson',en:'Individual'},
     'Persoană juridică':{ru:'Юридическое лицо',de:'Juristische Person',en:'Company'},
     'Articol nou':{ru:'Новая статья',de:'Neuer Artikel',en:'New article'},
