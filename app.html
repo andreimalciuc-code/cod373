@@ -2278,7 +2278,7 @@ async function openNotifPanel(){
 }
 
 /* ════ SUPORT / AJUTOR ════ */
-const APP_VERSION='cod373-v245';
+const APP_VERSION='cod373-v246';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
 function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
@@ -4210,6 +4210,7 @@ async function renderDashboard(){
   }
   let cashHtml=''; if(fin){ try{ cashHtml=await cashWidget(); }catch(e){} }
   let fleetHtml=''; try{ fleetHtml=await fleetAlert(); }catch(e){}
+  let docsHtml=''; try{ docsHtml=await docsExpiryAlert(); }catch(e){}
   let loanHtml=''; try{ loanHtml=await toolLoanAlert(); }catch(e){}
   if(!state.birthdays){ try{ await loadBirthdays(); }catch(e){} }
   let bdayHtml=''; try{ bdayHtml=bdayDashWidget(); }catch(e){}
@@ -4220,7 +4221,7 @@ async function renderDashboard(){
   const recentSorted=sortRows(recent||[],'created_at',false).slice(0,5);
   let rows=recentSorted.map(s=>'<tr><td class="tname">'+esc(s.name)+'</td><td>'+(fin?money(s.budget):'—')+'</td><td>'+progressCell(s.progress)+'</td><td>'+dt(s.deadline)+'</td><td>'+pill(s.status)+'</td></tr>').join('');
   if(!rows) rows='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.5rem">Niciun șantier încă.</td></tr>';
-  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+fleetHtml+loanHtml+fupHtml+bdayHtml+cashHtml+chartHtml
+  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+fleetHtml+docsHtml+loanHtml+fupHtml+bdayHtml+cashHtml+chartHtml
     +'<div class="panel"><div class="panel-head"><h3>'+TR('ultimeleSantiere')+'</h3></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+TR('thProiect')+'</th><th>'+TR('thBuget')+'</th><th>'+TR('thProgres')+'</th><th>'+TR('thTermen')+'</th><th>'+TR('thStare')+'</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
@@ -4252,6 +4253,17 @@ async function fleetAlert(){
   items.sort((a,b)=>a.days-b.days);
   const rows=items.map(it=>{ const expired=it.days<0; const col=expired?'#dc2626':(it.days<=7?'#d97706':'#6b7793'); const when=expired?('expirat de '+(-it.days)+' zile'):(it.days===0?'expiră azi':('în '+it.days+' zile')); return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:1px solid var(--line)"><span>🚗 <b>'+esc(it.label)+'</b> · '+it.type+(it.est?' <span style="color:var(--muted);font-size:.74rem">(estimat +1 an)</span>':'')+'</span><span style="color:'+col+';font-weight:700;white-space:nowrap">'+esc(fmtDate(isoLocal(it.exp)))+' · '+when+'</span></div>'; }).join('');
   return '<div class="panel" style="margin-bottom:1.4rem;border-left:4px solid var(--amber)"><div class="panel-head"><h3>⚠️ ITP / asigurare — de reînnoit</h3></div><div style="padding:.3rem 1.2rem 1rem">'+rows+'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">Actualizează documentele și datele în <a onclick="go(\'flota\')" style="cursor:pointer;color:var(--primary)">Flotă</a>.</div></div></div>';
+}
+async function docsExpiryAlert(){
+  if(typeof canSee==='function' && !canSee('documente')) return '';
+  let dr; try{ dr=await sb.from('documents').select('id,name,valid_until').not('valid_until','is',null); }catch(e){ return ''; }
+  const list=dr&&dr.data||[]; if(!list.length) return '';
+  const today=new Date(); today.setHours(0,0,0,0);
+  const items=[]; list.forEach(d=>{ const exp=new Date(d.valid_until+'T12:00:00'); const days=Math.floor((exp-today)/86400000); if(days<=30) items.push({name:d.name,days:days,exp:exp}); });
+  if(!items.length) return '';
+  items.sort((a,b)=>a.days-b.days);
+  const rows=items.map(it=>{ const expired=it.days<0; const col=expired?'#dc2626':(it.days<=7?'#d97706':'#6b7793'); const when=expired?('expirat de '+(-it.days)+' zile'):(it.days===0?'expiră azi':('în '+it.days+' zile')); return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:1px solid var(--line)"><span>📄 <b>'+esc(it.name)+'</b></span><span style="color:'+col+';font-weight:700;white-space:nowrap">'+esc(fmtDate(isoLocal(it.exp)))+' · '+when+'</span></div>'; }).join('');
+  return '<div class="panel" style="margin-bottom:1.4rem;border-left:4px solid var(--amber)"><div class="panel-head"><h3>⚠️ '+esc(tz('Acte care expiră'))+'</h3></div><div style="padding:.3rem 1.2rem 1rem">'+rows+'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">'+esc(tz('Gestionează termenele în'))+' <a onclick="go(\'documente\')" style="cursor:pointer;color:var(--primary)">'+esc(tz('Acte & Documente'))+'</a>.</div></div></div>';
 }
 async function toolLoanAlert(){
   if(typeof canSee==='function' && !canSee('instrumente')) return '';
@@ -5707,22 +5719,39 @@ async function renderDocumente(){
   $('content').innerHTML=
     '<div class="seg"><label class="btn-primary" style="margin-left:auto;cursor:pointer"><span>＋</span> Încarcă fișier<input type="file" id="doc-file" style="display:none" onchange="uploadDoc(this)"/></label></div>'
     +'<div class="panel"><div class="panel-head"><h3>Acte & Documente</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
-  const { data, error }=await sb.from('documents').select('id,name,mime,size_bytes,file_url,created_at,version');
+  const { data, error }=await sb.from('documents').select('id,name,mime,size_bytes,file_url,created_at,version,valid_until');
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   const docs=sortRows(data||[],'created_at',false); docsList=docs;
   if(!docs.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">📄</div><div>Niciun fișier încă.</div><div style="margin-top:1rem"><label class="btn-primary" style="cursor:pointer">＋ Încarcă primul fișier<input type="file" style="display:none" onchange="uploadDoc(this)"/></label></div></div>'; return; }
   const body=docs.map(r=>{ const isImg=(r.mime||'').startsWith('image/'); const ver=r.version||1;
-    return '<tr onclick="docOptions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td>'
-    +'<td><div class="rowact"><button class="iconbtn" title="Deschide" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(r.file_url)+'\')">👁</button>'
+    return '<tr onclick="docOptions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td><td>'+docValidCell(r)+'</td>'
+    +'<td><div class="rowact"><button class="iconbtn" title="Termen de valabilitate" onclick="event.stopPropagation();docValidity(\''+r.id+'\')">📅</button><button class="iconbtn" title="Deschide" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(r.file_url)+'\')">👁</button>'
     +'<button class="iconbtn" title="Descarcă" onclick="event.stopPropagation();downloadDoc(\''+encodeURIComponent(r.file_url)+'\',\''+encodeURIComponent(r.name||'')+'\')">⬇</button>'
     +'<button class="iconbtn" title="Versiune nouă" onclick="event.stopPropagation();newDocVersion(\''+r.id+'\','+ver+')">🔄</button>'
     +'<button class="iconbtn danger" title="Șterge" onclick="event.stopPropagation();delDoc(\''+r.id+'\',\''+encodeURIComponent(r.file_url)+'\')">🗑</button></div></td></tr>'; }).join('');
-  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un fișier pentru opțiuni.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">👉 Apasă pe un fișier pentru opțiuni. 📅 = termen de valabilitate.</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nume</th><th>Tip</th><th>Mărime</th><th>Data</th><th>'+esc(tz('Valabil până'))+'</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+function docValidCell(r){ if(!r.valid_until) return '<span style="color:var(--muted)">—</span>'; const today=new Date(); today.setHours(0,0,0,0); const exp=new Date(r.valid_until+'T12:00:00'); const days=Math.floor((exp-today)/86400000); const col=days<0?'#dc2626':(days<=30?'#d97706':'#16a34a'); const note=days<0?(' · '+tz('expirat')):(days<=30?(' · '+(days===0?tz('azi'):(days+'z'))):''); return '<span style="color:'+col+';font-weight:600;white-space:nowrap">'+esc(fmtDate(r.valid_until))+esc(note)+'</span>'; }
+async function docValidity(id){
+  const r=(docsList||[]).find(x=>x.id===id); if(!r) return;
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px"><div class="modal-head"><h3>📅 '+esc(tz('Termen de valabilitate'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="font-weight:600;margin-bottom:.5rem">'+esc(r.name)+'</div>'
+    +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Data până la care actul e valabil. Vei primi avertisment pe pagina principală cu 30 de zile înainte.'))+'</div>'
+    +'<input id="dv-date" type="date" value="'+esc(r.valid_until||'')+'" style="width:100%;padding:.6rem;border:1px solid var(--line);border-radius:9px">'
+    +'</div><div class="modal-foot"><button class="btn-ghost" onclick="docValiditySave(\''+id+'\',true)">'+esc(tz('Fără termen'))+'</button><button class="btn-primary" onclick="docValiditySave(\''+id+'\',false)">'+esc(tz('Salvează'))+'</button></div></div></div>';
+}
+async function docValiditySave(id,clear){
+  const v=clear?null:(($('dv-date')&&$('dv-date').value)||null);
+  const { error }=await sb.from('documents').update({valid_until:v}).eq('id',id);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const r=(docsList||[]).find(x=>x.id===id); if(r) r.valid_until=v;
+  closeModal(); toast('✅ '+tz('Salvat')); renderDocumente();
 }
 let docsList=[];
 function docOptions(id){
   const r=(docsList||[]).find(x=>x.id===id); if(!r) return; const ver=r.version||1; const ep=encodeURIComponent(r.file_url);
   actionsSheet(r.name||'Fișier',[
+    {i:'📅',l:'Termen de valabilitate',f:"docValidity('"+r.id+"')"},
     {i:'👁',l:'Deschide',f:"openDoc('"+ep+"')"},
     {i:'⬇',l:'Descarcă',f:"downloadDoc('"+ep+"','"+encodeURIComponent(r.name||'')+"')"},
     {i:'🔄',l:'Versiune nouă',f:"newDocVersion('"+r.id+"',"+ver+")"},
