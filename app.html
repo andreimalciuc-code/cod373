@@ -1934,6 +1934,7 @@ function openPersonalize(){
     +'<div style="font-weight:700;margin:.9rem 0 .2rem">✉️ '+esc(tz('Email cont'))+'</div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('Emailul cu care te loghezi. Îl poți schimba (ex. de la cel de birou la cel personal).'))+'</div>'
     +'<div style="font-size:.84rem;margin-bottom:.4rem">'+esc((state.session&&state.session.user&&state.session.user.email)||'')+'</div>'
+    +'<div id="pz-em-status" style="font-size:.8rem;margin-bottom:.4rem"></div>'
     +'<button class="btn-ghost" onclick="pzEmailForm()">✉️ '+esc(tz('Schimbă emailul contului'))+'</button>'
     +'<div style="font-weight:700;margin:.9rem 0 .2rem">📱 '+esc(tz('Telefon (pentru logare)'))+'</div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('Dacă îl setezi, te poți loga și cu numărul de telefon + parolă (nu doar cu emailul).'))+'</div>'
@@ -1957,8 +1958,24 @@ function openPersonalize(){
       +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Date firmă, TVA, integrări, membri, export contabil etc. (la nivel de companie).'))+'</div>'
       +'<button class="btn-ghost" onclick="closeModal();go(\'setari\')">⚙️ '+esc(tz('Deschide Setări firmă'))+'</button>'):'')
     +'</div></div></div>';
-  setTimeout(pzInitMedia,0); setTimeout(pushRefreshBtn,0);
+  setTimeout(pzInitMedia,0); setTimeout(pushRefreshBtn,0); setTimeout(pzEmailStatus,0);
   try{ sb.from('profiles').select('phone').eq('id',state.session.user.id).single().then(({data})=>{ const e=$('pz-phone'); if(e&&data&&data.phone) e.value=data.phone; }); }catch(e){}
+}
+/* Starea reală a emailului de pe server: emailul curent + dacă există o schimbare în așteptare (Secure email change). */
+async function pzEmailStatus(){
+  const el=$('pz-em-status'); if(!el) return;
+  try{
+    const { data:{ user } }=await sb.auth.getUser();
+    if(!user){ return; }
+    const cur=user.email||'', pend=user.new_email||'';
+    if(pend && pend.toLowerCase()!==cur.toLowerCase()){
+      el.style.color='#b45309';
+      el.innerHTML='⏳ '+esc(C373t('Schimbare de email în așteptare către'))+' <b>'+esc(pend)+'</b>.<br>'+esc(C373t('Trebuie confirmată pe AMBELE adrese (și cea actuală, și cea nouă) — verifică inboxul + Spam la amândouă. Schimbarea se aplică doar după ce dai clic pe ambele linkuri.'));
+    } else {
+      el.style.color='var(--muted)';
+      el.textContent='✅ '+C373t('Emailul real de pe server')+': '+cur;
+    }
+  }catch(e){ /* token vechi invalidat etc. — ignorăm */ }
 }
 function pzPasswordForm(){
   const email=(state.session&&state.session.user&&state.session.user.email)||'';
