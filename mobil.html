@@ -313,9 +313,38 @@ function render(){
   if(!nav.find(n=>n[0]===S.view)) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
   const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
-  $('screen').scrollTop=0; fn(); loadNotifCount();
+  $('screen').scrollTop=0; fn(); loadNotifCount(); maybeInstallBanner();
 }
 function goV(v){S.view=v;render();}
+/* „📲 Instalează pe telefon" — banner discret, auto, închidabil */
+let _deferredPrompt=null;
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); _deferredPrompt=e; maybeInstallBanner(); });
+function isStandalone(){ try{ return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true; }catch(e){ return false; } }
+function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent||''); }
+function installDismissed(){ try{ return localStorage.getItem('c373_install_dismiss')==='1'; }catch(e){ return false; } }
+function maybeInstallBanner(){
+  if(isStandalone()||installDismissed()) return;
+  if(!isIOS() && !_deferredPrompt) return;
+  if($('install-banner')) return;
+  const b=document.createElement('div'); b.id='install-banner';
+  b.style.cssText='position:fixed;left:.6rem;right:.6rem;bottom:76px;z-index:60;background:#0f1c33;color:#fff;border-radius:14px;padding:.65rem .8rem;display:flex;align-items:center;gap:.55rem;box-shadow:0 8px 30px rgba(0,0,0,.28)';
+  b.innerHTML='<div style="font-size:1.35rem">📲</div><div style="flex:1;min-width:0"><b style="font-size:.88rem">Instalează aplicația</b><div style="color:#9fb0d4;font-size:.76rem">Iconiță pe ecran, deschidere rapidă.</div></div>'
+    +'<button onclick="installApp()" style="background:#2f6bff;color:#fff;border:none;border-radius:9px;padding:.45rem .7rem;font-weight:700;font-size:.8rem;white-space:nowrap">Instalează</button>'
+    +'<button onclick="dismissInstall()" aria-label="Închide" style="background:none;border:none;color:#9fb0d4;font-size:1.25rem;line-height:1;padding:0 .15rem">×</button>';
+  document.body.appendChild(b);
+}
+function dismissInstall(){ try{ localStorage.setItem('c373_install_dismiss','1'); }catch(e){} const b=$('install-banner'); if(b) b.remove(); }
+async function installApp(){
+  const b=$('install-banner');
+  if(_deferredPrompt){ try{ _deferredPrompt.prompt(); await _deferredPrompt.userChoice; }catch(e){} _deferredPrompt=null; if(b) b.remove(); return; }
+  if(b) b.remove();
+  openSheet('📲 Instalează pe iPhone',
+    '<ol style="padding-left:1.15rem;line-height:1.75;font-size:.95rem;margin:.2rem 0">'
+    +'<li>În <b>Safari</b>, apasă butonul <b>Share / Distribuie</b> — pătratul cu <b>săgeată în sus ⬆️</b>, jos pe ecran.</li>'
+    +'<li>Derulează și apasă <b>„Add to Home Screen" / „Adaugă la ecranul principal"</b>.</li>'
+    +'<li>Apasă <b>Add / Adaugă</b> (sus-dreapta).</li></ol>'
+    +'<div class="hint" style="font-size:.8rem;color:var(--muted,#6b7793)">Funcționează doar în Safari pe iPhone. Apoi deschizi aplicația de pe iconiță, ca pe oricare alta.</div>');
+}
 
 /* ACASA */
 async function myClientSiteIds(){
