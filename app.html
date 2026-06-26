@@ -913,9 +913,10 @@ const MODULES = {
 
   angajati:{ title:'Angajați', sub:'Personalul firmei.', icon:'👷', group:'Echipă', table:'employees', subEquip:true,
     newLabel:'Angajat nou', invitable:'employee', orderBy:{col:'full_name',asc:true},
-    select:'id,full_name,position,specialty,idnp,address,birth_date,annual_leave_days,has_license,license_categories,hourly_rate,monthly_rate,net_salary,bank_accounts,photo_url,active,vehicle_drivers(vehicles(label,plate))',
+    select:'id,user_id,full_name,position,specialty,idnp,address,birth_date,annual_leave_days,has_license,license_categories,hourly_rate,monthly_rate,net_salary,bank_accounts,photo_url,active,vehicle_drivers(vehicles(label,plate))',
     columns:[
       {label:'Nume',get:r=>'<span class="tname">'+esc(r.full_name)+'</span>'},
+      {label:'Aplicație',get:r=>r.user_id?'<span class="pill active">📱 Folosește</span>':'<span class="pill" style="background:var(--amber-soft,#fef3c7);color:#92400e;white-space:nowrap">⚠️ Fără cont</span>'},
       {label:'Funcție',get:r=>esc(r.position||'—')},
       {label:'Specialitate',get:r=>esc(r.specialty||'—')},
       {label:'Permis',get:r=>r.has_license?('🚗 '+esc(r.license_categories||'')):'—'},
