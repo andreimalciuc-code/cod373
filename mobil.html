@@ -880,8 +880,8 @@ async function scrComanda(){
     +'<div id="mat-list"><div class="loading">Se încarcă…</div></div><div id="cart-bar"></div>';
   const {data:sites}=await sb.from('sites').select('id,name');
   $('o-site').innerHTML='<option value="">— alege —</option>'+(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
-  const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit'), sb.from('tools').select('id,name') ]);
-  S.mats=mr.data||[]; S.tools=(tr.data||[]).map(t=>({id:t.id,name:t.name,unit:'buc'}));
+  const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit,photo_url'), sb.from('tools').select('id,name,photo_url') ]);
+  S.mats=mr.data||[]; S.tools=(tr.data||[]).map(t=>({id:t.id,name:t.name,unit:'buc',photo_url:t.photo_url}));
   if(!S.cart)S.cart={}; if(!S.ordKind)S.ordKind='m'; _matQ=''; renderMats('');
 }
 function setOrdKind(k){ S.ordKind=k; const a=document.getElementById('ot-m'),b=document.getElementById('ot-t'); if(a)a.classList.toggle('on',k==='m'); if(b)b.classList.toggle('on',k==='t'); _matQ=''; const q=$('o-q'); if(q)q.value=''; renderMats(''); }
@@ -892,11 +892,11 @@ function renderMats(q){
   if(!src.length){ el.innerHTML='<div class="empty"><div class="ei">'+(S.ordKind==='t'?'🛠️':'📦')+'</div>Catalogul e gol. Cere biroului să adauge '+(S.ordKind==='t'?'instrumente':'materiale')+'.</div>'; renderCartBar(); return; }
   const list=src.filter(m=>!q||(m.name||'').toLowerCase().includes(q));
   el.innerHTML=(list.map(m=>{ const key=S.ordKind+':'+m.id; const qy=(S.cart[key]&&S.cart[key].qty)||0;
-    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(m.name)+'</div><div class="s">'+esc(m.unit||'buc')+'</div></div>'
+    return '<div class="card"><div class="row" style="gap:.55rem;align-items:center">'+mThumb(m.photo_url,S.ordKind==='t'?'🛠️':'📦')+'<div class="grow"><div class="t">'+esc(m.name)+'</div><div class="s">'+esc(m.unit||'buc')+'</div></div>'
       +'<div class="row" style="gap:.5rem"><button class="mini-btn gh" onclick="cartAdd(\''+m.id+'\',-1)">－</button>'
       +'<b style="min-width:24px;text-align:center">'+qy+'</b>'
       +'<button class="mini-btn pr" onclick="cartAdd(\''+m.id+'\',1)">＋</button></div></div></div>'; }).join(''))||'<div class="empty">Niciun rezultat.</div>';
-  renderCartBar();
+  renderCartBar(); mobSignThumbs();
 }
 function cartAdd(id,d){ const m=curList().find(x=>x.id===id); if(!m)return; const key=S.ordKind+':'+id;
   if(!S.cart[key])S.cart[key]={name:m.name,unit:m.unit||'buc',qty:0,kind:S.ordKind,refId:id};
@@ -1201,25 +1201,38 @@ async function submitTicket(){
 
 /* ── SCULE / INSTRUMENTE (custodie + scanare) ── */
 const TOOL_COND={ok:'✅ Bună',dirty:'🧽 Murdar',defect:'🛠 Defect'};
+/* semnează miniaturile din storage (bucket privat „docs") — img[data-sp] */
+async function mobSignThumbs(){
+  const els=Array.prototype.slice.call(document.querySelectorAll('img[data-sp]')).filter(e=>!e.dataset.signed);
+  if(!els.length) return;
+  const paths=Array.from(new Set(els.map(e=>e.getAttribute('data-sp')).filter(Boolean)));
+  try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); const map={}; (su.data||[]).forEach((x,i)=>{ if(x&&x.signedUrl) map[paths[i]]=x.signedUrl; });
+    els.forEach(e=>{ e.dataset.signed='1'; const u=map[e.getAttribute('data-sp')]; if(u) e.src=u; }); }catch(e){}
+}
+function mobImgOpen(img){ if(!img||!img.src||img.src.indexOf('http')!==0) return; const g=lbReg([img.src]); lbOpen(g,0); }
+function mThumb(path, emoji){ return path
+  ? '<img data-sp="'+esc(path)+'" onclick="event.stopPropagation();mobImgOpen(this)" style="width:46px;height:46px;object-fit:cover;border-radius:9px;background:var(--line);flex:none;cursor:zoom-in"/>'
+  : '<div style="width:46px;height:46px;border-radius:9px;background:var(--line);display:flex;align-items:center;justify-content:center;flex:none;font-size:1.3rem">'+(emoji||'📦')+'</div>'; }
 async function scrScule(){
   $('screen').innerHTML='<div class="scr-title">🔧 Scule & instrumente</div>'
     +'<button class="btn" onclick="scanTool()">📷 Scanează scula</button>'
     +'<div class="s" style="margin:.5rem 0 .2rem">Sau alege din listă:</div>'
     +'<input id="tool-q" placeholder="Caută după nume sau cod" oninput="renderToolList(this.value)" style="width:100%;padding:.7rem .8rem;border:1px solid var(--line);border-radius:10px;margin-bottom:.6rem"/>'
     +'<div id="tool-list"><div class="loading">Se încarcă…</div></div>';
-  const {data,error}=await sb.from('tools').select('id,name,code,holder_label,condition,condition_note,inventory_no,last_move_at');
+  const {data,error}=await sb.from('tools').select('id,name,code,holder_label,condition,condition_note,inventory_no,last_move_at,photo_url');
   if(error){ $('tool-list').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   S.tools=(data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   renderToolList('');
 }
 function toolCard(t){ const c=t.condition||'ok';
-  return '<div class="card" onclick="openToolById(\''+t.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">🔧 '+esc(t.name)+' ›</div>'
+  return '<div class="card" onclick="openToolById(\''+t.id+'\')" style="cursor:pointer"><div class="row" style="gap:.6rem;align-items:center">'+mThumb(t.photo_url,'🔧')+'<div class="grow"><div class="t">🔧 '+esc(t.name)+' ›</div>'
     +'<div class="s">'+(t.code?('Cod '+esc(t.code)+' · '):'')+(t.holder_label?('📍 '+esc(t.holder_label)):'📍 —')+'</div></div>'
     +'<span class="pill" style="white-space:nowrap;'+(c==='defect'?'background:#fee2e2;color:#b91c1c':(c==='dirty'?'background:#fef9c3;color:#854d0e':'background:#dcfce7;color:#166534'))+'">'+TOOL_COND[c]+'</span></div></div>';
 }
 function renderToolList(q){ q=(q||'').toLowerCase().trim();
   let list=S.tools||[]; if(q) list=list.filter(t=>((t.name||'')+' '+(t.code||'')+' '+(t.inventory_no||'')).toLowerCase().includes(q));
   $('tool-list').innerHTML=list.length?list.map(toolCard).join(''):'<div class="empty"><div class="ei">🔧</div>Nicio sculă.</div>';
+  mobSignThumbs();
 }
 async function toolSheet(t){
   const c=t.condition||'ok';
