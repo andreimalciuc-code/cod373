@@ -931,6 +931,8 @@ const MODULES = {
       {key:'birth_date',label:'Data nașterii',type:'date'},
       {key:'annual_leave_days',label:'Drept concediu anual (zile)',type:'number',step:'any',hint:'Câte zile de concediu de odihnă i se cuvin pe an (ex. 28). Folosit la „Concedii" ca să vezi zilele rămase.'},
       {key:'address',label:'Adresă',type:'text'},
+      {key:'phone',label:'Telefon',type:'text',hint:'Numărul de contact — folosit ca să-i trimiți invitația direct pe WhatsApp.'},
+      {key:'email',label:'Email',type:'text',hint:'Emailul angajatului — se pre-completează automat când îl inviți în aplicație.'},
       {key:'has_license',label:'Deține permis de conducere',type:'checkbox',default:false},
       {key:'license_categories',label:'Categorii permis',type:'text',hint:'Ce categorii are în permis. Ex: B, C, CE, D.'},
       {key:'hourly_rate',label:'Tarif orar brut (MDL)',type:'number',secure:true,hint:'Doar pentru proprietar/contabil. Folosit la calculul salariilor din pontaj.'},
@@ -5637,10 +5639,10 @@ async function revokeInvite(id){ if(!confirm('Anulezi această invitație? Linku
 
 async function inviteEntity(type, id){
   const def={ employee:'worker', client:'client', subcontractor:'subcontractor' }[type]||'worker';
-  let name='';
-  try{ const tbl={employee:'employees',client:'clients',subcontractor:'subcontractors'}[type]; const col=type==='employee'?'full_name':'name';
-    const { data }=await sb.from(tbl).select(col).eq('id',id).single(); name=data?data[col]:''; }catch(e){}
-  openInviteForm(type, id, def, name);
+  const tbl={employee:'employees',client:'clients',subcontractor:'subcontractors'}[type]; const col=type==='employee'?'full_name':'name';
+  let name='',email='',phone='';
+  try{ const { data }=await sb.from(tbl).select('*').eq('id',id).single(); if(data){ name=data[col]||''; email=data.email||''; phone=data.phone||''; } }catch(e){}
+  openInviteForm(type, id, def, name, email, phone);   // pre-completăm din fișă
 }
 /* Leagă o fișă de Angajat de un cont EXISTENT din firmă (ca să poată ponta / vedea sarcinile pe teren).
    Folosit când persoana a fost adăugată prin „Adaugă după email" și nu e legată de fișa de angajat. */
@@ -5723,15 +5725,17 @@ function collectPerms(){
   if(!gatedPicked && out.length===regular.length && regular.every(k=>out.includes(k))) return null;
   return out;
 }
-function openInviteForm(entityType, entityId, defaultRole, entityName){
+function openInviteForm(entityType, entityId, defaultRole, entityName, email, phone){
   const dr=defaultRole||'worker';
+  window._invPhone=(phone||'');   // pt. butonul WhatsApp de la final
   const roleOpts=Object.keys(ROLE_LABELS).filter(r=>r!=='owner').map(r=>'<option value="'+r+'" '+(r===dr?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px">'
     +'<div class="modal-head"><h3>🔗 Invită prin link</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div id="inv-msg"></div>'
     +(entityName?'<p style="color:var(--muted);font-size:.85rem">Acces pentru: <b>'+esc(entityName)+'</b></p>':'')
     +'<div class="field"><label>Rol <span class="hint-i" title="Ce poate vedea/face persoana. Lucrător/Șofer = aplicația de teren. Client = doar proiectele sale. Contabil = finanțe. Administrator = tot, fără ștergerea firmei.">ⓘ</span></label><select id="inv-role" onchange="refreshPermChecklist()">'+roleOpts+'</select></div>'
-    +'<div class="field"><label>Email (opțional) <span class="hint-i" title="Doar pentru evidență — linkul funcționează oricum. Trimite-i linkul prin WhatsApp/email.">ⓘ</span></label><input id="inv-email" type="email" placeholder="persoana@email.md"/></div>'
+    +'<div class="field"><label>Email (preluat din fișă) <span class="hint-i" title="Se completează automat din fișa persoanei. Îl poți schimba. Linkul funcționează oricum — trimite-l pe WhatsApp/email.">ⓘ</span></label><input id="inv-email" type="email" placeholder="persoana@email.md" value="'+esc(email||'')+'"/></div>'
+    +(phone?'<div style="font-size:.8rem;color:var(--muted);margin:-.3rem 0 .3rem">📱 '+esc(tz('Telefon din fișă'))+': <b>'+esc(phone)+'</b> — vei putea trimite linkul direct pe WhatsApp.</div>':'')
     +'<div class="field"><label style="display:flex;align-items:center;justify-content:space-between">Permisiuni — module și acțiuni <span class="hint-i" title="Bifează modulul ca să-l vadă persoana, apoi alege ce poate face: ＋ adăugare, ✏️ editare, 🗑 ștergere. Poți da doar vizualizare (debifezi cele 3 acțiuni). Proprietarul și administratorul au mereu acces complet.">ⓘ</span></label>'
     +'<div style="margin:.1rem 0 .3rem;display:flex;gap:.6rem"><button type="button" class="btn-link" style="background:none;border:none;color:var(--brand,#2563eb);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(true)">Bifează tot</button><button type="button" class="btn-link" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:0" onclick="permSetAll(false)">Debifează tot</button></div>'
     +permLegend()
@@ -5755,11 +5759,15 @@ async function genInvite(entityType, entityId){
         : ('<p style="font-size:.85rem;color:var(--green,#16a34a)">📧 Email trimis la <b>'+esc(email)+'</b> — persoana dă click și intră direct (fără parolă).</p>');
     }catch(e){ emailStatus='<p style="font-size:.82rem;color:var(--red)">⚠️ Emailul nu a putut fi trimis. Folosește linkul de mai jos.</p>'; }
   }
+  const _ph=(window._invPhone||'').replace(/[^0-9]/g,''); const _waTxt=encodeURIComponent('Salut! Ai acces la aplicația firmei. Deschide linkul, pune-ți o parolă și intri: '+link);
+  const _wa='https://wa.me/'+_ph+'?text='+_waTxt;
   $('modal-mount').querySelector('.modal-body').innerHTML='<p style="color:var(--green,#16a34a);font-weight:600">✅ Acces creat!</p>'
     +emailStatus
-    +'<p style="font-size:.85rem;color:var(--muted);margin-top:.6rem">Link de rezervă (dacă emailul întârzie sau ajunge în spam) — trimite-l pe WhatsApp/SMS:</p>'
+    +(_ph?'<a class="btn-primary btn-block" style="display:block;text-align:center;text-decoration:none;background:#25D366;margin-top:.4rem" href="'+_wa+'" target="_blank" rel="noopener">📲 Trimite pe WhatsApp ('+esc(window._invPhone)+')</a>':'')
+    +'<p style="font-size:.85rem;color:var(--muted);margin-top:.7rem">'+esc(tz('Sau copiază linkul și trimite-l cum vrei (WhatsApp/SMS/email):'))+'</p>'
     +'<div class="field"><input id="inv-link" readonly value="'+esc(link)+'" onclick="this.select()" style="font-size:.8rem"/></div>'
-    +'<button class="btn-primary btn-block" onclick="copyInvite(\''+data+'\')">📋 Copiază linkul de rezervă</button>';
+    +'<button class="btn-ghost btn-block" onclick="copyInvite(\''+data+'\')">📋 Copiază linkul</button>'
+    +(!_ph?'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">💡 '+esc(tz('Adaugă un telefon în fișa persoanei ca să apară butonul „Trimite pe WhatsApp".'))+'</div>':'');
   if($('inv-gen')) $('inv-gen').style.display='none';
   if(typeof renderInvites==='function' && $('inv-body')) renderInvites();
 }
