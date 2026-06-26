@@ -173,7 +173,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='285';
+const APP_BUILD='286';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -350,32 +350,38 @@ function swipeBack(){
   if(typeof S!=='undefined' && S.view && S.view!=='acasa'){ window._navBack=true; goV('acasa'); return true; }
   return false;
 }
+/* Paginare între tab-urile de jos (ca pe Instagram): glisezi stânga = următorul, dreapta = anteriorul.
+   Ecranul urmărește degetul. Dacă o foaie e deschisă → swipe dreapta o închide. */
 (function(){
-  let sx=0,sy=0,st=0,mode=null;
+  let sx=0,sy=0,st=0,mode=null;  // 'page' | 'sheet'
   const scr=function(){ return document.getElementById('screen'); };
   const sheetOpen=function(){ const sm=document.getElementById('sheet-mount'); return !!(sm&&sm.firstElementChild); };
+  const navList=function(){ try{ return (NAV[S.role]||NAV.worker)||[]; }catch(e){ return []; } };
   function reset(){ const el=scr(); if(el){ el.style.transition=''; el.style.transform=''; el.style.opacity=''; } }
   document.addEventListener('touchstart',function(e){
     mode=null; if(!e.touches||e.touches.length!==1) return;
-    const t=e.touches[0], vw=window.innerWidth||360; sx=t.clientX; sy=t.clientY; st=Date.now();
+    const t=e.touches[0]; sx=t.clientX; sy=t.clientY; st=Date.now();
     const lb=document.getElementById('img-lb'); if(lb&&lb.style.display!=='none') return;
-    if(!(t.clientX < Math.max(130, vw*0.35))) return;          // pornește din partea stângă
-    if(sheetOpen()) mode='sheet';
-    else if(typeof S!=='undefined' && S.view && S.view!=='acasa') mode='screen';
+    if(/^(INPUT|TEXTAREA|SELECT)$/.test((e.target&&e.target.tagName)||'')) return;  // nu fura din câmpuri
+    mode = sheetOpen() ? 'sheet' : 'page';
   },{passive:true});
   document.addEventListener('touchmove',function(e){
-    if(mode!=='screen'||!e.touches||e.touches.length!==1) return;
+    if(mode!=='page'||!e.touches||e.touches.length!==1) return;
     const t=e.touches[0], dx=t.clientX-sx, dy=t.clientY-sy;
-    if(Math.abs(dx)<8) return;
-    if(Math.abs(dx)<Math.abs(dy)){ mode=null; reset(); return; }  // e scroll vertical → renunțăm
-    const el=scr(); if(el){ const x=Math.max(0,dx); el.style.transition='none'; el.style.transform='translateX('+x+'px)'; el.style.opacity=String(Math.max(.45,1-x/((window.innerWidth||360)*1.1))); }
+    if(Math.abs(dx)<10) return;
+    if(Math.abs(dx)<Math.abs(dy)){ mode=null; reset(); return; }   // scroll vertical → renunțăm
+    const el=scr(); if(el){ el.style.transition='none'; el.style.transform='translateX('+(dx*0.85)+'px)'; el.style.opacity=String(Math.max(.55,1-Math.abs(dx)/((window.innerWidth||360)*1.4))); }
   },{passive:true});
   document.addEventListener('touchend',function(e){
     const t=(e.changedTouches&&e.changedTouches[0]), dx=t?t.clientX-sx:0, dy=t?t.clientY-sy:0, dt=Date.now()-st;
-    if(mode==='screen'){ const el=scr();
-      if(el){ if(dx > (window.innerWidth||360)*0.28){ window._navBack=true; el.style.transition='transform .16s ease,opacity .16s ease'; el.style.transform='translateX(100%)'; el.style.opacity='0'; setTimeout(function(){ reset(); swipeBack(); },150); }
-        else { el.style.transition='transform .2s ease,opacity .2s ease'; el.style.transform='translateX(0)'; el.style.opacity='1'; setTimeout(reset,220); } }
-    } else if(mode==='sheet'){ if(dx>60 && Math.abs(dy)<70 && dx>Math.abs(dy)*1.4 && dt<800) swipeBack(); }
+    if(mode==='page'){ const el=scr(), vw=window.innerWidth||360;
+      const horiz=Math.abs(dx)>Math.abs(dy)*1.4;
+      const pass=horiz && (Math.abs(dx)>vw*0.25 || (Math.abs(dx)>55 && dt<320));
+      if(pass){ const list=navList(); let i=-1; for(let k=0;k<list.length;k++){ if(list[k][0]===S.view){ i=k; break; } }
+        let target=null; if(dx<0 && i>-1 && i<list.length-1) target=list[i+1][0]; else if(dx>0 && i>0) target=list[i-1][0];
+        if(target && el){ window._navBack=(dx>0); el.style.transition='transform .15s ease,opacity .15s ease'; el.style.transform='translateX('+(dx<0?'-100%':'100%')+')'; el.style.opacity='0'; setTimeout(function(){ reset(); goV(target); },140); mode=null; return; } }
+      if(el){ el.style.transition='transform .2s ease,opacity .2s ease'; el.style.transform='translateX(0)'; el.style.opacity='1'; setTimeout(reset,220); }
+    } else if(mode==='sheet'){ if(dx>55 && Math.abs(dy)<70 && dx>Math.abs(dy)*1.4 && dt<800) closeSheet(); }
     mode=null;
   },{passive:true});
 })();
