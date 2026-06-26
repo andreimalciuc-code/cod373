@@ -94,8 +94,15 @@
   .bottom button.on{color:var(--primary)}
 
   /* SHEET (bottom modal) */
-  .sheet-bg{position:fixed;inset:0;background:rgba(15,28,51,.5);z-index:40;display:flex;align-items:flex-end;justify-content:center}
-  .sheet{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:460px;padding:1.2rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto}
+  .sheet-bg{position:fixed;inset:0;background:rgba(15,28,51,.5);z-index:40;display:flex;align-items:flex-end;justify-content:center;animation:bgIn .2s ease}
+  .sheet{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:460px;padding:1.2rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;animation:sheetUp .26s cubic-bezier(.2,.8,.2,1)}
+  .sheet-bg.closing{animation:bgOut .22s ease forwards}
+  .sheet-bg.closing .sheet{animation:sheetDown .24s cubic-bezier(.4,0,1,1) forwards}
+  @keyframes bgIn{from{opacity:0}to{opacity:1}} @keyframes bgOut{from{opacity:1}to{opacity:0}}
+  @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}} @keyframes sheetDown{from{transform:translateY(0)}to{transform:translateY(100%)}}
+  @keyframes screenIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes slideBack{from{opacity:.35;transform:translateX(-16%)}to{opacity:1;transform:translateX(0)}}
+  @media (prefers-reduced-motion:reduce){ .sheet-bg,.sheet,.sheet-bg.closing,.sheet-bg.closing .sheet{animation:none!important} }
   .sheet h3{font-size:1.05rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center}
   .sheet h3 .x{background:none;border:none;font-size:1.4rem;color:var(--muted)}
 
@@ -313,7 +320,9 @@ function render(){
   if(!nav.find(n=>n[0]===S.view)) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
   const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
-  $('screen').scrollTop=0; fn(); loadNotifCount(); maybeInstallBanner();
+  const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
+  window._navBack=false;
+  fn(); loadNotifCount(); maybeInstallBanner();
 }
 function goV(v){S.view=v;render();}
 /* „📲 Instalează pe telefon" — banner discret, auto, închidabil */
@@ -337,7 +346,7 @@ function dismissInstall(){ try{ localStorage.setItem('c373_install_dismiss','1')
 /* ── Gest „înapoi": clisezi cu degetul spre dreapta din marginea stângă (ca pe Instagram) → închide foaia deschisă sau revii la Acasă ── */
 function swipeBack(){
   const sm=$('sheet-mount'); if(sm && sm.firstChild){ closeSheet(); return true; }
-  if(typeof S!=='undefined' && S.view && S.view!=='acasa'){ goV('acasa'); return true; }
+  if(typeof S!=='undefined' && S.view && S.view!=='acasa'){ window._navBack=true; goV('acasa'); return true; }
   return false;
 }
 (function(){
@@ -1192,7 +1201,7 @@ async function saveProfile(){
 function openSheet(title,html){
   $('sheet-mount').innerHTML='<div class="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet"><h3>'+esc(title)+'<button class="x" onclick="closeSheet()">×</button></h3>'+html+'</div></div>';
 }
-function closeSheet(){$('sheet-mount').innerHTML='';}
+function closeSheet(){ const m=$('sheet-mount'), bg=m&&m.firstElementChild; if(bg&&!bg.classList.contains('closing')){ bg.classList.add('closing'); setTimeout(()=>{ if(m) m.innerHTML=''; },230); } else if(m){ m.innerHTML=''; } }
 
 /* ── SUPORT ── */
 function openSupport(){
