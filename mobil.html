@@ -100,8 +100,8 @@
   .sheet-bg.closing .sheet{animation:sheetDown .24s cubic-bezier(.4,0,1,1) forwards}
   @keyframes bgIn{from{opacity:0}to{opacity:1}} @keyframes bgOut{from{opacity:1}to{opacity:0}}
   @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}} @keyframes sheetDown{from{transform:translateY(0)}to{transform:translateY(100%)}}
-  @keyframes screenIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes slideBack{from{opacity:.35;transform:translateX(-16%)}to{opacity:1;transform:translateX(0)}}
+  @keyframes screenIn{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes slideBack{from{opacity:.25;transform:translateX(-32%)}to{opacity:1;transform:translateX(0)}}
   @media (prefers-reduced-motion:reduce){ .sheet-bg,.sheet,.sheet-bg.closing,.sheet-bg.closing .sheet{animation:none!important} }
   .sheet h3{font-size:1.05rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center}
   .sheet h3 .x{background:none;border:none;font-size:1.4rem;color:var(--muted)}
@@ -173,6 +173,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
+const APP_BUILD='284';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -1150,7 +1151,8 @@ async function openProfile(){
     +'<div class="hint" style="margin:.3rem 0 0;font-size:.78rem;color:var(--muted,#6b7793)">Setează o parolă ca să te poți loga cu email + parolă pe orice dispozitiv (recomandat dacă ai intrat prin link).</div>'
     +'<button class="btn btn-line" id="pf-push" style="margin-top:.6rem" onclick="mPushToggle()">🔔 Activează notificările push</button>'
     +'<div class="hint" style="margin:.3rem 0 0;font-size:.78rem;color:var(--muted,#6b7793)">Primești pe telefon când ești planificat pe un șantier, ai o livrare sau un mesaj — chiar dacă aplicația e închisă.</div>'
-    +'<button class="btn btn-line" style="margin-top:.6rem" onclick="doLogout()">Ieși din cont</button>');
+    +'<button class="btn btn-line" style="margin-top:.6rem" onclick="doLogout()">Ieși din cont</button>'
+    +'<div style="text-align:center;color:var(--muted,#6b7793);font-size:.72rem;margin-top:.9rem">Cod373 · build '+APP_BUILD+'</div>');
   setTimeout(mPushRefresh,0);
 }
 const M_VAPID='BIBlTc5mZv7oUB8mz_T-byVuJ7ydxhJjaju5eQuY1jUTPQpHTEkDg72k5ve_xjOZAGwYtzSIhAYdBPnHNqejC9c';
