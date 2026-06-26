@@ -1046,6 +1046,8 @@ const MODULES = {
 
   pontajsim:{ title:'Pontaj — simulator cost', sub:'Maculator privat: orele reale × tarife brut/net (doar simulare).', icon:'🧮', group:'Administrare', custom:true },
 
+  inbox:{ title:'Mesaje primite', sub:'Poze/clipuri trimise pe Telegram & WhatsApp.', icon:'📥', group:'Operațional', custom:true },
+
   ssm:{ title:'SSM / Securitate', sub:'Instructaje și echipament de protecție.', icon:'🦺', group:'Echipă', table:'ssm_records', hidden:true,
     newLabel:'Înregistrare SSM', orderBy:{col:'created_at',asc:false},
     select:'id,kind,title,valid_until,status,employees(full_name)',
@@ -2207,6 +2209,60 @@ async function kbDel(id){
   const r=await sb.from('kb_articles').delete().eq('id',id); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
   closeModal(); toast('🗑 '+tz('Șters.')); renderCunostinte();
 }
+
+/* ════ 📥 MESAJE PRIMITE (Telegram / WhatsApp → inbound_media) ════ */
+async function renderInbox(){
+  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>📥 '+esc(tz('Mesaje primite'))+'</h3><button class="btn-ghost" onclick="renderInbox()">↻</button></div>'
+    +'<div style="padding:.4rem 1.2rem;font-size:.82rem;color:var(--muted)">'+esc(tz('Poze și clipuri trimise de clienți/lucrători pe Telegram sau WhatsApp. Atașează-le la un client (în jurnal) sau salvează-le în Documente.'))+' <a onclick="go(\'setari\')" style="cursor:pointer;color:var(--primary)">⚙ '+esc(tz('Conectează canalele'))+'</a></div>'
+    +'<div id="inbox-body"><div class="loading">'+esc(tz('Se încarcă…'))+'</div></div></div>';
+  const r=await sb.from('inbound_media').select('*').neq('status','archived').order('created_at',{ascending:false}).limit(150);
+  if(r.error){ $('inbox-body').innerHTML='<div class="empty">'+esc(tz('Eroare:'))+' '+esc(r.error.message)+'</div>'; return; }
+  const rows=r.data||[]; window._inboxRows=rows;
+  if(!rows.length){ $('inbox-body').innerHTML='<div class="empty" style="padding:2rem;text-align:center;color:var(--muted)"><div style="font-size:2rem">📭</div>'+esc(tz('Nimic primit încă.'))+'<br><span style="font-size:.85rem">'+esc(tz('Conectează Telegram/WhatsApp din Setări → Mesagerie.'))+'</span></div>'; return; }
+  // semnează toate fișierele + ia clienții pentru afișare
+  const paths=[]; rows.forEach(x=>(x.media||[]).forEach(p=>{ if(paths.indexOf(p)<0) paths.push(p); }));
+  const um={}; if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((s,i)=>{ if(s&&s.signedUrl) um[paths[i]]=s.signedUrl; }); }catch(e){} }
+  const cl=(await sb.from('clients').select('id,name')).data||[]; const cn={}; cl.forEach(c=>cn[c.id]=c.name);
+  $('inbox-body').innerHTML=rows.map(x=>{
+    const ch=x.channel==='whatsapp'?'🟢 WhatsApp':'✈️ Telegram';
+    const when=esc(String(x.created_at||'').slice(0,16).replace('T',' '));
+    const media=(x.media||[]).map(p=>{ const u=um[p]||''; if(isVideoPath(p)) return '<div onclick="caOpenVideo(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;border-radius:9px;background:#0f1c33;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1.5rem" title="video">▶</div>'; return u?'<img src="'+esc(u)+'" onclick="openImg(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;object-fit:cover;border-radius:9px;border:1px solid var(--line);cursor:zoom-in"/>':''; }).join('');
+    const matched=x.client_id?('<span class="pill active" style="background:var(--primary);color:#fff;border-radius:20px;padding:.1rem .5rem;font-size:.72rem">🤝 '+esc(cn[x.client_id]||tz('client'))+'</span>'):'';
+    return '<div class="card" style="margin:.6rem 1rem;padding:.8rem;border:1px solid var(--line);border-radius:12px;background:var(--surface)">'
+      +'<div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap"><div><b>'+ch+'</b> · '+esc(x.from_name||'—')+(x.from_phone?(' · 📞 '+esc(x.from_phone)):'')+' '+matched+'</div><div style="font-size:.74rem;color:var(--muted)">'+when+'</div></div>'
+      +(x.caption?'<div style="margin:.4rem 0;white-space:pre-wrap">'+esc(x.caption)+'</div>':'')
+      +(media?'<div style="display:flex;gap:.45rem;flex-wrap:wrap;margin:.5rem 0">'+media+'</div>':'')
+      +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">'
+        +'<button class="btn-ghost" onclick="inboxToClient(\''+x.id+'\')">🤝 '+esc(tz('Atașează la client'))+'</button>'
+        +'<button class="btn-ghost" onclick="inboxToDocs(\''+x.id+'\')">📁 '+esc(tz('Salvează în Documente'))+'</button>'
+        +'<button class="btn-ghost" onclick="inboxArchive(\''+x.id+'\')">🗄️ '+esc(tz('Arhivează'))+'</button>'
+      +'</div></div>';
+  }).join('');
+}
+function inboxRow(id){ return (window._inboxRows||[]).find(x=>x.id===id); }
+async function inboxToClient(id){ const x=inboxRow(id); if(!x) return;
+  if(x.client_id){ await inboxFileClient(x,x.client_id); return; }
+  const cl=(await sb.from('clients').select('id,name').order('name')).data||[];
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>🤝 '+esc(tz('Atașează la client'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +(cl.length?('<select id="inbox-cl" style="width:100%;padding:.6rem;border:1px solid var(--line);border-radius:9px;background:var(--surface)">'+cl.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('')+'</select><div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end"><button class="btn-ghost" onclick="closeModal()">'+esc(tz('Anulează'))+'</button><button class="btn-primary" onclick="inboxClientPick(\''+id+'\')">'+esc(tz('Atașează'))+'</button></div>'):('<div style="color:var(--muted)">'+esc(tz('Nu ai clienți încă. Creează unul în modulul Clienți.'))+'</div>'))
+    +'</div></div></div>';
+}
+async function inboxClientPick(id){ const x=inboxRow(id); const cid=$('inbox-cl')&&$('inbox-cl').value; if(!x||!cid) return; closeModal(); await inboxFileClient(x,cid); }
+async function inboxFileClient(x,clientId){
+  const body=x.caption||('📷 '+(x.channel==='whatsapp'?'WhatsApp':'Telegram')+(x.from_name?(' — '+x.from_name):''));
+  const rec={tenant_id:state.tenant,client_id:clientId,kind:'note',body:body,done:true,created_by:tuActor(),attachments:(x.media&&x.media.length?x.media:null)};
+  const r=await sb.from('client_activities').insert(rec); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
+  await sb.from('inbound_media').update({status:'filed',client_id:clientId,site_id:x.site_id||null}).eq('id',x.id);
+  toast('✅ '+tz('Atașat la client (jurnal).')); renderInbox();
+}
+async function inboxToDocs(id){ const x=inboxRow(id); if(!x||!(x.media&&x.media.length)){ toast(tz('Nimic de salvat (doar text).')); return; }
+  let ok=0; for(const p of x.media){ const nm=(x.from_name?(x.from_name+' — '):'')+(isVideoPath(p)?'video':'foto')+' '+String(x.created_at||'').slice(0,10);
+    const r=await sb.from('documents').insert({tenant_id:state.tenant,name:nm,file_url:p,mime:(isVideoPath(p)?'video/mp4':'image/jpeg'),uploaded_by:state.session.user.id}); if(!r.error) ok++; }
+  if(ok){ await sb.from('inbound_media').update({status:'filed'}).eq('id',x.id); toast('✅ '+ok+' '+tz('în Documente.')); renderInbox(); }
+  else toast(tz('Eroare la salvare.'));
+}
+async function inboxArchive(id){ const r=await sb.from('inbound_media').update({status:'archived'}).eq('id',id); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; } toast('🗄️ '+tz('Arhivat.')); renderInbox(); }
+
 function go(key){
   const m=MODULES[key]; if(!m) return;
   if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
@@ -2214,7 +2270,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte, inbox:renderInbox}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
   maybeInstallBanner();
@@ -5418,6 +5474,40 @@ async function hTrack(uid, name, dayOffset){
 function hClearTrack(){ if(_hTrackLine&&_hMap){ _hMap.removeLayer(_hTrackLine); _hTrackLine=null; toast('Traseu șters.'); } }
 
 /* ════ SETĂRI FIRMĂ ════ */
+function messagingPanel(au){
+  if(!(state.role==='owner'||state.role==='admin')) return '';
+  au=au||{}; const base='https://vzatmfhkwiojqkowtftg.supabase.co/functions/v1';
+  const key=au.inbound_key||''; const tgUrl=key?(base+'/tg-webhook?t='+key):''; const waUrl=base+'/wa-webhook';
+  function fld(id,label,val,ph){ return '<div class="field"><label>'+esc(label)+'</label><input id="'+id+'" value="'+esc(val||'')+'" placeholder="'+esc(ph||'')+'" style="width:100%"/></div>'; }
+  function urlBox(u){ return u?('<div style="display:flex;gap:.4rem;align-items:center;margin:.3rem 0"><input value="'+esc(u)+'" readonly onclick="this.select()" style="flex:1;font-size:.74rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.4rem"/><button type="button" class="btn-ghost" onclick="navigator.clipboard.writeText(this.previousElementSibling.value).then(()=>toast(\'📋 Copiat\'))">📋</button></div>'):('<div style="font-size:.8rem;color:var(--muted)">'+esc(tz('Apasă „Salvează" ca să se genereze codul firmei, apoi reapare aici linkul.'))+'</div>'); }
+  return '<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>📥 Mesagerie (Telegram / WhatsApp)</h3></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">'+esc(tz('Primește poze și clipuri direct pe platformă (de la clienți sau lucrători). Apar în modulul „Mesaje primite".'))+'</p>'
+    +'<div style="border:1px solid var(--line);border-radius:10px;padding:.8rem;margin-bottom:.9rem">'
+      +'<b>✈️ Telegram</b> <span style="font-size:.78rem;color:var(--muted)">— '+esc(tz('gratis, recomandat'))+'</span>'
+      +'<ol style="font-size:.82rem;color:var(--muted);margin:.5rem 0 .6rem 1.1rem;padding:0"><li>'+esc(tz('În Telegram scrie la @BotFather → /newbot → primești un token.'))+'</li><li>'+esc(tz('Lipește tokenul mai jos și apasă Salvează.'))+'</li><li>'+esc(tz('Deschide o dată în browser linkul de „activare webhook" de mai jos.'))+'</li></ol>'
+      +fld('msg-tg',tz('Token bot Telegram'),au.tg_token,'123456:ABC-...')
+      +(au.tg_token&&key?('<div style="font-size:.78rem;color:var(--muted);margin-top:.4rem">🔌 '+esc(tz('Activare webhook (deschide o dată în browser):'))+'</div>'+urlBox('https://api.telegram.org/bot'+au.tg_token+'/setWebhook?url='+encodeURIComponent(tgUrl))):'<div style="font-size:.78rem;color:var(--muted);margin-top:.4rem">'+esc(tz('URL webhook:'))+'</div>'+urlBox(tgUrl))
+    +'</div>'
+    +'<div style="border:1px solid var(--line);border-radius:10px;padding:.8rem">'
+      +'<b>🟢 WhatsApp</b> <span style="font-size:.78rem;color:var(--muted)">— '+esc(tz('necesită cont Meta Business'))+'</span>'
+      +fld('msg-wa-token',tz('Token permanent (Cloud API)'),au.wa_token,'EAAG...')
+      +fld('msg-wa-phone','Phone number ID',au.wa_phone_id,'1098...')
+      +fld('msg-wa-verify',tz('Verify token (ales de tine)'),au.wa_verify_token,'ex: cod373secret')
+      +'<div style="font-size:.78rem;color:var(--muted);margin-top:.4rem">'+esc(tz('Callback URL (în Meta):'))+'</div>'+urlBox(waUrl)
+    +'</div>'
+    +'<button class="btn-primary" style="margin-top:.9rem" onclick="saveMessaging()">'+esc(tz('Salvează'))+'</button>'
+    +'</div></div>';
+}
+async function saveMessaging(){
+  const au=Object.assign({}, (state.firm&&state.firm.automations)||{});
+  au.tg_token=($('msg-tg')&&$('msg-tg').value.trim())||'';
+  au.wa_token=($('msg-wa-token')&&$('msg-wa-token').value.trim())||'';
+  au.wa_phone_id=($('msg-wa-phone')&&$('msg-wa-phone').value.trim())||'';
+  au.wa_verify_token=($('msg-wa-verify')&&$('msg-wa-verify').value.trim())||'';
+  if(!au.inbound_key){ let s=''; const c='abcdefghijklmnopqrstuvwxyz0123456789'; const a=(typeof crypto!=='undefined'&&crypto.getRandomValues)?crypto.getRandomValues(new Uint32Array(24)):null; for(let i=0;i<24;i++){ s+=c[(a?a[i]:Math.floor(Math.random()*4294967296))%c.length]; } au.inbound_key=s; }
+  const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant)); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
+  state.firm.automations=au; toast('✅ '+tz('Salvat.')); renderSetari();
+}
 async function renderSetari(){
   const f=state.firm||{}; const au=(f.automations)||{};
   $('content').innerHTML='<div class="panel" style="max-width:660px"><div class="panel-head"><h3>Setări firmă</h3></div><div class="modal-body">'
@@ -5509,6 +5599,7 @@ async function renderSetari(){
     +'<div id="unit-chips" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem">'+renderUnitChips()+'</div>'
     +'<div style="display:flex;gap:.5rem;max-width:440px"><input id="unit-new" placeholder="ex: tonă, palet, m³, oră" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addUnit();}" style="flex:1"/><button class="btn-primary" onclick="addUnit()">Adaugă</button></div>'
     +'</div></div>'
+    +messagingPanel(au)
     +stageTplPanel()
     +'</div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
