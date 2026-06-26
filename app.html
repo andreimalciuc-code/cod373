@@ -1333,7 +1333,10 @@ async function boot(){
   // Cine intră prin link (magic link, fără parolă) trebuie să-și seteze imediat o parolă pentru cont.
   const _pwSet=!!(session.user&&session.user.user_metadata&&session.user.user_metadata.pw_set);
   if(_justJoined && !_pwSet){ hideSplash(); showForceSetPassword(); return; }
-  const { data:mem } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations,bank_accounts)').eq('active',true).limit(1).maybeSingle();
+  // FIX: filtrăm DUPĂ contul curent (altfel, când firma are mai mulți membri, nimerea alt rând / pica) + alegem rolul cel mai înalt
+  const { data:_mems } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations,bank_accounts)').eq('user_id', state.session.user.id).eq('active',true);
+  const _rank=r=>{ const i=['owner','admin','manager','accountant','driver','worker','subcontractor','client'].indexOf(r); return i<0?999:i; };
+  const mem=(_mems||[]).slice().sort((a,b)=>_rank(a.role)-_rank(b.role))[0]||null;
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); hideSplash(); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
   CUR = (state.firm.currency||'MDL').toUpperCase();
