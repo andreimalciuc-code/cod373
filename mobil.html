@@ -173,7 +173,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='286';
+const APP_BUILD='287';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -233,6 +233,7 @@ async function boot(){
   document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
   $('login').classList.add('hidden');$('app').classList.remove('hidden');
   render(); hideSplash();
+  setTimeout(mPushAutoInit, 1200);   // notificări pornite implicit (cu opțiune de oprire)
   // scanare QR: link de forma mobil.html?tool=ID deschide direct scula
   try{ const sp=new URLSearchParams(location.search); const up=sp.get('unit'); if(up){ history.replaceState(null,'',location.pathname); openUnitById(up); } else { const tp=sp.get('tool'); if(tp){ history.replaceState(null,'',location.pathname); openToolById(tp); } } }catch(e){}
 }
@@ -1179,18 +1180,46 @@ async function openProfile(){
 const M_VAPID='BIBlTc5mZv7oUB8mz_T-byVuJ7ydxhJjaju5eQuY1jUTPQpHTEkDg72k5ve_xjOZAGwYtzSIhAYdBPnHNqejC9c';
 function _b64u8(s){ const pad='='.repeat((4-s.length%4)%4); const b=(s+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(b); const a=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i); return a; }
 async function mPushRefresh(){ const b=$('pf-push'); if(!b) return; if(!('serviceWorker' in navigator)||!('PushManager' in window)){ b.style.display='none'; return; } try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); b.textContent=sub?'🔕 Dezactivează notificările push':'🔔 Activează notificările push'; }catch(e){} }
+async function mPushSubscribeSave(){
+  const reg=await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_b64u8(M_VAPID)});
+  const k=(sub.toJSON&&sub.toJSON().keys)||{};
+  const r=await sb.from('push_subscriptions').upsert({tenant_id:S.tenant,user_id:S.session.user.id,endpoint:sub.endpoint,p256dh:k.p256dh||null,auth:k.auth||null},{onConflict:'endpoint'});
+  if(r.error) throw r.error; return sub;
+}
+function pushOff(){ try{ return localStorage.getItem('c373_push_off')==='1'; }catch(e){ return false; } }
 async function mPushToggle(){
   if(!('serviceWorker' in navigator)||!('PushManager' in window)){ toast('Dispozitivul nu suportă notificări push.'); return; }
   try{ const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription();
-    if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} toast('🔕 Notificări dezactivate.'); mPushRefresh(); return; }
+    if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} try{ localStorage.setItem('c373_push_off','1'); }catch(e){} toast('🔕 Notificări dezactivate.'); mPushRefresh(); return; }
     const perm=await Notification.requestPermission(); if(perm!=='granted'){ toast('Permite notificările din setările telefonului/browserului.'); return; }
-    sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_b64u8(M_VAPID)});
-    const k=(sub.toJSON&&sub.toJSON().keys)||{};
-    const r=await sb.from('push_subscriptions').upsert({tenant_id:S.tenant,user_id:S.session.user.id,endpoint:sub.endpoint,p256dh:k.p256dh||null,auth:k.auth||null},{onConflict:'endpoint'});
-    if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+    await mPushSubscribeSave(); try{ localStorage.removeItem('c373_push_off'); }catch(e){}
     toast('🔔 Notificări push activate.'); mPushRefresh();
   }catch(e){ toast('Eroare: '+esc(e.message||String(e))); }
 }
+/* Notificări pornite implicit: dacă sunt deja permise → ne abonăm silențios; dacă nu (și nu le-a oprit explicit) → propunere automată cu un singur tap. */
+async function mPushAutoInit(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||typeof Notification==='undefined') return;
+  if(pushOff()) return;
+  try{
+    if(Notification.permission==='granted'){ try{ await mPushSubscribeSave(); }catch(e){} return; }
+    if(Notification.permission==='denied') return;
+    mPushPrompt();   // 'default' → cerem (necesită un tap, mai ales pe iPhone)
+  }catch(e){}
+}
+function mPushPrompt(){
+  if($('push-banner')||pushOff()) return;
+  const b=document.createElement('div'); b.id='push-banner';
+  b.style.cssText='position:fixed;left:.6rem;right:.6rem;top:calc(.6rem + env(safe-area-inset-top));z-index:70;background:#0f1c33;color:#fff;border-radius:14px;padding:.7rem .85rem;display:flex;align-items:center;gap:.55rem;box-shadow:0 8px 30px rgba(0,0,0,.3)';
+  b.innerHTML='<div style="font-size:1.35rem">🔔</div><div style="flex:1;min-width:0"><b style="font-size:.88rem">Pornește notificările</b><div style="color:#9fb0d4;font-size:.76rem">Te anunț când ești planificat, ai o livrare sau un mesaj.</div></div>'
+    +'<button onclick="pushPromptYes()" style="background:#2f6bff;color:#fff;border:none;border-radius:9px;padding:.45rem .7rem;font-weight:700;font-size:.8rem;white-space:nowrap">Activează</button>'
+    +'<button onclick="pushPromptNo()" aria-label="Nu acum" style="background:none;border:none;color:#9fb0d4;font-size:1.25rem;line-height:1;padding:0 .15rem">×</button>';
+  document.body.appendChild(b);
+}
+function pushPromptClose(){ const b=$('push-banner'); if(b) b.remove(); }
+async function pushPromptYes(){ pushPromptClose(); await mPushToggle(); }
+function pushPromptNo(){ pushPromptClose(); }   // doar „mai târziu" — reapare la următoarea logare; oprire definitivă din Profil
 function openSetPassword(){
   openSheet('Schimbă / setează parola',
     '<div id="sp-msg"></div>'
