@@ -2213,13 +2213,15 @@ async function kbDel(id){
 /* ════ 📥 MESAJE PRIMITE (Telegram / WhatsApp → inbound_media) ════ */
 async function renderInbox(){
   window._inboxSel=new Set();
-  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>📥 '+esc(tz('Mesaje primite'))+'</h3><button class="btn-ghost" onclick="renderInbox()">↻</button></div>'
+  const arch=!!window._inboxArch;
+  $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>📥 '+esc(tz('Mesaje primite'))+(arch?(' · '+esc(tz('Arhivate'))):'')+'</h3><div style="display:flex;gap:.4rem"><button class="btn-ghost" onclick="window._inboxArch='+(arch?'false':'true')+';renderInbox()">'+(arch?'📥 '+esc(tz('Active')):'🗄️ '+esc(tz('Arhivate')))+'</button><button class="btn-ghost" onclick="renderInbox()">↻</button></div></div>'
     +'<div style="padding:.4rem 1.2rem;font-size:.82rem;color:var(--muted)">'+esc(tz('Poze și clipuri trimise de clienți/lucrători pe Telegram sau WhatsApp. Bifează unul sau mai multe și atașează-le dintr-un singur clic.'))+' <a onclick="go(\'setari\')" style="cursor:pointer;color:var(--primary)">⚙ '+esc(tz('Conectează canalele'))+'</a></div>'
     +'<div id="inbox-body"><div class="loading">'+esc(tz('Se încarcă…'))+'</div></div></div>';
-  const r=await sb.from('inbound_media').select('*').neq('status','archived').order('created_at',{ascending:false}).limit(150);
+  const baseQ=sb.from('inbound_media').select('*').order('created_at',{ascending:false}).limit(150);
+  const r=await (arch? baseQ.eq('status','archived') : baseQ.neq('status','archived'));
   if(r.error){ $('inbox-body').innerHTML='<div class="empty">'+esc(tz('Eroare:'))+' '+esc(r.error.message)+'</div>'; return; }
   const rows=r.data||[]; window._inboxRows=rows;
-  if(!rows.length){ $('inbox-body').innerHTML='<div class="empty" style="padding:2rem;text-align:center;color:var(--muted)"><div style="font-size:2rem">📭</div>'+esc(tz('Nimic primit încă.'))+'<br><span style="font-size:.85rem">'+esc(tz('Conectează Telegram/WhatsApp din Setări → Mesagerie.'))+'</span></div>'; return; }
+  if(!rows.length){ $('inbox-body').innerHTML='<div class="empty" style="padding:2rem;text-align:center;color:var(--muted)"><div style="font-size:2rem">📭</div>'+(arch?esc(tz('Nimic arhivat.')):esc(tz('Nimic primit încă.'))+'<br><span style="font-size:.85rem">'+esc(tz('Conectează Telegram/WhatsApp din Setări → Mesagerie.'))+'</span>')+'</div>'; return; }
   // semnează toate fișierele + ia clienții pentru afișare
   const paths=[]; rows.forEach(x=>(x.media||[]).forEach(p=>{ if(paths.indexOf(p)<0) paths.push(p); }));
   const um={}; if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((s,i)=>{ if(s&&s.signedUrl) um[paths[i]]=s.signedUrl; }); }catch(e){} }
@@ -2230,7 +2232,7 @@ async function renderInbox(){
     +'<span style="flex:1;min-width:8px"></span>'
     +'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkClient()">🤝 '+esc(tz('Atașează la client'))+'</button>'
     +'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkDocs()">📁 '+esc(tz('Salvează în Documente'))+'</button>'
-    +'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkArchive()">🗄️ '+esc(tz('Arhivează'))+'</button>'
+    +(arch?'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkUnarchive()">↩️ '+esc(tz('Dezarhivează'))+'</button>':'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkArchive()">🗄️ '+esc(tz('Arhivează'))+'</button>')
     +'</div>';
   const cards=rows.map(x=>{
     const ch=x.channel==='whatsapp'?'🟢 WhatsApp':'✈️ Telegram';
@@ -2246,7 +2248,7 @@ async function renderInbox(){
       +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">'
         +'<button class="btn-ghost" onclick="inboxToClient(\''+x.id+'\')">🤝 '+esc(tz('Atașează la client'))+'</button>'
         +'<button class="btn-ghost" onclick="inboxToDocs(\''+x.id+'\')">📁 '+esc(tz('Salvează în Documente'))+'</button>'
-        +'<button class="btn-ghost" onclick="inboxArchive(\''+x.id+'\')">🗄️ '+esc(tz('Arhivează'))+'</button>'
+        +(arch?'<button class="btn-ghost" onclick="inboxUnarchive(\''+x.id+'\')">↩️ '+esc(tz('Dezarhivează'))+'</button>':'<button class="btn-ghost" onclick="inboxArchive(\''+x.id+'\')">🗄️ '+esc(tz('Arhivează'))+'</button>')
       +'</div></div>';
   }).join('');
   $('inbox-body').innerHTML=bar+cards;
@@ -2288,6 +2290,8 @@ async function inboxToDocsCore(x){ if(!(x.media&&x.media.length)) return 0;
 async function inboxToDocs(id){ const x=inboxRow(id); if(!x){ return; } const ok=await inboxToDocsCore(x);
   if(ok){ toast('✅ '+ok+' '+tz('în Documente.')); renderInbox(); } else toast(tz('Nimic de salvat (doar text).')); }
 async function inboxArchive(id){ const r=await sb.from('inbound_media').update({status:'archived'}).eq('id',id); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; } toast('🗄️ '+tz('Arhivat.')); renderInbox(); }
+async function inboxUnarchive(id){ const r=await sb.from('inbound_media').update({status:'new'}).eq('id',id); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; } toast('↩️ '+tz('Dezarhivat.')); renderInbox(); }
+async function inboxBulkUnarchive(){ const ids=inboxSelIds(); if(!ids.length) return; const r=await sb.from('inbound_media').update({status:'new'}).in('id',ids); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; } toast('↩️ '+ids.length+' '+tz('dezarhivate.')); renderInbox(); }
 // ── acțiuni în masă ──
 function inboxBulkClient(){ const ids=inboxSelIds(); if(!ids.length) return; inboxClientModal(ids); }
 async function inboxBulkDocs(){ const ids=inboxSelIds(); if(!ids.length) return;
