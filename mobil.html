@@ -173,7 +173,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='284';
+const APP_BUILD='285';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -351,17 +351,32 @@ function swipeBack(){
   return false;
 }
 (function(){
-  let sx=null,sy=null,st=0,active=false;
+  let sx=0,sy=0,st=0,mode=null;
+  const scr=function(){ return document.getElementById('screen'); };
+  const sheetOpen=function(){ const sm=document.getElementById('sheet-mount'); return !!(sm&&sm.firstElementChild); };
+  function reset(){ const el=scr(); if(el){ el.style.transition=''; el.style.transform=''; el.style.opacity=''; } }
   document.addEventListener('touchstart',function(e){
-    if(!e.touches||e.touches.length!==1){ active=false; return; }
-    const t=e.touches[0]; const vw=window.innerWidth||360; active=(t.clientX < Math.max(120, vw*0.32)); sx=t.clientX; sy=t.clientY; st=Date.now();
+    mode=null; if(!e.touches||e.touches.length!==1) return;
+    const t=e.touches[0], vw=window.innerWidth||360; sx=t.clientX; sy=t.clientY; st=Date.now();
+    const lb=document.getElementById('img-lb'); if(lb&&lb.style.display!=='none') return;
+    if(!(t.clientX < Math.max(130, vw*0.35))) return;          // pornește din partea stângă
+    if(sheetOpen()) mode='sheet';
+    else if(typeof S!=='undefined' && S.view && S.view!=='acasa') mode='screen';
+  },{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(mode!=='screen'||!e.touches||e.touches.length!==1) return;
+    const t=e.touches[0], dx=t.clientX-sx, dy=t.clientY-sy;
+    if(Math.abs(dx)<8) return;
+    if(Math.abs(dx)<Math.abs(dy)){ mode=null; reset(); return; }  // e scroll vertical → renunțăm
+    const el=scr(); if(el){ const x=Math.max(0,dx); el.style.transition='none'; el.style.transform='translateX('+x+'px)'; el.style.opacity=String(Math.max(.45,1-x/((window.innerWidth||360)*1.1))); }
   },{passive:true});
   document.addEventListener('touchend',function(e){
-    if(!active) return; active=false;
-    const lb=document.getElementById('img-lb'); if(lb && lb.style.display!=='none') return; // lightbox-ul are gestul lui
-    const t=(e.changedTouches&&e.changedTouches[0]); if(!t) return;
-    const dx=t.clientX-sx, dy=t.clientY-sy, dt=Date.now()-st;
-    if(dx>70 && Math.abs(dy)<60 && dx>Math.abs(dy)*1.8 && dt<700) swipeBack();
+    const t=(e.changedTouches&&e.changedTouches[0]), dx=t?t.clientX-sx:0, dy=t?t.clientY-sy:0, dt=Date.now()-st;
+    if(mode==='screen'){ const el=scr();
+      if(el){ if(dx > (window.innerWidth||360)*0.28){ window._navBack=true; el.style.transition='transform .16s ease,opacity .16s ease'; el.style.transform='translateX(100%)'; el.style.opacity='0'; setTimeout(function(){ reset(); swipeBack(); },150); }
+        else { el.style.transition='transform .2s ease,opacity .2s ease'; el.style.transform='translateX(0)'; el.style.opacity='1'; setTimeout(reset,220); } }
+    } else if(mode==='sheet'){ if(dx>60 && Math.abs(dy)<70 && dx>Math.abs(dy)*1.4 && dt<800) swipeBack(); }
+    mode=null;
   },{passive:true});
 })();
 async function installApp(){
