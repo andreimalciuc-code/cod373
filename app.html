@@ -2200,6 +2200,34 @@ function go(key){
   if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
+  maybeInstallBanner();
+}
+/* „📲 Instalează aplicația" — banner discret, auto, închidabil (la fel ca în aplicația de teren) */
+let _deferredPrompt=null;
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); _deferredPrompt=e; maybeInstallBanner(); });
+function isStandalone(){ try{ return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true; }catch(e){ return false; } }
+function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent||''); }
+function installDismissed(){ try{ return localStorage.getItem('c373_install_dismiss')==='1'; }catch(e){ return false; } }
+function maybeInstallBanner(){
+  if(!state.tenant) return; // doar după ce ești în aplicație
+  if(isStandalone()||installDismissed()) return;
+  if(!isIOS() && !_deferredPrompt) return;
+  if($('install-banner')) return;
+  const b=document.createElement('div'); b.id='install-banner';
+  b.style.cssText='position:fixed;left:16px;right:16px;bottom:16px;max-width:420px;margin:0 auto;z-index:9000;background:#0f1c33;color:#fff;border-radius:14px;padding:.7rem .85rem;display:flex;align-items:center;gap:.6rem;box-shadow:0 8px 30px rgba(0,0,0,.28)';
+  b.innerHTML='<div style="font-size:1.4rem">📲</div><div style="flex:1;min-width:0"><b style="font-size:.9rem">Instalează aplicația</b><div style="color:#9fb0d4;font-size:.78rem">Iconiță pe ecran, deschidere rapidă.</div></div>'
+    +'<button onclick="installApp()" style="background:#2f6bff;color:#fff;border:none;border-radius:9px;padding:.5rem .75rem;font-weight:700;font-size:.82rem;white-space:nowrap;cursor:pointer">Instalează</button>'
+    +'<button onclick="dismissInstall()" aria-label="Închide" style="background:none;border:none;color:#9fb0d4;font-size:1.3rem;line-height:1;padding:0 .2rem;cursor:pointer">×</button>';
+  document.body.appendChild(b);
+}
+function dismissInstall(){ try{ localStorage.setItem('c373_install_dismiss','1'); }catch(e){} const b=$('install-banner'); if(b) b.remove(); }
+async function installApp(){
+  const b=$('install-banner');
+  if(_deferredPrompt){ try{ _deferredPrompt.prompt(); await _deferredPrompt.userChoice; }catch(e){} _deferredPrompt=null; if(b) b.remove(); return; }
+  if(b) b.remove();
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px"><div class="modal-head"><h3>📲 '+esc(tz('Instalează pe telefon'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<ol style="padding-left:1.15rem;line-height:1.8;font-size:.95rem;margin:.2rem 0"><li>'+esc(tz('Pe iPhone: în Safari apasă butonul Share (pătratul cu săgeată în sus).'))+'</li><li>'+esc(tz('Apasă „Add to Home Screen / Adaugă la ecranul principal".'))+'</li><li>'+esc(tz('Pe Android (Chrome): meniul ⋮ → „Instalează aplicația".'))+'</li></ol>'
+    +'</div></div></div>';
 }
 
 /* ════ NOTIFICĂRI ════ */
