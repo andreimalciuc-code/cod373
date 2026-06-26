@@ -334,6 +334,26 @@ function maybeInstallBanner(){
   document.body.appendChild(b);
 }
 function dismissInstall(){ try{ localStorage.setItem('c373_install_dismiss','1'); }catch(e){} const b=$('install-banner'); if(b) b.remove(); }
+/* ── Gest „înapoi": clisezi cu degetul spre dreapta din marginea stângă (ca pe Instagram) → închide foaia deschisă sau revii la Acasă ── */
+function swipeBack(){
+  const sm=$('sheet-mount'); if(sm && sm.firstChild){ closeSheet(); return true; }
+  if(typeof S!=='undefined' && S.view && S.view!=='acasa'){ goV('acasa'); return true; }
+  return false;
+}
+(function(){
+  let sx=null,sy=null,st=0,active=false;
+  document.addEventListener('touchstart',function(e){
+    if(!e.touches||e.touches.length!==1){ active=false; return; }
+    const t=e.touches[0]; active=(t.clientX<=36); sx=t.clientX; sy=t.clientY; st=Date.now();
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(!active) return; active=false;
+    const lb=document.getElementById('img-lb'); if(lb && lb.style.display!=='none') return; // lightbox-ul are gestul lui
+    const t=(e.changedTouches&&e.changedTouches[0]); if(!t) return;
+    const dx=t.clientX-sx, dy=t.clientY-sy, dt=Date.now()-st;
+    if(dx>70 && Math.abs(dy)<60 && dx>Math.abs(dy)*1.8 && dt<700) swipeBack();
+  },{passive:true});
+})();
 async function installApp(){
   const b=$('install-banner');
   if(_deferredPrompt){ try{ _deferredPrompt.prompt(); await _deferredPrompt.userChoice; }catch(e){} _deferredPrompt=null; if(b) b.remove(); return; }
