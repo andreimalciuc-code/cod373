@@ -5627,6 +5627,23 @@ async function inviteEntity(type, id){
     const { data }=await sb.from(tbl).select(col).eq('id',id).single(); name=data?data[col]:''; }catch(e){}
   openInviteForm(type, id, def, name);
 }
+/* Leagă o fișă de Angajat de un cont EXISTENT din firmă (ca să poată ponta / vedea sarcinile pe teren).
+   Folosit când persoana a fost adăugată prin „Adaugă după email" și nu e legată de fișa de angajat. */
+async function empLinkAccount(empId, empName){
+  const { data:members, error }=await sb.rpc('list_members');
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const list=members||[];
+  if(!list.length){ toast(tz('Niciun membru în firmă încă. Invită întâi persoana cu „Invită în aplicație".')); return; }
+  const rows=list.map(u=>'<button class="btn-ghost" style="width:100%;justify-content:flex-start;text-align:left;margin:.2rem 0" onclick="empLinkPick(\''+empId+'\',\''+u.user_id+'\',\''+jsArg(u.email)+'\')">'+esc(u.email)+' <span style="color:var(--muted);font-size:.8rem">· '+esc(ROLE_LABELS[u.role]||u.role)+'</span></button>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>🔗 '+esc(tz('Leagă de un cont'))+' — '+esc(empName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<p style="font-size:.85rem;color:var(--muted)">'+esc(tz('Alege contul (membru al firmei) care aparține acestui angajat. După legare va putea ponta și vedea sarcinile lui în aplicația de teren.'))+'</p>'+rows+'</div></div></div>';
+}
+async function empLinkPick(empId, uid, email){
+  try{ await sb.from('employees').update({user_id:null}).eq('user_id',uid); }catch(e){}   // un cont = un singur angajat
+  const r=await sbRetry(()=>sb.from('employees').update({user_id:uid}).eq('id',empId));
+  if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  closeModal(); toast('✅ '+esc(email)+' '+tz('legat de angajat. Acum poate ponta din aplicație.'));
+}
 /* modulele care pot fi acordate prin permisiuni (excludem dashboard-ul, mereu vizibil, și
    „Utilizatori & Roluri" — controlat strict prin rol; „Setări" și „Seif" rămân, dar implicit nebifate) */
 function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && k!=='utilizatori'); }
@@ -6377,7 +6394,8 @@ function rowActions(key,m,r){
   const a=[], id=r.id;
   if(m.geoLoc) a.push({i:'📍',l:'Locație pe hartă',f:"geoSet('"+m.table+"','"+id+"','"+jsArg(r.name||r.label||'')+"')"});
   if(m.fields && !m.pageEditor) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
-  if(m.invitable&&ADMIN_ROLES.includes(state.role)) a.push({i:'🔑',l:'Dă acces (invitație prin link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
+  if(m.invitable&&ADMIN_ROLES.includes(state.role)){ a.push({i:'📩',l:'Invită în aplicație (trimite link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
+    if(m.invitable==='employee') a.push({i:'🔗',l:'Leagă de un cont existent',f:"empLinkAccount('"+id+"','"+jsArg(r.full_name)+"')"}); }
   if(m.siteHub) a.push({i:'📂',l:'Detalii șantier (jurnal, etape, stoc, situații, RFI…)',f:"siteHub('"+id+"','"+jsArg(r.name)+"')"});
   if(m.siteHub){ if(r.lat!=null&&r.lng!=null) a.push({i:'🧭',l:'Navighează la șantier',f:"openNav("+r.lat+","+r.lng+",'"+jsArg(r.name)+"')"}); a.push({i:'📍',l:'Locație șantier (GPS / link)',f:"siteLocation('"+id+"','"+jsArg(r.name)+"')"}); }
   if(m.siteHub) a.push({i:'📦',l:'Ce se află aici (instrumente + materiale)',f:"siteContents('"+id+"','"+jsArg(r.name)+"')"});
