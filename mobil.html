@@ -173,7 +173,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='289';
+const APP_BUILD='290';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -215,9 +215,11 @@ async function boot(){
   const {data:{session}}=await sb.auth.getSession();
   if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');hideSplash();return;}
   S.session=session;
-  const {data:_mems}=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url,currency)').eq('user_id',session.user.id).eq('active',true);
+  const _mr=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url,currency)').eq('user_id',session.user.id).eq('active',true);
+  // SAFETY: la eroare (rețea) NU deloga — arată reîncărcare (altfel un membru valid ar fi dat afară degeaba)
+  if(_mr.error){ $('screen')&&($('screen').innerHTML=''); $('app').classList.add('hidden'); $('login').classList.remove('hidden'); lmsg('Problemă de conexiune. Reîncarcă pagina (trage în jos) sau încearcă din nou.','err'); hideSplash(); return; }
   const _rank=r=>{const i=['owner','admin','manager','accountant','driver','worker','subcontractor','client'].indexOf(r);return i<0?999:i;};
-  const mem=(_mems||[]).slice().sort((a,b)=>_rank(a.role)-_rank(b.role))[0]||null;
+  const mem=(_mr.data||[]).slice().sort((a,b)=>_rank(a.role)-_rank(b.role))[0]||null;
   if(!mem){lmsg('Contul tău nu e legat de nicio firmă. Cere administratorului să te adauge.','err');await sb.auth.signOut();$('app').classList.add('hidden');$('login').classList.remove('hidden');hideSplash();return;}
   S.tenant=mem.tenant_id; S.memberRole=mem.role;
   const email=session.user.email||'';

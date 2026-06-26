@@ -1318,6 +1318,15 @@ async function doInviteSignup(){
   if(phone){ try{ const uid=(session&&session.user&&session.user.id)||((await sb.auth.getUser()).data.user||{}).id; if(uid) await sb.from('profiles').update({phone}).eq('id',uid); }catch(e){} }
   boot(); // consumă tokenul de invitație din localStorage și face redeem_invite
 }
+/* Ecran de siguranță: când încărcarea firmei eșuează (rețea/eroare), arătăm REÎNCERCARE — niciodată „Creează firma" (ar putea duce la firmă dublă). */
+function bootError(msg){
+  hideSplash();
+  let el=document.getElementById('boot-err'); if(!el){ el=document.createElement('div'); el.id='boot-err'; document.body.appendChild(el); }
+  el.style.cssText='position:fixed;inset:0;z-index:99999;background:#0b1220;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.1rem;text-align:center;padding:2rem;font-family:system-ui,-apple-system,Arial';
+  el.innerHTML='<div style="font-size:2.4rem">⚠️</div><div style="max-width:340px;line-height:1.5;font-size:1rem">'+esc(msg||'Problemă de conexiune.')+'</div>'
+    +'<button onclick="var e=document.getElementById(\'boot-err\');if(e)e.remove();boot();" style="background:#2f6bff;color:#fff;border:none;border-radius:11px;padding:.75rem 1.4rem;font-weight:700;font-size:1rem;cursor:pointer">↻ '+esc(tz('Reîncearcă'))+'</button>'
+    +'<a onclick="doLogout()" style="color:#9fb0d4;cursor:pointer;font-size:.85rem">'+esc(tz('Ieși din cont'))+'</a>';
+}
 async function boot(){
   applyPrefs();
   await sessGuard();
@@ -1333,10 +1342,12 @@ async function boot(){
   // Cine intră prin link (magic link, fără parolă) trebuie să-și seteze imediat o parolă pentru cont.
   const _pwSet=!!(session.user&&session.user.user_metadata&&session.user.user_metadata.pw_set);
   if(_justJoined && !_pwSet){ hideSplash(); showForceSetPassword(); return; }
-  // FIX: filtrăm DUPĂ contul curent (altfel, când firma are mai mulți membri, nimerea alt rând / pica) + alegem rolul cel mai înalt
-  const { data:_mems } = await sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations,bank_accounts)').eq('user_id', state.session.user.id).eq('active',true);
+  // Citim apartenența DUPĂ contul curent (nu „un membru oarecare"), cu reîncercare la erori de rețea.
+  const _mr = await sbRetry(()=>sb.from('memberships').select('tenant_id, role, perms, tenants(name,idno,vat_rate,vat_payer,currency,country,address,phone,logo_url,automations,bank_accounts)').eq('user_id', state.session.user.id).eq('active',true));
+  // SAFETY: dacă interogarea a EȘUAT (rețea/RLS), NU arătăm „Creează firma" — ar putea crea o firmă dublă. Arătăm reîncercare.
+  if(_mr.error){ bootError(isNetErr(_mr.error)?netMsg():('Nu am putut încărca firma. '+esc(_mr.error.message||''))); return; }
   const _rank=r=>{ const i=['owner','admin','manager','accountant','driver','worker','subcontractor','client'].indexOf(r); return i<0?999:i; };
-  const mem=(_mems||[]).slice().sort((a,b)=>_rank(a.role)-_rank(b.role))[0]||null;
+  const mem=(_mr.data||[]).slice().sort((a,b)=>_rank(a.role)-_rank(b.role))[0]||null;
   if(!mem){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen('onboard'); hideSplash(); return; }
   state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
   CUR = (state.firm.currency||'MDL').toUpperCase();
