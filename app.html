@@ -1041,7 +1041,7 @@ const MODULES = {
       {key:'hours',label:'Ore lucrate',type:'number',default:8},
       {key:'approved',label:'Aprobat',type:'checkbox',default:false} ] },
 
-  pontajsim:{ title:'Pontaj — simulator cost', sub:'Maculator privat: orele reale × tarife brut/net (doar simulare).', icon:'🧮', group:'Echipă', custom:true },
+  pontajsim:{ title:'Pontaj — simulator cost', sub:'Maculator privat: orele reale × tarife brut/net (doar simulare).', icon:'🧮', group:'Administrare', custom:true },
 
   ssm:{ title:'SSM / Securitate', sub:'Instructaje și echipament de protecție.', icon:'🦺', group:'Echipă', table:'ssm_records', hidden:true,
     newLabel:'Înregistrare SSM', orderBy:{col:'created_at',asc:false},
@@ -5631,7 +5631,20 @@ async function inviteEntity(type, id){
    „Utilizatori & Roluri" — controlat strict prin rol; „Setări" și „Seif" rămân, dar implicit nebifate) */
 function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && k!=='utilizatori'); }
 /* daca rolul ar vedea modulul (oglindeste canSee fara stratul perms) */
-function roleCanSeeKey(role,key){ if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(role); if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(role); return true; }
+/* Ce bifăm IMPLICIT la invitarea unui rol — listă strictă, relevantă fiecăruia (owner/admin = tot, nu trec pe aici).
+   Rolurile de teren (lucrător/șofer/subcontractant/client) primesc doar strictul necesar; restul se pot bifa manual. */
+const ROLE_DEFAULT_VIEW={
+  worker:['santiere','etape','jurnal','instrumente','stoc','defecte','cunostinte','ghid'],
+  driver:['santiere','livrari','instrumente','flota','harta','alimentari','carduri_carburant','cunostinte','ghid'],
+  subcontractor:['santiere','etape','jurnal','situatii','modificari','rfi','defecte','cunostinte','ghid'],
+  client:['santiere','previzualizare','cunostinte','ghid']
+};
+function roleCanSeeKey(role,key){
+  const dv=ROLE_DEFAULT_VIEW[role]; if(dv) return dv.indexOf(key)>-1;   // rol de teren → doar lista lui
+  if(ADMIN_KEYS.includes(key)) return ADMIN_ROLES.includes(role);
+  if(FINANCE_KEYS.includes(key)) return FINANCE_ROLES.includes(role);
+  return true;
+}
 /* actiuni granulare in cadrul unui modul: c=adauga, u=editeaza, d=sterge (v=vede = bifa principala) */
 const PERM_ACTS=[['c','＋','Adăugare'],['u','✏️','Editare'],['d','🗑','Ștergere']];
 /* starea {v,c,u,d} a unui modul, pornind de la permisiunile curente (null => implicit dupa rol) */
