@@ -2212,8 +2212,9 @@ async function kbDel(id){
 
 /* ════ 📥 MESAJE PRIMITE (Telegram / WhatsApp → inbound_media) ════ */
 async function renderInbox(){
+  window._inboxSel=new Set();
   $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>📥 '+esc(tz('Mesaje primite'))+'</h3><button class="btn-ghost" onclick="renderInbox()">↻</button></div>'
-    +'<div style="padding:.4rem 1.2rem;font-size:.82rem;color:var(--muted)">'+esc(tz('Poze și clipuri trimise de clienți/lucrători pe Telegram sau WhatsApp. Atașează-le la un client (în jurnal) sau salvează-le în Documente.'))+' <a onclick="go(\'setari\')" style="cursor:pointer;color:var(--primary)">⚙ '+esc(tz('Conectează canalele'))+'</a></div>'
+    +'<div style="padding:.4rem 1.2rem;font-size:.82rem;color:var(--muted)">'+esc(tz('Poze și clipuri trimise de clienți/lucrători pe Telegram sau WhatsApp. Bifează unul sau mai multe și atașează-le dintr-un singur clic.'))+' <a onclick="go(\'setari\')" style="cursor:pointer;color:var(--primary)">⚙ '+esc(tz('Conectează canalele'))+'</a></div>'
     +'<div id="inbox-body"><div class="loading">'+esc(tz('Se încarcă…'))+'</div></div></div>';
   const r=await sb.from('inbound_media').select('*').neq('status','archived').order('created_at',{ascending:false}).limit(150);
   if(r.error){ $('inbox-body').innerHTML='<div class="empty">'+esc(tz('Eroare:'))+' '+esc(r.error.message)+'</div>'; return; }
@@ -2223,13 +2224,23 @@ async function renderInbox(){
   const paths=[]; rows.forEach(x=>(x.media||[]).forEach(p=>{ if(paths.indexOf(p)<0) paths.push(p); }));
   const um={}; if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((s,i)=>{ if(s&&s.signedUrl) um[paths[i]]=s.signedUrl; }); }catch(e){} }
   const cl=(await sb.from('clients').select('id,name')).data||[]; const cn={}; cl.forEach(c=>cn[c.id]=c.name);
-  $('inbox-body').innerHTML=rows.map(x=>{
+  const bar='<div id="inbox-bar" style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.55rem 1rem;background:var(--surface);border-bottom:1px solid var(--line)">'
+    +'<label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="inbox-all" onchange="inboxSelAll(this.checked)" style="width:18px;height:18px"/> <span>'+esc(tz('Selectează tot'))+'</span></label>'
+    +'<span id="inbox-count" style="font-size:.82rem;color:var(--muted)"></span>'
+    +'<span style="flex:1;min-width:8px"></span>'
+    +'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkClient()">🤝 '+esc(tz('Atașează la client'))+'</button>'
+    +'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkDocs()">📁 '+esc(tz('Salvează în Documente'))+'</button>'
+    +'<button class="btn-ghost inbox-bulk" disabled onclick="inboxBulkArchive()">🗄️ '+esc(tz('Arhivează'))+'</button>'
+    +'</div>';
+  const cards=rows.map(x=>{
     const ch=x.channel==='whatsapp'?'🟢 WhatsApp':'✈️ Telegram';
     const when=esc(String(x.created_at||'').slice(0,16).replace('T',' '));
     const media=(x.media||[]).map(p=>{ const u=um[p]||''; if(isVideoPath(p)) return '<div onclick="caOpenVideo(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;border-radius:9px;background:#0f1c33;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1.5rem" title="video">▶</div>'; return u?'<img src="'+esc(u)+'" onclick="openImg(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;object-fit:cover;border-radius:9px;border:1px solid var(--line);cursor:zoom-in"/>':''; }).join('');
     const matched=x.client_id?('<span class="pill active" style="background:var(--primary);color:#fff;border-radius:20px;padding:.1rem .5rem;font-size:.72rem">🤝 '+esc(cn[x.client_id]||tz('client'))+'</span>'):'';
     return '<div class="card" style="margin:.6rem 1rem;padding:.8rem;border:1px solid var(--line);border-radius:12px;background:var(--surface)">'
-      +'<div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap"><div><b>'+ch+'</b> · '+esc(x.from_name||'—')+(x.from_phone?(' · 📞 '+esc(x.from_phone)):'')+' '+matched+'</div><div style="font-size:.74rem;color:var(--muted)">'+when+'</div></div>'
+      +'<div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center">'
+        +'<div style="display:flex;align-items:center;gap:.55rem"><input type="checkbox" class="inbox-chk" onchange="inboxSelToggle(\''+x.id+'\',this.checked)" style="width:18px;height:18px;flex:none"/><div><b>'+ch+'</b> · '+esc(x.from_name||'—')+(x.from_phone?(' · 📞 '+esc(x.from_phone)):'')+' '+matched+'</div></div>'
+        +'<div style="font-size:.74rem;color:var(--muted)">'+when+'</div></div>'
       +(x.caption?'<div style="margin:.4rem 0;white-space:pre-wrap">'+esc(x.caption)+'</div>':'')
       +(media?'<div style="display:flex;gap:.45rem;flex-wrap:wrap;margin:.5rem 0">'+media+'</div>':'')
       +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">'
@@ -2238,30 +2249,53 @@ async function renderInbox(){
         +'<button class="btn-ghost" onclick="inboxArchive(\''+x.id+'\')">🗄️ '+esc(tz('Arhivează'))+'</button>'
       +'</div></div>';
   }).join('');
+  $('inbox-body').innerHTML=bar+cards;
 }
 function inboxRow(id){ return (window._inboxRows||[]).find(x=>x.id===id); }
+function inboxSelToggle(id,on){ const s=window._inboxSel||(window._inboxSel=new Set()); if(on) s.add(id); else s.delete(id); inboxUpdateBar(); }
+function inboxSelAll(on){ const s=window._inboxSel||(window._inboxSel=new Set()); s.clear(); if(on){ (window._inboxRows||[]).forEach(x=>s.add(x.id)); } document.querySelectorAll('.inbox-chk').forEach(c=>{ c.checked=on; }); inboxUpdateBar(); }
+function inboxUpdateBar(){ const s=window._inboxSel||new Set(); const n=s.size; const cnt=$('inbox-count'); if(cnt) cnt.textContent=n?(n+' '+tz('selectate')):''; document.querySelectorAll('.inbox-bulk').forEach(b=>{ b.disabled=!n; }); const all=$('inbox-all'); if(all){ const total=(window._inboxRows||[]).length; all.checked=n>0&&n===total; all.indeterminate=n>0&&n<total; } }
+function inboxSelIds(){ return [...(window._inboxSel||[])]; }
 async function inboxToClient(id){ const x=inboxRow(id); if(!x) return;
-  if(x.client_id){ await inboxFileClient(x,x.client_id); return; }
-  const cl=(await sb.from('clients').select('id,name').order('name')).data||[];
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>🤝 '+esc(tz('Atașează la client'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
-    +(cl.length?('<select id="inbox-cl" style="width:100%;padding:.6rem;border:1px solid var(--line);border-radius:9px;background:var(--surface)">'+cl.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('')+'</select><div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end"><button class="btn-ghost" onclick="closeModal()">'+esc(tz('Anulează'))+'</button><button class="btn-primary" onclick="inboxClientPick(\''+id+'\')">'+esc(tz('Atașează'))+'</button></div>'):('<div style="color:var(--muted)">'+esc(tz('Nu ai clienți încă. Creează unul în modulul Clienți.'))+'</div>'))
-    +'</div></div></div>';
+  if(x.client_id){ if(await inboxFileClientCore(x,x.client_id)){ toast('✅ '+tz('Atașat la client (jurnal).')); renderInbox(); } return; }
+  inboxClientModal([id]);
 }
-async function inboxClientPick(id){ const x=inboxRow(id); const cid=$('inbox-cl')&&$('inbox-cl').value; if(!x||!cid) return; closeModal(); await inboxFileClient(x,cid); }
-async function inboxFileClient(x,clientId){
+function inboxClientModal(ids){
+  sb.from('clients').select('id,name').order('name').then(({data})=>{ const cl=data||[];
+    $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px"><div class="modal-head"><h3>🤝 '+esc(tz('Atașează la client'))+(ids.length>1?(' ('+ids.length+')'):'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+      +(cl.length?('<select id="inbox-cl" style="width:100%;padding:.6rem;border:1px solid var(--line);border-radius:9px;background:var(--surface)">'+cl.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('')+'</select><div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end"><button class="btn-ghost" onclick="closeModal()">'+esc(tz('Anulează'))+'</button><button class="btn-primary" onclick="inboxClientGo()">'+esc(tz('Atașează'))+'</button></div>'):('<div style="color:var(--muted)">'+esc(tz('Nu ai clienți încă. Creează unul în modulul Clienți.'))+'</div>'))
+      +'</div></div></div>';
+    window._inboxClientIds=ids;
+  });
+}
+async function inboxClientGo(){ const cid=$('inbox-cl')&&$('inbox-cl').value; const ids=window._inboxClientIds||[]; if(!cid||!ids.length){ closeModal(); return; } closeModal();
+  let ok=0; for(const id of ids){ const x=inboxRow(id); if(x && await inboxFileClientCore(x,cid)) ok++; }
+  toast('✅ '+ok+' '+tz('atașate la client.')); renderInbox();
+}
+async function inboxFileClientCore(x,clientId){
   const body=x.caption||('📷 '+(x.channel==='whatsapp'?'WhatsApp':'Telegram')+(x.from_name?(' — '+x.from_name):''));
   const rec={tenant_id:state.tenant,client_id:clientId,kind:'note',body:body,done:true,created_by:tuActor(),attachments:(x.media&&x.media.length?x.media:null)};
-  const r=await sb.from('client_activities').insert(rec); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
+  const r=await sb.from('client_activities').insert(rec); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return false; }
   await sb.from('inbound_media').update({status:'filed',client_id:clientId,site_id:x.site_id||null}).eq('id',x.id);
-  toast('✅ '+tz('Atașat la client (jurnal).')); renderInbox();
+  return true;
 }
-async function inboxToDocs(id){ const x=inboxRow(id); if(!x||!(x.media&&x.media.length)){ toast(tz('Nimic de salvat (doar text).')); return; }
+async function inboxToDocsCore(x){ if(!(x.media&&x.media.length)) return 0;
   let ok=0; for(const p of x.media){ const nm=(x.from_name?(x.from_name+' — '):'')+(isVideoPath(p)?'video':'foto')+' '+String(x.created_at||'').slice(0,10);
     const r=await sb.from('documents').insert({tenant_id:state.tenant,name:nm,file_url:p,mime:(isVideoPath(p)?'video/mp4':'image/jpeg'),uploaded_by:state.session.user.id}); if(!r.error) ok++; }
-  if(ok){ await sb.from('inbound_media').update({status:'filed'}).eq('id',x.id); toast('✅ '+ok+' '+tz('în Documente.')); renderInbox(); }
-  else toast(tz('Eroare la salvare.'));
+  if(ok) await sb.from('inbound_media').update({status:'filed'}).eq('id',x.id);
+  return ok;
 }
+async function inboxToDocs(id){ const x=inboxRow(id); if(!x){ return; } const ok=await inboxToDocsCore(x);
+  if(ok){ toast('✅ '+ok+' '+tz('în Documente.')); renderInbox(); } else toast(tz('Nimic de salvat (doar text).')); }
 async function inboxArchive(id){ const r=await sb.from('inbound_media').update({status:'archived'}).eq('id',id); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; } toast('🗄️ '+tz('Arhivat.')); renderInbox(); }
+// ── acțiuni în masă ──
+function inboxBulkClient(){ const ids=inboxSelIds(); if(!ids.length) return; inboxClientModal(ids); }
+async function inboxBulkDocs(){ const ids=inboxSelIds(); if(!ids.length) return;
+  let ok=0; for(const id of ids){ const x=inboxRow(id); if(x) ok+=await inboxToDocsCore(x); }
+  if(ok){ toast('✅ '+ok+' '+tz('în Documente.')); renderInbox(); } else toast(tz('Nimic de salvat (doar text).')); }
+async function inboxBulkArchive(){ const ids=inboxSelIds(); if(!ids.length) return;
+  const r=await sb.from('inbound_media').update({status:'archived'}).in('id',ids); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
+  toast('🗄️ '+ids.length+' '+tz('arhivate.')); renderInbox(); }
 
 function go(key){
   const m=MODULES[key]; if(!m) return;
