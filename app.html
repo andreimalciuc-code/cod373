@@ -7056,7 +7056,7 @@ async function orderItemsView(id){
   if(fin) info.push([tz('Total'), money(grand)]);
   const infoH=info.map(p=>'<div style="display:flex;gap:.5rem;font-size:.85rem"><span style="color:var(--muted);min-width:110px">'+esc(p[0])+'</span><b>'+esc(p[1])+'</b></div>').join('');
   const cols=fin?4:2; const isT=x=>/^🛠️\s/.test(x.name||'');
-  const rowH=it=>{ const p=priceOf(it), lt=(+it.qty||0)*p; return '<tr><td>'+esc(String(it.name).replace(/^🛠️\s/,''))+'</td><td style="text-align:right;white-space:nowrap">'+(+it.qty)+' '+esc(it.unit||'')+'</td>'+(fin?('<td style="text-align:right;white-space:nowrap">'+(p?money(p):'—')+'</td><td style="text-align:right;white-space:nowrap">'+(p?money(lt):'—')+'</td>'):'')+'</tr>'; };
+  const rowH=it=>{ const t=isT(it); const p=t?0:priceOf(it), lt=(+it.qty||0)*p; const pc=t?'':(p?money(p):'—'); const tc=t?'':(p?money(lt):'—'); return '<tr><td>'+esc(String(it.name).replace(/^🛠️\s/,''))+'</td><td style="text-align:right;white-space:nowrap">'+(+it.qty)+' '+esc(it.unit||'')+'</td>'+(fin?('<td style="text-align:right;white-space:nowrap">'+pc+'</td><td style="text-align:right;white-space:nowrap">'+tc+'</td>'):'')+'</tr>'; };
   const mats=items.filter(x=>!isT(x)), tools=items.filter(isT); let rows='';
   if(mats.length) rows+='<tr><td colspan="'+cols+'" style="font-weight:700;background:var(--bg)">📦 '+esc(tz('Materiale'))+'</td></tr>'+mats.map(rowH).join('');
   if(tools.length) rows+='<tr><td colspan="'+cols+'" style="font-weight:700;background:var(--bg)">🛠️ '+esc(tz('Instrumente'))+'</td></tr>'+tools.map(rowH).join('');

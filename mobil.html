@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='326';
+const APP_BUILD='327';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -1006,8 +1006,8 @@ function renderCartBar(){ const el=cartFab(); const c=S.cart||{}; const n=Object
   if(sc) sc.style.paddingBottom='8.5rem'; }
 /* ── Coșul: verifică înainte de trimitere ── */
 function cartItemsArr(){ return Object.keys(S.cart||{}).map(k=>Object.assign({key:k},S.cart[k])).filter(x=>x.qty>0); }
-function catPriceOf(it){ const list=(it.kind==='t')?(S.tools||[]):(S.mats||[]); const m=list.find(x=>x.id===it.refId); if(!m) return 0;
-  if(it.kind==='t') return +m.price||0;
+function catPriceOf(it){ if(it.kind==='t') return 0;   // instrumentele NU au preț în comandă
+  const m=(S.mats||[]).find(x=>x.id===it.refId); if(!m) return 0;
   return +(m.purchase_price!=null?m.purchase_price:(m.last_price!=null?m.last_price:(m.store_price!=null?m.store_price:0)))||0; }
 function reviewRows(){ const items=cartItemsArr(); if(!items.length) return '<div class="empty" style="padding:1rem">Coșul e gol.</div>';
   const row=it=>'<div class="row" style="gap:.5rem;align-items:center;padding:.55rem 0;border-bottom:1px solid var(--line)"><div class="grow"><div class="t">'+esc(it.name)+'</div><div class="s">'+esc(it.unit)+'</div></div>'
