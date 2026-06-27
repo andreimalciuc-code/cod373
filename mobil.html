@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='322';
+const APP_BUILD='323';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -998,7 +998,8 @@ function cartSet(id){ const m=curList().find(x=>x.id===id); if(!m)return; const 
 function cartFab(){ let el=document.getElementById('cart-fab'); if(!el){ el=document.createElement('div'); el.id='cart-fab'; document.body.appendChild(el); } return el; }
 /* bară fixă jos, ATAȘATĂ DE BODY (nu de #screen, care primește transform la gesturi) — mereu tappable */
 function renderCartBar(){ const el=cartFab(); const c=S.cart||{}; const n=Object.keys(c).reduce((a,k)=>a+c[k].qty,0); const poz=Object.keys(c).filter(k=>c[k].qty>0).length; const sc=$('screen');
-  if(!n || S.view!=='comanda'){ el.style.display='none'; el.innerHTML=''; if(sc) sc.style.paddingBottom=''; return; }
+  const sm=$('sheet-mount'); const sheetOn=!!(sm && sm.firstElementChild);   // coș/foaie deschisă → ascunde bara plutitoare
+  if(!n || S.view!=='comanda' || sheetOn){ el.style.display='none'; el.innerHTML=''; if(sc) sc.style.paddingBottom=''; return; }
   el.style.cssText='position:fixed;left:.6rem;right:.6rem;bottom:74px;z-index:65;display:block';
   el.innerHTML='<button class="btn" style="margin:0;box-shadow:0 10px 28px rgba(47,107,255,.45);display:flex;align-items:center;justify-content:center;gap:.5rem" onclick="cartReview()">🛒 Vezi coșul & trimite <span style="background:rgba(255,255,255,.25);border-radius:999px;padding:.05rem .55rem;font-size:.85rem">'+poz+' '+(poz===1?'poziție':'poziții')+'</span></button>';
   if(sc) sc.style.paddingBottom='8.5rem'; }
@@ -1014,7 +1015,7 @@ function cartReview(){ const items=cartItemsArr(); if(!items.length){ toast('Co�
     +(siteName?'<div class="s" style="margin-bottom:.5rem">📍 Pentru: <b>'+esc(siteName)+'</b></div>':'<div class="s" style="margin-bottom:.5rem;color:#b45309">⚠️ Niciun șantier ales — alege unul în ecran dacă vrei.</div>')
     +'<div id="o-rev-body">'+reviewRows()+'</div>'
     +'<button class="btn" id="o-send" style="margin-top:1rem" onclick="sendOrder()"></button>');
-  updateSendBtn(); }
+  updateSendBtn(); renderCartBar(); }
 function updateSendBtn(){ const b=$('o-send'); if(!b)return; const n=cartItemsArr().length; b.textContent='✅ Trimite comanda ('+n+' poziții)'; }
 function refreshReview(){ renderMats(_matQ); const has=cartItemsArr().length; if(!has){ closeSheet(); return; } const bd=$('o-rev-body'); if(bd) bd.innerHTML=reviewRows(); updateSendBtn(); }
 function cartReviewAdd(key,d){ if(!S.cart[key])return; S.cart[key].qty=Math.max(0,(+S.cart[key].qty||0)+d); if(S.cart[key].qty===0)delete S.cart[key]; refreshReview(); }
@@ -1343,7 +1344,7 @@ async function saveProfile(){
 function openSheet(title,html){
   $('sheet-mount').innerHTML='<div class="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet"><h3>'+esc(title)+'<button class="x" onclick="closeSheet()">×</button></h3>'+html+'</div></div>';
 }
-function closeSheet(){ const m=$('sheet-mount'), bg=m&&m.firstElementChild; if(bg&&!bg.classList.contains('closing')){ bg.classList.add('closing'); setTimeout(()=>{ if(m) m.innerHTML=''; },230); } else if(m){ m.innerHTML=''; } }
+function closeSheet(){ const m=$('sheet-mount'), bg=m&&m.firstElementChild; const after=function(){ try{ if(typeof renderCartBar==='function') renderCartBar(); }catch(e){} }; if(bg&&!bg.classList.contains('closing')){ bg.classList.add('closing'); setTimeout(()=>{ if(m) m.innerHTML=''; after(); },230); } else if(m){ m.innerHTML=''; after(); } }
 
 /* ── SUPORT ── */
 function openSupport(){
