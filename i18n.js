@@ -1695,6 +1695,8 @@
     'Cost materiale':{ru:'Стоимость материалов',de:'Materialkosten',en:'Material cost'},
     'Cost subcontractanți':{ru:'Стоимость субподрядчиков',de:'Subunternehmerkosten',en:'Subcontractor cost'},
     'Marjă estimată':{ru:'Расчётная маржа',de:'Geschätzte Marge',en:'Estimated margin'},
+    'Video':{ru:'Видео',de:'Video',en:'Video'},
+    'Poze de pe șantier':{ru:'Фото с объекта',de:'Fotos von der Baustelle',en:'Site photos'},
     // ── fișă client PDF ──
     'PDF / Printează':{ru:'PDF / Печать',de:'PDF / Drucken',en:'PDF / Print'},
     'Fișă client':{ru:'Карточка клиента',de:'Kundenblatt',en:'Client sheet'},
