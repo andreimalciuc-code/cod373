@@ -6817,7 +6817,7 @@ function renderList(){
     return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cb+'<td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td>'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
       +'<td><div class="rowact">'+acts.map(a=>'<button class="iconbtn'+(a.d?' danger':'')+'" title="'+esc(a.l)+'" onclick="event.stopPropagation();'+a.f+'">'+a.i+'</button>').join('')+'</div></td></tr>';
   }).join('');
-  const hint=bulk?'👉 Bifează poziții și apasă „🛒 '+esc(m.bulkOrder.label||'Creează comandă')+'" sus, sau apasă pe un rând pentru opțiuni.':'👉 Apasă pe un rând pentru toate opțiunile.';
+  const hint=m.bulkOrder?'👉 Bifează poziții și apasă „🛒 '+esc(m.bulkOrder.label||'Creează comandă')+'" sus, sau apasă pe un rând pentru opțiuni.':'👉 Apasă pe un rând pentru opțiuni · bifează pentru acțiuni în masă.';
   $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">'+hint+'</div><div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
   if(bulk) updateBulkBtn();
   signThumbs();
