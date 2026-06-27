@@ -1697,6 +1697,18 @@
     'Marjă estimată':{ru:'Расчётная маржа',de:'Geschätzte Marge',en:'Estimated margin'},
     'Video':{ru:'Видео',de:'Video',en:'Video'},
     'Poze de pe șantier':{ru:'Фото с объекта',de:'Fotos von der Baustelle',en:'Site photos'},
+    // ── titluri notificări (salvate în DB în RO, traduse la afișare) ──
+    'Notificări':{ru:'Уведомления',de:'Benachrichtigungen',en:'Notifications'},
+    'Nicio notificare încă.':{ru:'Пока нет уведомлений.',de:'Noch keine Benachrichtigungen.',en:'No notifications yet.'},
+    'Comandă nouă de materiale':{ru:'Новый заказ материалов',de:'Neue Materialbestellung',en:'New material order'},
+    'Defect raportat':{ru:'Сообщено о дефекте',de:'Mangel gemeldet',en:'Defect reported'},
+    'Comentariu / recenzie nouă':{ru:'Новый комментарий / отзыв',de:'Neuer Kommentar / Bewertung',en:'New comment / review'},
+    'Acces activat':{ru:'Доступ активирован',de:'Zugang aktiviert',en:'Access activated'},
+    'Ofertă nouă':{ru:'Новое предложение',de:'Neues Angebot',en:'New offer'},
+    '📋 Ai o lucrare planificată':{ru:'📋 У вас запланирована работа',de:'📋 Du hast eine geplante Arbeit',en:'📋 You have a planned job'},
+    '🚚 Livrare nouă':{ru:'🚚 Новая доставка',de:'🚚 Neue Lieferung',en:'🚚 New delivery'},
+    '💬 Mesaj nou în chat':{ru:'💬 Новое сообщение в чате',de:'💬 Neue Chat-Nachricht',en:'💬 New chat message'},
+    '📎 atașament':{ru:'📎 вложение',de:'📎 Anhang',en:'📎 attachment'},
     'Poze':{ru:'Фото',de:'Fotos',en:'Photos'},
     // ── fișă PDF vehicul ──
     'Fișă PDF vehicul':{ru:'PDF-карточка авто',de:'Fahrzeug-PDF',en:'Vehicle PDF sheet'},

@@ -2547,6 +2547,11 @@ function notifOpen(type, id){
     if(tries>24){ clearInterval(t); try{ recordPreview(key,id); }catch(e){} }
   },140);
 }
+/* titlurile notificărilor sunt salvate în DB în română — le traducem la afișare */
+const NOTIF_PRE=[['Ofertă nouă: ',{ru:'Новое предложение: ',de:'Neues Angebot: ',en:'New offer: '}],['Factură nouă: ',{ru:'Новый счёт: ',de:'Neue Rechnung: ',en:'New invoice: '}],['Factură achitată: ',{ru:'Счёт оплачен: ',de:'Rechnung bezahlt: ',en:'Invoice paid: '}]];
+function notifTitle(t){ if(!t) return t; const lang=(window.C373lang&&C373lang())||'ro'; if(lang==='ro') return t;
+  for(var i=0;i<NOTIF_PRE.length;i++){ var p=NOTIF_PRE[i]; if(t.indexOf(p[0])===0){ return (p[1][lang]||p[0])+t.slice(p[0].length); } }
+  return C373t(t); }
 async function openNotifPanel(){
   const { data }=await sb.from('notifications').select('id,title,body,entity_type,entity_id,created_at');
   const list=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1)).slice(0,50);
@@ -2555,9 +2560,9 @@ async function openNotifPanel(){
   let fuSection=''; try{ const t=coToday(); const fr=await sb.from('client_activities').select('client_id,body,due_date,clients(name)').eq('kind','task').eq('done',false).lte('due_date',isoLocal(new Date(Date.now()+7*86400000))).order('due_date'); const fus=(fr.data||[]);
     if(fus.length) fuSection='<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:.3rem">⏰ '+esc(C373t('Follow-up clienți'))+'</div>'+fus.slice(0,20).map(a=>{ const ov=a.due_date<t; return '<div onclick="closeModal();clientHub(\''+a.client_id+'\')" style="padding:.55rem 0;border-bottom:1px solid var(--line);cursor:pointer"><div style="font-weight:600">⏰ '+esc(a.clients?a.clients.name:'client')+'</div>'+(a.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(a.body)+'</div>':'')+'<div style="font-size:.74rem;font-weight:600;color:'+(ov?'var(--red)':'var(--primary)')+'">'+esc(fmtDate(a.due_date))+'</div></div>'; }).join('')+'<div style="height:.9rem"></div>'; }catch(e){}
   const rows=list.length
-    ? list.map(n=>{ const act=!!(n.entity_id||n.entity_type==='message'); return '<div '+(act?'onclick="notifOpen(\''+esc(n.entity_type||'')+'\',\''+(n.entity_id||'')+'\')" ':'')+'style="padding:.7rem 0;border-bottom:1px solid var(--line)'+(act?';cursor:pointer':'')+'"><div style="font-weight:600">'+(ic[n.entity_type]||'🔔')+' '+esc(n.title)+(act?' <span style="color:var(--primary);font-size:.78rem;font-weight:600">›</span>':'')+'</div>'+(n.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(n.body)+'</div>':'')+'<div style="color:var(--muted);font-size:.74rem;margin-top:.2rem">'+esc((n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>'; }).join('')
-    : (fuSection?'':'<div class="empty"><div class="ei">🔔</div>Nicio notificare încă.</div>');
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><div class="modal-head"><h3>🔔 Notificări</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+fuSection+rows+'</div></div></div>';
+    ? list.map(n=>{ const act=!!(n.entity_id||n.entity_type==='message'); return '<div '+(act?'onclick="notifOpen(\''+esc(n.entity_type||'')+'\',\''+(n.entity_id||'')+'\')" ':'')+'style="padding:.7rem 0;border-bottom:1px solid var(--line)'+(act?';cursor:pointer':'')+'"><div style="font-weight:600">'+(ic[n.entity_type]||'🔔')+' '+esc(notifTitle(n.title))+(act?' <span style="color:var(--primary);font-size:.78rem;font-weight:600">›</span>':'')+'</div>'+(n.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(C373t(n.body))+'</div>':'')+'<div style="color:var(--muted);font-size:.74rem;margin-top:.2rem">'+esc((n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>'; }).join('')
+    : (fuSection?'':'<div class="empty"><div class="ei">🔔</div>'+esc(C373t('Nicio notificare încă.'))+'</div>');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><div class="modal-head"><h3>🔔 '+esc(C373t('Notificări'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+fuSection+rows+'</div></div></div>';
 }
 
 /* ════ SUPORT / AJUTOR ════ */
