@@ -2734,9 +2734,7 @@ async function empEquipAdd(empId, empName){
 }
 async function empEquipDel(id, empId, empName){
   if(!confirm('Ștergi acest echipament din lista angajatului?')) return;
-  const { error }=await sb.from('employee_equipment').delete().eq('id',id);
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  toast('🗑 Șters.'); empEquip(empId, empName);
+  await softDelete('employee_equipment','angajati',id, function(){ empEquip(empId, empName); });
 }
 /* ── Pontajul angajatului (submodul) ── */
 async function empPontaj(empId, empName){
@@ -2766,7 +2764,7 @@ async function empPontajAdd(empId, empName){
   if(r.error){ if(btn) btn.disabled=false; showMsg('pt-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   toast('✅ Pontaj adăugat.'); empPontaj(empId, empName);
 }
-async function empPontajDel(id, empId, empName){ if(!confirm('Ștergi acest pontaj?')) return; const { error }=await sb.from('timesheets').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empPontaj(empId, empName); }
+async function empPontajDel(id, empId, empName){ if(!confirm('Ștergi acest pontaj?')) return; await softDelete('timesheets','angajati',id, function(){ empPontaj(empId, empName); }); }
 /* ── Fișa mașinii: service / mentenanță / spălătorie + documente ── */
 const VLOG_KIND={service:'🔧 Service',mentenanta:'🛠️ Mentenanță',spalatorie:'🧼 Spălătorie',reparatie:'🔩 Reparație',itp:'📋 ITP / inspecție',asigurare:'🛡️ Asigurare',alta:'• Altă cheltuială'};
 async function vehicleLog(vid, vlabel){
@@ -2809,7 +2807,7 @@ async function vehicleLogAdd(vid, vlabel){
   if(odo!==''){ try{ const cur=await sb.from('vehicles').select('km_current').eq('id',vid).maybeSingle(); const c=cur.data&&cur.data.km_current; if(c==null || +odo>+c) await sb.from('vehicles').update({km_current:+odo}).eq('id',vid); }catch(e){} }
   toast('✅ Adăugat în fișă.'); vehicleLog(vid, vlabel);
 }
-async function vehicleLogDel(id, vid, vlabel){ if(!confirm('Ștergi această înregistrare?')) return; const { error }=await sb.from('vehicle_logs').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); vehicleLog(vid, vlabel); }
+async function vehicleLogDel(id, vid, vlabel){ if(!confirm('Ștergi această înregistrare?')) return; await softDelete('vehicle_logs','flota',id, function(){ vehicleLog(vid, vlabel); }); }
 async function vehPhotoAdd(vid, vlabel, input){ const files=input&&input.files?[...input.files]:[]; if(!files.length) return;
   toast('⏳ Încarc '+files.length+' poză(e)…');
   const cur=await sb.from('vehicles').select('photos').eq('id',vid).maybeSingle(); const arr=((cur.data&&cur.data.photos)||[]).slice();
@@ -2884,7 +2882,7 @@ async function toolUnitMove(unitId, val){ const cur=(await sb.from('tool_units')
   const r=await sb.from('tool_units').update(patch).eq('id',unitId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
   try{ await sb.from('tool_unit_logs').insert({tenant_id:state.tenant,unit_id:unitId,tool_id:(cur&&cur.tool_id)||window._tuTid,action:'move',from_label:fromLbl,to_label:tuLabelFromVal(val,holder),by_name:tuActor()}); }catch(e){}
   toast('↦ Mutat.'); toolUnits(window._tuTid, window._tuTname); }
-async function toolUnitDel(unitId){ if(!confirm('Ștergi această serie/bucată?')) return; const r=await sb.from('tool_units').delete().eq('id',unitId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } try{ const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',window._tuTid); await sb.from('tools').update({qty:c.count||0}).eq('id',window._tuTid); }catch(e){} toast('🗑 Șters.'); toolUnits(window._tuTid, window._tuTname); }
+async function toolUnitDel(unitId){ if(!confirm('Ștergi această serie/bucată?')) return; await softDelete('tool_units','instrumente',unitId, async function(){ try{ const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',window._tuTid); await sb.from('tools').update({qty:c.count||0}).eq('id',window._tuTid); }catch(e){} toolUnits(window._tuTid, window._tuTname); }); }
 function toolUnitQR(unitId, label){ const link=(typeof appBase==='function'?appBase():location.origin+location.pathname.replace(/[^/]*$/,''))+'app.html?unit='+unitId;
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:360px"><div class="modal-head"><h3>🏷️ Etichetă QR serie</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body" style="text-align:center"><div style="font-weight:700">'+esc(label||'')+'</div><div id="qrbox" style="display:flex;justify-content:center;margin:.8rem 0">Se generează…</div><p style="font-size:.8rem;color:var(--muted)">Lipește eticheta pe bucată. Scanează cu telefonul (aplicația de teren) ca să-i vezi fișa.</p><button class="btn-ghost" onclick="window.print()">🖨 Tipărește eticheta</button></div></div></div>';
   const draw=()=>{ const box=$('qrbox'); if(!box) return; box.innerHTML=''; try{ new QRCode(box,{text:link,width:200,height:200,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ box.textContent='Nu s-a putut genera codul.'; } };
@@ -3057,7 +3055,7 @@ async function toolStockAdd(tid, tname){
   const r=await sbRetry(()=>sb.from('tool_locations').insert(rec)); if(r.error){ if(btn) btn.disabled=false; showMsg('ts-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   await toolStockSync(tid); toast('✅ Adăugat la locație.'); toolStock(tid, tname);
 }
-async function toolStockDel(id, tid, tname){ if(!confirm('Ștergi această locație din stoc?')) return; const { error }=await sb.from('tool_locations').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } await toolStockSync(tid); toast('🗑 Șters.'); toolStock(tid, tname); }
+async function toolStockDel(id, tid, tname){ if(!confirm('Ștergi această locație din stoc?')) return; await softDelete('tool_locations','instrumente',id, async function(){ await toolStockSync(tid); toolStock(tid, tname); }); }
 async function toolStockSync(tid){ try{ const r=await sb.from('tool_locations').select('qty').eq('tool_id',tid); const total=(r.data||[]).reduce((s,x)=>s+(+x.qty||0),0); await sb.from('tools').update({qty:total}).eq('id',tid); }catch(e){} }
 /* ── SSM / Securitate angajat (submodul) ── */
 const SSM_KIND={instructaj:'Instructaj',eip:'EIP',incident:'Incident'};
@@ -3086,7 +3084,7 @@ async function empSSMAdd(empId, empName){
   if(r.error){ if(btn) btn.disabled=false; showMsg('sm-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   toast('✅ Adăugat.'); empSSM(empId, empName);
 }
-async function empSSMDel(id, empId, empName){ if(!confirm('Ștergi această înregistrare SSM?')) return; const { error }=await sb.from('ssm_records').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empSSM(empId, empName); }
+async function empSSMDel(id, empId, empName){ if(!confirm('Ștergi această înregistrare SSM?')) return; await softDelete('ssm_records','angajati',id, function(){ empSSM(empId, empName); }); }
 /* ── Concedii / absențe angajat (submodul) ── */
 const LEAVE_KIND={concediu:'Concediu',medical:'Medical',nemotivat:'Nemotivat',invoire:'Învoire',altul:'Altul'};
 function daysBetween(a,b){ if(!a||!b) return ''; const d=Math.round((new Date(b)-new Date(a))/86400000)+1; return d>0?d:''; }
@@ -3117,7 +3115,7 @@ async function empLeaveAdd(empId, empName){
   if(r.error){ if(btn) btn.disabled=false; showMsg('lv-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
   toast('✅ Absență adăugată.'); empLeave(empId, empName);
 }
-async function empLeaveDel(id, empId, empName){ if(!confirm('Ștergi această absență?')) return; const { error }=await sb.from('employee_leaves').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); empLeave(empId, empName); }
+async function empLeaveDel(id, empId, empName){ if(!confirm('Ștergi această absență?')) return; await softDelete('employee_leaves','angajati',id, function(){ empLeave(empId, empName); }); }
 
 /* ════ SUBMODULE ȘANTIER (jurnal, etape, stoc, situații, RFI, modificări, recenzii) ════ */
 const SITE_SUBS=['jurnal','etape','stoc','situatii','rfi','modificari','recenzii'];
@@ -3286,7 +3284,7 @@ async function aiJurnalSummary(){
 }
 function subAdd(){ const c=window._subCtx; subForm(c.childKey,null,c.pField,c.pId,()=>subList(c.childKey,c.pField,c.pId,c.pName)); }
 async function subEdit(childKey,id){ const c=window._subCtx; const { data }=await sb.from(MODULES[childKey].table).select('*').eq('id',id).single(); subForm(childKey,data,c.pField,c.pId,()=>subList(c.childKey,c.pField,c.pId,c.pName)); }
-async function subDel(childKey,id){ const c=window._subCtx; if(!confirm('Sigur ștergi această înregistrare?')) return; const { error }=await sb.from(MODULES[childKey].table).delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('🗑 Șters.'); subList(c.childKey,c.pField,c.pId,c.pName); }
+async function subDel(childKey,id){ const c=window._subCtx; if(!confirm('Sigur ștergi această înregistrare?')) return; await softDelete(MODULES[childKey].table, childKey, id, function(){ subList(c.childKey,c.pField,c.pId,c.pName); }); }
 function closeSub(){ $('picker-mount').innerHTML=''; }
 async function subForm(childKey, row, pField, pId, after){
   const m=MODULES[childKey];
@@ -4592,7 +4590,7 @@ async function planSetTeamColor(teamId,color){ const r=await sbRetry(()=>sb.from
 async function planRenameTeam(teamId,cur){ const n=(prompt('Nume nou pentru echipă:',cur||'')||'').trim(); if(!n) return; const r=await sbRetry(()=>sb.from('crew_teams').update({name:n}).eq('id',teamId)); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
 async function planNewTeam(){ const n=(prompt('Numele echipei / brigăzii:')||'').trim(); if(!n) return; const r=await sbRetry(()=>sb.from('crew_teams').insert({tenant_id:state.tenant,name:n})); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
 async function planToggleMember(teamId,empId,ck){ if(ck){ const r=await sbRetry(()=>sb.from('crew_team_members').insert({tenant_id:state.tenant,team_id:teamId,employee_id:empId})); if(r.error) toast('Eroare: '+esc(r.error.message)); } else { await sb.from('crew_team_members').delete().eq('team_id',teamId).eq('employee_id',empId); } }
-async function planDelTeam(teamId){ if(!confirm('Ștergi echipa? (planificările individuale rămân neatinse)')) return; const r=await sb.from('crew_teams').delete().eq('id',teamId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } planTeamsModal(); }
+async function planDelTeam(teamId){ if(!confirm('Ștergi echipa? (planificările individuale rămân neatinse)')) return; await softDelete('crew_teams','plantafel',teamId, function(){ planTeamsModal(); }); }
 /* ── raport săptămânal: cine, pe ce șantier, câte zile ── */
 function planReport(){
   const dates=_planDates; if(!dates||!dates.length){ toast('Deschide planificarea întâi.'); return; }
@@ -4843,9 +4841,7 @@ async function payrollDetails(runId,label){
 }
 async function delPayroll(id){
   if(!confirm('Ștergi acest rulaj de salarii?')) return;
-  const { error }=await sb.from('payroll_runs').delete().eq('id',id);
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  toast('🗑 Rulaj șters.'); renderSalarii();
+  await softDelete('payroll_runs','salarii',id, function(){ renderSalarii(); });
 }
 
 /* ════ GHID DE UTILIZARE ════ */
@@ -5291,7 +5287,7 @@ async function ganttSaveStage(id){ const name=($('ge-name').value||'').trim(); i
   if(rec.start_date && rec.end_date && rec.end_date<rec.start_date){ showMsg('ge-msg','Sfârșitul e înainte de început.'); return; }
   const r=await sbRetry(()=>sb.from('site_stages').update(rec).eq('id',id)); if(r.error){ showMsg('ge-msg','Eroare: '+esc(r.error.message)); return; }
   closeModal(); toast('✅ Etapă salvată.'); renderGantt(); }
-async function ganttDelStage(id){ if(!confirm('Ștergi această etapă?')) return; const r=await sb.from('site_stages').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } closeModal(); toast('Etapă ștearsă.'); renderGantt(); }
+async function ganttDelStage(id){ if(!confirm('Ștergi această etapă?')) return; await softDelete('site_stages','gantt',id, function(){ closeModal(); renderGantt(); }); }
 /* ── etape-șablon (la creare șantier sau manual) ── */
 const STAGE_TEMPLATES={
   constructie:['Pregătire teren & organizare','Fundație','Structură / Zidărie','Acoperiș','Instalații (electrice & sanitare)','Finisaje interioare','Finisaje exterioare','Recepție & predare'],
@@ -6157,7 +6153,7 @@ async function editPreviz(id){
   const m=await sb.from('survey_measurements').select('*').eq('survey_id',id);
   openPrevizForm(r.data, (m.data||[]).sort((a,b)=>(a.position||0)-(b.position||0)));
 }
-async function delPreviz(id){ if(!confirm('Ștergi această fișă de vizită?')) return; const { error }=await sb.from('site_surveys').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Fișă ștearsă.'); renderPreviz(); }
+async function delPreviz(id){ if(!confirm('Ștergi această fișă de vizită?')) return; await softDelete('site_surveys','previzualizare',id, function(){ renderPreviz(); }); }
 
 async function loadPvServices(){
   // servicii + reteta (cost materiale la 1 UM) pentru calcul live la previz
@@ -7448,7 +7444,7 @@ async function openSiteDetail(siteId){
     +'<div style="display:flex;gap:.5rem"><button class="btn-ghost" onclick="window.open(\'grafic.html?site=\'+\''+siteId+'\',\'_blank\')">📅 Grafic complet ↗</button>'
     +'<button class="btn-primary" onclick="closeModal();editRecord(\'santiere\',\''+siteId+'\')">✏️ Editează datele șantierului</button></div></div></div></div>';
 }
-async function delStage(id,siteId){ if(!confirm('Ștergi această etapă din grafic?')) return; const { error }=await sb.from('site_stages').delete().eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Etapă ștearsă.'); openSiteDetail(siteId); }
+async function delStage(id,siteId){ if(!confirm('Ștergi această etapă din grafic?')) return; await softDelete('site_stages','gantt',id, function(){ openSiteDetail(siteId); }); }
 async function addStagePrompt(siteId,pos){
   await ensureNorms(); await ensureExecutors();
   window._asCtx={ siteId, pos };
