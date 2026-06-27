@@ -626,7 +626,7 @@ const MODULES = {
     select:'id,number,status,total,ordered_at,expected_at,created_at,created_by_name,suppliers!supplier_id(name),sites!site_id(name)',
     orderItems:true,
     columns:[
-      {label:'Data',get:r=>'<span style="white-space:nowrap">'+esc((r.created_at||r.ordered_at||'').slice(0,16).replace('T',' '))+'</span>'},
+      {label:'Data',get:r=>'<span style="white-space:nowrap">'+esc(r.created_at?fmtDT(r.created_at):fmtDate(r.ordered_at))+'</span>'},
       {label:'Plasat de',get:r=>esc(r.created_by_name||'—')},
       {label:'Șantier',get:r=>esc(r.sites?r.sites.name:'—')},
       {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'},
@@ -3801,6 +3801,8 @@ function coDateFmt(){ return (state.firm&&state.firm.automations&&state.firm.aut
 function isoLocal(d){ d=new Date(d); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function coToday(){ const tz=coTz(); if(tz){ try{ return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }catch(e){} } return isoLocal(new Date()); }
 function fmtDate(iso){ if(!iso) return ''; const s=String(iso).slice(0,10); const p=s.split('-'); if(p.length<3) return s; const y=p[0],m=p[1],d=p[2]; const f=coDateFmt(); return f==='YYYY-MM-DD'?s : f==='DD/MM/YYYY'?(d+'/'+m+'/'+y) : f==='MM/DD/YYYY'?(m+'/'+d+'/'+y) : (d+'.'+m+'.'+y); }
+/* dată+oră în fusul firmei (pt timestamptz: created_at etc.) */
+function fmtDT(ts){ if(!ts) return ''; try{ const tz=coTz(); const opt={day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}; if(tz) opt.timeZone=tz; const lang=(window.C373lang&&C373lang())||'ro'; const loc={ro:'ro-RO',ru:'ru-RU',de:'de-DE',en:'en-GB'}[lang]||'ro-RO'; return new Intl.DateTimeFormat(loc,opt).format(new Date(ts)); }catch(e){ return String(ts).slice(0,16).replace('T',' '); } }
 function coWork(){ const a=(state.firm&&state.firm.automations)||{}; return { start:a.work_start||'08:00', end:a.work_end||'17:00', brk:(a.work_break!=null?+a.work_break:60) }; }
 /* ════ SĂRBĂTORI LEGALE (pe țară + land DE) ════ */
 const DE_LANDER=[['','— Național (fără land) —'],['BW','Baden-Württemberg'],['BY','Bayern'],['BE','Berlin'],['BB','Brandenburg'],['HB','Bremen'],['HH','Hamburg'],['HE','Hessen'],['MV','Mecklenburg-Vorpommern'],['NI','Niedersachsen'],['NW','Nordrhein-Westfalen'],['RP','Rheinland-Pfalz'],['SL','Saarland'],['SN','Sachsen'],['ST','Sachsen-Anhalt'],['SH','Schleswig-Holstein'],['TH','Thüringen']];
@@ -7030,13 +7032,15 @@ function renderList(){
 /* Vizualizare poziții comandă (cine/când + articole) */
 async function orderItemsView(id){
   const [oR,iR]=await Promise.all([
-    sb.from('material_orders').select('id,number,status,total,created_by_name,created_at,suppliers!supplier_id(name),sites!site_id(name)').eq('id',id).maybeSingle(),
+    sb.from('material_orders').select('id,number,status,total,created_by_name,created_at,expected_at,accepted_by_name,accepted_at,suppliers!supplier_id(name),sites!site_id(name)').eq('id',id).maybeSingle(),
     sb.from('material_order_items').select('name,qty,unit,unit_price').eq('order_id',id)
   ]);
   const o=oR.data; if(!o){ toast(tz('Înregistrare negăsită.')); return; }
   const items=iR.data||[]; const fin=FINANCE_ROLES.includes(state.role);
-  const info=[[tz('Plasat de'), o.created_by_name||'—'],[tz('Data'), (o.created_at||'').slice(0,16).replace('T',' ')]];
+  const info=[[tz('Plasat de'), o.created_by_name||'—'],[tz('Data'), fmtDT(o.created_at)]];
   if(o.sites) info.push([tz('Șantier'), o.sites.name]);
+  if(o.expected_at) info.push([tz('Livrare până la'), fmtDate(o.expected_at)]);
+  if(o.accepted_by_name) info.push([tz('Preluată de'), o.accepted_by_name+(o.accepted_at?(' · '+fmtDT(o.accepted_at)):'')]);
   if(o.suppliers) info.push([tz('Furnizor'), o.suppliers.name]);
   if(o.number) info.push([tz('Număr'), o.number]);
   info.push([tz('Stare'), STATUS[o.status]?C373t(STATUS[o.status][0]):(o.status||'—')]);
@@ -7051,9 +7055,9 @@ async function orderItemsView(id){
 function jsArg(s){ return esc(s||'').replace(/\x27/g,''); }
 function rowActions(key,m,r){
   const a=[], id=r.id;
-  if(m.orderItems) a.push({i:'📦',l:tz('Pozițiile comenzii'),f:"orderItemsView('"+id+"')"});
+  if(m.orderItems) a.push({i:'👁',l:tz('Previzualizare comandă'),f:"orderItemsView('"+id+"')"});
   if(m.geoLoc) a.push({i:'📍',l:'Locație pe hartă',f:"geoSet('"+m.table+"','"+id+"','"+jsArg(r.name||r.label||'')+"')"});
-  if(m.fields && !m.pageEditor) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
+  if(m.fields && !m.pageEditor && !m.orderItems) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
   if(m.invitable&&ADMIN_ROLES.includes(state.role)){ a.push({i:'📩',l:'Invită în aplicație (trimite link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
     if(m.invitable==='employee') a.push({i:'🔗',l:'Leagă de un cont existent',f:"empLinkAccount('"+id+"','"+jsArg(r.full_name)+"')"}); }
   if(m.siteHub) a.push({i:'📂',l:'Detalii șantier (jurnal, etape, stoc, situații, RFI…)',f:"siteHub('"+id+"','"+jsArg(r.name)+"')"});

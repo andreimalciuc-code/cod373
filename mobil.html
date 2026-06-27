@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='323';
+const APP_BUILD='324';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -893,7 +893,8 @@ async function savePontaj(){
 
 /* LIVRARI (sofer) */
 async function scrLivrari(){
-  $('screen').innerHTML='<div class="scr-title">Livrări</div><div id="dl"><div class="loading">Se încarcă…</div></div>';
+  $('screen').innerHTML='<div class="scr-title">Livrări</div><div id="drv-orders"></div><div id="dl"><div class="loading">Se încarcă…</div></div>';
+  try{ const oh=await driverOrdersHtml(); const od=$('drv-orders'); if(od) od.innerHTML=oh; }catch(e){}
   const {data}=await sb.from('deliveries').select('id,status,scheduled_at,order_id,site_id,vehicle_id');
   const sm=await nameMap('sites','name'); const om=await nameMap('material_orders','number'); const vm=await nameMap('vehicles','label');
   const rows=(data||[]).slice().reverse();
@@ -963,7 +964,7 @@ async function saveDefect(){
 let _matQ='';
 async function scrComanda(){
   $('screen').innerHTML='<div class="row" style="align-items:center;margin-bottom:.3rem"><div class="scr-title" style="margin:0;flex:1">Comandă</div><button class="mini-btn gh" style="white-space:nowrap" onclick="myOrders()">📋 Comenzile mele</button></div>'
-    +'<div class="card"><div class="fld" style="margin:0"><label>Pentru șantier</label><select id="o-site"><option value="">— alege —</option></select></div></div>'
+    +'<div class="card"><div class="fld"><label>Pentru șantier <span style="color:var(--red)">*</span></label><select id="o-site"><option value="">— alege —</option></select></div><div class="fld" style="margin-bottom:0"><label>🚚 Livrare până la (termen) <span style="color:var(--red)">*</span></label><input id="o-deadline" type="date" min="'+(new Date().toISOString().slice(0,10))+'"/></div></div>'
     +'<div class="roles" style="padding:0;border:none;margin-bottom:.6rem;background:none"><button id="ot-m" class="on" onclick="setOrdKind(\'m\')">📦 Materiale</button><button id="ot-t" onclick="setOrdKind(\'t\')">🛠️ Instrumente</button></div>'
     +'<input id="o-q" placeholder="🔍 caută…" oninput="filterMats(this.value)" style="width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;margin-bottom:.8rem;font-size:1rem;outline:none"/>'
     +'<div id="mat-list"><div class="loading">Se încarcă…</div></div>';
@@ -1009,13 +1010,19 @@ function reviewRows(){ const items=cartItemsArr(); if(!items.length) return '<di
   return items.map(it=>'<div class="row" style="gap:.5rem;align-items:center;padding:.55rem 0;border-bottom:1px solid var(--line)"><div class="grow"><div class="t">'+esc(it.name)+'</div><div class="s">'+esc(it.unit)+'</div></div>'
     +'<div class="row" style="gap:.4rem"><button class="mini-btn gh" onclick="cartReviewAdd(\''+it.key+'\',-1)">－</button><b onclick="cartReviewSet(\''+it.key+'\')" style="min-width:38px;text-align:center;cursor:pointer;border-bottom:1px dashed var(--line)">'+(+it.qty)+'</b><button class="mini-btn pr" onclick="cartReviewAdd(\''+it.key+'\',1)">＋</button><button class="mini-btn gh" onclick="cartReviewDel(\''+it.key+'\')" style="color:var(--red)">🗑</button></div></div>').join(''); }
 function cartReview(){ const items=cartItemsArr(); if(!items.length){ toast('Coșul e gol.'); return; }
-  const sel=$('o-site'); const siteName=(sel&&sel.value&&sel.selectedOptions[0])?sel.selectedOptions[0].text:'';
+  const sel=$('o-site'); const site=sel&&sel.value; const siteName=(site&&sel.selectedOptions[0])?sel.selectedOptions[0].text:'';
+  const dlEl=$('o-deadline'); const deadline=dlEl&&dlEl.value;
+  const miss=[]; if(!site) miss.push('șantierul'); if(!deadline) miss.push('termenul de livrare');
   openSheet('🛒 Verifică comanda',
     '<div id="o-rev-msg"></div>'
-    +(siteName?'<div class="s" style="margin-bottom:.5rem">📍 Pentru: <b>'+esc(siteName)+'</b></div>':'<div class="s" style="margin-bottom:.5rem;color:#b45309">⚠️ Niciun șantier ales — alege unul în ecran dacă vrei.</div>')
+    +(miss.length
+      ? '<div class="msg err" style="margin-bottom:.7rem">⚠️ Mai întâi completează <b>'+miss.join('</b> și <b>')+'</b> în ecran (sub titlu).</div>'
+      : '<div class="s" style="margin-bottom:.6rem">📍 <b>'+esc(siteName)+'</b> · 🚚 până la <b>'+esc(deadline)+'</b></div>')
     +'<div id="o-rev-body">'+reviewRows()+'</div>'
-    +'<button class="btn" id="o-send" style="margin-top:1rem" onclick="sendOrder()"></button>');
-  updateSendBtn(); renderCartBar(); }
+    +(miss.length
+      ? '<button class="btn" style="margin-top:1rem;background:#6b7793" onclick="closeSheet()">↩ Înapoi să completez</button>'
+      : '<button class="btn" id="o-send" style="margin-top:1rem" onclick="sendOrder()"></button>'));
+  if(!miss.length) updateSendBtn(); renderCartBar(); }
 function updateSendBtn(){ const b=$('o-send'); if(!b)return; const n=cartItemsArr().length; b.textContent='✅ Trimite comanda ('+n+' poziții)'; }
 function refreshReview(){ renderMats(_matQ); const has=cartItemsArr().length; if(!has){ closeSheet(); return; } const bd=$('o-rev-body'); if(bd) bd.innerHTML=reviewRows(); updateSendBtn(); }
 function cartReviewAdd(key,d){ if(!S.cart[key])return; S.cart[key].qty=Math.max(0,(+S.cart[key].qty||0)+d); if(S.cart[key].qty===0)delete S.cart[key]; refreshReview(); }
@@ -1027,27 +1034,54 @@ async function sendOrder(){
   const btn=$('o-send'); if(btn){ btn.disabled=true; btn.textContent='Se trimite…'; }
   const fail=function(msg){ const m=$('o-rev-msg'); if(m) m.innerHTML='<div class="msg err">'+esc(msg)+'</div>'; else toast(msg); if(btn){ btn.disabled=false; updateSendBtn(); } };
   const site=($('o-site')&&$('o-site').value)||null;
+  const deadline=($('o-deadline')&&$('o-deadline').value)||null;
+  if(!site){ fail('Alege șantierul (obligatoriu).'); return; }
+  if(!deadline){ fail('Pune termenul de livrare (obligatoriu).'); return; }
   const who=(S.uname||S.email||'').trim()||null;
-  const ins=await sb.from('material_orders').insert({tenant_id:S.tenant,site_id:site,status:'draft',total:0,created_by:S.session.user.id,created_by_name:who}).select('id').single();
+  const ins=await sb.from('material_orders').insert({tenant_id:S.tenant,site_id:site,status:'draft',total:0,expected_at:deadline,created_by:S.session.user.id,created_by_name:who}).select('id').single();
   if(ins.error){ fail('Eroare la creare: '+ins.error.message); return; }
   const rows=items.map(it=>({tenant_id:S.tenant,order_id:ins.data.id,material_id:it.kind==='m'?it.refId:null,name:(it.kind==='t'?'🛠️ '+it.name:it.name),qty:it.qty,unit:it.unit,unit_price:0,vat_rate:20}));
   const r2=await sb.from('material_order_items').insert(rows);
   if(r2.error){ fail('Eroare la poziții: '+r2.error.message); return; }
   S.cart={}; closeSheet(); toast('✅ Comandă trimisă la birou ('+items.length+' poziții).'); scrComanda();
 }
+/* ── fus orar firmă pt afișarea orei ── */
+async function ensureAu(){ if(S._au===undefined){ try{ const {data}=await sb.from('tenants').select('automations,currency').eq('id',S.tenant).single(); S._au=(data&&data.automations)||{}; S._cur=(data&&data.currency)||'MDL'; }catch(e){ S._au={}; } } return S._au; }
+function fmtDT(ts){ if(!ts) return ''; try{ const tz=(S._au&&S._au.tz)||''; const opt={day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}; if(tz) opt.timeZone=tz; return new Intl.DateTimeFormat('ro-RO',opt).format(new Date(ts)); }catch(e){ return String(ts).slice(0,16).replace('T',' '); } }
+const ORD_ST={draft:['Trimisă · așteaptă șofer','amber'],sent:['La furnizor','blue'],confirmed:['Acceptată de șofer','green'],received:['Primită','green'],cancelled:['Anulată','grey']};
 /* ── Comenzile mele (lucrător) ── */
 async function myOrders(){
   openSheet('📋 Comenzile mele','<div id="myo-body"><div class="loading">Se încarcă…</div></div>');
-  const {data:orders,error}=await sb.from('material_orders').select('id,status,created_at,sites!site_id(name)').eq('created_by',S.session.user.id).order('created_at',{ascending:false}).limit(40);
+  await ensureAu();
+  const {data:orders,error}=await sb.from('material_orders').select('id,status,created_at,expected_at,accepted_by_name,sites!site_id(name)').eq('created_by',S.session.user.id).order('created_at',{ascending:false}).limit(40);
   const bd=$('myo-body'); if(!bd)return;
   if(error){ bd.innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   const list=orders||[]; if(!list.length){ bd.innerHTML='<div class="empty"><div class="ei">🛒</div>N-ai trimis nicio comandă încă.</div>'; return; }
   const ids=list.map(o=>o.id); const {data:its}=await sb.from('material_order_items').select('order_id,name,qty,unit').in('order_id',ids);
   const byO={}; (its||[]).forEach(it=>{ (byO[it.order_id]=byO[it.order_id]||[]).push(it); });
-  const sl={draft:['Trimisă','blue'],sent:['La furnizor','blue'],confirmed:['Confirmată','green'],received:['Primită','green'],cancelled:['Anulată','grey']};
-  bd.innerHTML=list.map(o=>{ const s=sl[o.status]||['—','grey']; const ii=byO[o.id]||[];
-    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc((o.created_at||'').slice(0,16).replace('T',' '))+'</div><div class="s">'+(o.sites?('📍 '+esc(o.sites.name)):'fără șantier')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div>'
+  bd.innerHTML=list.map(o=>{ const s=ORD_ST[o.status]||['—','grey']; const ii=byO[o.id]||[];
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(fmtDT(o.created_at))+'</div><div class="s">'+(o.sites?('📍 '+esc(o.sites.name)):'fără șantier')+(o.expected_at?(' · 🚚 până la '+esc(o.expected_at)):'')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div>'
+      +(o.accepted_by_name?'<div class="s" style="margin-top:.3rem;color:#166534">✅ Preluată de '+esc(o.accepted_by_name)+'</div>':'')
       +(ii.length?'<div class="s" style="margin-top:.45rem;line-height:1.55">'+ii.map(it=>'• '+esc(it.name)+' × <b>'+(+it.qty)+'</b> '+esc(it.unit||'')).join('<br>')+'</div>':'')+'</div>'; }).join('');
+}
+/* ── Comenzi de preluat (șofer) — apar în ecranul Livrări ── */
+async function driverOrdersHtml(){
+  await ensureAu();
+  const {data:orders}=await sb.from('material_orders').select('id,status,created_at,expected_at,created_by_name,sites!site_id(name)').eq('status','draft').order('created_at',{ascending:false}).limit(30);
+  const list=orders||[]; if(!list.length) return '';
+  const ids=list.map(o=>o.id); const {data:its}=await sb.from('material_order_items').select('order_id,name,qty,unit').in('order_id',ids);
+  const byO={}; (its||[]).forEach(it=>{ (byO[it.order_id]=byO[it.order_id]||[]).push(it); });
+  return '<div class="scr-title" style="font-size:1rem;margin:.2rem 0 .5rem">📦 Comenzi de preluat ('+list.length+')</div>'
+    +list.map(o=>{ const ii=byO[o.id]||[];
+      return '<div class="card" style="border-left:3px solid #f59e0b"><div class="row"><div class="grow"><div class="t">'+(o.sites?esc(o.sites.name):'Comandă materiale')+'</div><div class="s">'+esc(fmtDT(o.created_at))+(o.created_by_name?(' · '+esc(o.created_by_name)):'')+(o.expected_at?(' · 🚚 până la '+esc(o.expected_at)):'')+'</div></div></div>'
+        +(ii.length?'<div class="s" style="margin-top:.4rem;line-height:1.55">'+ii.map(it=>'• '+esc(it.name)+' × <b>'+(+it.qty)+'</b> '+esc(it.unit||'')).join('<br>')+'</div>':'')
+        +'<div style="margin-top:.7rem;text-align:right"><button class="btn" style="width:auto;padding:.6rem 1.1rem" onclick="driverAcceptOrder(\''+o.id+'\')">✅ Accept comanda</button></div></div>'; }).join('')
+    +'<div style="height:1rem"></div>';
+}
+async function driverAcceptOrder(id){
+  const r=await sb.from('material_orders').update({status:'confirmed',accepted_by_name:(S.uname||S.email||null),accepted_at:new Date().toISOString()}).eq('id',id);
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+  toast('✅ Comandă acceptată — o preiei.'); scrLivrari();
 }
 
 /* ── Lightbox poze: deschide în fereastra curentă + săgeți/swipe (URL-uri deja semnate) ── */
