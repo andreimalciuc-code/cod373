@@ -623,13 +623,15 @@ const MODULES = {
 
   comenzi:{ title:'Comenzi materiale', sub:'Comenzi către furnizori.', icon:'🛒', group:'Operațional', table:'material_orders',
     newLabel:'Comandă nouă', orderBy:{col:'created_at',asc:false},
-    select:'id,number,status,total,ordered_at,expected_at,suppliers!supplier_id(name),sites!site_id(name)',
+    select:'id,number,status,total,ordered_at,expected_at,created_at,created_by_name,suppliers!supplier_id(name),sites!site_id(name)',
+    orderItems:true,
     columns:[
+      {label:'Data',get:r=>'<span style="white-space:nowrap">'+esc((r.created_at||r.ordered_at||'').slice(0,16).replace('T',' '))+'</span>'},
+      {label:'Plasat de',get:r=>esc(r.created_by_name||'—')},
+      {label:'Șantier',get:r=>esc(r.sites?r.sites.name:'—')},
       {label:'Nr.',get:r=>'<span class="tname">'+esc(r.number||'—')+'</span>'},
       {label:'Furnizor',get:r=>esc(r.suppliers?r.suppliers.name:'—')},
-      {label:'Șantier',get:r=>esc(r.sites?r.sites.name:'—')},
       {label:'Total',get:r=>money(r.total)},
-      {label:'Comandat',get:r=>dt(r.ordered_at)},
       {label:'Stare',get:r=>pill(r.status)} ],
     fields:[
       {key:'number',label:'Număr comandă',type:'text'},
@@ -6874,6 +6876,7 @@ async function renderModule(key){
     :m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
     :m.pageEditor?'<button class="btn-primary" style="margin-left:auto" onclick="window.open(\''+m.pageEditor+'?new=1\',\'_blank\')">📋 '+esc(m.newLabel)+' (filă nouă)</button><button class="btn-ghost" onclick="openForm(\''+key+'\')">＋ rapid</button>'
     :'<button class="btn-primary" style="margin-left:auto" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>')+'</div>';
+  // (orderItems action injectat în rowActions)
   if(m.bulkOrder && canAdd) bar=bar.replace(/<\/div>$/,'<button class="btn-ghost" id="bulk-order-btn" onclick="bulkCreateOrder()" style="margin-left:.5rem;display:none">🛒 '+esc(m.bulkOrder.label||'Creează comandă')+' (<span id="bulk-n">0</span>)</button></div>');
   if(canDo(key,'d')) bar=bar.replace(/<\/div>$/,'<button class="btn-ghost" id="bulk-del-btn" onclick="bulkDelete()" style="margin-left:.4rem;display:none;color:var(--red);border-color:var(--red)">🗑 '+esc(tz('Șterge'))+' (<span id="bulk-n3">0</span>)</button></div>');
   $('content').innerHTML=bar+'<div class="panel"><div class="panel-head"><h3>'+esc(m.title)+'</h3><span id="list-count" style="font-size:.8rem;color:var(--muted)"></span></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
@@ -7024,10 +7027,31 @@ function renderList(){
   if(bulk) updateBulkBtn();
   signThumbs();
 }
+/* Vizualizare poziții comandă (cine/când + articole) */
+async function orderItemsView(id){
+  const [oR,iR]=await Promise.all([
+    sb.from('material_orders').select('id,number,status,total,created_by_name,created_at,suppliers!supplier_id(name),sites!site_id(name)').eq('id',id).maybeSingle(),
+    sb.from('material_order_items').select('name,qty,unit,unit_price').eq('order_id',id)
+  ]);
+  const o=oR.data; if(!o){ toast(tz('Înregistrare negăsită.')); return; }
+  const items=iR.data||[]; const fin=FINANCE_ROLES.includes(state.role);
+  const info=[[tz('Plasat de'), o.created_by_name||'—'],[tz('Data'), (o.created_at||'').slice(0,16).replace('T',' ')]];
+  if(o.sites) info.push([tz('Șantier'), o.sites.name]);
+  if(o.suppliers) info.push([tz('Furnizor'), o.suppliers.name]);
+  if(o.number) info.push([tz('Număr'), o.number]);
+  info.push([tz('Stare'), STATUS[o.status]?C373t(STATUS[o.status][0]):(o.status||'—')]);
+  const infoH=info.map(p=>'<div style="display:flex;gap:.5rem;font-size:.85rem"><span style="color:var(--muted);min-width:96px">'+esc(p[0])+'</span><b>'+esc(p[1])+'</b></div>').join('');
+  const rows=items.length? items.map(it=>'<tr><td>'+esc(it.name)+'</td><td style="text-align:right;white-space:nowrap">'+(+it.qty)+' '+esc(it.unit||'')+'</td>'+(fin?'<td style="text-align:right">'+(it.unit_price?money(it.unit_price):'—')+'</td>':'')+'</tr>').join('') : '<tr><td colspan="'+(fin?3:2)+'" style="color:var(--muted)">'+esc(tz('Fără poziții.'))+'</td></tr>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📦 '+esc(tz('Pozițiile comenzii'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div style="display:flex;flex-direction:column;gap:.2rem;margin-bottom:.7rem">'+infoH+'</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(tz('Articol'))+'</th><th style="text-align:right">'+esc(tz('Cantitate'))+'</th>'+(fin?'<th style="text-align:right">'+esc(tz('Preț'))+'</th>':'')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'</div></div></div>';
+}
 /* acțiunile unui rând — sursă comună pentru butoanele inline ȘI panoul de opțiuni */
 function jsArg(s){ return esc(s||'').replace(/\x27/g,''); }
 function rowActions(key,m,r){
   const a=[], id=r.id;
+  if(m.orderItems) a.push({i:'📦',l:tz('Pozițiile comenzii'),f:"orderItemsView('"+id+"')"});
   if(m.geoLoc) a.push({i:'📍',l:'Locație pe hartă',f:"geoSet('"+m.table+"','"+id+"','"+jsArg(r.name||r.label||'')+"')"});
   if(m.fields && !m.pageEditor) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
   if(m.invitable&&ADMIN_ROLES.includes(state.role)){ a.push({i:'📩',l:'Invită în aplicație (trimite link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
