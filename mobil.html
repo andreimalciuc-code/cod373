@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='325';
+const APP_BUILD='326';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -970,8 +970,8 @@ async function scrComanda(){
     +'<div id="mat-list"><div class="loading">Se încarcă…</div></div>';
   const {data:sites}=await sb.from('sites').select('id,name');
   $('o-site').innerHTML='<option value="">— alege —</option>'+(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
-  const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit,photo_url'), sb.from('tools').select('id,name,photo_url') ]);
-  S.mats=mr.data||[]; S.tools=(tr.data||[]).map(t=>({id:t.id,name:t.name,unit:'buc',photo_url:t.photo_url}));
+  const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit,photo_url,purchase_price,last_price,store_price'), sb.from('tools').select('id,name,photo_url,unit_value') ]);
+  S.mats=mr.data||[]; S.tools=(tr.data||[]).map(t=>({id:t.id,name:t.name,unit:'buc',photo_url:t.photo_url,price:t.unit_value}));
   if(!S.cart)S.cart={}; if(!S.ordKind)S.ordKind='m'; _matQ=''; renderMats('');
 }
 function setOrdKind(k){ S.ordKind=k; const a=document.getElementById('ot-m'),b=document.getElementById('ot-t'); if(a)a.classList.toggle('on',k==='m'); if(b)b.classList.toggle('on',k==='t'); _matQ=''; const q=$('o-q'); if(q)q.value=''; renderMats(''); }
@@ -1006,6 +1006,9 @@ function renderCartBar(){ const el=cartFab(); const c=S.cart||{}; const n=Object
   if(sc) sc.style.paddingBottom='8.5rem'; }
 /* ── Coșul: verifică înainte de trimitere ── */
 function cartItemsArr(){ return Object.keys(S.cart||{}).map(k=>Object.assign({key:k},S.cart[k])).filter(x=>x.qty>0); }
+function catPriceOf(it){ const list=(it.kind==='t')?(S.tools||[]):(S.mats||[]); const m=list.find(x=>x.id===it.refId); if(!m) return 0;
+  if(it.kind==='t') return +m.price||0;
+  return +(m.purchase_price!=null?m.purchase_price:(m.last_price!=null?m.last_price:(m.store_price!=null?m.store_price:0)))||0; }
 function reviewRows(){ const items=cartItemsArr(); if(!items.length) return '<div class="empty" style="padding:1rem">Coșul e gol.</div>';
   const row=it=>'<div class="row" style="gap:.5rem;align-items:center;padding:.55rem 0;border-bottom:1px solid var(--line)"><div class="grow"><div class="t">'+esc(it.name)+'</div><div class="s">'+esc(it.unit)+'</div></div>'
     +'<div class="row" style="gap:.4rem"><button class="mini-btn gh" onclick="cartReviewAdd(\''+it.key+'\',-1)">－</button><b onclick="cartReviewSet(\''+it.key+'\')" style="min-width:38px;text-align:center;cursor:pointer;border-bottom:1px dashed var(--line)">'+(+it.qty)+'</b><button class="mini-btn pr" onclick="cartReviewAdd(\''+it.key+'\',1)">＋</button><button class="mini-btn gh" onclick="cartReviewDel(\''+it.key+'\')" style="color:var(--red)">🗑</button></div></div>';
@@ -1049,10 +1052,15 @@ async function sendOrder(){
   const deadline=($('o-deadline')&&$('o-deadline').value)||null;
   if(!site){ fail('Alege șantierul (obligatoriu).'); return; }
   if(!deadline){ fail('Pune termenul de livrare (obligatoriu).'); return; }
-  const who=(S.uname||S.email||'').trim()||null;
-  const ins=await sb.from('material_orders').insert({tenant_id:S.tenant,site_id:site,status:'draft',total:0,expected_at:deadline,created_by:S.session.user.id,created_by_name:who}).select('id').single();
+  // numele angajatului (nu emailul): preferă fișa de angajat
+  let who=(S.uname||'').trim();
+  if(!who || who.indexOf('@')>=0){ try{ const e=await sb.from('employees').select('full_name').eq('user_id',S.session.user.id).maybeSingle(); if(e.data&&e.data.full_name) who=e.data.full_name; }catch(e){} }
+  who=who||S.email||null;
+  // prețuri din catalog (lucrătorul nu le vede, dar oficiul le primește)
+  const total=items.reduce((t,it)=>t+(+it.qty||0)*catPriceOf(it),0);
+  const ins=await sb.from('material_orders').insert({tenant_id:S.tenant,site_id:site,status:'draft',total:total,expected_at:deadline,created_by:S.session.user.id,created_by_name:who}).select('id').single();
   if(ins.error){ fail('Eroare la creare: '+ins.error.message); return; }
-  const rows=items.map(it=>({tenant_id:S.tenant,order_id:ins.data.id,material_id:it.kind==='m'?it.refId:null,name:(it.kind==='t'?'🛠️ '+it.name:it.name),qty:it.qty,unit:it.unit,unit_price:0,vat_rate:20}));
+  const rows=items.map(it=>({tenant_id:S.tenant,order_id:ins.data.id,material_id:it.kind==='m'?it.refId:null,name:(it.kind==='t'?'🛠️ '+it.name:it.name),qty:it.qty,unit:it.unit,unit_price:catPriceOf(it),vat_rate:20}));
   const r2=await sb.from('material_order_items').insert(rows);
   if(r2.error){ fail('Eroare la poziții: '+r2.error.message); return; }
   S.cart={}; closeSheet(); toast('✅ Comandă trimisă la birou ('+items.length+' poziții).'); scrComanda();

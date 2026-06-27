@@ -7032,28 +7032,39 @@ function renderList(){
 /* Vizualizare poziții comandă (cine/când + articole) */
 async function orderItemsView(id){
   const [oR,iR]=await Promise.all([
-    sb.from('material_orders').select('id,number,status,total,created_by_name,created_at,expected_at,accepted_by_name,accepted_at,suppliers!supplier_id(name),sites!site_id(name)').eq('id',id).maybeSingle(),
-    sb.from('material_order_items').select('name,qty,unit,unit_price').eq('order_id',id)
+    sb.from('material_orders').select('id,number,status,total,created_by,created_by_name,created_at,expected_at,accepted_by_name,accepted_at,suppliers!supplier_id(name),sites!site_id(name)').eq('id',id).maybeSingle(),
+    sb.from('material_order_items').select('name,qty,unit,unit_price,material_id').eq('order_id',id)
   ]);
   const o=oR.data; if(!o){ toast(tz('Înregistrare negăsită.')); return; }
   const items=iR.data||[]; const fin=FINANCE_ROLES.includes(state.role);
-  const info=[[tz('Plasat de'), o.created_by_name||'—'],[tz('Data'), fmtDT(o.created_at)]];
+  // nume angajat (nu email): rezolvă din employees/profiles dacă e gol/email
+  let placedBy=o.created_by_name||'';
+  if((!placedBy || /@/.test(placedBy)) && o.created_by){ try{ const e=await sb.from('employees').select('full_name').eq('user_id',o.created_by).maybeSingle(); if(e.data&&e.data.full_name) placedBy=e.data.full_name; else { const p=await sb.from('profiles').select('full_name').eq('id',o.created_by).maybeSingle(); if(p.data&&p.data.full_name) placedBy=p.data.full_name; } }catch(e){} }
+  placedBy=placedBy||'—';
+  // prețuri din catalog pt pozițiile fără preț salvat (comenzi vechi)
+  let priceMap={};
+  if(fin){ const need=items.filter(it=>it.material_id && (!it.unit_price||+it.unit_price===0)); if(need.length){ try{ const mids=Array.from(new Set(need.map(it=>it.material_id))); const mr=await sb.from('materials').select('id,purchase_price,last_price,store_price').in('id',mids); (mr.data||[]).forEach(m=>{ priceMap[m.id]=+(m.purchase_price!=null?m.purchase_price:(m.last_price!=null?m.last_price:(m.store_price!=null?m.store_price:0)))||0; }); }catch(e){} } }
+  const priceOf=it=>{ let p=+it.unit_price||0; if(!p && it.material_id && priceMap[it.material_id]!=null) p=priceMap[it.material_id]; return p; };
+  const grand=items.reduce((t,it)=>t+(+it.qty||0)*priceOf(it),0);
+  const info=[[tz('Plasat de'), placedBy],[tz('Data'), fmtDT(o.created_at)]];
   if(o.sites) info.push([tz('Șantier'), o.sites.name]);
   if(o.expected_at) info.push([tz('Livrare până la'), fmtDate(o.expected_at)]);
   if(o.accepted_by_name) info.push([tz('Preluată de'), o.accepted_by_name+(o.accepted_at?(' · '+fmtDT(o.accepted_at)):'')]);
   if(o.suppliers) info.push([tz('Furnizor'), o.suppliers.name]);
   if(o.number) info.push([tz('Număr'), o.number]);
   info.push([tz('Stare'), STATUS[o.status]?C373t(STATUS[o.status][0]):(o.status||'—')]);
-  const infoH=info.map(p=>'<div style="display:flex;gap:.5rem;font-size:.85rem"><span style="color:var(--muted);min-width:96px">'+esc(p[0])+'</span><b>'+esc(p[1])+'</b></div>').join('');
-  const cols=fin?3:2; const isT=x=>/^🛠️\s/.test(x.name||'');
-  const rowH=it=>'<tr><td>'+esc(String(it.name).replace(/^🛠️\s/,''))+'</td><td style="text-align:right;white-space:nowrap">'+(+it.qty)+' '+esc(it.unit||'')+'</td>'+(fin?'<td style="text-align:right">'+(it.unit_price?money(it.unit_price):'—')+'</td>':'')+'</tr>';
+  if(fin) info.push([tz('Total'), money(grand)]);
+  const infoH=info.map(p=>'<div style="display:flex;gap:.5rem;font-size:.85rem"><span style="color:var(--muted);min-width:110px">'+esc(p[0])+'</span><b>'+esc(p[1])+'</b></div>').join('');
+  const cols=fin?4:2; const isT=x=>/^🛠️\s/.test(x.name||'');
+  const rowH=it=>{ const p=priceOf(it), lt=(+it.qty||0)*p; return '<tr><td>'+esc(String(it.name).replace(/^🛠️\s/,''))+'</td><td style="text-align:right;white-space:nowrap">'+(+it.qty)+' '+esc(it.unit||'')+'</td>'+(fin?('<td style="text-align:right;white-space:nowrap">'+(p?money(p):'—')+'</td><td style="text-align:right;white-space:nowrap">'+(p?money(lt):'—')+'</td>'):'')+'</tr>'; };
   const mats=items.filter(x=>!isT(x)), tools=items.filter(isT); let rows='';
   if(mats.length) rows+='<tr><td colspan="'+cols+'" style="font-weight:700;background:var(--bg)">📦 '+esc(tz('Materiale'))+'</td></tr>'+mats.map(rowH).join('');
   if(tools.length) rows+='<tr><td colspan="'+cols+'" style="font-weight:700;background:var(--bg)">🛠️ '+esc(tz('Instrumente'))+'</td></tr>'+tools.map(rowH).join('');
   if(!items.length) rows='<tr><td colspan="'+cols+'" style="color:var(--muted)">'+esc(tz('Fără poziții.'))+'</td></tr>';
+  else if(fin) rows+='<tr><td colspan="3" style="text-align:right;font-weight:700">'+esc(tz('Total'))+'</td><td style="text-align:right;font-weight:700">'+money(grand)+'</td></tr>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📦 '+esc(tz('Pozițiile comenzii'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +'<div style="display:flex;flex-direction:column;gap:.2rem;margin-bottom:.7rem">'+infoH+'</div>'
-    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(tz('Articol'))+'</th><th style="text-align:right">'+esc(tz('Cantitate'))+'</th>'+(fin?'<th style="text-align:right">'+esc(tz('Preț'))+'</th>':'')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(tz('Articol'))+'</th><th style="text-align:right">'+esc(tz('Cantitate'))+'</th>'+(fin?'<th style="text-align:right">'+esc(tz('Preț'))+'</th><th style="text-align:right">'+esc(tz('Total'))+'</th>':'')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'</div></div></div>';
 }
 /* acțiunile unui rând — sursă comună pentru butoanele inline ȘI panoul de opțiuni */
