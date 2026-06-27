@@ -4064,8 +4064,8 @@ async function clientPdf(id){
   const siteTbl=tbl([tz('Denumire'),tz('Stare'),tz('Buget')], ((srr&&srr.data)||[]).map(s=>[esc(s.name||'—'),st(s.status),s.budget!=null?money(s.budget):'—']));
   const acts=(ar&&ar.data)||[];
   const attPaths=[]; acts.forEach(a=>(a.attachments||[]).forEach(p=>attPaths.push(p)));
-  const mediaMap=await pdfSignMap(attPaths);
-  const jr=acts.length? ('<div style="font-size:.85rem">'+acts.map(a=>{ const k=CA_KIND[a.kind]||['•',a.kind||'']; const when=a.created_at?String(a.created_at).slice(0,16).replace('T',' '):''; return '<div style="padding:.35rem 0;border-bottom:1px solid #f0f2f7"><b>'+k[0]+' '+esc(C373t(k[1]))+'</b> <span style="color:#94a3b8">· '+esc(when)+(a.created_by?(' · '+esc(a.created_by)):'')+'</span>'+(a.body?'<div style="margin-top:.1rem;white-space:pre-wrap">'+esc(a.body)+'</div>':'')+pdfMediaHtml(a.attachments, mediaMap)+'</div>'; }).join('')+'</div>') : '';
+  const _mp=await pdfMediaPrep(attPaths); const mediaMap=_mp.urlMap, mediaPoster=_mp.posterMap;
+  const jr=acts.length? ('<div style="font-size:.85rem">'+acts.map(a=>{ const k=CA_KIND[a.kind]||['•',a.kind||'']; const when=a.created_at?String(a.created_at).slice(0,16).replace('T',' '):''; return '<div style="padding:.35rem 0;border-bottom:1px solid #f0f2f7"><b>'+k[0]+' '+esc(C373t(k[1]))+'</b> <span style="color:#94a3b8">· '+esc(when)+(a.created_by?(' · '+esc(a.created_by)):'')+'</span>'+(a.body?'<div style="margin-top:.1rem;white-space:pre-wrap">'+esc(a.body)+'</div>':'')+pdfMediaHtml(a.attachments, mediaMap, mediaPoster)+'</div>'; }).join('')+'</div>') : '';
   const now=new Date(); const stamp=now.toLocaleDateString()+' '+now.toLocaleTimeString().slice(0,5);
   const html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(tz('Fișă client'))+' — '+esc(c.name)+'</title>'
     +'<style>@media print{.noprint{display:none}@page{margin:14mm}}body{font-family:system-ui,-apple-system,Arial;color:#0f1c33;max-width:820px;margin:0 auto;padding:24px}h1{font-size:1.4rem;margin:.2rem 0}</style></head><body>'
@@ -4087,7 +4087,19 @@ async function clientPdf(id){
 function pdfTbl(heads,rows){ return rows.length? ('<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>'+heads.map(h=>'<th style="text-align:left;color:#64748b;font-weight:600;padding:.3rem .4rem;border-bottom:1px solid #e5e9f2">'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td style="padding:.3rem .4rem;border-bottom:1px solid #f0f2f7">'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>') : '<div style="color:#94a3b8;font-size:.85rem">—</div>'; }
 function pdfSec(title,inner){ return inner? ('<h2 style="font-size:1rem;margin:1.4rem 0 .5rem;border-bottom:2px solid #e5e9f2;padding-bottom:.25rem">'+esc(title)+'</h2>'+inner) : ''; }
 async function pdfSignMap(paths){ const uniq=[]; (paths||[]).forEach(p=>{ if(p&&uniq.indexOf(p)<0) uniq.push(p); }); const map={}; if(uniq.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(uniq,3600); (su.data||[]).forEach((s,i)=>{ if(s&&s.signedUrl) map[uniq[i]]=s.signedUrl; }); }catch(e){} } return map; }
-function pdfMediaHtml(paths, urlMap){ if(!paths||!paths.length) return ''; return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:.35rem">'+paths.map(function(p){ const u=urlMap[p]; if(isVideoPath(p)){ return '<div style="width:120px;height:90px;border:1px solid #e5e9f2;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f1c33;color:#fff;font-size:.72rem;text-align:center;gap:2px"><span style="font-size:1.3rem">🎬</span>'+esc(tz('Video'))+'</div>'; } return u?('<img src="'+esc(u)+'" style="width:120px;height:90px;object-fit:cover;border:1px solid #e5e9f2;border-radius:6px">'):''; }).join('')+'</div>'; }
+/* extrage un cadru (poster) dintr-un video pt PDF — fallback null dacă nu merge (CORS/timeout) */
+function videoPoster(url){ return new Promise(function(resolve){ try{
+  const v=document.createElement('video'); v.crossOrigin='anonymous'; v.muted=true; v.preload='metadata'; v.playsInline=true; v.src=url;
+  let done=false; const finish=function(d){ if(done) return; done=true; try{ v.removeAttribute('src'); v.load(); }catch(e){} resolve(d); };
+  const to=setTimeout(function(){ finish(null); }, 9000);
+  v.addEventListener('loadeddata', function(){ try{ v.currentTime=Math.min(1.2,(v.duration||2)/2)||0.1; }catch(e){ clearTimeout(to); finish(null); } });
+  v.addEventListener('seeked', function(){ try{ const w=v.videoWidth||320,h=v.videoHeight||240; const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(v,0,0,w,h); const d=c.toDataURL('image/jpeg',0.7); clearTimeout(to); finish(d&&d.length>200?d:null); }catch(e){ clearTimeout(to); finish(null); } });
+  v.addEventListener('error', function(){ clearTimeout(to); finish(null); });
+}catch(e){ resolve(null); } }); }
+async function pdfMediaPrep(paths){ const urlMap=await pdfSignMap(paths); const posterMap={}; const vids=[]; (paths||[]).forEach(p=>{ if(p&&isVideoPath(p)&&urlMap[p]&&vids.indexOf(p)<0) vids.push(p); });
+  await Promise.all(vids.slice(0,12).map(p=>videoPoster(urlMap[p]).then(d=>{ if(d) posterMap[p]=d; }).catch(()=>{})));
+  return {urlMap:urlMap, posterMap:posterMap}; }
+function pdfMediaHtml(paths, urlMap, posterMap){ posterMap=posterMap||{}; if(!paths||!paths.length) return ''; return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:.35rem">'+paths.map(function(p){ const u=urlMap[p]; if(isVideoPath(p)){ const ps=posterMap[p]; if(ps) return '<div style="position:relative;width:120px;height:90px;display:inline-block"><img src="'+ps+'" style="width:120px;height:90px;object-fit:cover;border:1px solid #e5e9f2;border-radius:6px"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.7rem;text-shadow:0 1px 5px rgba(0,0,0,.7)">▶</div></div>'; return '<div style="width:120px;height:90px;border:1px solid #e5e9f2;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f1c33;color:#fff;font-size:.72rem;text-align:center;gap:2px"><span style="font-size:1.3rem">🎬</span>'+esc(tz('Video'))+'</div>'; } return u?('<img src="'+esc(u)+'" style="width:120px;height:90px;object-fit:cover;border:1px solid #e5e9f2;border-radius:6px">'):''; }).join('')+'</div>'; }
 function pdfInfo(pairs){ return '<table style="border-collapse:collapse;margin-top:.4rem">'+pairs.map(p=>'<tr><td style="color:#64748b;padding:.2rem 1rem .2rem 0;white-space:nowrap;vertical-align:top">'+esc(p[0])+'</td><td style="padding:.2rem 0;font-weight:600">'+esc(p[1])+'</td></tr>').join('')+'</table>'; }
 async function pdfShell(docTitle, heading, innerHtml){ let logo=''; try{ logo=await firmLogoUrl(3600); }catch(e){} const firm=(state.firm&&((state.firm.automations&&state.firm.automations.brand_name)||state.firm.name))||''; const now=new Date(); const stamp=now.toLocaleDateString()+' '+now.toLocaleTimeString().slice(0,5);
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(docTitle)+'</title><style>@media print{.noprint{display:none}@page{margin:14mm}}body{font-family:system-ui,-apple-system,Arial;color:#0f1c33;max-width:820px;margin:0 auto;padding:24px}h1{font-size:1.4rem;margin:.2rem 0}</style></head><body>'
@@ -4159,9 +4171,39 @@ async function sitePdf(siteId){
   if(fin){ const costMat=((ordR&&ordR.data)||[]).filter(o=>o.status!=='cancelled').reduce((t,o)=>t+(+o.total||0),0); const costSub=((subR&&subR.data)||[]).filter(o=>o.status!=='cancelled').reduce((t,o)=>t+(+o.amount||0),0); const cost=costMat+costSub; const budget=+s.budget||0;
     finBlock=pdfInfo([[tz('Buget'),money(budget)],[tz('Cost materiale'),money(costMat)],[tz('Cost subcontractanți'),money(costSub)],[tz('Marjă estimată'),money(budget-cost)]]); }
   const photoPaths=[]; (Array.isArray(s.photo_urls)?s.photo_urls:[]).forEach(p=>photoPaths.push(p)); stages.forEach(x=>(x.photo_urls||[]).forEach(p=>photoPaths.push(p)));
-  const photoMap=await pdfSignMap(photoPaths);
-  const inner=pdfInfo(info)+(fin?pdfSec('💰 '+tz('Financiar'), finBlock):'')+pdfSec('🪜 '+tz('Etape de lucru'), stages.length?stagesTbl:'')+pdfSec('📷 '+tz('Poze de pe șantier'), photoPaths.length?pdfMediaHtml(photoPaths, photoMap):'');
+  const _sp=await pdfMediaPrep(photoPaths);
+  const inner=pdfInfo(info)+(fin?pdfSec('💰 '+tz('Financiar'), finBlock):'')+pdfSec('🪜 '+tz('Etape de lucru'), stages.length?stagesTbl:'')+pdfSec('📷 '+tz('Poze de pe șantier'), photoPaths.length?pdfMediaHtml(photoPaths, _sp.urlMap, _sp.posterMap):'');
   const html=await pdfShell(tz('Fișă șantier')+' — '+s.name, '🏗️ '+esc(s.name), inner);
+  try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){ toast(tz('Eroare la generare PDF.')); }
+}
+async function vehiclePdf(vid){
+  const w=pdfPrep(); if(!w) return;
+  const [vR,lR]=await Promise.all([
+    sb.from('vehicles').select('*,vehicle_drivers(employees(full_name))').eq('id',vid).maybeSingle(),
+    sb.from('vehicle_logs').select('log_date,kind,description,cost,odometer').eq('vehicle_id',vid).order('log_date',{ascending:false}).limit(60)
+  ]);
+  const v=vR.data; if(!v){ try{ w.close(); }catch(_){} toast(tz('Vehicul negăsit.')); return; }
+  const fin=FINANCE_ROLES.includes(state.role); const st=k=>STATUS[k]?C373t(STATUS[k][0]):(k||'—');
+  const info=[];
+  if(v.plate) info.push([tz('Plăcuță'), v.plate]);
+  info.push([tz('Stare'), st(v.status)]);
+  if(v.acq_condition) info.push([tz('Stare la achiziție'), st(v.acq_condition)]);
+  if(v.acq_type) info.push([tz('Tip achiziție'), v.acq_type]);
+  if(v.km_purchase!=null) info.push([tz('Km la achiziție'), String(v.km_purchase)]);
+  if(v.km_current!=null) info.push([tz('Km curent'), String(v.km_current)]);
+  if(v.itp_until) info.push(['ITP — '+tz('Valabil până'), String(v.itp_until).slice(0,10)]);
+  if(v.insurance_until) info.push([tz('Asigurare')+' — '+tz('Valabil până'), String(v.insurance_until).slice(0,10)]);
+  const drivers=(v.vehicle_drivers||[]).map(x=>x.employees&&x.employees.full_name).filter(Boolean);
+  if(drivers.length) info.push([tz('Șoferi'), drivers.join(', ')]);
+  const photoPaths=[]; if(v.photo_url) photoPaths.push(v.photo_url); (Array.isArray(v.photos)?v.photos:[]).forEach(p=>{ if(photoPaths.indexOf(p)<0) photoPaths.push(p); });
+  const _vp=await pdfMediaPrep(photoPaths);
+  const logs=((lR&&lR.data)||[]);
+  const logTbl=pdfTbl([tz('Data'),tz('Tip'),tz('Descriere'),tz('Km')].concat(fin?[tz('Cost')]:[]), logs.map(x=>{ const row=[esc(String(x.log_date||'').slice(0,10)), esc(x.kind||'—'), esc(x.description||'—'), (x.odometer!=null?String(x.odometer):'—')]; if(fin) row.push(x.cost!=null?money(x.cost):'—'); return row; }));
+  let totCost=''; if(fin){ const tc=logs.reduce((t,x)=>t+(+x.cost||0),0); if(tc) totCost=' ('+tz('total')+': '+money(tc)+')'; }
+  const inner=pdfInfo(info)
+    +pdfSec('📷 '+tz('Poze'), photoPaths.length?pdfMediaHtml(photoPaths,_vp.urlMap,_vp.posterMap):'')
+    +pdfSec('🩺 '+tz('Service & mentenanță')+totCost, logs.length?logTbl:'');
+  const html=await pdfShell(tz('Fișă vehicul')+' — '+(v.label||v.plate||''), '🚗 '+esc(v.label||v.plate||'—'), inner);
   try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){ toast(tz('Eroare la generare PDF.')); }
 }
 function caRow(a){ const k=CA_KIND[a.kind]||['•',a.kind||'']; const isTask=a.kind==='task'; const when=a.due_date?fmtDate(a.due_date):(a.created_at?fmtDate(a.created_at.slice(0,10)):'');
@@ -6993,7 +7035,7 @@ function rowActions(key,m,r){
   if(m.efactura){ const au=(state.firm&&state.firm.automations)||{}; if(au.lexoffice_key) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
   if(m.printable) a.push({i:'⬇',l:'Descarcă / Tipărește PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'🔢',l:'Bucăți (serii), inventar, valoare, amortizare + unde se află',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
-  if(m.vehicleLog){ if(canSee('harta')) a.push({i:'🗺️',l:'Vezi pe hartă (GPS)',f:"vehShowOnMap('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); }
+  if(m.vehicleLog){ if(canSee('harta')) a.push({i:'🗺️',l:'Vezi pe hartă (GPS)',f:"vehShowOnMap('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🖨️',l:tz('Fișă PDF vehicul'),f:"vehiclePdf('"+id+"')"}); }
   if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
   return a;
