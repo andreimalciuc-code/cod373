@@ -1602,6 +1602,12 @@
     'Adaugă site & rețele':{ru:'Добавить сайт и соцсети',de:'Website & Netzwerke hinzufügen',en:'Add website & socials'},
     'Site web':{ru:'Веб-сайт',de:'Webseite',en:'Website'},
     'Adresele firmei. Apar în meniul din stânga — cu un clic le deschizi direct din platformă.':{ru:'Адреса компании. Появляются в меню слева — открываются одним кликом прямо из платформы.',de:'Die Adressen der Firma. Erscheinen im linken Menü — mit einem Klick direkt aus der Plattform geöffnet.',en:'Your company addresses. They appear in the left menu — one click opens them right from the platform.'},
+    // ── upload modern (drag/paste/multi) ──
+    'Încarcă fișiere':{ru:'Загрузить файлы',de:'Dateien hochladen',en:'Upload files'},
+    'Se încarcă':{ru:'Загрузка',de:'Wird hochgeladen',en:'Uploading'},
+    'fișier(e) încărcat(e).':{ru:'файл(ов) загружено.',de:'Datei(en) hochgeladen.',en:'file(s) uploaded.'},
+    'Eliberează ca să încarci fișierele aici':{ru:'Отпустите, чтобы загрузить файлы сюда',de:'Loslassen, um die Dateien hier hochzuladen',en:'Drop to upload the files here'},
+    'Poți trage fișiere direct de pe calculator, sau lipi o captură cu Ctrl+V.':{ru:'Можно перетащить файлы прямо с компьютера или вставить скриншот через Ctrl+V.',de:'Du kannst Dateien direkt vom Computer ziehen oder einen Screenshot mit Strg+V einfügen.',en:'You can drag files straight from your computer, or paste a screenshot with Ctrl+V.'},
     // ── mesagerie (Telegram/WhatsApp) ──
     'Verify token (ales de tine)':{ru:'Verify token (на ваш выбор)',de:'Verify-Token (selbst gewählt)',en:'Verify token (your choice)'},
     'Token permanent (Cloud API)':{ru:'Постоянный токен (Cloud API)',de:'Permanenter Token (Cloud API)',en:'Permanent token (Cloud API)'},

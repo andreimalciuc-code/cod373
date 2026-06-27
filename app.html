@@ -6314,10 +6314,14 @@ async function renderDocumente(folderId){
   const sortVals=[['name',true,'🔤 '+tz('Nume A→Z')],['name',false,'🔤 '+tz('Nume Z→A')],['date',false,'🕒 '+tz('Cele mai noi')],['date',true,'🕒 '+tz('Cele mai vechi')],['size',false,'📦 '+tz('Mărime ↓')],['size',true,'📦 '+tz('Mărime ↑')]];
   const sortOpts=sortVals.map(s=>'<option value=\''+JSON.stringify({by:s[0],asc:s[1]})+'\' '+((s[0]===_docSort.by&&s[1]===_docSort.asc)?'selected':'')+'>'+esc(s[2])+'</option>').join('');
   $('content').innerHTML=
-    '<div class="seg" style="gap:.5rem;flex-wrap:wrap"><label class="btn-primary" style="cursor:pointer"><span>＋</span> '+esc(tz('Încarcă fișier'))+'<input type="file" id="doc-file" style="display:none" onchange="uploadDoc(this)"/></label>'
+    '<div class="seg" style="gap:.5rem;flex-wrap:wrap"><label class="btn-primary" style="cursor:pointer"><span>＋</span> '+esc(tz('Încarcă fișiere'))+'<input type="file" id="doc-file" multiple style="display:none" onchange="uploadDoc(this)"/></label>'
     +'<button class="btn-ghost" onclick="folderCreate()">📁 '+esc(tz('Mapă nouă'))+'</button><span style="flex:1"></span>'
     +'<select onchange="_docSort=JSON.parse(this.value);renderDocumente()" style="padding:.45rem .6rem;border:1px solid var(--line);border-radius:9px;font-size:.82rem;background:var(--surface)">'+sortOpts+'</select></div>'
-    +'<div class="panel"><div class="panel-head"><h3>📄 '+esc(tz('Acte & Documente'))+'</h3></div><div id="doc-crumb" style="padding:.45rem 1.2rem 0;font-size:.86rem"></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+    +'<div class="panel" id="doc-panel" ondragover="docZoneOver(event)" ondragleave="docZoneLeave(event)" ondrop="docZoneDrop(event)"><div class="panel-head"><h3>📄 '+esc(tz('Acte & Documente'))+'</h3></div><div id="doc-crumb" style="padding:.45rem 1.2rem 0;font-size:.86rem"></div><div id="doc-dropmsg" style="display:none;margin:.4rem 1.2rem;padding:.8rem;border:2px dashed var(--primary);border-radius:12px;text-align:center;color:var(--primary);font-weight:600">⬇️ '+esc(tz('Eliberează ca să încarci fișierele aici'))+'</div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
+  if(!window._docExtraInit){ window._docExtraInit=true;
+    document.addEventListener('paste',function(ev){ if(curModuleKey()!=='documente') return; const t=ev.target; if(t&&/^(input|textarea|select)$/i.test(t.tagName||'')) return; const items=(ev.clipboardData&&ev.clipboardData.items)||[]; const fs=[]; for(let i=0;i<items.length;i++){ if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f) fs.push(f); } } if(fs.length){ ev.preventDefault(); uploadDocFiles(fs); } });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ const m=document.getElementById('modal-mount'); if(m&&m.innerHTML.trim()){ const lb=document.getElementById('img-lb'); if(lb&&lb.style.display!=='none') return; closeModal(); } } });
+  }
   // mape (toleranț la migrare neaplicată)
   let folders=[]; try{ const fr=await sb.from('document_folders').select('id,parent_id,name,created_at'); if(!fr.error) folders=fr.data||[]; }catch(e){}
   _docFolders=folders;
@@ -6335,7 +6339,7 @@ async function renderDocumente(folderId){
   const sk=_docSort.by, asc=_docSort.asc?1:-1;
   curD.sort((a,b)=>{ let r=0; if(sk==='name') r=(a.name||'').localeCompare(b.name||''); else if(sk==='size') r=(+a.size_bytes||0)-(+b.size_bytes||0); else r=String(a.created_at||'').localeCompare(String(b.created_at||'')); return r*asc; });
   if(!curF.length && !curD.length){
-    $('mod-body').innerHTML='<div class="empty"><div class="ei">📂</div><div>'+esc(_docFolder?tz('Mapă goală.'):tz('Niciun fișier sau mapă încă.'))+'</div><div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap"><label class="btn-primary" style="cursor:pointer">＋ '+esc(tz('Încarcă fișier'))+'<input type="file" style="display:none" onchange="uploadDoc(this)"/></label><button class="btn-ghost" onclick="folderCreate()">📁 '+esc(tz('Mapă nouă'))+'</button></div></div>'; return;
+    $('mod-body').innerHTML='<div class="empty"><div class="ei">📂</div><div>'+esc(_docFolder?tz('Mapă goală.'):tz('Niciun fișier sau mapă încă.'))+'</div><div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap"><label class="btn-primary" style="cursor:pointer">＋ '+esc(tz('Încarcă fișiere'))+'<input type="file" multiple style="display:none" onchange="uploadDoc(this)"/></label><button class="btn-ghost" onclick="folderCreate()">📁 '+esc(tz('Mapă nouă'))+'</button></div><div style="margin-top:.8rem;font-size:.8rem;color:var(--muted)">💡 '+esc(tz('Poți trage fișiere direct de pe calculator, sau lipi o captură cu Ctrl+V.'))+'</div></div>'; return;
   }
   const fRows=curF.map(f=>{ const nF=folders.filter(x=>x.parent_id===f.id).length, nD=all.filter(x=>x.folder_id===f.id).length; const cnt=nF+nD;
     return '<tr draggable="true" ondragstart="docDragStart(event,\''+f.id+'\',\'folder\')" ondragover="docDragOver(event)" ondragleave="docDragLeave(event)" ondrop="docDrop(event,\''+f.id+'\')" onclick="renderDocumente(\''+f.id+'\')" style="cursor:pointer"><td class="tname">📁 <b>'+esc(f.name)+'</b></td><td>'+esc(tz('Mapă'))+'</td><td>'+(cnt?cnt+' '+esc(tz('elem.')):'—')+'</td><td>'+esc(String(f.created_at||'').slice(0,10))+'</td><td>—</td>'
@@ -6392,10 +6396,16 @@ async function folderDelete(id){ const f=_docFolders.find(x=>x.id===id); if(!f) 
 /* ── drag & drop (mută fișiere/mape în mape, ca pe desktop) ── */
 let _docDrag=null;
 function docDragStart(ev,id,type){ _docDrag={id:id,type:type}; try{ ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',id); }catch(e){} }
-function docDragOver(ev){ if(!_docDrag) return; ev.preventDefault(); try{ ev.dataTransfer.dropEffect='move'; }catch(e){} const t=ev.currentTarget; if(t&&t.classList) t.classList.add('doc-drop'); }
+function dtHasFiles(dt){ if(!dt||!dt.types) return false; const ty=dt.types; if(ty.contains) return ty.contains('Files'); return [].indexOf.call(ty,'Files')>=0; }
+function docDragOver(ev){ const ext=dtHasFiles(ev.dataTransfer); if(!_docDrag && !ext) return; ev.preventDefault(); ev.stopPropagation(); try{ ev.dataTransfer.dropEffect=ext?'copy':'move'; }catch(e){} const t=ev.currentTarget; if(t&&t.classList) t.classList.add('doc-drop'); }
 function docDragLeave(ev){ const t=ev.currentTarget; if(t&&t.classList) t.classList.remove('doc-drop'); }
+function docZoneOver(ev){ if(!dtHasFiles(ev.dataTransfer)) return; ev.preventDefault(); try{ ev.dataTransfer.dropEffect='copy'; }catch(e){} const m=document.getElementById('doc-dropmsg'); if(m) m.style.display=''; }
+function docZoneLeave(ev){ const p=document.getElementById('doc-panel'); if(p && ev.relatedTarget && p.contains(ev.relatedTarget)) return; const m=document.getElementById('doc-dropmsg'); if(m) m.style.display='none'; }
+function docZoneDrop(ev){ const m=document.getElementById('doc-dropmsg'); if(m) m.style.display='none'; if(ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length){ ev.preventDefault(); uploadDocFiles(ev.dataTransfer.files, _docFolder); } }
 function docIsDescendant(childId, ancestorId){ let cur=childId, g=0; while(cur&&g++<30){ const f=_docFolders.find(x=>x.id===cur); if(!f) return false; if(f.parent_id===ancestorId) return true; cur=f.parent_id; } return false; }
-async function docDrop(ev,target){ ev.preventDefault(); const t=ev.currentTarget; if(t&&t.classList) t.classList.remove('doc-drop'); const d=_docDrag; _docDrag=null; if(!d) return; const tgt=target||null;
+async function docDrop(ev,target){ ev.preventDefault(); ev.stopPropagation(); const t=ev.currentTarget; if(t&&t.classList) t.classList.remove('doc-drop'); const tgt=target||null;
+  if(ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length){ const m=document.getElementById('doc-dropmsg'); if(m) m.style.display='none'; await uploadDocFiles(ev.dataTransfer.files, tgt); return; }
+  const d=_docDrag; _docDrag=null; if(!d) return;
   if(d.type==='folder'){ if(d.id===tgt){ return; } if(tgt && docIsDescendant(tgt,d.id)){ toast(tz('Nu poți muta o mapă în propria sub-mapă.')); return; }
     const f=_docFolders.find(x=>x.id===d.id); if(f && (f.parent_id||null)===tgt) return;
     const r=await sb.from('document_folders').update({parent_id:tgt}).eq('id',d.id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('✅ '+tz('Mutat.')); renderDocumente();
@@ -6463,19 +6473,25 @@ function resendInvite(token, email){
     .then(({error})=>{ if(error) toast('Eroare: '+esc(error.message)); else toast('✅ Invitație retrimisă pe email la '+esc(email)+'.'); })
     .catch(e=>toast('Eroare: '+esc(e.message||e)));
 }
-async function uploadDoc(input){
-  const file=input.files&&input.files[0]; if(!file) return;
-  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-  const path=state.tenant+'/'+Date.now()+'_'+safe;
-  toast('⏳ Se încarcă „'+esc(file.name)+'"…');
-  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'});
-  if(up.error){ toast('Eroare la încărcare: '+esc(up.error.message)); return; }
-  const rec={ tenant_id:state.tenant, name:file.name, file_url:path, mime:file.type||null, size_bytes:file.size, uploaded_by:state.session.user.id };
-  if(_docFolder) rec.folder_id=_docFolder;
-  let { error }=await sb.from('documents').insert(rec);
-  if(error && /folder_id/.test(error.message||'')){ delete rec.folder_id; ({ error }=await sb.from('documents').insert(rec)); }
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  toast('✅ Fișier încărcat.'); renderDocumente();
+async function uploadDoc(input){ const files=input&&input.files; if(files&&files.length) await uploadDocFiles(files); }
+async function uploadDocFiles(files, targetFolder){
+  const arr=[].slice.call(files||[]); if(!arr.length) return;
+  const folder = (targetFolder!==undefined? targetFolder : _docFolder);
+  let ok=0, i=0;
+  for(const file of arr){ i++;
+    const safe=(file.name||('fisier_'+Date.now())).replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=state.tenant+'/'+Date.now()+'_'+i+'_'+safe;
+    toast('⏳ '+(arr.length>1?('('+i+'/'+arr.length+') '):'')+tz('Se încarcă')+' „'+esc(file.name||'fișier')+'"…');
+    const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'});
+    if(up.error){ toast('Eroare la încărcare: '+esc(up.error.message)); continue; }
+    const rec={ tenant_id:state.tenant, name:file.name||('fișier '+isoLocal(new Date())), file_url:path, mime:file.type||null, size_bytes:file.size, uploaded_by:state.session.user.id };
+    if(folder) rec.folder_id=folder;
+    let { error }=await sb.from('documents').insert(rec);
+    if(error && /folder_id/.test(error.message||'')){ delete rec.folder_id; ({ error }=await sb.from('documents').insert(rec)); }
+    if(error){ toast('Eroare: '+esc(error.message)); continue; }
+    ok++;
+  }
+  if(ok){ toast('✅ '+ok+' '+tz('fișier(e) încărcat(e).')); renderDocumente(); }
 }
 async function openDoc(encPath){
   const path=decodeURIComponent(encPath);
