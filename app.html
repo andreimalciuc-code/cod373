@@ -106,6 +106,7 @@
   .crm-board::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
   .crm-col{flex:0 0 206px;background:var(--bg);border:1px solid var(--line);border-radius:12px;min-height:120px;display:flex;flex-direction:column}
   .crm-col.crm-over{outline:2px dashed var(--primary)}
+  .doc-drop{outline:2px dashed var(--primary)!important;background:var(--primary-soft)}
   .crm-colh{padding:.55rem .7rem;font-weight:700;font-size:.84rem;border-radius:12px 12px 0 0;background:var(--surface)}
   .crm-colb{padding:.5rem;display:flex;flex-direction:column;gap:.5rem}
   .crm-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.55rem .6rem;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05);transition:box-shadow .12s}
@@ -1468,8 +1469,17 @@ function buildNav(){
       keys.forEach(k=>{ html+=navItemHTML(k,MODULES[k]); });
     });
   }
+  html+=socialLinksBar();
   $('nav').innerHTML=html;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===curModuleKey()));
+}
+const SOCIAL_DEFS=[['website','🌐','Site web','https://firma.md'],['facebook','📘','Facebook','https://facebook.com/…'],['instagram','📸','Instagram','https://instagram.com/…'],['tiktok','🎵','TikTok','https://tiktok.com/@…'],['youtube','▶️','YouTube','https://youtube.com/@…'],['linkedin','💼','LinkedIn','https://linkedin.com/company/…'],['x','✖️','X (Twitter)','https://x.com/…']];
+function socialLinksBar(){
+  const s=(state.firm&&state.firm.automations&&state.firm.automations.social)||{};
+  const items=SOCIAL_DEFS.filter(d=>s[d[0]]&&String(s[d[0]]).trim()).map(d=>{ let u=String(s[d[0]]).trim(); if(!/^https?:\/\//i.test(u)) u='https://'+u;
+    return '<a href="'+esc(u)+'" target="_blank" rel="noopener" title="'+esc(d[2])+'" style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:var(--sidebar-hover);font-size:1.05rem;text-decoration:none">'+d[1]+'</a>'; });
+  if(!items.length){ return (state.role==='owner'||state.role==='admin')? '<div style="margin:.7rem .6rem .3rem;padding-top:.6rem;border-top:1px solid rgba(255,255,255,.08)"><a onclick="go(\'setari\')" class="nav-group" style="cursor:pointer;color:#aeb9d2;display:block">🔗 '+esc(tz('Adaugă site & rețele'))+'</a></div>' : ''; }
+  return '<div style="margin:.7rem .6rem .4rem;padding-top:.6rem;border-top:1px solid rgba(255,255,255,.08)"><div class="nav-group" style="margin:0 0 .35rem">🔗 '+esc(tz('Online'))+'</div><div style="display:flex;flex-wrap:wrap;gap:.35rem;padding:0 .3rem">'+items.join('')+'</div></div>';
 }
 function navItemHTML(k,m){ return '<div class="nav-item" data-view="'+k+'" draggable="true" ondragstart="navDragStart(event,\''+k+'\')" ondragover="navDragOver(event,this)" ondragleave="this.classList.remove(\'navdrop\')" ondrop="navDrop(event,\''+k+'\')" ondragend="navDragEnd()" onclick="go(\''+k+'\')"><span class="ic">'+m.icon+'</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(mt(k).title)+'</span><span class="nav-grip" title="'+esc(tz('Trage ca să rearanjezi'))+'">⠿</span></div>'; }
 let _navDragKey=null;
@@ -5576,6 +5586,22 @@ function messagingPanel(au){
     +'<button class="btn-primary" style="margin-top:.9rem" onclick="saveMessaging()">'+esc(tz('Salvează'))+'</button>'
     +'</div></div>';
 }
+function socialPanel(au){
+  if(!(state.role==='owner'||state.role==='admin')) return '';
+  const s=(au&&au.social)||{};
+  return '<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🔗 '+esc(tz('Site & rețele sociale'))+'</h3></div><div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">'+esc(tz('Adresele firmei. Apar în meniul din stânga — cu un clic le deschizi direct din platformă.'))+'</p>'
+    +SOCIAL_DEFS.map(d=>'<div class="field"><label>'+d[1]+' '+esc(d[2])+'</label><input id="soc-'+d[0]+'" value="'+esc(s[d[0]]||'')+'" placeholder="'+esc(d[3]||'https://…')+'" style="width:100%"/></div>').join('')
+    +'<button class="btn-primary" onclick="saveSocial()">'+esc(tz('Salvează'))+'</button>'
+    +'</div></div>';
+}
+async function saveSocial(){
+  const au=Object.assign({}, (state.firm&&state.firm.automations)||{}); const s={};
+  SOCIAL_DEFS.forEach(d=>{ const e=$('soc-'+d[0]); const v=e&&e.value.trim(); if(v) s[d[0]]=v; });
+  au.social=s;
+  const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant)); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
+  state.firm.automations=au; toast('✅ '+tz('Salvat.')); buildNav(); renderSetari();
+}
 async function saveMessaging(){
   const au=Object.assign({}, (state.firm&&state.firm.automations)||{});
   au.tg_token=($('msg-tg')&&$('msg-tg').value.trim())||'';
@@ -5677,6 +5703,7 @@ async function renderSetari(){
     +'<div id="unit-chips" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem">'+renderUnitChips()+'</div>'
     +'<div style="display:flex;gap:.5rem;max-width:440px"><input id="unit-new" placeholder="ex: tonă, palet, m³, oră" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addUnit();}" style="flex:1"/><button class="btn-primary" onclick="addUnit()">Adaugă</button></div>'
     +'</div></div>'
+    +socialPanel(au)
     +messagingPanel(au)
     +stageTplPanel()
     +'</div>';
@@ -6311,12 +6338,12 @@ async function renderDocumente(folderId){
     $('mod-body').innerHTML='<div class="empty"><div class="ei">📂</div><div>'+esc(_docFolder?tz('Mapă goală.'):tz('Niciun fișier sau mapă încă.'))+'</div><div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap"><label class="btn-primary" style="cursor:pointer">＋ '+esc(tz('Încarcă fișier'))+'<input type="file" style="display:none" onchange="uploadDoc(this)"/></label><button class="btn-ghost" onclick="folderCreate()">📁 '+esc(tz('Mapă nouă'))+'</button></div></div>'; return;
   }
   const fRows=curF.map(f=>{ const nF=folders.filter(x=>x.parent_id===f.id).length, nD=all.filter(x=>x.folder_id===f.id).length; const cnt=nF+nD;
-    return '<tr onclick="renderDocumente(\''+f.id+'\')" style="cursor:pointer"><td class="tname">📁 <b>'+esc(f.name)+'</b></td><td>'+esc(tz('Mapă'))+'</td><td>'+(cnt?cnt+' '+esc(tz('elem.')):'—')+'</td><td>'+esc(String(f.created_at||'').slice(0,10))+'</td><td>—</td>'
+    return '<tr draggable="true" ondragstart="docDragStart(event,\''+f.id+'\',\'folder\')" ondragover="docDragOver(event)" ondragleave="docDragLeave(event)" ondrop="docDrop(event,\''+f.id+'\')" onclick="renderDocumente(\''+f.id+'\')" style="cursor:pointer"><td class="tname">📁 <b>'+esc(f.name)+'</b></td><td>'+esc(tz('Mapă'))+'</td><td>'+(cnt?cnt+' '+esc(tz('elem.')):'—')+'</td><td>'+esc(String(f.created_at||'').slice(0,10))+'</td><td>—</td>'
     +'<td><div class="rowact"><button class="iconbtn" title="'+esc(tz('Redenumește'))+'" onclick="event.stopPropagation();folderRename(\''+f.id+'\')">✏️</button>'
     +'<button class="iconbtn" title="'+esc(tz('Mută'))+'" onclick="event.stopPropagation();folderMove(\''+f.id+'\')">📦</button>'
     +'<button class="iconbtn danger" title="'+esc(tz('Șterge'))+'" onclick="event.stopPropagation();folderDelete(\''+f.id+'\')">🗑</button></div></td></tr>'; }).join('');
   const dRows=curD.map(r=>{ const isImg=(r.mime||'').startsWith('image/'); const ver=r.version||1;
-    return '<tr onclick="docOptions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td><td>'+docValidCell(r)+'</td>'
+    return '<tr draggable="true" ondragstart="docDragStart(event,\''+r.id+'\',\'file\')" onclick="docOptions(\''+r.id+'\')" style="cursor:pointer"><td class="tname">'+(isImg?'🖼️ ':'📄 ')+esc(r.name)+(ver>1?' <small style="color:var(--primary)">v'+ver+'</small>':'')+'</td><td>'+esc(r.mime||'—')+'</td><td>'+fmtSize(r.size_bytes)+'</td><td>'+esc(String(r.created_at).slice(0,10))+'</td><td>'+docValidCell(r)+'</td>'
     +'<td><div class="rowact"><button class="iconbtn" title="Termen de valabilitate" onclick="event.stopPropagation();docValidity(\''+r.id+'\')">📅</button><button class="iconbtn" title="Deschide" onclick="event.stopPropagation();openDoc(\''+encodeURIComponent(r.file_url)+'\')">👁</button>'
     +'<button class="iconbtn" title="Descarcă" onclick="event.stopPropagation();downloadDoc(\''+encodeURIComponent(r.file_url)+'\',\''+encodeURIComponent(r.name||'')+'\')">⬇</button>'
     +(hasFolderCol?'<button class="iconbtn" title="'+esc(tz('Mută în mapă'))+'" onclick="event.stopPropagation();docMove(\''+r.id+'\')">📦</button>':'')
@@ -6329,7 +6356,7 @@ function docBreadcrumb(){
   while(cur&&guard++<20){ const f=_docFolders.find(x=>x.id===cur); if(!f) break; chain.unshift(f); cur=f.parent_id; }
   const parts=[{id:null,name:'📁 '+tz('Documente')}].concat(chain.map(f=>({id:f.id,name:'📁 '+f.name})));
   return parts.map((p,i)=> i<parts.length-1
-    ? '<a onclick="renderDocumente('+(p.id?('\''+p.id+'\''):'null')+')" style="cursor:pointer;color:var(--primary)">'+esc(p.name)+'</a>'
+    ? '<a onclick="renderDocumente('+(p.id?('\''+p.id+'\''):'null')+')" ondragover="docDragOver(event)" ondragleave="docDragLeave(event)" ondrop="docDrop(event,\''+(p.id||'')+'\')" style="cursor:pointer;color:var(--primary);padding:.1rem .25rem;border-radius:6px">'+esc(p.name)+'</a>'
     : '<b>'+esc(p.name)+'</b>').join(' <span style="color:var(--muted)">›</span> ');
 }
 async function folderCreate(){ const name=prompt(tz('Numele mapei noi:'),''); if(name===null) return; const nm=name.trim(); if(!nm) return;
@@ -6362,6 +6389,20 @@ async function folderDelete(id){ const f=_docFolders.find(x=>x.id===id); if(!f) 
   const r=await sb.from('document_folders').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
   if(_docFolder===id) _docFolder=f.parent_id||null;
   toast('🗑 '+tz('Mapă ștearsă.')); renderDocumente(); }
+/* ── drag & drop (mută fișiere/mape în mape, ca pe desktop) ── */
+let _docDrag=null;
+function docDragStart(ev,id,type){ _docDrag={id:id,type:type}; try{ ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',id); }catch(e){} }
+function docDragOver(ev){ if(!_docDrag) return; ev.preventDefault(); try{ ev.dataTransfer.dropEffect='move'; }catch(e){} const t=ev.currentTarget; if(t&&t.classList) t.classList.add('doc-drop'); }
+function docDragLeave(ev){ const t=ev.currentTarget; if(t&&t.classList) t.classList.remove('doc-drop'); }
+function docIsDescendant(childId, ancestorId){ let cur=childId, g=0; while(cur&&g++<30){ const f=_docFolders.find(x=>x.id===cur); if(!f) return false; if(f.parent_id===ancestorId) return true; cur=f.parent_id; } return false; }
+async function docDrop(ev,target){ ev.preventDefault(); const t=ev.currentTarget; if(t&&t.classList) t.classList.remove('doc-drop'); const d=_docDrag; _docDrag=null; if(!d) return; const tgt=target||null;
+  if(d.type==='folder'){ if(d.id===tgt){ return; } if(tgt && docIsDescendant(tgt,d.id)){ toast(tz('Nu poți muta o mapă în propria sub-mapă.')); return; }
+    const f=_docFolders.find(x=>x.id===d.id); if(f && (f.parent_id||null)===tgt) return;
+    const r=await sb.from('document_folders').update({parent_id:tgt}).eq('id',d.id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('✅ '+tz('Mutat.')); renderDocumente();
+  } else {
+    const doc=(docsList||[]).find(x=>x.id===d.id); if(doc && (doc.folder_id||null)===tgt) return;
+    const r=await sb.from('documents').update({folder_id:tgt}).eq('id',d.id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } if(doc) doc.folder_id=tgt; toast('✅ '+tz('Mutat.')); renderDocumente();
+  } }
 function docValidCell(r){ if(!r.valid_until) return '<span style="color:var(--muted)">—</span>'; const today=new Date(); today.setHours(0,0,0,0); const exp=new Date(r.valid_until+'T12:00:00'); const days=Math.floor((exp-today)/86400000); const col=days<0?'#dc2626':(days<=30?'#d97706':'#16a34a'); const note=days<0?(' · '+tz('expirat')):(days<=30?(' · '+(days===0?tz('azi'):(days+'z'))):''); return '<span style="color:'+col+';font-weight:600;white-space:nowrap">'+esc(fmtDate(r.valid_until))+esc(note)+'</span>'; }
 async function docValidity(id){
   const r=(docsList||[]).find(x=>x.id===id); if(!r) return;
