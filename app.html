@@ -399,6 +399,11 @@ function cfgOk(){ return SUPABASE_URL.startsWith('http') && SUPABASE_KEY.startsW
 function $(id){ return document.getElementById(id); }
 function showMsg(el,t,type='err'){ $(el).innerHTML = t ? '<div class="msg '+type+'">'+esc(t)+'</div>' : ''; }
 function toast(m){ const t=$('toast'); $('toast-msg').innerHTML=m; t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),4000); }
+/* toast cu buton „Anulează" (undo) — câteva secunde */
+function toastUndo(msg, undoFn, secs){ window._undoFn=undoFn; const t=$('toast'); if(!t) return;
+  $('toast-msg').innerHTML=esc(msg)+' <button onclick="doUndo()" style="margin-left:.6rem;background:none;border:1px solid currentColor;border-radius:6px;color:inherit;padding:.1rem .55rem;cursor:pointer;font-weight:700">↩︎ '+esc((window.C373t?C373t('Anulează'):'Anulează'))+'</button>';
+  t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(function(){ t.classList.remove('show'); window._undoFn=null; }, (secs||7)*1000); }
+function doUndo(){ const f=window._undoFn; window._undoFn=null; const t=$('toast'); if(t) t.classList.remove('show'); clearTimeout(window._tt); if(f) f(); }
 /* Prinde erorile JS necapturate (ex. pe telefonul unui coleg) și le arată — ca să nu mai „înghețe" tăcut.
    Throttle ca să nu spameze; ignoră zgomotul cunoscut (ResizeObserver, extensii). */
 (function(){
@@ -2378,11 +2383,13 @@ function tcName(){ const u=state.session&&state.session.user; const meta=u&&u.us
 async function tcEnsureName(){ if(state.uname) return; try{ const u=state.session&&state.session.user; const meta=u&&u.user_metadata; if(meta&&meta.full_name){ state.uname=meta.full_name; return; } const { data }=await sb.from('profiles').select('full_name').eq('id',u.id).maybeSingle(); if(data&&data.full_name) state.uname=data.full_name; }catch(e){} }
 function tcAttHtml(p,url){ if(!url) return ''; const isAudio=/\.(webm|m4a|mp3|ogg|wav|aac)$/i.test(p);
   if(isAudio) return '<audio controls preload="none" src="'+url+'" style="display:block;margin-top:.35rem;width:230px;max-width:100%;height:40px"></audio>';
+  if(/\.(jpe?g|png|gif|webp|bmp|heic)$/i.test(p)) return '<img src="'+url+'" onclick="openImg(\''+encodeURIComponent(p)+'\')" style="display:block;margin-top:.35rem;max-width:200px;max-height:200px;border-radius:8px;border:1px solid var(--line);cursor:zoom-in"/>';
+  if(isVideoPath(p)) return '<video src="'+url+'" controls preload="metadata" playsinline style="display:block;margin-top:.35rem;max-width:230px;border-radius:8px;background:#000"></video>';
   const nm=(p||'').split('/').pop().replace(/^\d+_/,''); return '<a onclick="openDoc(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;display:inline-block;margin-top:.35rem;font-size:.82rem;color:inherit;text-decoration:underline">📎 '+esc(nm)+'</a>'; }
 function openTeamChat(){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeTeamChat()"><div class="modal" style="max-width:460px;display:flex;flex-direction:column;height:min(80vh,640px)"><div class="modal-head"><h3>💬 Chat echipă</h3><button class="x" onclick="closeTeamChat()">×</button></div>'
-    +'<div id="tc-list" style="flex:1;overflow:auto;padding:.5rem .2rem;display:flex;flex-direction:column;gap:.45rem"><div class="loading">Se încarcă…</div></div>'
-    +'<div style="display:flex;gap:.4rem;align-items:center;padding-top:.55rem;border-top:1px solid var(--line)"><button class="btn-ghost" id="tc-rec" onclick="tcRec()" title="Mesaj vocal — apasă ca să începi, apasă din nou ca să trimiți" style="padding:.55rem .7rem">🎤</button><input id="tc-input" placeholder="Scrie un mesaj…" style="flex:1;padding:.6rem .8rem;border:1px solid var(--line);border-radius:10px;outline:none" onkeydown="if(event.key===\'Enter\')tcSend()"/><button class="btn-primary" onclick="tcSend()" style="padding:.55rem .9rem">➤</button></div>'
+    +'<div id="tc-list" ondragover="tcDragOver(event)" ondrop="tcDrop(event)" style="flex:1;overflow:auto;padding:.5rem .2rem;display:flex;flex-direction:column;gap:.45rem"><div class="loading">Se încarcă…</div></div>'
+    +'<div style="display:flex;gap:.4rem;align-items:center;padding-top:.55rem;border-top:1px solid var(--line)"><button class="btn-ghost" id="tc-rec" onclick="tcRec()" title="Mesaj vocal — apasă ca să începi, apasă din nou ca să trimiți" style="padding:.55rem .7rem">🎤</button><label class="btn-ghost" title="'+esc(tz('Atașează fișier / poză'))+'" style="padding:.55rem .7rem;cursor:pointer">📎<input type="file" accept="image/*,video/*,application/pdf" multiple style="display:none" onchange="tcSendFiles(this.files);this.value=\'\'"/></label><input id="tc-input" placeholder="'+esc(tz('Scrie un mesaj…'))+'" onpaste="tcPaste(event)" style="flex:1;padding:.6rem .8rem;border:1px solid var(--line);border-radius:10px;outline:none" onkeydown="if(event.key===\'Enter\')tcSend()"/><button class="btn-primary" onclick="tcSend()" style="padding:.55rem .9rem">➤</button></div>'
     +'</div></div>';
   tcEnsureName(); tcLoad(true);
   clearInterval(window._tcPoll);
@@ -2484,6 +2491,22 @@ async function tcSend(){
   const inp=$('tc-input'); const v=(inp.value||'').trim(); if(!v) return; inp.value='';
   const r=await sbRetry(()=>sb.from('messages').insert({tenant_id:state.tenant,user_id:state.session.user.id,sender_name:tcName(),body:v}));
   if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  tcLoad(true);
+}
+function tcDragOver(ev){ if(dtHasFiles(ev.dataTransfer)){ ev.preventDefault(); } }
+function tcDrop(ev){ if(ev.dataTransfer&&ev.dataTransfer.files&&ev.dataTransfer.files.length){ ev.preventDefault(); tcSendFiles(ev.dataTransfer.files); } }
+function tcPaste(ev){ const items=(ev.clipboardData&&ev.clipboardData.items)||[]; const fs=[]; for(let i=0;i<items.length;i++){ if(items[i].kind==='file'){ const f=items[i].getAsFile(); if(f) fs.push(f); } } if(fs.length){ ev.preventDefault(); tcSendFiles(fs); } }
+async function tcSendFiles(files){ const arr=files&&files.length?Array.prototype.slice.call(files):[]; if(!arr.length) return; const paths=[];
+  for(let i=0;i<arr.length;i++){ let f=arr[i]; const isImg=/^image\//.test(f.type);
+    if(!isImg && f.size>80*1024*1024){ toast('⚠️ '+tz('Fișier prea mare (max 80MB).')); continue; }
+    let up; try{ up=isImg?await compressImage(f,1600,0.72):f; }catch(e){ up=f; }
+    const safe=(f.name||(isImg?'foto.jpg':'fisier')).replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/chat/'+Date.now()+'_'+i+'_'+safe;
+    toast('⏳ '+(arr.length>1?('('+(i+1)+'/'+arr.length+') '):'')+tz('Se încarcă')+'…');
+    const r=await sb.storage.from('docs').upload(path,up,{contentType:f.type||'application/octet-stream'}); if(r.error){ toast('Eroare: '+esc(r.error.message)); continue; } paths.push(path);
+  }
+  if(!paths.length) return;
+  const ins=await sbRetry(()=>sb.from('messages').insert({tenant_id:state.tenant,user_id:state.session.user.id,sender_name:tcName(),body:'',attachments:paths}));
+  if(ins.error){ toast('Eroare: '+esc(ins.error.message)); return; }
   tcLoad(true);
 }
 function tcRecUI(on){ const b=$('tc-rec'); if(b){ b.style.background=on?'var(--red)':''; b.style.color=on?'#fff':''; if(!on) b.textContent='🎤'; } const inp=$('tc-input'); if(inp) inp.disabled=on; }
@@ -6707,9 +6730,11 @@ function listExport(){ const m=listState.m; if(!m){ return; } const view=listSta
   downloadCsv((m.title||'export').replace(/[^\w-]+/g,'_')+'.csv', '﻿'+[head].concat(lines).join('\r\n'));
   toast('✅ '+data.length+' '+tz('rânduri exportate.')); }
 async function bulkDelete(){ const m=listState.m, key=listState.key; if(!m||!canDo(key,'d')) return; const ids=Object.keys(_bulkSel); if(!ids.length) return;
-  if(!confirm(tz('Ștergi definitiv')+' '+ids.length+' '+tz('înregistrări selectate? Acțiunea nu poate fi anulată.'))) return;
+  if(!confirm(tz('Ștergi')+' '+ids.length+' '+tz('înregistrări selectate?'))) return;
+  let saved=[]; try{ const f=await sb.from(m.table).select('*').in('id',ids); saved=f.data||[]; }catch(e){}
   const r=await sb.from(m.table).delete().in('id',ids); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
-  toast('🗑 '+ids.length+' '+tz('șterse.')); _bulkSel={}; renderModule(key); }
+  _bulkSel={}; renderModule(key);
+  toastUndo('🗑 '+ids.length+' '+tz('șterse.'), async function(){ if(!saved.length){ return; } const ins=await sb.from(m.table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } toast('↩︎ '+saved.length+' '+tz('restaurate.')); if(curModuleKey()===key) renderModule(key); }); }
 /* ════ 🔎 CĂUTARE GLOBALĂ (Ctrl/⌘+K) ════ */
 function installHotkeys(){ if(window._hkInit) return; window._hkInit=true;
   document.addEventListener('keydown',function(e){
@@ -7665,9 +7690,11 @@ async function delRecord(key,id){
   if(!canDo(key,'d')){ toast('🔒 Nu ai dreptul să ștergi aici.'); return; }
   if(!confirm('Sigur ștergi această înregistrare?')) return;
   const m=MODULES[key];
+  let saved=null; try{ const f=await sb.from(m.table).select('*').eq('id',id).maybeSingle(); saved=f.data||null; }catch(e){}
   const { error } = await sb.from(m.table).delete().eq('id',id);
   if(error){ toast('Eroare: '+esc(error.message)); return; }
-  toast('🗑 Șters.'); renderModule(key);
+  renderModule(key);
+  toastUndo('🗑 '+tz('Șters.'), async function(){ if(!saved){ return; } const ins=await sb.from(m.table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } toast('↩︎ '+tz('Restaurat.')); if(curModuleKey()===key) renderModule(key); });
 }
 
 /* ════ CONVERSIE DEVIZ → FACTURĂ ════ */
