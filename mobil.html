@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='324';
+const APP_BUILD='325';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -1007,8 +1007,20 @@ function renderCartBar(){ const el=cartFab(); const c=S.cart||{}; const n=Object
 /* ── Coșul: verifică înainte de trimitere ── */
 function cartItemsArr(){ return Object.keys(S.cart||{}).map(k=>Object.assign({key:k},S.cart[k])).filter(x=>x.qty>0); }
 function reviewRows(){ const items=cartItemsArr(); if(!items.length) return '<div class="empty" style="padding:1rem">Coșul e gol.</div>';
-  return items.map(it=>'<div class="row" style="gap:.5rem;align-items:center;padding:.55rem 0;border-bottom:1px solid var(--line)"><div class="grow"><div class="t">'+esc(it.name)+'</div><div class="s">'+esc(it.unit)+'</div></div>'
-    +'<div class="row" style="gap:.4rem"><button class="mini-btn gh" onclick="cartReviewAdd(\''+it.key+'\',-1)">－</button><b onclick="cartReviewSet(\''+it.key+'\')" style="min-width:38px;text-align:center;cursor:pointer;border-bottom:1px dashed var(--line)">'+(+it.qty)+'</b><button class="mini-btn pr" onclick="cartReviewAdd(\''+it.key+'\',1)">＋</button><button class="mini-btn gh" onclick="cartReviewDel(\''+it.key+'\')" style="color:var(--red)">🗑</button></div></div>').join(''); }
+  const row=it=>'<div class="row" style="gap:.5rem;align-items:center;padding:.55rem 0;border-bottom:1px solid var(--line)"><div class="grow"><div class="t">'+esc(it.name)+'</div><div class="s">'+esc(it.unit)+'</div></div>'
+    +'<div class="row" style="gap:.4rem"><button class="mini-btn gh" onclick="cartReviewAdd(\''+it.key+'\',-1)">－</button><b onclick="cartReviewSet(\''+it.key+'\')" style="min-width:38px;text-align:center;cursor:pointer;border-bottom:1px dashed var(--line)">'+(+it.qty)+'</b><button class="mini-btn pr" onclick="cartReviewAdd(\''+it.key+'\',1)">＋</button><button class="mini-btn gh" onclick="cartReviewDel(\''+it.key+'\')" style="color:var(--red)">🗑</button></div></div>';
+  const mats=items.filter(x=>x.kind!=='t'), tools=items.filter(x=>x.kind==='t'); let h='';
+  if(mats.length) h+='<div style="font-weight:700;margin:.2rem 0 .1rem">📦 Materiale</div>'+mats.map(row).join('');
+  if(tools.length) h+='<div style="font-weight:700;margin:.7rem 0 .1rem">🛠️ Instrumente</div>'+tools.map(row).join('');
+  return h; }
+/* grupare materiale/instrumente pt afișarea pozițiilor (tool = nume cu prefix 🛠️) */
+function ordItemsGrouped(items){ if(!items||!items.length) return ''; const isT=x=>/^🛠️\s/.test(x.name||'');
+  const mats=items.filter(x=>!isT(x)), tools=items.filter(isT);
+  const li=it=>'• '+esc(String(it.name).replace(/^🛠️\s/,''))+' × <b>'+(+it.qty)+'</b> '+esc(it.unit||'');
+  let h='';
+  if(mats.length) h+='<div style="font-weight:600;margin-top:.5rem">📦 Materiale</div><div class="s" style="line-height:1.55">'+mats.map(li).join('<br>')+'</div>';
+  if(tools.length) h+='<div style="font-weight:600;margin-top:.5rem">🛠️ Instrumente</div><div class="s" style="line-height:1.55">'+tools.map(li).join('<br>')+'</div>';
+  return h; }
 function cartReview(){ const items=cartItemsArr(); if(!items.length){ toast('Coșul e gol.'); return; }
   const sel=$('o-site'); const site=sel&&sel.value; const siteName=(site&&sel.selectedOptions[0])?sel.selectedOptions[0].text:'';
   const dlEl=$('o-deadline'); const deadline=dlEl&&dlEl.value;
@@ -1062,7 +1074,7 @@ async function myOrders(){
   bd.innerHTML=list.map(o=>{ const s=ORD_ST[o.status]||['—','grey']; const ii=byO[o.id]||[];
     return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(fmtDT(o.created_at))+'</div><div class="s">'+(o.sites?('📍 '+esc(o.sites.name)):'fără șantier')+(o.expected_at?(' · 🚚 până la '+esc(o.expected_at)):'')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div>'
       +(o.accepted_by_name?'<div class="s" style="margin-top:.3rem;color:#166534">✅ Preluată de '+esc(o.accepted_by_name)+'</div>':'')
-      +(ii.length?'<div class="s" style="margin-top:.45rem;line-height:1.55">'+ii.map(it=>'• '+esc(it.name)+' × <b>'+(+it.qty)+'</b> '+esc(it.unit||'')).join('<br>')+'</div>':'')+'</div>'; }).join('');
+      +ordItemsGrouped(ii)+'</div>'; }).join('');
 }
 /* ── Comenzi de preluat (șofer) — apar în ecranul Livrări ── */
 async function driverOrdersHtml(){
@@ -1074,7 +1086,7 @@ async function driverOrdersHtml(){
   return '<div class="scr-title" style="font-size:1rem;margin:.2rem 0 .5rem">📦 Comenzi de preluat ('+list.length+')</div>'
     +list.map(o=>{ const ii=byO[o.id]||[];
       return '<div class="card" style="border-left:3px solid #f59e0b"><div class="row"><div class="grow"><div class="t">'+(o.sites?esc(o.sites.name):'Comandă materiale')+'</div><div class="s">'+esc(fmtDT(o.created_at))+(o.created_by_name?(' · '+esc(o.created_by_name)):'')+(o.expected_at?(' · 🚚 până la '+esc(o.expected_at)):'')+'</div></div></div>'
-        +(ii.length?'<div class="s" style="margin-top:.4rem;line-height:1.55">'+ii.map(it=>'• '+esc(it.name)+' × <b>'+(+it.qty)+'</b> '+esc(it.unit||'')).join('<br>')+'</div>':'')
+        +ordItemsGrouped(ii)
         +'<div style="margin-top:.7rem;text-align:right"><button class="btn" style="width:auto;padding:.6rem 1.1rem" onclick="driverAcceptOrder(\''+o.id+'\')">✅ Accept comanda</button></div></div>'; }).join('')
     +'<div style="height:1rem"></div>';
 }

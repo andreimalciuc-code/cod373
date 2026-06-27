@@ -1723,6 +1723,7 @@
     'Previzualizare comandă':{ru:'Просмотр заказа',de:'Bestellung ansehen',en:'View order'},
     'Livrare până la':{ru:'Доставить до',de:'Lieferung bis',en:'Deliver by'},
     'Preluată de':{ru:'Принял',de:'Übernommen von',en:'Taken by'},
+    'Instrumente':{ru:'Инструменты',de:'Werkzeuge',en:'Tools'},
     'Plăcuță':{ru:'Номер',de:'Kennzeichen',en:'Plate'},
     'Stare la achiziție':{ru:'Состояние при покупке',de:'Zustand beim Kauf',en:'Condition at purchase'},
     'Tip achiziție':{ru:'Тип покупки',de:'Anschaffungsart',en:'Acquisition type'},

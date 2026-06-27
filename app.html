@@ -7045,7 +7045,12 @@ async function orderItemsView(id){
   if(o.number) info.push([tz('Număr'), o.number]);
   info.push([tz('Stare'), STATUS[o.status]?C373t(STATUS[o.status][0]):(o.status||'—')]);
   const infoH=info.map(p=>'<div style="display:flex;gap:.5rem;font-size:.85rem"><span style="color:var(--muted);min-width:96px">'+esc(p[0])+'</span><b>'+esc(p[1])+'</b></div>').join('');
-  const rows=items.length? items.map(it=>'<tr><td>'+esc(it.name)+'</td><td style="text-align:right;white-space:nowrap">'+(+it.qty)+' '+esc(it.unit||'')+'</td>'+(fin?'<td style="text-align:right">'+(it.unit_price?money(it.unit_price):'—')+'</td>':'')+'</tr>').join('') : '<tr><td colspan="'+(fin?3:2)+'" style="color:var(--muted)">'+esc(tz('Fără poziții.'))+'</td></tr>';
+  const cols=fin?3:2; const isT=x=>/^🛠️\s/.test(x.name||'');
+  const rowH=it=>'<tr><td>'+esc(String(it.name).replace(/^🛠️\s/,''))+'</td><td style="text-align:right;white-space:nowrap">'+(+it.qty)+' '+esc(it.unit||'')+'</td>'+(fin?'<td style="text-align:right">'+(it.unit_price?money(it.unit_price):'—')+'</td>':'')+'</tr>';
+  const mats=items.filter(x=>!isT(x)), tools=items.filter(isT); let rows='';
+  if(mats.length) rows+='<tr><td colspan="'+cols+'" style="font-weight:700;background:var(--bg)">📦 '+esc(tz('Materiale'))+'</td></tr>'+mats.map(rowH).join('');
+  if(tools.length) rows+='<tr><td colspan="'+cols+'" style="font-weight:700;background:var(--bg)">🛠️ '+esc(tz('Instrumente'))+'</td></tr>'+tools.map(rowH).join('');
+  if(!items.length) rows='<tr><td colspan="'+cols+'" style="color:var(--muted)">'+esc(tz('Fără poziții.'))+'</td></tr>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📦 '+esc(tz('Pozițiile comenzii'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +'<div style="display:flex;flex-direction:column;gap:.2rem;margin-bottom:.7rem">'+infoH+'</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(tz('Articol'))+'</th><th style="text-align:right">'+esc(tz('Cantitate'))+'</th>'+(fin?'<th style="text-align:right">'+esc(tz('Preț'))+'</th>':'')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
