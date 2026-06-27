@@ -70,7 +70,8 @@
   .roles button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
 
   /* SCREEN */
-  .screen{flex:1;padding:1rem 1.1rem 5.5rem;overflow-y:auto}
+  .screen{flex:1;padding:1rem 1.1rem 5.5rem;overflow-y:auto;overscroll-behavior-y:contain}
+  @keyframes ptrspin{to{transform:rotate(360deg)}}
   .scr-title{font-size:1.05rem;font-weight:800;margin:.2rem 0 1rem}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:1rem;margin-bottom:.8rem}
   .card .t{font-weight:700;font-size:.98rem}
@@ -173,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='295';
+const APP_BUILD='317';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -358,27 +359,55 @@ function swipeBack(){
 /* Paginare între tab-urile de jos (ca pe Instagram): glisezi stânga = următorul, dreapta = anteriorul.
    Ecranul urmărește degetul. Dacă o foaie e deschisă → swipe dreapta o închide. */
 (function(){
-  let sx=0,sy=0,st=0,mode=null;  // 'page' | 'sheet'
+  let sx=0,sy=0,st=0,mode=null,atTop=false;  // 'page' | 'sheet' | 'pull'
   const scr=function(){ return document.getElementById('screen'); };
   const sheetOpen=function(){ const sm=document.getElementById('sheet-mount'); return !!(sm&&sm.firstElementChild); };
   const navList=function(){ try{ return (NAV[S.role]||NAV.worker)||[]; }catch(e){ return []; } };
   function reset(){ const el=scr(); if(el){ el.style.transition=''; el.style.transform=''; el.style.opacity=''; } }
+  /* ── indicator pull-to-refresh ── */
+  function ptrEl(){ let p=document.getElementById('ptr'); if(!p){ p=document.createElement('div'); p.id='ptr'; p.style.cssText='position:fixed;top:8px;left:50%;z-index:70;width:38px;height:38px;border-radius:50%;background:#fff;box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:1.15rem;color:#2f6bff;opacity:0;transform:translateX(-50%) translateY(-50px);pointer-events:none'; p.innerHTML='<span id="ptr-ic">↓</span>'; document.body.appendChild(p); } return p; }
+  function ptrShow(pull){ const p=ptrEl(); const y=Math.min(pull,80)-50; p.style.transition='none'; p.style.opacity=String(Math.min(1,pull/64)); p.style.transform='translateX(-50%) translateY('+y+'px)'; const ic=document.getElementById('ptr-ic'); if(ic){ ic.style.animation=''; ic.textContent = pull>=64?'↻':'↓'; } }
+  function ptrSpin(){ const p=ptrEl(); p.style.transition='transform .2s ease,opacity .2s ease'; p.style.opacity='1'; p.style.transform='translateX(-50%) translateY(14px)'; const ic=document.getElementById('ptr-ic'); if(ic){ ic.textContent='⟳'; ic.style.display='inline-block'; ic.style.animation='ptrspin .7s linear infinite'; } }
+  function ptrHide(){ const p=document.getElementById('ptr'); if(p){ p.style.transition='transform .2s ease,opacity .2s ease'; p.style.opacity='0'; p.style.transform='translateX(-50%) translateY(-50px)'; const ic=document.getElementById('ptr-ic'); if(ic) ic.style.animation=''; } }
+  function doRefresh(){
+    try{ if(navigator.serviceWorker&&navigator.serviceWorker.getRegistration){ navigator.serviceWorker.getRegistration().then(function(r){ try{ r&&r.update&&r.update(); }catch(e){} }).catch(function(){}); } }catch(e){}
+    setTimeout(function(){ try{ render(); }catch(e){} ptrHide(); const el=scr(); if(el){ el.style.transition='transform .25s ease'; el.style.transform='translateY(0)'; setTimeout(reset,260); } }, 480);
+  }
   document.addEventListener('touchstart',function(e){
     mode=null; if(!e.touches||e.touches.length!==1) return;
     const t=e.touches[0]; sx=t.clientX; sy=t.clientY; st=Date.now();
     const lb=document.getElementById('img-lb'); if(lb&&lb.style.display!=='none') return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test((e.target&&e.target.tagName)||'')) return;  // nu fura din câmpuri
+    const el0=scr(); atTop = !!(el0 && el0.scrollTop<=0);
     mode = sheetOpen() ? 'sheet' : 'page';
   },{passive:true});
   document.addEventListener('touchmove',function(e){
-    if(mode!=='page'||!e.touches||e.touches.length!==1) return;
+    if(!e.touches||e.touches.length!==1) return;
+    if(mode!=='page'&&mode!=='pull') return;
     const t=e.touches[0], dx=t.clientX-sx, dy=t.clientY-sy;
-    if(Math.abs(dx)<10) return;
-    if(Math.abs(dx)<Math.abs(dy)){ mode=null; reset(); return; }   // scroll vertical → renunțăm
-    const el=scr(); if(el){ el.style.transition='none'; el.style.transform='translateX('+(dx*0.85)+'px)'; el.style.opacity=String(Math.max(.55,1-Math.abs(dx)/((window.innerWidth||360)*1.4))); }
+    if(mode==='page'){
+      if(Math.abs(dx)<10 && Math.abs(dy)<10) return;
+      if(Math.abs(dx)<Math.abs(dy)){   // gest vertical
+        if(dy>0 && atTop && !sheetOpen()){ mode='pull'; }   // tras în jos de sus → refresh
+        else { mode=null; reset(); return; }                // altfel: scroll nativ
+      } else {
+        const el=scr(); if(el){ el.style.transition='none'; el.style.transform='translateX('+(dx*0.85)+'px)'; el.style.opacity=String(Math.max(.55,1-Math.abs(dx)/((window.innerWidth||360)*1.4))); }
+        return;
+      }
+    }
+    if(mode==='pull'){
+      const pull=Math.max(0, Math.min(120, dy*0.5));
+      const el=scr(); if(el){ el.style.transition='none'; el.style.transform='translateY('+pull+'px)'; }
+      ptrShow(pull);
+    }
   },{passive:true});
   document.addEventListener('touchend',function(e){
     const t=(e.changedTouches&&e.changedTouches[0]), dx=t?t.clientX-sx:0, dy=t?t.clientY-sy:0, dt=Date.now()-st;
+    if(mode==='pull'){ const el=scr(); const pull=Math.max(0, Math.min(120, dy*0.5));
+      if(pull>=64){ ptrSpin(); if(el){ el.style.transition='transform .2s ease'; el.style.transform='translateY(46px)'; } doRefresh(); }
+      else { ptrHide(); if(el){ el.style.transition='transform .2s ease'; el.style.transform='translateY(0)'; setTimeout(reset,220); } }
+      mode=null; return;
+    }
     if(mode==='page'){ const el=scr(), vw=window.innerWidth||360;
       const horiz=Math.abs(dx)>Math.abs(dy)*1.4;
       const pass=horiz && (Math.abs(dx)>vw*0.25 || (Math.abs(dx)>55 && dt<320));
