@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='321';
+const APP_BUILD='322';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -328,7 +328,7 @@ function render(){
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
   const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
-  const cb=$('cart-bar'); if(cb){ cb.style.cssText=''; cb.innerHTML=''; }
+  const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
   fn(); loadNotifCount(); maybeInstallBanner();
 }
@@ -966,7 +966,7 @@ async function scrComanda(){
     +'<div class="card"><div class="fld" style="margin:0"><label>Pentru șantier</label><select id="o-site"><option value="">— alege —</option></select></div></div>'
     +'<div class="roles" style="padding:0;border:none;margin-bottom:.6rem;background:none"><button id="ot-m" class="on" onclick="setOrdKind(\'m\')">📦 Materiale</button><button id="ot-t" onclick="setOrdKind(\'t\')">🛠️ Instrumente</button></div>'
     +'<input id="o-q" placeholder="🔍 caută…" oninput="filterMats(this.value)" style="width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;margin-bottom:.8rem;font-size:1rem;outline:none"/>'
-    +'<div id="mat-list"><div class="loading">Se încarcă…</div></div><div id="cart-bar"></div>';
+    +'<div id="mat-list"><div class="loading">Se încarcă…</div></div>';
   const {data:sites}=await sb.from('sites').select('id,name');
   $('o-site').innerHTML='<option value="">— alege —</option>'+(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
   const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit,photo_url'), sb.from('tools').select('id,name,photo_url') ]);
@@ -995,12 +995,13 @@ function cartSet(id){ const m=curList().find(x=>x.id===id); if(!m)return; const 
   if(v===null)return; let n=parseFloat(String(v).replace(',','.')); if(isNaN(n)||n<0)n=0;
   if(n===0){ delete S.cart[key]; } else { if(!S.cart[key])S.cart[key]={name:m.name,unit:m.unit||'buc',qty:0,kind:S.ordKind,refId:id}; S.cart[key].qty=n; }
   renderMats(_matQ); }
-function renderCartBar(){ const el=$('cart-bar'); if(!el)return; const c=S.cart||{}; const n=Object.keys(c).reduce((a,k)=>a+c[k].qty,0); const poz=Object.keys(c).filter(k=>c[k].qty>0).length;
-  if(!n){ el.style.cssText=''; el.innerHTML=''; const sc=$('screen'); if(sc) sc.style.paddingBottom=''; return; }
-  // bară fixă jos — mereu la îndemână, nu trebuie să derulezi lista
-  el.style.cssText='position:fixed;left:.6rem;right:.6rem;bottom:74px;z-index:55';
+function cartFab(){ let el=document.getElementById('cart-fab'); if(!el){ el=document.createElement('div'); el.id='cart-fab'; document.body.appendChild(el); } return el; }
+/* bară fixă jos, ATAȘATĂ DE BODY (nu de #screen, care primește transform la gesturi) — mereu tappable */
+function renderCartBar(){ const el=cartFab(); const c=S.cart||{}; const n=Object.keys(c).reduce((a,k)=>a+c[k].qty,0); const poz=Object.keys(c).filter(k=>c[k].qty>0).length; const sc=$('screen');
+  if(!n || S.view!=='comanda'){ el.style.display='none'; el.innerHTML=''; if(sc) sc.style.paddingBottom=''; return; }
+  el.style.cssText='position:fixed;left:.6rem;right:.6rem;bottom:74px;z-index:65;display:block';
   el.innerHTML='<button class="btn" style="margin:0;box-shadow:0 10px 28px rgba(47,107,255,.45);display:flex;align-items:center;justify-content:center;gap:.5rem" onclick="cartReview()">🛒 Vezi coșul & trimite <span style="background:rgba(255,255,255,.25);border-radius:999px;padding:.05rem .55rem;font-size:.85rem">'+poz+' '+(poz===1?'poziție':'poziții')+'</span></button>';
-  const sc=$('screen'); if(sc) sc.style.paddingBottom='8.5rem'; }
+  if(sc) sc.style.paddingBottom='8.5rem'; }
 /* ── Coșul: verifică înainte de trimitere ── */
 function cartItemsArr(){ return Object.keys(S.cart||{}).map(k=>Object.assign({key:k},S.cart[k])).filter(x=>x.qty>0); }
 function reviewRows(){ const items=cartItemsArr(); if(!items.length) return '<div class="empty" style="padding:1rem">Coșul e gol.</div>';
