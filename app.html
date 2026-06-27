@@ -649,7 +649,7 @@ const MODULES = {
       {key:'scheduled_at',label:'Programat',type:'date'} ] },
 
   cunostinte:{ title:'Bază de cunoștințe', sub:'Instruiri, ghiduri și proceduri interne (text + video + fișiere).', icon:'📚', group:'Operațional', custom:true },
-  clienti:{ title:'Clienți', sub:'CRM — clienți și pâlnia de vânzări.', icon:'🤝', group:'Operațional', table:'clients', custom:true,
+  clienti:{ title:'CRM (Clienți)', sub:'CRM — clienți și pâlnia de vânzări.', icon:'🤝', group:'Operațional', table:'clients', custom:true,
     newLabel:'Client nou', invitable:'client', orderBy:{col:'created_at',asc:false}, topAction:{label:'🟰 Pipeline',fn:'renderClienti()'},
     select:'id,name,type,phone,email,stage,birth_date,value,source,tags,lost_reason,contact',
     columns:[
