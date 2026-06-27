@@ -2235,8 +2235,7 @@ async function kbSave(){
 }
 async function kbDel(id){
   if(!confirm(tz('Ștergi acest articol din baza de cunoștințe?'))) return;
-  const r=await sb.from('kb_articles').delete().eq('id',id); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
-  closeModal(); toast('🗑 '+tz('Șters.')); renderCunostinte();
+  await softDelete('kb_articles','cunostinte',id, function(){ closeModal(); renderCunostinte(); });
 }
 
 /* ════ 📥 MESAJE PRIMITE (Telegram / WhatsApp → inbound_media) ════ */
@@ -4064,11 +4063,11 @@ async function caOpenVideo(encPath){ const path=decodeURIComponent(encPath); let
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()" style="z-index:100001"><div class="modal" style="max-width:760px;background:#000;position:relative;padding:0"><button class="x" onclick="closeModal()" style="position:absolute;top:.3rem;right:.6rem;z-index:2;color:#fff;font-size:1.7rem;background:none;border:none;cursor:pointer">×</button><video src="'+esc(url)+'" controls autoplay playsinline style="width:100%;max-height:82vh;border-radius:12px;background:#000;display:block"></video></div></div>'; }
 function caRenderStaged(){ const el=$('ca-staged'); if(!el) return; const n=(window._caAtts||[]).length; el.textContent=n?('📎 '+n+' '+C373t('poză(e) atașată(e) — apasă „Adaugă în jurnal"')):''; }
 async function caToggle(aid){ const r=await sb.from('client_activities').update({done:true}).eq('id',aid); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
-async function caDel(aid){ if(!confirm(C373t('Ștergi din jurnal?'))) return; const r=await sb.from('client_activities').delete().eq('id',aid); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
+async function caDel(aid){ if(!confirm(C373t('Ștergi din jurnal?'))) return; await softDelete('client_activities','clienti',aid, function(){ clientHub(window._chId); }); }
 async function chSetTemp(id,t){ const r=await sb.from('clients').update({temperature:t}).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } const c=_crmData&&_crmData.find(x=>x.id===id); if(c) c.temperature=t; clientHub(id); }
 async function ccAdd(clientId){ const g=id=>{ const e=$(id); return e?e.value.trim():''; }; const name=g('cc-name'); if(!name){ toast(C373t('Scrie numele.')); return; }
   const r=await sbRetry(()=>sb.from('client_contacts').insert({tenant_id:state.tenant,client_id:clientId,name:name,role:g('cc-role')||null,phone:g('cc-phone')||null,email:g('cc-email')||null})); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(clientId); }
-async function ccDel(ccId){ if(!confirm(C373t('Ștergi persoana de contact?'))) return; const r=await sb.from('client_contacts').delete().eq('id',ccId); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } clientHub(window._chId); }
+async function ccDel(ccId){ if(!confirm(C373t('Ștergi persoana de contact?'))) return; await softDelete('client_contacts','clienti',ccId, function(){ clientHub(window._chId); }); }
 async function crmSaveAuto(au){ try{ const r=await sb.from('tenants').update({automations:au}).eq('id',state.tenant); if(r.error) throw r.error; state.firm.automations=au; return true; }catch(e){ toast('Eroare: '+esc(e.message)); return false; } }
 const _CRM_PAL=['#64748b','#0ea5e9','#f59e0b','#8b5cf6','#16a34a','#2f6bff','#ef4444','#e11d48','#0891b2'];
 function _slug(s,i){ const b=String(s||'').toLowerCase().replace(/[ăâ]/g,'a').replace(/î/g,'i').replace(/[șş]/g,'s').replace(/[țţ]/g,'t').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,20); return b||('s'+(i||0)); }
@@ -6637,12 +6636,8 @@ async function uploadDocVersion(oldId,ver,file){
   toast('✅ Versiune nouă (v'+((ver||1)+1)+') încărcată.'); renderDocumente();
 }
 async function delDoc(id,encPath){
-  if(!confirm('Ștergi acest fișier definitiv?')) return;
-  const path=decodeURIComponent(encPath);
-  await sb.storage.from('docs').remove([path]);
-  const { error }=await sb.from('documents').delete().eq('id',id);
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  toast('🗑 Fișier șters.'); renderDocumente();
+  if(!confirm(tz('Ștergi acest fișier? Merge în coșul de gunoi.'))) return;
+  await softDelete('documents','documente',id, function(){ renderDocumente(); });
 }
 
 /* ════ GENERIC LIST (cu căutare + filtru pe stare) ════ */
@@ -7707,6 +7702,16 @@ async function moveToTrash(table, moduleKey, rows){ if(!rows||!rows.length) retu
     if(snaps.length) await sb.from('trash').insert(snaps);
   }catch(e){}
 }
+/* ștergere „moale" reutilizabilă pt ștergerile speciale (jurnal, documente, contacte, KB…) */
+async function softDelete(table, moduleKey, id, onChange){
+  let saved=null; try{ saved=(await sb.from(table).select('*').eq('id',id).maybeSingle()).data||null; }catch(e){}
+  const { error }=await sb.from(table).delete().eq('id',id);
+  if(error){ toast('Eroare: '+esc(error.message)); return false; }
+  if(saved) await moveToTrash(table, moduleKey, [saved]);
+  if(typeof onChange==='function'){ try{ onChange(); }catch(e){} }
+  toastUndo('🗑 '+tz('Șters.'), async function(){ if(!saved) return; const ins=await sb.from(table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().eq('source_table',table).eq('record_id',id); }catch(e){} toast('↩︎ '+tz('Restaurat.')); if(typeof onChange==='function'){ try{ onChange(); }catch(e){} } });
+  return true;
+}
 async function renderTrash(){
   $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="renderTrash()">↻</button><span style="flex:1"></span><button class="btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="trashEmpty()">🧹 '+esc(tz('Golește coșul'))+'</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>🗑️ '+esc(tz('Coș de gunoi'))+'</h3></div>'
@@ -7724,8 +7729,8 @@ async function renderTrash(){
 async function trashRestore(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!t) return;
   const ins=await sb.from(t.source_table).insert(t.data); if(ins.error){ toast(tz('Nu am putut restaura:')+' '+esc(ins.error.message)); return; }
   await sb.from('trash').delete().eq('id',id); toast('♻️ '+tz('Restaurat.')); renderTrash(); }
-async function trashPurge(id){ if(!confirm(tz('Ștergi definitiv acest element? Nu mai poate fi recuperat.'))) return; const r=await sb.from('trash').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('🗑 '+tz('Șters definitiv.')); renderTrash(); }
-async function trashEmpty(){ if(!(window._trashRows&&window._trashRows.length)){ toast(tz('Coșul e gol.')); return; } if(!confirm(tz('Golești tot coșul? Toate elementele se șterg definitiv.'))) return; const r=await sb.from('trash').delete().gte('deleted_at','1900-01-01'); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('🧹 '+tz('Coș golit.')); renderTrash(); }
+async function trashPurge(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!confirm(tz('Ștergi definitiv acest element? Nu mai poate fi recuperat.'))) return; const r=await sb.from('trash').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } if(t&&t.data&&t.data.file_url){ try{ await sb.storage.from('docs').remove([t.data.file_url]); }catch(e){} } toast('🗑 '+tz('Șters definitiv.')); renderTrash(); }
+async function trashEmpty(){ if(!(window._trashRows&&window._trashRows.length)){ toast(tz('Coșul e gol.')); return; } if(!confirm(tz('Golești tot coșul? Toate elementele se șterg definitiv.'))) return; const files=(window._trashRows||[]).map(t=>t.data&&t.data.file_url).filter(Boolean); const r=await sb.from('trash').delete().gte('deleted_at','1900-01-01'); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } if(files.length){ try{ await sb.storage.from('docs').remove(files); }catch(e){} } toast('🧹 '+tz('Coș golit.')); renderTrash(); }
 
 /* ════ CONVERSIE DEVIZ → FACTURĂ ════ */
 function estimateToInvoice(estId){ window.open('factura.html?estimate='+estId,'_blank'); toast('Se deschide factura cu liniile din deviz…'); }

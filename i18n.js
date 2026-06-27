@@ -1655,6 +1655,7 @@
     'Ștergi definitiv acest element? Nu mai poate fi recuperat.':{ru:'Удалить этот элемент навсегда? Восстановить будет нельзя.',de:'Dieses Element endgültig löschen? Es kann nicht wiederhergestellt werden.',en:'Permanently delete this item? It cannot be recovered.'},
     'Golești tot coșul? Toate elementele se șterg definitiv.':{ru:'Очистить всю корзину? Все элементы будут удалены навсегда.',de:'Den gesamten Papierkorb leeren? Alle Elemente werden endgültig gelöscht.',en:'Empty the whole bin? All items will be permanently deleted.'},
     'Coș golit.':{ru:'Корзина очищена.',de:'Papierkorb geleert.',en:'Bin emptied.'},
+    'Ștergi acest fișier? Merge în coșul de gunoi.':{ru:'Удалить этот файл? Он попадёт в корзину.',de:'Diese Datei löschen? Sie wandert in den Papierkorb.',en:'Delete this file? It goes to the recycle bin.'},
     // ── mesagerie (Telegram/WhatsApp) ──
     'Verify token (ales de tine)':{ru:'Verify token (на ваш выбор)',de:'Verify-Token (selbst gewählt)',en:'Verify token (your choice)'},
     'Token permanent (Cloud API)':{ru:'Постоянный токен (Cloud API)',de:'Permanenter Token (Cloud API)',en:'Permanent token (Cloud API)'},
