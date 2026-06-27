@@ -2533,15 +2533,29 @@ async function tcRec(){
   tcRecUI(true);
   window._tcRecTimer=setInterval(function(){ const b=$('tc-rec'); if(b){ const s=Math.floor((Date.now()-t0)/1000); b.textContent='⏹ '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); } if(Date.now()-t0>180000){ try{ rec.stop(); }catch(e){} } }, 300);
 }
+function notifOpen(type, id){
+  closeModal();
+  if(type==='message'){ if(typeof openTeamChat==='function') openTeamChat(); return; }
+  if(type==='client' && id){ clientHub(id); return; }
+  const map={ material_order:'comenzi', estimate:'devize', invoice:'facturi', defect:'defecte', site:'santiere', planned:'santiere', delivery:'livrari', appointment:'programari' };
+  const key=map[type]; if(!key){ return; }
+  go(key);
+  if(!id) return;
+  // așteaptă să se încarce lista, apoi deschide acțiunile înregistrării (fallback: previzualizare)
+  let tries=0; const t=setInterval(function(){ tries++;
+    try{ if(curModuleKey()===key && listState && listState.key===key && (listState.rows||[]).some(r=>r.id===id)){ clearInterval(t); rowOptions(key,id); return; } }catch(e){}
+    if(tries>24){ clearInterval(t); try{ recordPreview(key,id); }catch(e){} }
+  },140);
+}
 async function openNotifPanel(){
-  const { data }=await sb.from('notifications').select('id,title,body,entity_type,created_at');
+  const { data }=await sb.from('notifications').select('id,title,body,entity_type,entity_id,created_at');
   const list=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1)).slice(0,50);
   localStorage.setItem('c373_notif_seen', Date.now()); loadNotifCount();
-  const ic={material_order:'🛒',estimate:'📋',invoice:'🧾',defect:'🔧'};
+  const ic={material_order:'🛒',estimate:'📋',invoice:'🧾',defect:'🔧',message:'💬',delivery:'🚚',planned:'📅',site:'🏗️',appointment:'📆',client:'🤝'};
   let fuSection=''; try{ const t=coToday(); const fr=await sb.from('client_activities').select('client_id,body,due_date,clients(name)').eq('kind','task').eq('done',false).lte('due_date',isoLocal(new Date(Date.now()+7*86400000))).order('due_date'); const fus=(fr.data||[]);
     if(fus.length) fuSection='<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:.3rem">⏰ '+esc(C373t('Follow-up clienți'))+'</div>'+fus.slice(0,20).map(a=>{ const ov=a.due_date<t; return '<div onclick="closeModal();clientHub(\''+a.client_id+'\')" style="padding:.55rem 0;border-bottom:1px solid var(--line);cursor:pointer"><div style="font-weight:600">⏰ '+esc(a.clients?a.clients.name:'client')+'</div>'+(a.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(a.body)+'</div>':'')+'<div style="font-size:.74rem;font-weight:600;color:'+(ov?'var(--red)':'var(--primary)')+'">'+esc(fmtDate(a.due_date))+'</div></div>'; }).join('')+'<div style="height:.9rem"></div>'; }catch(e){}
   const rows=list.length
-    ? list.map(n=>'<div style="padding:.7rem 0;border-bottom:1px solid var(--line)"><div style="font-weight:600">'+(ic[n.entity_type]||'🔔')+' '+esc(n.title)+'</div>'+(n.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(n.body)+'</div>':'')+'<div style="color:var(--muted);font-size:.74rem;margin-top:.2rem">'+esc((n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>').join('')
+    ? list.map(n=>{ const act=!!(n.entity_id||n.entity_type==='message'); return '<div '+(act?'onclick="notifOpen(\''+esc(n.entity_type||'')+'\',\''+(n.entity_id||'')+'\')" ':'')+'style="padding:.7rem 0;border-bottom:1px solid var(--line)'+(act?';cursor:pointer':'')+'"><div style="font-weight:600">'+(ic[n.entity_type]||'🔔')+' '+esc(n.title)+(act?' <span style="color:var(--primary);font-size:.78rem;font-weight:600">›</span>':'')+'</div>'+(n.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(n.body)+'</div>':'')+'<div style="color:var(--muted);font-size:.74rem;margin-top:.2rem">'+esc((n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>'; }).join('')
     : (fuSection?'':'<div class="empty"><div class="ei">🔔</div>Nicio notificare încă.</div>');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><div class="modal-head"><h3>🔔 Notificări</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+fuSection+rows+'</div></div></div>';
 }
