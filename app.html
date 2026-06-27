@@ -101,8 +101,10 @@
   .cal-ho{background:var(--red-soft);color:var(--red);font-weight:700}
   .cal-td{outline:2px solid var(--primary);font-weight:700}
   .cal-dot{position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--red)}
-  .crm-board{display:flex;gap:.7rem;overflow-x:auto;padding:.3rem .1rem 1rem;align-items:flex-start}
-  .crm-col{flex:0 0 232px;background:var(--bg);border:1px solid var(--line);border-radius:12px;min-height:120px;display:flex;flex-direction:column}
+  .crm-board{display:flex;gap:.55rem;overflow-x:auto;padding:.3rem .1rem 1rem;align-items:flex-start;scrollbar-width:thin}
+  .crm-board::-webkit-scrollbar{height:9px}
+  .crm-board::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+  .crm-col{flex:0 0 206px;background:var(--bg);border:1px solid var(--line);border-radius:12px;min-height:120px;display:flex;flex-direction:column}
   .crm-col.crm-over{outline:2px dashed var(--primary)}
   .crm-colh{padding:.55rem .7rem;font-weight:700;font-size:.84rem;border-radius:12px 12px 0 0;background:var(--surface)}
   .crm-colb{padding:.5rem;display:flex;flex-direction:column;gap:.5rem}
@@ -4265,8 +4267,8 @@ async function crmFeed(){
     return '<div onclick="clientHub(\''+a.client_id+'\')" style="display:flex;gap:.5rem;padding:.45rem 0;border-bottom:1px solid var(--line);cursor:pointer"><span style="font-size:1rem">'+k[0]+'</span><div style="flex:1;min-width:0"><div style="font-size:.85rem"><b>'+esc(a.clients?a.clients.name:'client')+'</b>'+(a.body?(' — '+esc(String(a.body).slice(0,60))):'')+'</div><div style="font-size:.72rem;color:var(--muted)">'+esc(C373t(k[1]))+' · '+esc(when)+(a.created_by?(' · '+esc(a.created_by)):'')+(task?(' · <b style="color:var(--primary)">'+esc(C373t('de făcut'))+(a.due_date?(' '+esc(fmtDate(a.due_date))):'')+'</b>'):'')+'</div></div></div>'; }).join(''):'<div style="color:var(--muted);padding:1rem 0">'+esc(C373t('Nicio activitate încă.'))+'</div>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>📰 '+esc(C373t('Flux activitate'))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+rows+'</div></div></div>'; }
 async function crmReport(){
-  const { data, error }=await sb.from('clients').select('stage,value,source,stage_since,created_at'); if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const rows=data||[]; const today=new Date(coToday()+'T12:00:00'); const byS={}; CRM_STAGES.forEach(s=>byS[s]={n:0,v:0,stuck:0});
+  let { data, error }=await sb.from('clients').select('stage,value,source,stage_since,created_at,archived_at'); if(error){ const fb=await sb.from('clients').select('stage,value,source,stage_since,created_at'); if(fb.error){ toast('Eroare: '+esc(error.message)); return; } data=fb.data; }
+  const rows=(data||[]).filter(c=>!c.archived_at); const today=new Date(coToday()+'T12:00:00'); const byS={}; CRM_STAGES.forEach(s=>byS[s]={n:0,v:0,stuck:0});
   rows.forEach(c=>{ const s=c.stage||'lead'; (byS[s]=byS[s]||{n:0,v:0,stuck:0}); byS[s].n++; byS[s].v+=(+c.value||0); const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(base&&s!=='won'&&s!=='lost'){ const d=Math.round((today-new Date(base+'T12:00:00'))/86400000); if(d>=14) byS[s].stuck++; } });
   const won=byS.won||{n:0,v:0}, lost=byS.lost||{n:0,v:0}; const winRate=(won.n+lost.n)?Math.round(won.n/(won.n+lost.n)*100):0;
   const pipe=['lead','contacted','offer'].reduce((s,k)=>s+(byS[k]?byS[k].v:0),0);
