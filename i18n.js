@@ -2246,6 +2246,7 @@
     'Subtotal:':{ru:'Подытог:',de:'Zwischensumme:',en:'Subtotal:'},
     'TVA:':{ru:'НДС:',de:'MwSt:',en:'VAT:'},
     'TOTAL:':{ru:'ИТОГО:',de:'GESAMT:',en:'TOTAL:'},
+    'Total cu TVA':{ru:'Итого с НДС',de:'Betrag inkl. MwSt',en:'Total incl. VAT'},
     /* avertizare TVA ignorat (deviz/factură) */
     '⚠️ Liniile au cote TVA, dar TVA e pe „Fără" — cotele nu se aplică.':{ru:'⚠️ У позиций есть ставки НДС, но режим НДС — «Без» — ставки не применяются.',de:'⚠️ Die Positionen haben MwSt-Sätze, aber MwSt steht auf „Ohne" — die Sätze werden nicht angewendet.',en:'⚠️ Lines have VAT rates, but VAT is set to "None" — the rates are not applied.'},
     'Aplică TVA pe poziție':{ru:'Применить НДС по позициям',de:'MwSt je Position anwenden',en:'Apply VAT per line'},

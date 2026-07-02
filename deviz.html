@@ -760,7 +760,10 @@ async function pdf(docType,inPlace){
   // Deschidem fereastra SINCRON (în gestul de click), înainte de orice await — altfel browserul/PWA blochează pop-up-ul după createSignedUrl și nu se deschide nimic.
   let w=null; if(!inPlace){ w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF…</title><style>body{font-family:system-ui,-apple-system,Arial;color:#0f1c33;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;font-size:15px}</style><div>⏳ Se pregătește documentul…</div>'); }catch(e){} }
   const t=totals(); const cl=S.clients.find(c=>c.id===S.est.client_id)||{};
-  const showDiscCol=S.est.disc_mode==='line', showVatCol=S.est.vat_mode==='line', vmode=S.est.vat_mode||'none';
+  const showDiscCol=S.est.disc_mode==='line', vmode=S.est.vat_mode||'none';
+  // Coloana TVA + „Total cu TVA" pe linie apar oriunde există TVA efectiv (mod „pe poziție", „unificat" sau grupuri cu TVA) — ca PDF-ul să fie IDENTIC cu editorul (altfel părea că TVA dispare).
+  const anyVat=!isLiv && S.lines.some(l=>(l.name||'').trim() && lineEffVat(l)>0);
+  const showVatCol=anyVat;
   const colsN=isLiv?5:(7+(showDiscCol?1:0)+(showVatCol?1:0));
   let logo=''; if(S.firm.logo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(S.firm.logo_url,600); if(data&&data.signedUrl) logo='<img src="'+data.signedUrl+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }catch(e){} }
   // semneaza pozele de pe linii pentru a aparea in PDF
@@ -769,15 +772,15 @@ async function pdf(docType,inPlace){
   let sigHtml=''; if(S.est.signature_url && docType!=='livrare'){ try{ const {data:sd}=await sb.storage.from('docs').createSignedUrl(S.est.signature_url,600); if(sd&&sd.signedUrl){ const Ts=window.C373t||function(s){return s;}; sigHtml='<div style="margin-top:30px"><div style="color:#6b7793;font-size:11px">'+Ts('Acceptat de client')+(S.est.signer_name?' — '+esc(S.est.signer_name):'')+(S.est.signed_at?' · '+esc(String(S.est.signed_at).slice(0,10)):'')+'</div><img src="'+sd.signedUrl+'" style="height:80px;margin-top:4px"></div>'; } }catch(e){} }
   const f=S.firm; const brand=(f.automations&&f.automations.brand_name)||''; const idLabel=(f.automations&&f.automations.id_label)||'IDNO'; const legalNote=(f.automations&&f.automations.legal_note)||'';
   const T=window.C373t||function(s){return s;}; const L=(window.C373lang&&window.C373lang())||'ro';
-  function pdfRow(l,n){ const net=lineNet(l);
+  function pdfRow(l,n){ const net=lineNet(l); const eff=lineEffVat(l); const lineTot=anyVat?net*(1+eff/100):net;
     const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'');
     const hasPhoto=l.photo_url&&lphotos[l.photo_url];
     const photoCell='<td style="text-align:center;vertical-align:middle">'+(hasPhoto?'<img src="'+lphotos[l.photo_url]+'" onclick="zoom(this.src)" title="'+(window.C373t?window.C373t('Apasă pentru a mări'):'Apasă pentru a mări')+'" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid #e5e9f2;cursor:zoom-in">':'')+'</td>';
     if(isLiv) return '<tr><td>'+n+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td>'+photoCell+'</tr>';
     return '<tr><td>'+n+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td>'
       +(showDiscCol?'<td class="r">'+num2(l.disc||0)+'%</td>':'')
-      +(showVatCol?'<td class="r">'+num2(l.vat_rate)+'%</td>':'')
-      +'<td class="r">'+money(net)+'</td>'+photoCell+'</tr>';
+      +(showVatCol?'<td class="r">'+num2(eff)+'%</td>':'')
+      +'<td class="r">'+money(lineTot)+'</td>'+photoCell+'</tr>';
   }
   const isRolled = !isLiv && (S.est.materials_mode==='rolled'); // materiale incluse in manopera (ascunse)
   let _n=0, rows='';
@@ -794,7 +797,7 @@ async function pdf(docType,inPlace){
   });
   const docTitle=isLiv?T('BON DE LIVRARE'):(docType==='confirmare'?T('CONFIRMARE DE COMANDĂ'):T('OFERTĂ / DEVIZ'));
   const tabHead=isLiv?('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>')
-    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>');
+    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+(anyVat?T('Total cu TVA'):T('Total'))+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>');
   const totBlock=isLiv?'<div style="margin-top:40px;display:flex;justify-content:space-between;gap:30px"><div style="flex:1">'+T('Predat de')+':<br><br>____________________</div><div style="flex:1">'+T('Primit de')+':<br><br>____________________</div></div>'
     :('<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
        +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
