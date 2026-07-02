@@ -130,9 +130,9 @@ async function loadCatalog(){
   ]);
   S.clients=cl.data||[];
   S.catalog=[].concat(
-    (svc.data||[]).map(x=>({src:'service',id:x.id,icon:'🧰',name:x.name,unit:x.unit||'buc',price:+x.price||0,vat:+x.vat_rate||20,desc:x.description||'',photo:x.photo_url||null})),
+    (svc.data||[]).map(x=>({src:'service',id:x.id,icon:'🧰',name:x.name,unit:x.unit||'buc',price:+x.price||0,vat:(x.vat_rate!=null?+x.vat_rate:20),desc:x.description||'',photo:x.photo_url||null})),
     (nrm.data||[]).map(x=>({icon:'📐',name:x.name,unit:x.unit||'m2',price:+x.unit_price||0,vat:20})),
-    (mat.data||[]).map(x=>({src:'material',id:x.id,icon:'📦',name:x.name,unit:x.unit||'buc',price:+x.last_price||0,vat:+x.vat_rate||20,desc:x.description||'',photo:x.photo_url||null}))
+    (mat.data||[]).map(x=>({src:'material',id:x.id,icon:'📦',name:x.name,unit:x.unit||'buc',price:+x.last_price||0,vat:(x.vat_rate!=null?+x.vat_rate:20),desc:x.description||'',photo:x.photo_url||null}))
   );
 }
 async function loadInvoice(id){
@@ -347,7 +347,8 @@ function renderLines(){
       +'<div class="lghead" style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;background:#eef2ff;padding:.5rem .7rem;border-bottom:1px solid var(--line);border-radius:10px 10px 0 0">'
         +'<span class="ggrip" style="cursor:grab;color:#94a3b8;font-size:1.1rem">≡</span>'
         +'<input value="'+esc(g.name||'')+'" placeholder="Nume grup (ex: Manoperă, Materiale, 12 mai)" oninput="setGroupName(\''+g.id+'\',this.value)" style="flex:1;min-width:150px;font-weight:700"/>'
-        +'<label style="font-size:.76rem;color:#46506a;display:flex;align-items:center;gap:.25rem" title="aplică acest TVA tuturor liniilor din grup (poți edita apoi pe fiecare linie)">TVA toate <input type="number" step="any" value="'+esc(g.vat||0)+'" onchange="applyGroupVat(\''+g.id+'\',this.value)" style="width:58px"/>%</label>'
+        +(function(){ const rs=[...new Set(S.lines.filter(l=>l.group===g.id).map(l=>Math.round((+l.vat_rate||0)*100)/100))]; const shown=(rs.length===1?rs[0]:''); const mixed=rs.length>1;
+          return '<label style="font-size:.76rem;color:#46506a;display:flex;align-items:center;gap:.25rem" title="'+(mixed?'liniile din grup au cote TVA diferite — scrie o cotă ca să o aplici tuturor':'aplică acest TVA tuturor liniilor din grup (poți edita apoi pe fiecare linie)')+'">TVA toate <input type="number" step="any" value="'+esc(shown)+'" placeholder="'+(mixed?'mixt':'0')+'" onchange="applyGroupVat(\''+g.id+'\',this.value)" style="width:58px'+(mixed?';border-color:#f59e0b':'')+'"/>%</label>'; })()
         +'<label style="font-size:.76rem;color:#46506a;display:flex;align-items:center;gap:.25rem">Red. <input type="number" step="any" value="'+esc(g.disc||0)+'" oninput="setGroupDisc(\''+g.id+'\',this.value)" style="width:58px"/>%</label>'
         +'<span id="gtot-'+g.id+'" style="font-size:.84rem;font-weight:800;min-width:90px;text-align:right">'+money(gt.total)+'</span>'
         +'<button class="btn" style="padding:.25rem .5rem;font-size:.78rem" onclick="addLineG(\''+g.id+'\')">＋ linie</button>'
@@ -436,8 +437,12 @@ async function saveLineDetails(i){
 function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
   let h='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.gross)+'</b></div>';
   if(t.disc>0.005) h+='<div class="totrow"><span class="sub">Reducere</span><b style="color:var(--green)">−'+money(t.disc)+'</b></div>';
-  if(vm!=='none'||t.vat>0.005) h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
+  h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
   h+='<div class="totrow g"><span>Total'+(S.inv.inv_type!=='normal'?' lucrări':'')+'</span><span>'+money(t.total)+'</span></div>';
+  // Avertizare: liniile au cote TVA dar modul „Fără" le ignoră — altfel TVA „dispare" silențios din PDF
+  if(vm==='none' && S.lines.some(l=>!l.group && (l.name||'').trim() && (+l.vat_rate||0)>0)){
+    h+='<div style="margin-top:.55rem;padding:.5rem .6rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;font-size:.76rem;color:#9a3412;line-height:1.5">⚠️ Liniile au cote TVA, dar TVA e pe „Fără" — cotele nu se aplică. <a onclick="setVatMode(\'line\')" style="cursor:pointer;text-decoration:underline;font-weight:700">Aplică TVA pe poziție</a></div>';
+  }
   if(S.inv.inv_type!=='normal' || S.inv.retention_pct>0){ const d=deTotals();
     if(S.inv.inv_type==='schluss' && (S._absch||[]).length){ (S._absch).forEach(x=>{ h+='<div class="totrow"><span class="sub" style="font-size:.78rem">− Avans '+esc(x.number||'')+'</span><b style="color:#b45309">−'+money(x.total)+'</b></div>'; }); }
     else if(S.inv.inv_type==='schluss'){ h+='<div class="totrow"><span class="sub" style="font-size:.78rem;color:var(--muted)">Niciun avans găsit pe acest șantier</span><b></b></div>'; }
@@ -690,7 +695,7 @@ async function pdf(inPlace){
       if(labor.length){ labor.forEach((l,idx)=>{ const cl=Object.assign({},l); const q=+cl.qty||0; const own=q*(+cl.unit_price||0); const gross=own+(idx===0?matGross:0); cl.unit_price=q?gross/q:gross; rows+=pdfRow(cl,++_n); }); }
       else { rows+=pdfRow(Object.assign(blankLine(),{name:g.name||T('Materiale'),qty:1,unit:'set',unit_price:matGross,vat_rate:(g.vat||0),group:g.id}),++_n); }
     } else { gl.forEach(l=>{ rows+=pdfRow(l,++_n); }); }
-    const gt=groupTotals(g); rows+='<tr><td colspan="'+(colsN-2)+'" style="text-align:right;color:#6b7793;font-size:11px;padding-right:10px">'+T('Subtotal grup')+(g.disc?(' −'+num2(g.disc)+'%'):'')+(g.vat?(' · TVA '+num2(g.vat)+'%'):'')+'</td><td class="r"><b>'+money(gt.total)+'</b></td><td></td></tr>';
+    const gt=groupTotals(g); rows+='<tr><td colspan="'+(colsN-2)+'" style="text-align:right;color:#6b7793;font-size:11px;padding-right:10px">'+T('Subtotal grup')+(g.disc?(' −'+num2(g.disc)+'%'):'')+(gt.vat>0.005?(' · '+T('TVA:')+' '+money(gt.vat)):'')+'</td><td class="r"><b>'+money(gt.total)+'</b></td><td></td></tr>';
   });
   const doc='<!doctype html><html lang="'+L+'"><head><meta charset="utf-8"><title>'+T('Factură')+' '+esc(S.inv.number||'')+'</title><style>'
     +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:32px;max-width:800px;margin:0 auto;font-size:13px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2f6bff;padding-bottom:16px;margin-bottom:20px}.ti{font-size:22px;font-weight:800;color:#2f6bff}.muted{color:#6b7793}.box{display:flex;gap:24px;margin:0 0 20px}.box>div{flex:1;background:#f4f6fb;border-radius:10px;padding:12px 14px}.box h4{font-size:11px;text-transform:uppercase;color:#6b7793;margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px 10px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}.tot{margin-top:16px;margin-left:auto;width:280px}.tot div{display:flex;justify-content:space-between;padding:5px 0}.tot .g{font-size:17px;font-weight:800;border-top:2px solid #0f1c33;margin-top:6px;padding-top:8px}.ft{margin-top:30px;color:#6b7793;font-size:11px;border-top:1px solid #e5e9f2;padding-top:12px}@media print{.noprint{display:none}tr{page-break-inside:avoid}}'
@@ -700,7 +705,7 @@ async function pdf(inPlace){
     +'<table><thead><tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+T('Total')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr></thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
     +'<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
       +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
-      +((vmode!=='none'||t.vat>0.005)?'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>':'')
+      +'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>'
       +'<div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div>'
       +(de?(((S.inv.inv_type==='schluss')?(S._absch||[]).map(function(x){return '<div><span>− '+T('Avans')+' '+esc(x.number||'')+'</span><b>−'+money(x.total)+'</b></div>';}).join(''):'')+(de.ret>0?'<div><span>− '+T('Reținere garanție')+' '+num2(S.inv.retention_pct)+'%</span><b>−'+money(de.ret)+'</b></div>':'')+'<div class="g"><span>'+(S.inv.inv_type==='schluss'?'Restbetrag / '+T('De plată acum'):T('De plată acum'))+':</span><span>'+money(de.payable)+'</span></div>'):'')
       +'</div>'

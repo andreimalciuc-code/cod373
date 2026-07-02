@@ -2246,6 +2246,12 @@
     'Subtotal:':{ru:'Подытог:',de:'Zwischensumme:',en:'Subtotal:'},
     'TVA:':{ru:'НДС:',de:'MwSt:',en:'VAT:'},
     'TOTAL:':{ru:'ИТОГО:',de:'GESAMT:',en:'TOTAL:'},
+    /* avertizare TVA ignorat (deviz/factură) */
+    '⚠️ Liniile au cote TVA, dar TVA e pe „Fără" — cotele nu se aplică.':{ru:'⚠️ У позиций есть ставки НДС, но режим НДС — «Без» — ставки не применяются.',de:'⚠️ Die Positionen haben MwSt-Sätze, aber MwSt steht auf „Ohne" — die Sätze werden nicht angewendet.',en:'⚠️ Lines have VAT rates, but VAT is set to "None" — the rates are not applied.'},
+    'Aplică TVA pe poziție':{ru:'Применить НДС по позициям',de:'MwSt je Position anwenden',en:'Apply VAT per line'},
+    'liniile din grup au cote TVA diferite — scrie o cotă ca să o aplici tuturor':{ru:'у позиций группы разные ставки НДС — введите ставку, чтобы применить её ко всем',de:'die Positionen der Gruppe haben unterschiedliche MwSt-Sätze — gib einen Satz ein, um ihn auf alle anzuwenden',en:'group lines have different VAT rates — type a rate to apply it to all'},
+    'aplică acest TVA tuturor liniilor din grup (poți edita apoi pe fiecare linie)':{ru:'применяет этот НДС ко всем позициям группы (потом можно править по каждой позиции)',de:'wendet diese MwSt auf alle Positionen der Gruppe an (danach je Position änderbar)',en:'applies this VAT to all lines in the group (you can then edit each line)'},
+    'mixt':{ru:'разн.',de:'gem.',en:'mixed'},
     'TVA%':{ru:'НДС%',de:'MwSt%',en:'VAT%'},
     'De achitat':{ru:'К оплате',de:'Zu zahlen',en:'To pay'},
     'Sumă de plată':{ru:'Сумма к оплате',de:'Zahlbetrag',en:'Amount due'},
