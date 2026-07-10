@@ -2725,37 +2725,107 @@ async function emailReply(id,to){
 }
 async function emailCloseThread(id,isClosed){ const { error }=await sb.from('email_threads').update({status:isClosed?'open':'closed'}).eq('id',id); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('✅ Actualizat.'); closeModal(); renderEmailuri(); }
 
-/* ════ ECHIPAMENT ANGAJAT (submodul în Angajați) ════ */
-const EQUIP_KIND={haine:'Haine',instrument:'Instrument',eip:'EIP (protecție)',altul:'Altul'};
+/* ════ ECHIPAMENT / BUNURI ÎNCREDINȚATE ANGAJAT (submodul în Angajați) ════ */
+const EQUIP_KIND={haine:'Haine',instrument:'Instrument / sculă',eip:'EIP (protecție)',telefon:'Telefon de lucru',tehnica:'Tehnică / electronice',cheie:'Cheie / acces',altul:'Altul'};
+const EQUIP_KIND_ICON={haine:'🦺',instrument:'🛠️',eip:'⛑️',telefon:'📱',tehnica:'💻',cheie:'🔑',altul:'📦'};
+function equipKindOpts(sel){ return Object.keys(EQUIP_KIND).map(k=>'<option value="'+k+'"'+(k===sel?' selected':'')+'>'+(EQUIP_KIND_ICON[k]||'')+' '+esc(tz(EQUIP_KIND[k]))+'</option>').join(''); }
 async function empEquip(empId, empName){
   const canU=canDo('angajati','u'), canD=canDo('angajati','d');
-  const { data, error }=await sb.from('employee_equipment').select('id,kind,item,qty,issued_at,note').eq('employee_id',empId).order('issued_at',{ascending:false});
-  const rows=error?('<tr><td colspan="5">Eroare: '+esc(error.message)+'</td></tr>')
-    :((data||[]).map(r=>'<tr><td>'+esc(EQUIP_KIND[r.kind]||r.kind)+'</td><td class="tname">'+esc(r.item)+(r.note?' <small style="color:var(--muted)">· '+esc(r.note)+'</small>':'')+'</td><td>'+esc(r.qty)+'</td><td>'+dt(r.issued_at)+'</td><td>'+(canD?'<button class="iconbtn danger" title="Șterge" onclick="empEquipDel(\''+r.id+'\',\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">🗑</button>':'')+'</td></tr>').join('')||'<tr><td colspan="5" style="color:var(--muted);padding:1rem">Niciun echipament predat încă.</td></tr>');
+  const { data, error }=await sb.from('employee_equipment').select('id,kind,item,qty,serial_no,value,condition,issued_at,returned_at,return_note,note').eq('employee_id',empId).order('returned_at',{ascending:true,nullsFirst:true}).order('issued_at',{ascending:false});
+  const all=data||[]; const custody=all.filter(r=>!r.returned_at); const returned=all.filter(r=>r.returned_at);
+  const fin=FINANCE_ROLES.includes(state.role);
+  const rowHtml=(r)=>{ const isRet=!!r.returned_at;
+    return '<tr'+(isRet?' style="opacity:.6"':'')+'><td style="white-space:nowrap">'+(EQUIP_KIND_ICON[r.kind]||'')+' '+esc(tz(EQUIP_KIND[r.kind]||r.kind))+'</td>'
+    +'<td class="tname">'+esc(r.item)+(r.serial_no?'<div style="color:var(--muted);font-size:.74rem">🔖 '+esc(r.serial_no)+'</div>':'')+(r.note?'<div style="color:var(--muted);font-size:.74rem">'+esc(r.note)+'</div>':'')+'</td>'
+    +'<td style="text-align:right">'+esc(String(+r.qty||0))+'</td>'
+    +(fin?'<td style="text-align:right;white-space:nowrap">'+(r.value!=null?money(r.value):'—')+'</td>':'')
+    +'<td>'+esc(r.condition||'—')+'</td>'
+    +'<td style="white-space:nowrap">'+dt(r.issued_at)+'</td>'
+    +'<td style="white-space:nowrap">'+(isRet?('<span style="color:var(--green)">↩ '+tz('Returnat')+' '+dt(r.returned_at)+'</span>'):'<span style="color:var(--primary);font-weight:600">📌 '+tz('În custodie')+'</span>')+'</td>'
+    +'<td style="white-space:nowrap">'+(canU&&!isRet?'<button class="iconbtn" title="'+esc(tz('Marchează returnat'))+'" onclick="empEquipReturn(\''+r.id+'\',\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">↩</button>':'')
+      +(canD?'<button class="iconbtn danger" title="'+esc(tz('Șterge'))+'" onclick="empEquipDel(\''+r.id+'\',\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">🗑</button>':'')+'</td></tr>'; };
+  const colspan=fin?8:7;
+  const secTbl=(list,emptyTxt)=>'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+tz('Tip')+'</th><th>'+tz('Articol')+'</th><th style="text-align:right">'+tz('Cant.')+'</th>'+(fin?'<th style="text-align:right">'+tz('Valoare')+'</th>':'')+'<th>'+tz('Stare')+'</th><th>'+tz('Data predării')+'</th><th>'+tz('Status')+'</th><th></th></tr></thead><tbody>'+(list.length?list.map(rowHtml).join(''):'<tr><td colspan="'+colspan+'" style="color:var(--muted);padding:1rem">'+esc(emptyTxt)+'</td></tr>')+'</tbody></table></div>';
   const today=new Date().toISOString().slice(0,10);
-  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Predare nouă</div>'
-    +'<div class="row-2"><div class="field"><label>Tip</label><select id="ee-kind"><option value="haine">Haine</option><option value="instrument" selected>Instrument</option><option value="eip">EIP (protecție)</option><option value="altul">Altul</option></select></div>'
-    +'<div class="field"><label>Cantitate</label><input id="ee-qty" type="number" value="1"/></div></div>'
-    +'<div class="field"><label>Articol *</label><input id="ee-item" placeholder="Ex: salopetă mărimea L, bormașină Bosch, cască de protecție"/></div>'
-    +'<div class="row-2"><div class="field"><label>Data predării</label><input id="ee-date" type="date" value="'+today+'"/></div><div class="field"><label>Observații</label><input id="ee-note"/></div></div>'
-    +'<button class="btn-primary" id="ee-add" onclick="empEquipAdd(\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">Adaugă echipament</button></div>'):'';
-  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px">'
-    +'<div class="modal-head"><h3>🦺 Echipament — '+esc(empName||'angajat')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+  const totVal=custody.reduce((s,r)=>s+(+r.value||0)*(+r.qty||0),0);
+  const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ '+tz('Încredințează un bun / echipament')+'</div>'
+    +'<div class="row-2"><div class="field"><label>'+tz('Tip')+'</label><select id="ee-kind">'+equipKindOpts('instrument')+'</select></div>'
+    +'<div class="field"><label>'+tz('Cantitate')+'</label><input id="ee-qty" type="number" step="any" value="1"/></div></div>'
+    +'<div class="field"><label>'+tz('Articol')+' *</label><input id="ee-item" placeholder="'+esc(tz('Ex: telefon Samsung A54, bormașină Bosch, salopetă mărimea L'))+'"/></div>'
+    +'<div class="row-2"><div class="field"><label>'+tz('Serie / IMEI / nr. inventar')+'</label><input id="ee-serial" placeholder="'+esc(tz('opțional'))+'"/></div>'
+    +'<div class="field"><label>'+tz('Valoare (MDL)')+'</label><input id="ee-value" type="number" step="any" placeholder="'+esc(tz('opțional'))+'"/></div></div>'
+    +'<div class="row-2"><div class="field"><label>'+tz('Stare la predare')+'</label><input id="ee-cond" list="ee-cond-list" placeholder="'+esc(tz('nou / bun / uzat'))+'"/><datalist id="ee-cond-list"><option value="'+esc(tz('nou'))+'"><option value="'+esc(tz('bun'))+'"><option value="'+esc(tz('uzat'))+'"><option value="'+esc(tz('deteriorat'))+'"></datalist></div>'
+    +'<div class="field"><label>'+tz('Data predării')+'</label><input id="ee-date" type="date" value="'+today+'"/></div></div>'
+    +'<div class="field"><label>'+tz('Observații')+'</label><input id="ee-note"/></div>'
+    +'<button class="btn-primary" id="ee-add" onclick="empEquipAdd(\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">＋ '+tz('Adaugă în inventar')+'</button></div>'):'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px">'
+    +'<div class="modal-head"><h3>🦺 '+tz('Inventar / bunuri încredințate')+' — '+esc(empName||tz('angajat'))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div id="ee-msg"></div>'
-    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tip</th><th>Articol</th><th>Cant.</th><th>Data predării</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem"><div style="font-weight:700">📌 '+tz('În custodie')+' <span style="color:var(--muted);font-weight:400">('+custody.length+')</span>'+((fin&&totVal>0)?' · '+tz('valoare')+': <b>'+money(totVal)+'</b>':'')+'</div>'
+    +(custody.length?'<button class="btn-primary" onclick="empHandoverPdf(\''+empId+'\',\''+esc(empName).replace(/\x27/g,"")+'\')">📄 '+tz('Act de primire-predare (PDF)')+'</button>':'')+'</div>'
+    +secTbl(custody, tz('Niciun bun în custodie. Adaugă mai jos.'))
+    +(returned.length?('<div style="font-weight:700;margin:.9rem 0 .4rem">↩ '+tz('Returnate')+' <span style="color:var(--muted);font-weight:400">('+returned.length+')</span></div>'+secTbl(returned,'')):'')
     +addForm+'</div></div></div>';
 }
 async function empEquipAdd(empId, empName){
-  const item=($('ee-item').value||'').trim(); if(!item){ showMsg('ee-msg','Scrie articolul.'); return; }
-  const rec={tenant_id:state.tenant, employee_id:empId, kind:$('ee-kind').value, item, qty:+$('ee-qty').value||1, issued_at:$('ee-date').value||null, note:($('ee-note').value||'').trim()||null};
+  const item=($('ee-item').value||'').trim(); if(!item){ showMsg('ee-msg',tz('Scrie articolul.')); return; }
+  const rec={tenant_id:state.tenant, employee_id:empId, kind:$('ee-kind').value, item, qty:+$('ee-qty').value||1,
+    serial_no:($('ee-serial').value||'').trim()||null, value:($('ee-value').value!==''?+$('ee-value').value:null),
+    condition:($('ee-cond').value||'').trim()||null, issued_at:$('ee-date').value||null, note:($('ee-note').value||'').trim()||null};
   const btn=$('ee-add'); if(btn) btn.disabled=true;
   const r=await sbRetry(()=>sb.from('employee_equipment').insert(rec));
   if(r.error){ if(btn) btn.disabled=false; showMsg('ee-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
-  toast('✅ Echipament predat.'); empEquip(empId, empName);
+  toast('✅ '+tz('Adăugat în inventar.')); empEquip(empId, empName);
+}
+async function empEquipReturn(id, empId, empName){
+  const d=prompt(tz('Data returului (AAAA-LL-ZZ):'), new Date().toISOString().slice(0,10)); if(d===null) return;
+  const note=prompt(tz('Observații la retur (stare, lipsuri) — opțional:'),'')||null;
+  const r=await sbRetry(()=>sb.from('employee_equipment').update({returned_at:(d||new Date().toISOString().slice(0,10)), return_note:(note||'').trim()||null}).eq('id',id));
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+  toast('↩ '+tz('Marcat ca returnat.')); empEquip(empId, empName);
 }
 async function empEquipDel(id, empId, empName){
-  if(!confirm('Ștergi acest echipament din lista angajatului?')) return;
+  if(!confirm(tz('Ștergi acest bun din inventarul angajatului?'))) return;
   await softDelete('employee_equipment','angajati',id, function(){ empEquip(empId, empName); });
+}
+/* ── Act de primire-predare (proces-verbal) — bunurile în custodie ── */
+async function empHandoverPdf(empId, empName){
+  const w=pdfPrep(); if(!w) return;
+  const [er, eqR]=await Promise.all([
+    sb.from('employees').select('full_name,position,specialty,idnp,phone,address').eq('id',empId).maybeSingle(),
+    sb.from('employee_equipment').select('kind,item,qty,serial_no,value,condition,issued_at').eq('employee_id',empId).is('returned_at',null).order('issued_at',{ascending:true})
+  ]);
+  const e=er.data||{full_name:empName}; const items=eqR.data||[];
+  if(!items.length){ try{ w.close(); }catch(_){} toast(tz('Niciun bun în custodie pentru act.')); return; }
+  const fin=FINANCE_ROLES.includes(state.role);
+  const f=state.firm||{}; const today=fmtDate(coToday());
+  const actNr='PP-'+String(coToday()).replace(/-/g,'')+'-'+String(empId).slice(0,4).toUpperCase();
+  let tot=0;
+  const rowsHtml=items.map((r,i)=>{ const lv=(+r.value||0)*(+r.qty||0); tot+=lv;
+    return '<tr><td style="text-align:center">'+(i+1)+'</td><td>'+(EQUIP_KIND_ICON[r.kind]||'')+' '+esc(r.item)+'</td><td>'+esc(r.serial_no||'—')+'</td><td style="text-align:right">'+esc(String(+r.qty||0))+'</td><td>'+esc(r.condition||'—')+'</td>'+(fin?'<td style="text-align:right;white-space:nowrap">'+(r.value!=null?money(r.value):'—')+'</td>':'')+'</tr>'; }).join('');
+  const heads='<tr><th style="width:34px">'+tz('Nr.')+'</th><th>'+tz('Denumire bun / echipament')+'</th><th>'+tz('Serie / nr. inventar')+'</th><th style="text-align:right">'+tz('Cant.')+'</th><th>'+tz('Stare')+'</th>'+(fin?'<th style="text-align:right">'+tz('Valoare (MDL)')+'</th>':'')+'</tr>';
+  const empInfo=pdfInfo([[tz('Angajat'), e.full_name||empName||'—']].concat(
+    e.position?[[tz('Funcție'), e.position]]:[]).concat(
+    e.idnp?[['IDNP', e.idnp]]:[]).concat(
+    e.phone?[[tz('Telefon'), e.phone]]:[]));
+  const inner=
+    '<div style="color:#64748b;font-size:.85rem;margin:.2rem 0 1rem">'+tz('Nr.')+' '+esc(actNr)+' · '+tz('Data:')+' '+esc(today)+'</div>'
+    +'<p style="font-size:.9rem;line-height:1.6">'+tz('Prin prezentul proces-verbal, ')+'<b>'+esc(f.name||'—')+'</b>'+tz(' (denumit „Predător") predă, iar angajatul de mai jos (denumit „Primitor") primește în custodie și folosință, spre îndeplinirea sarcinilor de serviciu, următoarele bunuri aflate în proprietatea firmei:')+'</p>'
+    +empInfo
+    +'<h2 style="font-size:1rem;margin:1.2rem 0 .5rem;border-bottom:2px solid #e5e9f2;padding-bottom:.25rem">'+tz('Bunuri încredințate')+'</h2>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead>'+heads+'</thead><tbody>'+rowsHtml+'</tbody>'
+    +(fin?'<tfoot><tr><td colspan="5" style="text-align:right;font-weight:700;padding:.4rem">'+tz('Valoare totală:')+'</td><td style="text-align:right;font-weight:800;padding:.4rem">'+money(tot)+'</td></tr></tfoot>':'')+'</table>'
+    +'<div style="margin-top:1rem;font-size:.82rem;color:#334155;line-height:1.6;background:#f8fafc;border:1px solid #e5e9f2;border-radius:8px;padding:.7rem .9rem">'
+      +'<b>'+tz('Condiții:')+'</b><br>'
+      +'1. '+tz('Primitorul confirmă că a primit bunurile în starea indicată mai sus și se obligă să le folosească doar în scop de serviciu, cu grija unui bun proprietar.')+'<br>'
+      +'2. '+tz('Primitorul răspunde material pentru pierderea, deteriorarea sau distrugerea bunurilor din vina sa, conform legislației în vigoare.')+'<br>'
+      +'3. '+tz('La încetarea raporturilor de muncă sau la cererea Predătorului, Primitorul restituie bunurile în starea în care le-a primit (cu uzura normală).')+'</div>'
+    +'<div style="display:flex;justify-content:space-between;gap:40px;margin-top:2.4rem">'
+      +'<div style="flex:1"><div style="font-weight:700;margin-bottom:2.4rem">'+tz('Am predat (Predător):')+'</div><div style="border-top:1px solid #0f1c33;padding-top:.3rem;color:#64748b;font-size:.8rem">'+esc(f.name||'')+'<br>'+tz('(nume, semnătură)')+'</div></div>'
+      +'<div style="flex:1"><div style="font-weight:700;margin-bottom:2.4rem">'+tz('Am primit (Primitor):')+'</div><div style="border-top:1px solid #0f1c33;padding-top:.3rem;color:#64748b;font-size:.8rem">'+esc(e.full_name||empName||'')+'<br>'+tz('(nume, semnătură)')+'</div></div>'
+    +'</div>';
+  const html=await pdfShell(tz('Act de primire-predare')+' — '+(e.full_name||empName||''), '📄 '+tz('ACT DE PRIMIRE-PREDARE'), inner);
+  try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e2){ toast(tz('Eroare la generare PDF.')); }
 }
 /* ── Pontajul angajatului (submodul) ── */
 async function empPontaj(empId, empName){
@@ -4134,7 +4204,7 @@ async function empPdf(empId){
   const w=pdfPrep(); if(!w) return;
   const [er,eqR,tsR,ssmR,lvR]=await Promise.all([
     sb.from('employees').select('*').eq('id',empId).maybeSingle(),
-    sb.from('employee_equipment').select('kind,item,qty,issued_at').eq('employee_id',empId).order('issued_at',{ascending:false}),
+    sb.from('employee_equipment').select('kind,item,qty,serial_no,issued_at,returned_at').eq('employee_id',empId).order('issued_at',{ascending:false}),
     sb.from('timesheets').select('work_date,hours,sites!site_id(name)').eq('employee_id',empId).order('work_date',{ascending:false}).limit(40),
     sb.from('ssm_records').select('kind,title,valid_until,status').eq('employee_id',empId),
     sb.from('employee_leaves').select('kind,start_date,end_date,days').eq('employee_id',empId)
@@ -4154,7 +4224,7 @@ async function empPdf(empId){
   info.push([tz('Cont aplicație'), e.user_id?tz('Are cont'):tz('Fără cont')]);
   if(fin){ if(e.hourly_rate!=null) info.push([tz('Tarif orar'), money(e.hourly_rate)]); if(e.monthly_rate!=null) info.push([tz('Salariu lunar'), money(e.monthly_rate)]); if(e.net_salary!=null) info.push([tz('Salariu net'), money(e.net_salary)]); }
   const ts=((tsR&&tsR.data)||[]); const totHours=ts.reduce((t,x)=>t+(+x.hours||0),0);
-  const eqTbl=pdfTbl([tz('Tip'),tz('Articol'),tz('Cant.'),tz('Data')], ((eqR&&eqR.data)||[]).map(x=>[esc(x.kind||'—'),esc(x.item||'—'),String(x.qty||1),esc(String(x.issued_at||'').slice(0,10))]));
+  const eqTbl=pdfTbl([tz('Tip'),tz('Articol'),tz('Cant.'),tz('Data'),tz('Status')], ((eqR&&eqR.data)||[]).map(x=>[esc(tz(EQUIP_KIND[x.kind]||x.kind||'—')),esc(x.item||'—')+(x.serial_no?' · '+esc(x.serial_no):''),String(x.qty||1),esc(String(x.issued_at||'').slice(0,10)),x.returned_at?('↩ '+tz('Returnat')):('📌 '+tz('În custodie'))]));
   const tsTbl=pdfTbl([tz('Data'),tz('Șantier'),tz('Ore')], ts.map(x=>[esc(String(x.work_date||'').slice(0,10)), esc((x.sites&&x.sites.name)||'—'), String(x.hours||0)]));
   const ssmTbl=pdfTbl([tz('Tip'),tz('Denumire'),tz('Valabil până'),tz('Stare')], ((ssmR&&ssmR.data)||[]).map(x=>[esc(x.kind||'—'),esc(x.title||'—'),esc(x.valid_until||'—'),st(x.status)]));
   const lvTbl=pdfTbl([tz('Tip'),tz('De la'),tz('Până la'),tz('Zile')], ((lvR&&lvR.data)||[]).map(x=>[esc(x.kind||'—'),esc(x.start_date||'—'),esc(x.end_date||'—'),String(x.days||'—')]));
