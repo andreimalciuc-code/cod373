@@ -5927,7 +5927,14 @@ async function renderSetari(){
     +'<div class="field"><label>🏖️ Drept concediu anual implicit (zile)</label><input id="set-defleave" type="number" step="any" value="'+esc(au.default_annual_leave!=null?au.default_annual_leave:'')+'" placeholder="ex: 28"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Se completează automat la angajații noi și se folosește ca implicit în raportul de concedii (poți seta altă valoare pe fiecare angajat).</div></div>'
     +'<div class="row-2"><div class="field"><label><span id="set-idno-lbl">'+esc((COUNTRY_PRESETS[f.country||'MD']||{}).idLabel||'IDNO / Cod fiscal')+'</span></label><input id="set-idno" value="'+esc(f.idno||'')+'"/></div>'
     +'<div class="field"><label>Telefon</label><input id="set-phone" value="'+esc(f.phone||'')+'"/></div></div>'
-    +'<div class="field"><label>Adresă</label><input id="set-addr" value="'+esc(f.address||'')+'"/></div>'
+    +'<div class="field"><label>'+tz('Adresă juridică (sediu principal)')+'</label><input id="set-addr" value="'+esc(f.address||'')+'"/></div>'
+    +'<div class="field"><label>👔 '+tz('Director / administrator')+'</label><input id="set-director" value="'+esc(au.director||'')+'" placeholder="'+esc(tz('ex: Andrei Popescu'))+'"/><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">'+tz('Apare în subsolul documentelor.')+'</div></div>'
+    +'<div class="field"><label>📍 '+tz('Alte adrese (birou, depozit…)')+'</label><div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+tz('Adresa juridică e cea de mai sus. Aici adaugi alte locații — apar în subsolul documentelor.')+'</div>'
+      +'<div id="set-addrs">'+(function(){ const al=Array.isArray(au.addresses)?au.addresses:[]; return al.map(a=>addrRowHtml(a)).join(''); })()+'</div>'
+      +'<button type="button" class="btn-ghost" onclick="addAddrRow()">＋ '+tz('adaugă adresă')+'</button></div>'
+    +'<div class="field"><label>☎️ '+tz('Alte telefoane / contacte (director, vânzări, suport, logistică…)')+'</label><div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+tz('Telefonul principal e cel de mai sus. Aici adaugi contacte pe roluri — apar în subsolul documentelor.')+'</div>'
+      +'<div id="set-contacts">'+(function(){ const cl=Array.isArray(au.contacts)?au.contacts:[]; return cl.map(c=>contactRowHtml(c)).join(''); })()+'</div>'
+      +'<button type="button" class="btn-ghost" onclick="addContactRow()">＋ '+tz('adaugă contact')+'</button></div>'
     +'<div class="field"><label>Țară / piață <span class="hint-i" title="Configurează automat moneda, TVA, eticheta codului fiscal, tipul de e-factură și mențiunea legală de pe documente, după regulile țării.">ⓘ</span></label>'
       +'<select id="set-country" onchange="applyCountryPreset(this.value)">'+Object.keys(COUNTRY_PRESETS).map(c=>'<option value="'+c+'" '+((f.country||'MD')===c?'selected':'')+'>'+COUNTRY_PRESETS[c].label+'</option>').join('')+'</select>'
       +'<div id="country-note" style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+(function(){ const p=COUNTRY_PRESETS[f.country||'MD']; return p?('Configurat pentru '+esc(p.label)+': monedă <b>'+esc(p.currency)+'</b> · TVA <b>'+(p.vatRates||[p.vat]).join('% / ')+'%</b> · cod fiscal <b>'+esc(p.idLabel)+'</b> · e-factură <b>'+esc(p.einvoice||'—')+'</b>'+(p.legal?'<br>📄 '+esc(p.legal):'')):''; })()+'</div>'
@@ -6067,6 +6074,22 @@ function bankRowHtml(a){ a=a||{}; return '<div class="bank-row" style="border:1p
   +'<div style="text-align:right;margin-top:.3rem"><button type="button" class="btn-ghost" style="color:var(--red)" onclick="this.closest(\'.bank-row\').remove()">🗑 '+tz('șterge cont')+'</button></div></div>'; }
 function addBankRow(){ const c=$('set-banks'); if(!c) return; c.insertAdjacentHTML('beforeend', bankRowHtml({})); }
 function readBankList(){ return Array.from(document.querySelectorAll('#set-banks .bank-row')).map(function(row){ const g=s=>{ const el=row.querySelector(s); return el?(el.value||'').trim():''; }; return { bank:g('.bk-bank'), iban:g('.bk-iban'), swift:g('.bk-swift'), note:g('.bk-note') }; }).filter(function(a){ return a.bank||a.iban||a.swift||a.note; }); }
+/* ── Editor adrese multiple (sediu/birou/depozit) → automations.addresses ── */
+function addrRowHtml(a){ a=a||{}; return '<div class="addr-row" style="border:1px solid var(--line);border-radius:8px;padding:.5rem;margin-bottom:.5rem">'
+  +'<div class="field" style="margin:0"><label>'+tz('Etichetă (ex: Sediu, Birou, Depozit)')+'</label><input class="ad-label" value="'+esc(a.label||'')+'" placeholder="'+esc(tz('ex: Depozit'))+'"/></div>'
+  +'<div class="field" style="margin:.3rem 0 0"><label>'+tz('Adresă')+'</label><input class="ad-addr" value="'+esc(a.address||'')+'" placeholder="str. Otovasca 1"/></div>'
+  +'<div class="row-2" style="margin-top:.3rem"><div class="field" style="margin:0"><label>'+tz('Cod poștal')+'</label><input class="ad-zip" value="'+esc(a.zip||'')+'"/></div>'
+  +'<div class="field" style="margin:0"><label>'+tz('Oraș')+'</label><input class="ad-city" value="'+esc(a.city||'')+'"/></div></div>'
+  +'<div style="text-align:right;margin-top:.3rem"><button type="button" class="btn-ghost" style="color:var(--red)" onclick="this.closest(\'.addr-row\').remove()">🗑 '+tz('șterge')+'</button></div></div>'; }
+function addAddrRow(){ const c=$('set-addrs'); if(!c) return; c.insertAdjacentHTML('beforeend', addrRowHtml({})); }
+function readAddrList(){ return Array.from(document.querySelectorAll('#set-addrs .addr-row')).map(function(r){ const g=s=>{const el=r.querySelector(s);return el?(el.value||'').trim():'';}; return {label:g('.ad-label'),address:g('.ad-addr'),zip:g('.ad-zip'),city:g('.ad-city')}; }).filter(a=>a.address||a.label); }
+/* ── Editor contacte pe roluri (director/vânzări/suport/logistică) → automations.contacts ── */
+function contactRowHtml(c){ c=c||{}; return '<div class="contact-row" style="border:1px solid var(--line);border-radius:8px;padding:.5rem;margin-bottom:.5rem"><div class="row-2">'
+  +'<div class="field" style="margin:0"><label>'+tz('Rol / etichetă')+'</label><input class="ct-label" value="'+esc(c.label||'')+'" placeholder="'+esc(tz('ex: Vânzări'))+'"/></div>'
+  +'<div class="field" style="margin:0"><label>'+tz('Telefon / email')+'</label><input class="ct-phone" value="'+esc(c.phone||'')+'" placeholder="+373 ..."/></div></div>'
+  +'<div style="text-align:right;margin-top:.3rem"><button type="button" class="btn-ghost" style="color:var(--red)" onclick="this.closest(\'.contact-row\').remove()">🗑 '+tz('șterge')+'</button></div></div>'; }
+function addContactRow(){ const c=$('set-contacts'); if(!c) return; c.insertAdjacentHTML('beforeend', contactRowHtml({})); }
+function readContactList(){ return Array.from(document.querySelectorAll('#set-contacts .contact-row')).map(function(r){ const g=s=>{const el=r.querySelector(s);return el?(el.value||'').trim():'';}; return {label:g('.ct-label'),phone:g('.ct-phone')}; }).filter(c=>c.phone); }
 async function saveSetari(){
   const name=$('set-name').value.trim(); if(!name){ showMsg('set-msg','Denumirea e obligatorie.'); return; }
   const patch={ name, idno:$('set-idno').value.trim()||null, phone:$('set-phone').value.trim()||null, address:$('set-addr').value.trim()||null,
@@ -6092,6 +6115,9 @@ async function saveSetari(){
   if($('set-zip')) au.zip=($('set-zip').value||'').trim()||null;
   if($('set-iban')) au.iban=($('set-iban').value||'').trim()||null;
   if($('set-bic')) au.bic=($('set-bic').value||'').trim()||null;
+  if($('set-director')) au.director=($('set-director').value||'').trim()||null;
+  if($('set-addrs')){ const al=readAddrList(); au.addresses=al.length?al:null; }
+  if($('set-contacts')){ const cl=readContactList(); au.contacts=cl.length?cl:null; }
   if($('set-lexoffice')) au.lexoffice_key=($('set-lexoffice').value||'').trim()||null;
   if($('set-sevdesk')) au.sevdesk_key=($('set-sevdesk').value||'').trim()||null;
   if($('set-anthropic')) au.anthropic_key=($('set-anthropic').value||'').trim()||null;

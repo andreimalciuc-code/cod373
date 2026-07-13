@@ -255,10 +255,18 @@ function prepayNote(total){
 }
 /* Subsol detaliat cu date de companie (stil sevdesk/lexoffice) — mărunt, 3 coloane */
 function companyFooterHtml(){ var T=window.C373t||function(s){return s;}; var f=S.firm||{}; var au=f.automations||{}; var s=au.social||{};
-  var name=(au.brand_name||f.name||''); var idLabel=au.id_label||'IDNO';
-  function col(title,lines){ lines=lines.filter(Boolean); if(!lines.length) return ''; return '<div style="flex:1;min-width:150px"><div style="font-weight:700;color:#334155;margin-bottom:2px">'+T(title)+'</div>'+lines.join('<br>')+'</div>'; }
-  var colFirma=col('Companie',[esc(name), f.address?esc(f.address):'', (au.zip||au.city)?esc([au.zip,au.city].filter(Boolean).join(' ')):'', f.country?esc(f.country):'']);
-  var colContact=col('Contact',[f.phone?(T('Tel:')+' '+esc(f.phone)):'', au.email?('✉ '+esc(au.email)):'', s.website?('🌐 '+esc(String(s.website).replace(/^https?:\/\//,''))):'']);
+  var legal=f.name||''; var brand=au.brand_name||''; var idLabel=au.id_label||'IDNO';
+  function col(title,lines){ lines=lines.filter(Boolean); if(!lines.length) return ''; return '<div style="flex:1;min-width:160px"><div style="font-weight:700;color:#334155;margin-bottom:2px">'+T(title)+'</div>'+lines.join('<br>')+'</div>'; }
+  function addrStr(a){ return [a.address,[a.zip,a.city].filter(Boolean).join(' ')].filter(Boolean).join(', '); }
+  var firmLines=[]; if(legal) firmLines.push('<b>'+esc(legal)+'</b>'); if(brand&&brand!==legal) firmLines.push(T('Marcă:')+' '+esc(brand));
+  if(au.director) firmLines.push(T('Director:')+' '+esc(au.director));
+  var prim=addrStr({address:f.address,zip:au.zip,city:au.city}); if(prim) firmLines.push(esc(prim));
+  (Array.isArray(au.addresses)?au.addresses:[]).forEach(function(a){ var line=addrStr(a); if(line) firmLines.push((a.label?('<b>'+esc(a.label)+':</b> '):'')+esc(line)); });
+  var colFirma=col('Companie', firmLines);
+  var contactLines=[]; if(f.phone) contactLines.push(T('Tel:')+' '+esc(f.phone));
+  (Array.isArray(au.contacts)?au.contacts:[]).forEach(function(c){ if(c.phone) contactLines.push((c.label?esc(c.label)+': ':'')+esc(c.phone)); });
+  if(au.email) contactLines.push('✉ '+esc(au.email)); if(s.website) contactLines.push('🌐 '+esc(String(s.website).replace(/^https?:\/\//,'')));
+  var colContact=col('Contact', contactLines);
   var bankLines=[]; if(Array.isArray(au.bank_list)&&au.bank_list.length){ bankLines=au.bank_list.slice(0,2).map(function(a){ return [a.bank?esc(a.bank):'', a.iban?('IBAN '+esc(a.iban)):'', a.swift?('BIC '+esc(a.swift)):''].filter(Boolean).join(' · '); }); }
   else if(au.iban){ bankLines=[('IBAN '+esc(au.iban)+(au.bic?(' · BIC '+esc(au.bic)):''))]; }
   var colFiscal=col('Date fiscale & bancă',[f.idno?(esc(idLabel)+': '+esc(f.idno)):'', au.vat_id?(T('Cod TVA')+': '+esc(au.vat_id)):''].concat(bankLines));
@@ -823,7 +831,7 @@ async function pdf(docType,inPlace){
        +(S.est.notes?'<div class="ft">'+esc(S.est.notes).replace(/\n/g,'<br>')+'</div>':'<div class="ft">'+T('Vă mulțumim!')+'</div>'));
   const doc='<!doctype html><html lang="'+L+'"><head><meta charset="utf-8"><title>'+esc(docTitle)+' '+esc(S.est.number||'')+'</title><style>'
     +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:32px;max-width:800px;margin:0 auto;font-size:13px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2f6bff;padding-bottom:16px;margin-bottom:20px}.ti{font-size:22px;font-weight:800;color:#2f6bff}.muted{color:#6b7793}.box{display:flex;gap:24px;margin:0 0 20px}.box>div{flex:1;background:#f4f6fb;border-radius:10px;padding:12px 14px}.box h4{font-size:11px;text-transform:uppercase;color:#6b7793;margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px 10px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}.tot{margin-top:16px;margin-left:auto;width:280px}.tot div{display:flex;justify-content:space-between;padding:5px 0}.tot .g{font-size:17px;font-weight:800;border-top:2px solid #0f1c33;margin-top:6px;padding-top:8px}.ft{margin-top:30px;color:#6b7793;font-size:11px;border-top:1px solid #e5e9f2;padding-top:12px}@media print{.noprint{display:none}tr{page-break-inside:avoid}}'
-    +'</style></head><body><div class="hd"><div>'+logo+'<div style="font-size:18px;font-weight:800">'+esc(brand||f.name||'Firma')+'</div>'+(brand?'<div class="muted" style="font-size:11px">'+T('Marca comercială a')+' '+esc(f.name||'')+'</div>':'')+'<div class="muted">'+(f.idno?esc(idLabel)+': '+esc(f.idno)+'<br>':'')+(f.address?esc(f.address)+'<br>':'')+(f.phone?T('Tel:')+' '+esc(f.phone):'')+'</div></div>'
+    +'</style></head><body><div class="hd"><div>'+logo+'<div style="font-size:18px;font-weight:800">'+esc(brand||f.name||'Firma')+'</div>'+(brand?'<div class="muted" style="font-size:11px">'+T('Marca comercială a')+' '+esc(f.name||'')+'</div>':'')+'<div class="muted">'+(f.idno?esc(idLabel)+': '+esc(f.idno)+'<br>':'')+(function(){var au=f.automations||{};var a=[f.address,[au.zip,au.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');return a?esc(a)+'<br>':'';})()+(f.phone?T('Tel:')+' '+esc(f.phone):'')+'</div></div>'
     +'<div style="text-align:right"><div class="ti">'+docTitle+'</div><div style="font-weight:700;font-size:15px">'+T('Nr.')+' '+esc(S.est.number||'—')+'</div><div class="muted">'+T('Data:')+' '+esc(fmtDate(S.est.issue_date))+((!isLiv&&S.est.valid_until)?'<br>'+T('Valabil până la:')+' '+esc(fmtDate(S.est.valid_until)):'')+'</div></div></div>'
     +'<div class="box"><div><h4>'+T('Furnizor')+'</h4><b>'+esc(brand||f.name||'')+'</b>'+(brand?'<div style="font-size:10px;color:#6b7793">'+T('Marca comercială a')+' '+esc(f.name||'')+'</div>':'')+'</div><div><h4>'+T('Client')+'</h4><b>'+esc(cl.name||'—')+'</b></div></div>'
     +'<table><thead>'+tabHead+'</thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
