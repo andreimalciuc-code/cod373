@@ -267,9 +267,9 @@ function companyFooterHtml(){ var T=window.C373t||function(s){return s;}; var f=
   (Array.isArray(au.contacts)?au.contacts:[]).forEach(function(c){ if(c.phone) contactLines.push((c.label?esc(c.label)+': ':'')+esc(c.phone)); });
   if(au.email) contactLines.push('✉ '+esc(au.email)); if(s.website) contactLines.push('🌐 '+esc(String(s.website).replace(/^https?:\/\//,'')));
   var colContact=col('Contact', contactLines);
-  var bankLines=[]; if(Array.isArray(au.bank_list)&&au.bank_list.length){ bankLines=au.bank_list.slice(0,2).map(function(a){ return [a.bank?esc(a.bank):'', a.iban?('IBAN '+esc(a.iban)):'', a.swift?('BIC '+esc(a.swift)):''].filter(Boolean).join(' · '); }); }
-  else if(au.iban){ bankLines=[('IBAN '+esc(au.iban)+(au.bic?(' · BIC '+esc(au.bic)):''))]; }
-  var colFiscal=col('Date fiscale & bancă',[f.idno?(esc(idLabel)+': '+esc(f.idno)):'', au.vat_id?(T('Cod TVA')+': '+esc(au.vat_id)):''].concat(bankLines));
+  var bankLines=[]; if(Array.isArray(au.bank_list)&&au.bank_list.length){ au.bank_list.slice(0,2).forEach(function(a){ if(a.bank) bankLines.push('<b>'+esc(a.bank)+'</b>'); if(a.iban) bankLines.push('<b>IBAN:</b> '+esc(a.iban)); if(a.swift) bankLines.push('<b>BIC:</b> '+esc(a.swift)); }); }
+  else if(au.iban){ bankLines.push('<b>IBAN:</b> '+esc(au.iban)); if(au.bic) bankLines.push('<b>BIC:</b> '+esc(au.bic)); }
+  var colFiscal=col('Date fiscale & bancă',[f.idno?('<b>'+esc(idLabel)+':</b> '+esc(f.idno)):'', au.vat_id?('<b>'+T('Cod TVA')+':</b> '+esc(au.vat_id)):''].concat(bankLines));
   var cols=[colFirma,colContact,colFiscal].filter(Boolean); if(!cols.length) return '';
   return '<div style="margin-top:22px;border-top:1px solid #e5e9f2;padding-top:8px;display:flex;gap:20px;flex-wrap:wrap;font-size:9px;line-height:1.5;color:#94a3b8">'+cols.join('')+'</div>'; }
 function skontoToggle(off){ S.est.skonto_off=!!off; render(); }
