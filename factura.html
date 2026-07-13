@@ -225,9 +225,9 @@ function companyFooterHtml(){ var T=window.C373t||function(s){return s;}; var f=
   function col(title,lines){ lines=lines.filter(Boolean); if(!lines.length) return ''; return '<div style="flex:1;min-width:160px"><div style="font-weight:700;color:#334155;margin-bottom:2px">'+T(title)+'</div>'+lines.join('<br>')+'</div>'; }
   function addrStr(a){ return [a.address,[a.zip,a.city].filter(Boolean).join(' ')].filter(Boolean).join(', '); }
   // Companie: denumirea JURIDICĂ (+marcă dacă diferă), director, adrese
-  var firmLines=[]; if(legal) firmLines.push('<b>'+esc(legal)+'</b>'); if(brand&&brand!==legal) firmLines.push(T('Marcă:')+' '+esc(brand));
-  if(au.director) firmLines.push(T('Director:')+' '+esc(au.director));
-  var prim=addrStr({address:f.address,zip:au.zip,city:au.city}); if(prim) firmLines.push(esc(prim));
+  var firmLines=[]; if(legal) firmLines.push('<b>'+esc(legal)+'</b>');
+  if(au.director) firmLines.push('<b>'+T('Director:')+'</b> '+esc(au.director));
+  var prim=addrStr({address:f.address,zip:au.zip,city:au.city}); if(prim) firmLines.push('<b>'+T('Adresă juridică:')+'</b> '+esc(prim));
   (Array.isArray(au.addresses)?au.addresses:[]).forEach(function(a){ var line=addrStr(a); if(line) firmLines.push((a.label?('<b>'+esc(a.label)+':</b> '):'')+esc(line)); });
   var colFirma=col('Companie', firmLines);
   // Contact: telefon principal + contacte pe roluri + email + website
