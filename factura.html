@@ -78,7 +78,7 @@ function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/
 const STATUS={draft:'Ciornă',sent:'Trimisă',paid:'Plătită',overdue:'Restantă',cancelled:'Anulată'};
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
-        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null,inv_type:'normal',contract_total:null,retention_pct:null,site_id:null,bank_choice:''},
+        inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null,inv_type:'normal',contract_total:null,retention_pct:null,site_id:null,bank_choice:'',amount_paid:null},
         lines:[], groups:[], clients:[], catalog:[], lineThumbs:{} };
 function gid(){ return 'g'+Date.now().toString(36)+Math.floor(Math.random()*1000); }
 function coDateFmt(){ return (S.firm&&S.firm.automations&&S.firm.automations.date_fmt)||'DD.MM.YYYY'; }
@@ -118,7 +118,11 @@ async function signLineThumbs(){
   try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) S.lineThumbs[paths[idx]]=x.signedUrl; }); }catch(e){}
   renderLines();
 }
-async function genNumber(){ try{ const { count }=await sb.from('invoices').select('id',{count:'exact',head:true}); return 'FAC-'+new Date().getFullYear()+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){ return 'FAC-'+new Date().getFullYear()+'-'+Math.floor(Math.random()*900+100); } }
+async function genNumber(){ const yr=new Date().getFullYear(); const pref='FAC-'+yr+'-';
+  // Următorul număr = MAX existent din anul curent + 1 (nu „count+1", care se dubla la ștergeri/goluri → eroare unique).
+  try{ const { data }=await sb.from('invoices').select('number').like('number',pref+'%').limit(10000);
+    let max=0; (data||[]).forEach(r=>{ const m=String(r.number||'').match(/(\d+)\s*$/); if(m){ const n=parseInt(m[1],10)||0; if(n>max) max=n; } });
+    return pref+String(max+1).padStart(4,'0'); }catch(e){ return pref+Math.floor(Math.random()*9000+1000); } }
 function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), disc:0, group:'', description:'', photo_url:null }; }
 
 async function loadCatalog(){
@@ -140,7 +144,7 @@ async function loadInvoice(id){
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
-    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:e.data.bank_choice||'', plan_url:e.data.plan_url||null };
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:e.data.bank_choice||'', amount_paid:(e.data.amount_paid!=null?+e.data.amount_paid:null), plan_url:e.data.plan_url||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   if(S.inv.inv_type!=='normal') loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
@@ -204,9 +208,27 @@ function prepayNote(total){
   const save=Math.round(total*pct/100*100)/100;
   return { pct:pct, save:save, after:Math.round((total-save)*100)/100 };
 }
-function firmBankLines(){ return ((S.firm&&S.firm.bank_accounts)||'').split(/\n+/).map(function(x){return x.trim();}).filter(Boolean); }
+/* Conturile bancare ale companiei — structurate (automations.bank_list = [{bank,iban,swift,note}]),
+   cu fallback la textul vechi (bank_accounts, un cont pe rând). Fiecare cont = O intrare (nu se mai
+   desparte pe câmpuri). */
+function firmBankAccounts(){ var au=(S.firm&&S.firm.automations)||{};
+  if(Array.isArray(au.bank_list)&&au.bank_list.length){ return au.bank_list.map(function(a,i){ var bank=(a.bank||'').trim(),iban=(a.iban||'').trim(),swift=(a.swift||'').trim(),note=(a.note||'').trim(); var label=[bank,iban].filter(Boolean).join(' · ')||('Cont '+(i+1)); return {id:'b'+i,bank:bank,iban:iban,swift:swift,note:note,label:label}; }); }
+  return ((S.firm&&S.firm.bank_accounts)||'').split(/\n+/).map(function(x){return x.trim();}).filter(Boolean).map(function(line,i){ return {id:'b'+i,bank:'',iban:'',swift:'',note:'',label:line,legacy:line}; }); }
+function firmBankLines(){ return firmBankAccounts().map(function(a){return a.label;}); }
 function setInvBank(v){ S.inv.bank_choice=v; }
-function bankTextForPdf(){ var lines=firmBankLines(); var ch=S.inv.bank_choice||''; if(ch==='__off') return ''; if(ch && lines.indexOf(ch)>-1) return ch; return lines.join('\n'); }
+function setAmountPaid(v){ S.inv.amount_paid=(v===''?null:+v); renderSummary(); }
+function bankBlockHtml(a){ if(a.legacy) return esc(a.legacy); var L=[]; if(a.bank) L.push('<b>'+esc(a.bank)+'</b>'); if(a.iban) L.push('IBAN: '+esc(a.iban)); if(a.swift) L.push('SWIFT/BIC: '+esc(a.swift)); if(a.note) L.push(esc(a.note)); return L.join('<br>'); }
+function bankTextForPdf(){ var accs=firmBankAccounts(); var ch=S.inv.bank_choice||''; if(ch==='__off') return ''; var sel=ch?accs.filter(function(a){return a.id===ch;}):accs; if(!sel.length) sel=accs; return sel.map(bankBlockHtml).join('<br><br>'); }
+/* Subsol detaliat cu date de companie (stil sevdesk/lexoffice) — mărunt, pe 3 coloane, sub linia documentului */
+function companyFooterHtml(){ var T=window.C373t||function(s){return s;}; var f=S.firm||{}; var au=f.automations||{}; var s=au.social||{};
+  var name=(au.brand_name||f.name||''); var idLabel=au.id_label||'IDNO';
+  function col(title,lines){ lines=lines.filter(Boolean); if(!lines.length) return ''; return '<div style="flex:1;min-width:150px"><div style="font-weight:700;color:#334155;margin-bottom:2px">'+T(title)+'</div>'+lines.join('<br>')+'</div>'; }
+  var colFirma=col('Companie',[esc(name), f.address?esc(f.address):'', (au.zip||au.city)?esc([au.zip,au.city].filter(Boolean).join(' ')):'', f.country?esc(f.country):'']);
+  var colContact=col('Contact',[f.phone?(T('Tel:')+' '+esc(f.phone)):'', au.email?('✉ '+esc(au.email)):'', s.website?('🌐 '+esc(String(s.website).replace(/^https?:\/\//,''))):'']);
+  var accs=firmBankAccounts(); var bankLines=accs.slice(0,2).map(function(a){ return a.legacy?esc(a.legacy):[a.bank?esc(a.bank):'', a.iban?('IBAN '+esc(a.iban)):'', a.swift?('BIC '+esc(a.swift)):''].filter(Boolean).join(' · '); });
+  var colFiscal=col('Date fiscale & bancă',[f.idno?(esc(idLabel)+': '+esc(f.idno)):'', au.vat_id?(T('Cod TVA')+': '+esc(au.vat_id)):''].concat(bankLines));
+  var cols=[colFirma,colContact,colFiscal].filter(Boolean); if(!cols.length) return '';
+  return '<div style="margin-top:22px;border-top:1px solid #e5e9f2;padding-top:8px;display:flex;gap:20px;flex-wrap:wrap;font-size:9px;line-height:1.5;color:#94a3b8">'+cols.join('')+'</div>'; }
 function skontoToggle(off){ S.inv.skonto_off=!!off; render(); }
 function skontoPct(v){ S.inv.skonto_pct=(v===''?null:+v); }
 /* ── facturare pe stadii (DE): Abschlag / Schluss + reținere garanție ── */
@@ -241,13 +263,14 @@ function render(){
       +'<div class="field"><label>Stare</label><select id="f-status" onchange="S.inv.status=this.value;render()">'+Object.keys(STATUS).map(k=>'<option value="'+k+'" '+(S.inv.status===k?'selected':'')+'>'+STATUS[k]+'</option>').join('')+'</select></div></div>'
       +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.inv.issue_date||'')+'" oninput="S.inv.issue_date=this.value"/></div>'
       +'<div class="field"><label>Scadență</label><input type="date" id="f-due" value="'+esc(S.inv.due_date||'')+'" oninput="S.inv.due_date=this.value"/></div></div>'
-      +(firmBankLines().length?(
+      +(firmBankAccounts().length?(
         '<div class="field"><label>🏦 Cont bancar pe factură</label><select id="f-bank" onchange="setInvBank(this.value)">'
           +'<option value="">Toate conturile companiei</option>'
-          +firmBankLines().map(function(b){ return '<option value="'+esc(b)+'"'+(S.inv.bank_choice===b?' selected':'')+'>'+esc(b)+'</option>'; }).join('')
+          +firmBankAccounts().map(function(a){ return '<option value="'+esc(a.id)+'"'+(S.inv.bank_choice===a.id?' selected':'')+'>'+esc(a.label)+'</option>'; }).join('')
           +'<option value="__off"'+(S.inv.bank_choice==='__off'?' selected':'')+'>✕ Nu afișa niciun cont</option>'
         +'</select></div>'
       ):'')
+      +'<div class="field"><label>💵 Sumă încasată / avans primit (opțional)</label><input id="f-paid" type="number" step="any" value="'+esc(S.inv.amount_paid!=null?S.inv.amount_paid:'')+'" oninput="setAmountPaid(this.value)" placeholder="ex: 5000 — apare „Achitat" și „Rest de plată""/></div>'
       +'<div style="border-top:1px dashed var(--line);margin-top:.5rem;padding-top:.6rem">'
         +'<div class="field"><label>🇩🇪 Tip factură (decontare pe stadii)</label><select id="f-invtype" onchange="setInvType(this.value)">'
           +'<option value="normal"'+(S.inv.inv_type==='normal'?' selected':'')+'>Factură normală</option>'
@@ -453,6 +476,12 @@ function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
       const billed=(S.inv.inv_type==='schluss')?t.total:((S._absch||[]).reduce((s,x)=>s+(+x.total||0),0)+t.total); const rest=Math.round((cg-billed)*100)/100;
       h+='<div class="sub" style="font-size:.76rem;margin-top:.45rem;border-top:1px dashed var(--line);padding-top:.4rem">📋 Contract (cu TVA): <b>'+money(cg)+'</b><br>Facturat (cu această factură): <b>'+money(billed)+'</b> · Rest de facturat: <b>'+money(Math.max(0,rest))+'</b></div>'; }
   }
+  // Sumă încasată / avans primit → Achitat + Rest de plată
+  const paid=+S.inv.amount_paid||0;
+  if(paid>0.005){ const baseDue=(S.inv.inv_type!=='normal'||S.inv.retention_pct>0)?deTotals().payable:t.total; const rest=Math.round((baseDue-paid)*100)/100;
+    h+='<div class="totrow"><span class="sub" style="color:var(--green)">💵 Achitat / avans încasat</span><b style="color:var(--green)">−'+money(paid)+'</b></div>';
+    h+='<div class="totrow g" style="border-top:2px solid var(--ink,#0f1c33)"><span>'+(rest>0.005?'Rest de plată':(rest<-0.005?'De rambursat':'Achitat integral'))+'</span><span>'+money(Math.abs(rest)<0.005?0:rest)+'</span></div>';
+  }
   const au=(S.firm&&S.firm.automations)||{};
   if(au.prepay_show!==false && S.inv.status!=='paid' && S.inv.inv_type==='normal'){
     if(S.inv.skonto_off){ h+='<div style="margin-top:.55rem;font-size:.74rem;color:var(--muted)">💸 Skonto dezactivat pe acest document · <a onclick="skontoToggle(false)" style="cursor:pointer;color:var(--primary)">reactivează</a></div>'; }
@@ -642,10 +671,20 @@ async function save(thenPdf){
     inv_type:S.inv.inv_type||'normal', contract_total:(S.inv.contract_total!=null&&S.inv.contract_total!==''?+S.inv.contract_total:null), retention_pct:(S.inv.retention_pct!=null&&S.inv.retention_pct!==''?+S.inv.retention_pct:null), bank_choice:(S.inv.bank_choice||null),
     groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
     disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0, materials_mode:S.inv.materials_mode||'detailed', skonto_off:!!S.inv.skonto_off, skonto_pct:(S.inv.skonto_pct!=null&&S.inv.skonto_pct!==''?+S.inv.skonto_pct:null),
-    subtotal:t.sub, vat_total:t.vat, total:t.total, plan_url:S.inv.plan_url||null };
+    subtotal:t.sub, vat_total:t.vat, total:t.total, amount_paid:(S.inv.amount_paid!=null&&S.inv.amount_paid!==''?+S.inv.amount_paid:null), plan_url:S.inv.plan_url||null };
   try{
-    if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id); if(u.error) throw u.error; }
-    else { const ins=await sb.from('invoices').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
+    if(S.id){ const u=await sb.from('invoices').update(rec).eq('id',S.id);
+      if(u.error){ if(u.error.code==='23505'||/duplicate key|invoices_tenant_id_number/i.test(u.error.message||'')){ $('btn-save').disabled=false; toast('Numărul „'+esc(S.inv.number)+'" există deja la altă factură. Schimbă numărul.'); return; } throw u.error; } }
+    else {
+      // Reîncearcă cu un număr nou dacă numărul se ciocnește (unique constraint) — ex. la generare concurentă sau după ștergeri.
+      let insId=null, tries=0, lastErr=null;
+      while(!insId && tries<6){ const ins=await sb.from('invoices').insert(rec).select('id').single();
+        if(!ins.error){ insId=ins.data.id; break; }
+        lastErr=ins.error;
+        if(ins.error.code==='23505'||/duplicate key|invoices_tenant_id_number/i.test(ins.error.message||'')){ tries++; rec.number=await genNumber(); S.inv.number=rec.number; const nel=$('f-num'); if(nel) nel.value=rec.number; }
+        else throw ins.error; }
+      if(!insId) throw (lastErr||new Error('Nu am putut genera un număr unic de factură.'));
+      S.id=insId; history.replaceState(null,'',base()+'factura.html?id='+S.id); }
     const del=await sb.from('invoice_items').delete().eq('invoice_id',S.id); if(del.error) throw del.error;
     // Verificăm că ștergerea chiar a avut loc — altfel inserarea ar dubla liniile (protecție anti-corupere).
     const chk=await sb.from('invoice_items').select('id',{count:'exact',head:true}).eq('invoice_id',S.id);
@@ -711,10 +750,12 @@ async function pdf(inPlace){
       +'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>'
       +'<div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div>'
       +(de?(((S.inv.inv_type==='schluss')?(S._absch||[]).map(function(x){return '<div><span>− '+T('Avans')+' '+esc(x.number||'')+'</span><b>−'+money(x.total)+'</b></div>';}).join(''):'')+(de.ret>0?'<div><span>− '+T('Reținere garanție')+' '+num2(S.inv.retention_pct)+'%</span><b>−'+money(de.ret)+'</b></div>':'')+'<div class="g"><span>'+(S.inv.inv_type==='schluss'?'Restbetrag / '+T('De plată acum'):T('De plată acum'))+':</span><span>'+money(de.payable)+'</span></div>'):'')
+      +(function(){ var paid=+S.inv.amount_paid||0; if(!(paid>0.005)) return ''; var baseDue=de?de.payable:t.total; var rest=Math.round((baseDue-paid)*100)/100; return '<div><span>'+T('Achitat / avans încasat:')+'</span><b>−'+money(paid)+'</b></div><div class="g"><span>'+(rest>0.005?T('Rest de plată:'):(rest<-0.005?T('De rambursat:'):T('Achitat integral')))+'</span><span>'+money(Math.abs(rest)<0.005?0:rest)+'</span></div>'; })()
       +'</div>'
     +(()=>{ const pn=prepayNote(t.total); return (pn&&S.inv.status!=='paid')?'<div style="margin-top:12px;margin-left:auto;width:380px;padding:11px 13px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:12px;color:#065f46;line-height:1.5">💸 '+T('La achitarea 100% în avans beneficiați de o reducere suplimentară de')+' <b>'+num2(pn.pct)+'%</b> '+T('din suma finală')+' ('+T('economisiți')+' <b>'+money(pn.save)+'</b>). '+T('Total cu avans:')+' <b>'+money(pn.after)+'</b></div>':''; })()
-    +(function(){ var bt=bankTextForPdf(); return bt?'<div style="margin-top:14px;font-size:12px;color:#0f1c33"><b>'+T('Date pentru plată:')+'</b><br>'+esc(bt).replace(/\n/g,'<br>')+'</div>':''; })()
+    +(function(){ var bt=bankTextForPdf(); return bt?'<div style="margin-top:14px;font-size:12px;color:#0f1c33"><b>'+T('Date pentru plată:')+'</b><br>'+bt+'</div>':''; })()
     +(legalNote?'<div class="muted" style="margin-top:10px;font-size:11px">'+esc(legalNote)+'</div>':'')
+    +companyFooterHtml()
     +'<div class="ft">'+T('Factură generată cu Cod373.')+' '+(S.inv.status==='paid'?T('ACHITATĂ.'):T('Vă rugăm achitați până la scadență.'))+'</div>'
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
     +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'

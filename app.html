@@ -5942,7 +5942,9 @@ async function renderSetari(){
     +'<div class="field"><label>Cod poștal</label><input id="set-zip" value="'+esc(au.zip||'')+'" placeholder="ex: 10115"/></div></div>'
     +'<div class="row-2"><div class="field"><label>IBAN</label><input id="set-iban" value="'+esc(au.iban||'')+'" placeholder="DE.. / MD.."/></div>'
     +'<div class="field"><label>BIC / SWIFT</label><input id="set-bic" value="'+esc(au.bic||'')+'"/></div></div>'
-    +'<div class="field"><label>🏦 Conturi bancare ale companiei</label><textarea id="set-bank" rows="3" placeholder="Ex: IBAN MD24AG0000... · Banca de Economii · SWIFT ...">'+esc(f.bank_accounts||'')+'</textarea><div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">Pre-setate aici; apar pe facturi (pentru plata clientului). Un cont pe rând.</div></div>'
+    +'<div class="field"><label>🏦 '+tz('Conturi bancare ale companiei')+'</label><div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+tz('Fiecare cont ca o intrare separată (banca + IBAN + SWIFT). Apar pe facturi/oferte ca date de plată.')+'</div>'
+      +'<div id="set-banks">'+(function(){ const bl=(Array.isArray(au.bank_list)&&au.bank_list.length)?au.bank_list:((f.bank_accounts||'').split(/\n+/).map(x=>x.trim()).filter(Boolean).map(line=>({bank:line,iban:'',swift:'',note:''}))); return (bl.length?bl:[{}]).map(a=>bankRowHtml(a)).join(''); })()+'</div>'
+      +'<button type="button" class="btn-ghost" onclick="addBankRow()">＋ '+tz('adaugă cont')+'</button></div>'
     +'<div class="row-2"><div class="field"><label>🌍 Fus orar <span class="hint-i" title="Folosit pentru „azi", calcule pe lună/săptămână și rapoarte — ca să nu depindă de fusul calculatorului fiecărui utilizator.">ⓘ</span></label>'
       +'<select id="set-tz">'+(function(){ const tzs=['Europe/Chisinau','Europe/Bucharest','Europe/Berlin','Europe/Vienna','Europe/Kyiv','Europe/Paris','Europe/Rome','Europe/Moscow','Europe/London','Europe/Madrid','Europe/Warsaw','UTC']; const cur=au.tz||'Europe/Chisinau'; const list=tzs.includes(cur)?tzs:[cur].concat(tzs); return list.map(z=>'<option value="'+z+'"'+(cur===z?' selected':'')+'>'+z.replace('Europe/','').replace('_',' ')+'</option>').join(''); })()+'</select></div>'
     +'<div class="field"><label>📅 Format dată</label><select id="set-datefmt">'+(function(){ const today=isoLocal(new Date()); const fmts=[['DD.MM.YYYY','zz.ll.aaaa'],['DD/MM/YYYY','zz/ll/aaaa'],['YYYY-MM-DD','aaaa-ll-zz'],['MM/DD/YYYY','ll/zz/aaaa']]; const cur=au.date_fmt||'DD.MM.YYYY'; return fmts.map(x=>'<option value="'+x[0]+'"'+(cur===x[0]?' selected':'')+'>'+x[1]+' (ex: '+(function(f,iso){const p=iso.split('-'),y=p[0],m=p[1],d=p[2];return f==='YYYY-MM-DD'?iso:f==='DD/MM/YYYY'?(d+'/'+m+'/'+y):f==='MM/DD/YYYY'?(m+'/'+d+'/'+y):(d+'.'+m+'.'+y);})(x[0],today)+')</option>').join(''); })()+'</select></div></div>'
@@ -6056,12 +6058,23 @@ async function deleteFirm(){
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   await sb.auth.signOut(); alert('Datele firmei au fost șterse definitiv.'); location.reload();
 }
+/* ── Editor conturi bancare (structurat → automations.bank_list) ── */
+function bankRowHtml(a){ a=a||{}; return '<div class="bank-row" style="border:1px solid var(--line);border-radius:8px;padding:.5rem;margin-bottom:.5rem">'
+  +'<div class="row-2"><div class="field" style="margin:0"><label>'+tz('Banca')+'</label><input class="bk-bank" value="'+esc(a.bank||'')+'" placeholder="'+esc(tz('Ex: MAIB / Sparkasse'))+'"/></div>'
+  +'<div class="field" style="margin:0"><label>'+tz('IBAN / cont')+'</label><input class="bk-iban" value="'+esc(a.iban||'')+'" placeholder="MD.. / DE.."/></div></div>'
+  +'<div class="row-2"><div class="field" style="margin:0"><label>SWIFT / BIC</label><input class="bk-swift" value="'+esc(a.swift||'')+'"/></div>'
+  +'<div class="field" style="margin:0"><label>'+tz('Notă (opțional)')+'</label><input class="bk-note" value="'+esc(a.note||'')+'" placeholder="'+esc(tz('ex: cont valutar EUR'))+'"/></div></div>'
+  +'<div style="text-align:right;margin-top:.3rem"><button type="button" class="btn-ghost" style="color:var(--red)" onclick="this.closest(\'.bank-row\').remove()">🗑 '+tz('șterge cont')+'</button></div></div>'; }
+function addBankRow(){ const c=$('set-banks'); if(!c) return; c.insertAdjacentHTML('beforeend', bankRowHtml({})); }
+function readBankList(){ return Array.from(document.querySelectorAll('#set-banks .bank-row')).map(function(row){ const g=s=>{ const el=row.querySelector(s); return el?(el.value||'').trim():''; }; return { bank:g('.bk-bank'), iban:g('.bk-iban'), swift:g('.bk-swift'), note:g('.bk-note') }; }).filter(function(a){ return a.bank||a.iban||a.swift||a.note; }); }
 async function saveSetari(){
   const name=$('set-name').value.trim(); if(!name){ showMsg('set-msg','Denumirea e obligatorie.'); return; }
   const patch={ name, idno:$('set-idno').value.trim()||null, phone:$('set-phone').value.trim()||null, address:$('set-addr').value.trim()||null,
-    vat_rate:Number($('set-vat').value)||20, currency:($('set-cur').value||'MDL').toUpperCase().slice(0,3), country:($('set-country')?$('set-country').value:null), vat_payer:$('set-vatp').checked, bank_accounts:($('set-bank')?($('set-bank').value||'').trim()||null:undefined) };
-  if(patch.bank_accounts===undefined) delete patch.bank_accounts;
+    vat_rate:Number($('set-vat').value)||20, currency:($('set-cur').value||'MDL').toUpperCase().slice(0,3), country:($('set-country')?$('set-country').value:null), vat_payer:$('set-vatp').checked };
   const au=Object.assign({}, state.firm.automations||{});
+  // Conturi bancare structurate → au.bank_list; păstrăm și textul vechi (bank_accounts) sincronizat, un cont pe rând (pentru consumatori vechi/fallback).
+  if($('set-banks')){ const bl=readBankList(); au.bank_list=bl.length?bl:null;
+    patch.bank_accounts = bl.length ? bl.map(a=>[a.bank,a.iban,a.swift].filter(Boolean).join(' · ')).join('\n') : null; }
   if($('set-brand')) au.brand_name=($('set-brand').value||'').trim()||null;
   if($('set-cobday')) au.company_birthday=$('set-cobday').value||null;
   if($('set-defleave')) au.default_annual_leave=($('set-defleave').value!==''?+$('set-defleave').value:null);

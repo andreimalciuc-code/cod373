@@ -127,7 +127,11 @@ async function signLineThumbs(){
   try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) S.lineThumbs[paths[idx]]=x.signedUrl; }); }catch(e){}
   renderLines();
 }
-async function genNumber(){ try{ const { count }=await sb.from('estimates').select('id',{count:'exact',head:true}); return 'OF-'+new Date().getFullYear()+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){ return 'OF-'+new Date().getFullYear()+'-'+Math.floor(Math.random()*900+100); } }
+async function genNumber(){ const yr=new Date().getFullYear(); const pref='OF-'+yr+'-';
+  // Următorul număr = MAX existent din anul curent + 1 (nu „count+1", care se dubla la ștergeri/goluri).
+  try{ const { data }=await sb.from('estimates').select('number').like('number',pref+'%').limit(10000);
+    let max=0; (data||[]).forEach(r=>{ const m=String(r.number||'').match(/(\d+)\s*$/); if(m){ const n=parseInt(m[1],10)||0; if(n>max) max=n; } });
+    return pref+String(max+1).padStart(4,'0'); }catch(e){ return pref+Math.floor(Math.random()*9000+1000); } }
 function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), disc:0, group:'', kind:'service', norm_code:null, description:'', photo_url:null }; }
 
 async function loadCatalog(){
@@ -249,6 +253,17 @@ function prepayNote(total){
   const save=Math.round(total*pct/100*100)/100;
   return { pct:pct, save:save, after:Math.round((total-save)*100)/100 };
 }
+/* Subsol detaliat cu date de companie (stil sevdesk/lexoffice) — mărunt, 3 coloane */
+function companyFooterHtml(){ var T=window.C373t||function(s){return s;}; var f=S.firm||{}; var au=f.automations||{}; var s=au.social||{};
+  var name=(au.brand_name||f.name||''); var idLabel=au.id_label||'IDNO';
+  function col(title,lines){ lines=lines.filter(Boolean); if(!lines.length) return ''; return '<div style="flex:1;min-width:150px"><div style="font-weight:700;color:#334155;margin-bottom:2px">'+T(title)+'</div>'+lines.join('<br>')+'</div>'; }
+  var colFirma=col('Companie',[esc(name), f.address?esc(f.address):'', (au.zip||au.city)?esc([au.zip,au.city].filter(Boolean).join(' ')):'', f.country?esc(f.country):'']);
+  var colContact=col('Contact',[f.phone?(T('Tel:')+' '+esc(f.phone)):'', au.email?('✉ '+esc(au.email)):'', s.website?('🌐 '+esc(String(s.website).replace(/^https?:\/\//,''))):'']);
+  var bankLines=[]; if(Array.isArray(au.bank_list)&&au.bank_list.length){ bankLines=au.bank_list.slice(0,2).map(function(a){ return [a.bank?esc(a.bank):'', a.iban?('IBAN '+esc(a.iban)):'', a.swift?('BIC '+esc(a.swift)):''].filter(Boolean).join(' · '); }); }
+  else if(au.iban){ bankLines=[('IBAN '+esc(au.iban)+(au.bic?(' · BIC '+esc(au.bic)):''))]; }
+  var colFiscal=col('Date fiscale & bancă',[f.idno?(esc(idLabel)+': '+esc(f.idno)):'', au.vat_id?(T('Cod TVA')+': '+esc(au.vat_id)):''].concat(bankLines));
+  var cols=[colFirma,colContact,colFiscal].filter(Boolean); if(!cols.length) return '';
+  return '<div style="margin-top:22px;border-top:1px solid #e5e9f2;padding-top:8px;display:flex;gap:20px;flex-wrap:wrap;font-size:9px;line-height:1.5;color:#94a3b8">'+cols.join('')+'</div>'; }
 function skontoToggle(off){ S.est.skonto_off=!!off; render(); }
 function skontoPct(v){ S.est.skonto_pct=(v===''?null:+v); }
 
@@ -813,6 +828,7 @@ async function pdf(docType,inPlace){
     +'<div class="box"><div><h4>'+T('Furnizor')+'</h4><b>'+esc(brand||f.name||'')+'</b>'+(brand?'<div style="font-size:10px;color:#6b7793">'+T('Marca comercială a')+' '+esc(f.name||'')+'</div>':'')+'</div><div><h4>'+T('Client')+'</h4><b>'+esc(cl.name||'—')+'</b></div></div>'
     +'<table><thead>'+tabHead+'</thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
     +totBlock+sigHtml
+    +(isLiv?'':companyFooterHtml())
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
     +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'
     +'<script>function zoom(s){var l=document.getElementById("lb");document.getElementById("lbimg").src=s;l.style.display="flex";}document.addEventListener("keydown",function(e){if(e.key==="Escape"){var l=document.getElementById("lb");if(l)l.style.display="none";}});<\/script>'
