@@ -42,6 +42,7 @@
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="i18n.js"></script>
 <script>
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
@@ -83,6 +84,8 @@ function renderLogin(){
     +'<label>Parolă</label>'+eyeWrap('a-pass')
     +'<button class="btn" id="a-btn" onclick="doLogin()">Intră</button>'
     +'<p class="alt"><a onclick="doMagic()">Intră cu link pe email</a> · <a onclick="doForgot()">Am uitat parola</a></p>'
+    +'<button class="btn btn-ghost" id="a-demo" onclick="doDemo()" style="margin-top:.7rem">🎬 <b>Încearcă demo</b></button>'
+    +'<div class="hint" style="text-align:center">Fără înregistrare — datele de probă se șterg automat după 7 zile.</div>'
     +(token?'<p class="alt"><a onclick="reInvite()">‹ Înapoi la invitație</a></p>':'');
   const p=$('a-pass'); if(p) p.setAttribute('autocomplete','current-password');
 }
@@ -126,6 +129,19 @@ async function doMagic(){ const id=($('a-id')&&$('a-id').value||'').trim(); if(!
 async function doForgot(){ const id=($('a-id')&&$('a-id').value||'').trim(); if(!id||!id.includes('@')){ msg('Scrie întâi emailul.'); return; }
   const { error }=await sb.auth.resetPasswordForEmail(id.toLowerCase(), { redirectTo: base()+'app.html' });
   msg(error?error.message:'📧 Ți-am trimis un link de resetare a parolei pe email.', error?'err':'ok');
+}
+
+/* Demo izolat: sesiune anonimă + firmă demo cu date de probă (RPC start_demo).
+   Dacă „Anonymous sign-ins" e oprit în Supabase, afișăm un mesaj prietenos. */
+async function doDemo(){
+  const b=$('a-demo'); if(b&&b.disabled) return; if(b) b.disabled=true;
+  msg('Se pregătește contul demo…','ok');
+  const r=await sb.auth.signInAnonymously();
+  if(r.error){ if(b) b.disabled=false;
+    msg(/anonymous|disabled|not enabled/i.test(r.error.message||'')?'Demo indisponibil momentan. Încearcă mai târziu sau creează un cont.':r.error.message); return; }
+  const { error }=await sb.rpc('start_demo',{ p_lang:(window.C373lang?C373lang():'ro')||'ro' });
+  if(error){ if(b) b.disabled=false; msg('Nu am putut porni demo. Încearcă din nou.'); try{ await sb.auth.signOut(); }catch(e){} return; }
+  location.replace('app.html');
 }
 
 async function finish(){
