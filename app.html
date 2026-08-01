@@ -492,7 +492,7 @@ async function doLogin(){
   if(error){ showMsg('login-msg',error.message); return; }
   await boot();
 }
-async function doLogout(){ const m=(typeof isDemo==='function'&&isDemo())?'Ești în cont demo — după ieșire nu te mai poți întoarce la aceste date. Continui?':'Sigur vrei să ieși din cont?'; if(!confirm(window.C373t?C373t(m):m)) return; try{ localStorage.removeItem('c373_sessOnly'); }catch(e){} await sb.auth.signOut(); location.reload(); }
+async function doLogout(){ const m=(typeof isDemo==='function'&&isDemo())?'Ești în cont demo — după ieșire nu te mai poți întoarce la aceste date. Continui?':'Sigur vrei să ieși din cont?'; if(!confirm(window.C373t?C373t(m):m)) return; try{ localStorage.removeItem('c373_sessOnly'); }catch(e){} try{ mediaCacheReset(); }catch(e){} await sb.auth.signOut(); location.reload(); }
 /* „Ține-mă minte" — implicit DA (sesiunea persistă). Dacă e debifat → delogare la închiderea browserului. */
 function rememberFlag(){ try{ const c=$('login-remember'); const remember=c?c.checked:true; if(remember){ localStorage.removeItem('c373_sessOnly'); } else { localStorage.setItem('c373_sessOnly','1'); } sessionStorage.setItem('c373_sessAlive','1'); }catch(e){} }
 async function sessGuard(){ try{
@@ -1301,11 +1301,109 @@ function canSee(key){
   return true;
 }
 
+/* ════ MEDIA SEMNAT + VARIANTE TRANSFORMATE (Lot A1 egress) ════
+   UN SINGUR punct de generare a URL-urilor media din bucketul privat `docs`.
+   - Variantele folosesc Image Transformations (activ pe proiect); originalul se dă
+     DOAR la cerere explicită (descărcare/print/filă nouă).
+   - Cache-ul e EXCLUSIV în memorie și reutilizează EXACT același signed URL
+     (Smart CDN poate servi din cache doar dacă URL-ul e identic); TTL-ul de cache
+     e sub expirarea semnăturii; cheia include user+tenant+bucket+path+variantă;
+     se golește la logout/schimbare de cont și nu supraviețuiește reload-ului. */
+const MEDIA_VARIANTS={
+  avatar:  { width:96,  height:96, resize:'cover',   quality:60 },
+  thumb:   { width:360,             resize:'contain', quality:65 },
+  preview: { width:800,             resize:'contain', quality:70 },
+  lightbox:{ width:1400,            resize:'contain', quality:75 },
+  original:null
+};
+const MEDIA_SIGN_TTL=3600;            /* valabilitatea semnăturii (s) */
+const MEDIA_CACHE_TTL=3000*1000;      /* cache memorie (ms) — sub expirare */
+let _mediaCache=new Map();            /* rezultate REUȘITE: cheie → {url,exp} */
+let _mediaInflight=new Map();         /* dedup cereri simultane: cheie → Promise<url> */
+let _mediaGen=0;                      /* epocă: reset o incrementează → rezultatele „vechi" nu repopulează cache-ul nou */
+function mediaCacheReset(){ _mediaCache=new Map(); _mediaInflight=new Map(); _mediaGen++; }
+/* GIF e transformabil (format sursă ȘI rezultat). HEIC = format SURSĂ suportat (rezultat jpeg/webp).
+   HEIF nu e garantat de documentație → best-effort: dacă transformarea eșuează, placeholder (fără original). */
+function _mediaIsImg(p){ return /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i.test(p||''); }
+function _mediaKey(path, vkey){ const uid=(state.session&&state.session.user&&state.session.user.id)||'-'; return uid+'|'+(state.tenant||'-')+'|docs|'+path+'|'+vkey; }
+/* status HTTP real al erorii (preferă statusCode = codul HTTP; status poate fi 400 chiar și pt 404) */
+function _mediaStatus(e){ const sc=e&&(e.statusCode!=null?e.statusCode:e.status); const n=parseInt(sc,10); return isNaN(n)?null:n; }
+/* Tranzitoriu = merită UN retry: eroare de rețea (fără status) sau HTTP 408/429/5xx.
+   Permanent/autorizare (400/401/403/404/415/…) → NU se reîncearcă. */
+function _mediaIsTransient(e){
+  if(!e) return false;
+  const n=_mediaStatus(e);
+  if(n==null){ const msg=String((e&&e.message)||e||''); return (e instanceof TypeError) || /network|fetch|timeout|failed to fetch|load failed|connection/i.test(msg); }
+  return n===408 || n===429 || (n>=500 && n<=599);
+}
+/* dedup + cache cu epocă. `doSign` rulează o SINGURĂ dată per cheie chiar și la N apeluri simultane.
+   Dacă epoca s-a schimbat între pornirea requestului și rezolvare (logout / schimbare user / schimbare
+   tenant / reboot), rezultatul e considerat „vechi": NU se cache-uiește ȘI NU se returnează URL-ul
+   (întoarce '') — ca un callback întârziat să nu poată injecta în DOM o imagine semnată din sesiunea/
+   tenantul anterior. `finally` șterge intrarea inflight doar dacă epoca coincide, ca să nu doboare o
+   intrare inflight creată ulterior pentru aceeași cheie. Regula se aplică și lui mediaUrl(), și lui
+   fileUrlOriginal() (ambele trec prin acest helper). */
+function _mediaResolve(k, doSign){
+  const hit=_mediaCache.get(k); if(hit && hit.exp>Date.now()) return Promise.resolve(hit.url);
+  const infl=_mediaInflight.get(k); if(infl) return infl;
+  const gen=_mediaGen;
+  const p=(async()=>{
+    const url=await doSign();
+    if(gen!==_mediaGen) return '';                 /* sesiune/tenant schimbat → aruncă URL-ul vechi */
+    if(url) _mediaCache.set(k,{url, exp:Date.now()+MEDIA_CACHE_TTL});
+    return url;
+  })().finally(()=>{ if(gen===_mediaGen) _mediaInflight.delete(k); });
+  _mediaInflight.set(k,p);
+  return p;
+}
+/* semnează un fișier ORIGINAL (fără transformare): PDF/video/audio + descărcarea EXPLICITĂ a imaginii.
+   opts poate conține {download:name} pentru forțarea descărcării. */
+function fileUrlOriginal(path, opts){
+  if(!path) return Promise.resolve('');
+  const k=_mediaKey(path,'original'+(opts&&opts.download?'|dl':''));
+  return _mediaResolve(k, async()=>{
+    try{ const { data, error }=await sb.storage.from('docs').createSignedUrl(path, MEDIA_SIGN_TTL, opts&&opts.download?{download:opts.download}:undefined); if(error) throw error; return (data&&data.signedUrl)||''; }
+    catch(e){ return ''; }
+  });
+}
+/* URL pentru o IMAGINE TRANSFORMATĂ. NU semnează NICIODATĂ originalul.
+   - eroare TRANZITORIE (rețea / 408 / 429 / 5xx) → UN singur retry controlat, apoi placeholder.
+   - eroare PERMANENTĂ / autorizare (400/401/403/404/415/…) → placeholder imediat, fără retry.
+   - non-imagine (audio/video/doc dintr-o listă mixtă) sau variant 'original' → deleagă la fileUrlOriginal. */
+async function mediaUrl(path, variant){
+  if(!path) return '';
+  if(variant==='original') return fileUrlOriginal(path);
+  const tr=MEDIA_VARIANTS[variant];
+  if(!tr || !_mediaIsImg(path)) return fileUrlOriginal(path); /* non-imagine în listă mixtă → original */
+  const k=_mediaKey(path, variant);
+  return _mediaResolve(k, async()=>{
+    for(let attempt=0; attempt<2; attempt++){
+      try{
+        const { data, error }=await sb.storage.from('docs').createSignedUrl(path, MEDIA_SIGN_TTL, {transform:tr});
+        if(error) throw error;
+        return (data&&data.signedUrl)||'';
+      }catch(e){
+        if(attempt===0 && _mediaIsTransient(e)){ await new Promise(r=>setTimeout(r,350)); continue; } /* doar tranzitoriu → un retry */
+        return '';                                     /* permanent SAU retry epuizat → placeholder (NU original) */
+      }
+    }
+    return '';
+  });
+}
+async function mediaUrls(paths, variant){ return Promise.all((paths||[]).map(p=>mediaUrl(p,variant))); }
+async function mediaMap(paths, variant){ const uniq=[...new Set((paths||[]).filter(Boolean))]; const urls=await mediaUrls(uniq,variant); const m={}; uniq.forEach((p,i)=>{ if(urls[i]) m[p]=urls[i]; }); return m; }
+const MEDIA_IMG_ATTRS='loading="lazy" decoding="async" fetchpriority="low"';        /* liste/grile (lazy OK) */
+const MEDIA_IMG_ATTRS_EAGER='loading="eager" decoding="sync" fetchpriority="high"'; /* PDF/print (trebuie randate imediat) */
+/* Script injectat în fereastra de PDF/print: NU printează înainte ca toate imaginile să fie
+   hidratate (decode + load/error + timeout 8s). Dezactivează butonul de print până sunt gata
+   și raportează câte imagini NU s-au încărcat. Se scrie ca ultim element din <body>. */
+const PDF_HYDRATE_SCRIPT='<scr'+'ipt>(function(){var imgs=[].slice.call(document.images);var btn=document.querySelector("[data-printbtn]");if(btn){btn.disabled=true;btn.dataset.lbl=btn.textContent;btn.textContent="\\u23F3 \\u2026";}function ready(){if(btn){btn.disabled=false;if(btn.dataset.lbl)btn.textContent=btn.dataset.lbl;}}if(!imgs.length){ready();return;}function w(im){return new Promise(function(res){if(im.complete&&im.naturalWidth>0)return res(true);var done=false,to=setTimeout(function(){if(!done){done=true;res(false);}},8000);function fin(ok){if(done)return;done=true;clearTimeout(to);res(ok);}if(im.decode){im.decode().then(function(){fin(true);}).catch(function(){});}im.addEventListener("load",function(){fin(true);});im.addEventListener("error",function(){fin(false);});});}Promise.all(imgs.map(w)).then(function(rs){ready();var f=rs.filter(function(x){return !x;}).length;if(f>0){var b=document.createElement("div");b.className="noprint";b.textContent="\\u26A0\\uFE0F "+f+" imagini nu s-au \\u00eenc\\u0103rcat \\u2014 verific\\u0103 conexiunea \\u0219i re\\u00eencarc\\u0103.";b.style.cssText="background:#fef2f2;color:#991b1b;border:1px solid #f6c9c9;border-radius:8px;padding:8px 12px;margin:10px 0;font-size:13px";document.body.insertBefore(b,document.body.firstChild);}});})();<\/scr'+'ipt>';
+
 /* ════ LOGO FIRMĂ ════ */
-async function firmLogoUrl(secs){ const p=state.firm&&state.firm.logo_url; if(!p) return ''; try{ const { data }=await sb.storage.from('docs').createSignedUrl(p, secs||3600); return (data&&data.signedUrl)||''; }catch(e){ return ''; } }
+async function firmLogoUrl(){ const p=state.firm&&state.firm.logo_url; if(!p) return ''; return mediaUrl(p,'thumb'); }
 async function setHeaderLogo(path){
   const img=$('co-logo'), av=$('co-avatar'); if(!img) return;
-  if(path){ try{ const { data }=await sb.storage.from('docs').createSignedUrl(path, 86400); if(data&&data.signedUrl){ img.src=data.signedUrl; img.style.display=''; if(av) av.style.display='none'; return; } }catch(e){} }
+  if(path){ try{ const u=await mediaUrl(path,'thumb'); if(u){ img.src=u; img.style.display=''; if(av) av.style.display='none'; return; } }catch(e){} }
   img.style.display='none'; if(av) av.style.display='';
 }
 
@@ -1355,6 +1453,7 @@ function bootError(msg){
 }
 async function boot(){
   applyPrefs();
+  mediaCacheReset(); /* orice (re)boot = sesiune/tenant potențial schimbat → golim cache-ul media în memorie */
   await sessGuard();
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen(location.hash==='#signup'?'signup':'login'); if(location.hash==='#signup'){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} } maybeShowInvite(); hideSplash(); return; }
@@ -1521,7 +1620,7 @@ async function loadUserPrefs(){
 }
 async function setUserAvatar(path){
   const av=$('user-av'); if(!av) return;
-  if(path){ try{ const { data }=await sb.storage.from('docs').createSignedUrl(path,86400); if(data&&data.signedUrl){ av.style.backgroundImage='url('+data.signedUrl+')'; av.style.backgroundSize='cover'; av.style.backgroundPosition='center'; av.textContent=''; return; } }catch(e){} }
+  if(path){ try{ const u=await mediaUrl(path,'avatar'); if(u){ av.style.backgroundImage='url('+u+')'; av.style.backgroundSize='cover'; av.style.backgroundPosition='center'; av.textContent=''; return; } }catch(e){} }
   av.style.backgroundImage=''; av.textContent=((state.session&&state.session.user.email[0])||'A').toUpperCase();
 }
 async function saveUserPrefs(patch){
@@ -1559,9 +1658,9 @@ function pzAvatarPick(){
 async function pzAvatarDel(){ await saveUserPrefs({avatar_url:null}); setUserAvatar(null); openPersonalize(); }
 function pzInitMedia(){
   const ad=document.getElementById('pz-av'); const up=state.uprefs||{};
-  if(ad){ if(up.avatar_url){ sb.storage.from('docs').createSignedUrl(up.avatar_url,86400).then(({data})=>{ const e=document.getElementById('pz-av'); if(e&&data&&data.signedUrl){ e.style.backgroundImage='url('+data.signedUrl+')'; e.textContent=''; } }); } else { ad.textContent=((state.session&&state.session.user.email[0])||'A').toUpperCase(); } }
+  if(ad){ if(up.avatar_url){ mediaUrl(up.avatar_url,'avatar').then(u=>{ const e=document.getElementById('pz-av'); if(e&&u){ e.style.backgroundImage='url('+u+')'; e.textContent=''; } }); } else { ad.textContent=((state.session&&state.session.user.email[0])||'A').toUpperCase(); } }
   const sp=document.getElementById('pz-sig-prev');
-  if(sp&&up.signature_url){ sb.storage.from('docs').createSignedUrl(up.signature_url,86400).then(({data})=>{ const e=document.getElementById('pz-sig-prev'); if(e&&data&&data.signedUrl){ e.innerHTML='<img src="'+data.signedUrl+'" style="max-height:70px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px" title="'+esc(tz('Semnătura mea'))+'">'; } }); }
+  if(sp&&up.signature_url){ mediaUrl(up.signature_url,'preview').then(u=>{ const e=document.getElementById('pz-sig-prev'); if(e&&u){ e.innerHTML='<img src="'+u+'" style="max-height:70px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px" title="'+esc(tz('Semnătura mea'))+'">'; } }); }
   pzSigInit();
 }
 /* ════ NOTIFICĂRI PUSH (Web Push) ════ */
@@ -2267,7 +2366,7 @@ async function renderInbox(){
   if(!rows.length){ $('inbox-body').innerHTML='<div class="empty" style="padding:2rem;text-align:center;color:var(--muted)"><div style="font-size:2rem">📭</div>'+(arch?esc(tz('Nimic arhivat.')):esc(tz('Nimic primit încă.'))+'<br><span style="font-size:.85rem">'+esc(tz('Conectează Telegram/WhatsApp din Setări → Mesagerie.'))+'</span>')+'</div>'; return; }
   // semnează toate fișierele + ia clienții pentru afișare
   const paths=[]; rows.forEach(x=>(x.media||[]).forEach(p=>{ if(paths.indexOf(p)<0) paths.push(p); }));
-  const um={}; if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((s,i)=>{ if(s&&s.signedUrl) um[paths[i]]=s.signedUrl; }); }catch(e){} }
+  const um=await mediaMap(paths,'thumb'); /* grilă 74×74 → miniatură, nu originalul */
   const cl=(await sb.from('clients').select('id,name')).data||[]; const cn={}; cl.forEach(c=>cn[c.id]=c.name);
   const bar='<div id="inbox-bar" style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.55rem 1rem;background:var(--surface);border-bottom:1px solid var(--line)">'
     +'<label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="inbox-all" onchange="inboxSelAll(this.checked)" style="width:18px;height:18px"/> <span>'+esc(tz('Selectează tot'))+'</span></label>'
@@ -2280,7 +2379,7 @@ async function renderInbox(){
   const cards=rows.map(x=>{
     const ch=x.channel==='whatsapp'?'🟢 WhatsApp':'✈️ Telegram';
     const when=esc(String(x.created_at||'').slice(0,16).replace('T',' '));
-    const media=(x.media||[]).map(p=>{ const u=um[p]||''; if(isVideoPath(p)) return '<div onclick="caOpenVideo(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;border-radius:9px;background:#0f1c33;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1.5rem" title="video">▶</div>'; return u?'<img src="'+esc(u)+'" onclick="openImg(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;object-fit:cover;border-radius:9px;border:1px solid var(--line);cursor:zoom-in"/>':''; }).join('');
+    const media=(x.media||[]).map(p=>{ const u=um[p]||''; if(isVideoPath(p)) return '<div onclick="caOpenVideo(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;border-radius:9px;background:#0f1c33;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1.5rem" title="video">▶</div>'; return u?'<img src="'+esc(u)+'" '+MEDIA_IMG_ATTRS+' onclick="openImg(\''+encodeURIComponent(p)+'\')" style="width:74px;height:74px;object-fit:cover;border-radius:9px;border:1px solid var(--line);cursor:zoom-in"/>':''; }).join('');
     const matched=x.client_id?('<span class="pill active" style="background:var(--primary);color:#fff;border-radius:20px;padding:.1rem .5rem;font-size:.72rem">🤝 '+esc(cn[x.client_id]||tz('client'))+'</span>'):'';
     return '<div class="card" style="margin:.6rem 1rem;padding:.8rem;border:1px solid var(--line);border-radius:12px;background:var(--surface)">'
       +'<div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center">'
@@ -2496,7 +2595,7 @@ async function tcLoad(scroll){
   const msgs=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?-1:(a.created_at>b.created_at?1:0))).slice(-80);
   if(!msgs.length){ el.innerHTML='<div class="empty" style="margin:auto;color:var(--muted)">💬 Niciun mesaj încă. Scrie primul!</div>'; return; }
   const paths=[]; msgs.forEach(m=>(m.attachments||[]).forEach(p=>paths.push(p)));
-  const urlMap={}; if(paths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((x,i)=>{ if(x&&x.signedUrl) urlMap[paths[i]]=x.signedUrl; }); }catch(e){} }
+  const urlMap=await mediaMap(paths,'preview'); /* imagini inline ≤200px → preview; audio/video/doc → original (fallthrough) */
   const me=state.session.user.id;
   el.innerHTML=msgs.map(m=>{ const mine=m.user_id===me; const t=(m.created_at||'').slice(11,16);
     const atts=(m.attachments||[]).map(p=>tcAttHtml(p,urlMap[p])).join('');
@@ -2880,9 +2979,9 @@ async function vehicleLog(vid, vlabel){
   const vr=await sb.from('vehicles').select('photos,photo_url').eq('id',vid).maybeSingle();
   const cover=vr.data&&vr.data.photo_url; const photos=((vr.data&&vr.data.photos)||[]).slice();
   const allP=(cover?[cover]:[]).concat(photos); const urlMap={};
-  if(allP.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(allP,3600); (su.data||[]).forEach((x,i)=>{ if(x&&x.signedUrl) urlMap[allP[i]]=x.signedUrl; }); }catch(e){} }
+  Object.assign(urlMap, await mediaMap(allP,'thumb')); /* grilă 88×88 → miniatură; lightbox re-rezolvă din path */
   const _vgid=galReg(allP);
-  const galThumb=(p,isCover)=>'<div style="position:relative;width:88px;height:88px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:var(--bg)">'+(urlMap[p]?'<img src="'+urlMap[p]+'" onclick="openGalleryId(\''+_vgid+'\','+allP.indexOf(p)+')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in">':'')+(isCover?'<span style="position:absolute;left:3px;top:3px;background:#2f6bff;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">principală</span>':'')+((canD&&!isCover)?'<button onclick="vehPhotoDel(\''+vid+'\',\''+encodeURIComponent(p)+'\',\''+jsArg(vlabel)+'\')" title="Șterge poza" style="position:absolute;right:2px;top:2px;background:rgba(220,38,38,.92);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:13px;line-height:1">×</button>':'')+'</div>';
+  const galThumb=(p,isCover)=>'<div style="position:relative;width:88px;height:88px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:var(--bg)">'+(urlMap[p]?'<img src="'+urlMap[p]+'" '+MEDIA_IMG_ATTRS+' onclick="openGalleryId(\''+_vgid+'\','+allP.indexOf(p)+')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in">':'')+(isCover?'<span style="position:absolute;left:3px;top:3px;background:#2f6bff;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">principală</span>':'')+((canD&&!isCover)?'<button onclick="vehPhotoDel(\''+vid+'\',\''+encodeURIComponent(p)+'\',\''+jsArg(vlabel)+'\')" title="Șterge poza" style="position:absolute;right:2px;top:2px;background:rgba(220,38,38,.92);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:13px;line-height:1">×</button>':'')+'</div>';
   const galHtml='<div style="margin-bottom:.9rem"><div style="font-weight:700;margin-bottom:.45rem">📷 Poze vehicul</div><div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(cover?galThumb(cover,true):'')+photos.map(p=>galThumb(p,false)).join('')+(canU?'<label class="btn-ghost" style="cursor:pointer;display:flex;align-items:center;justify-content:center;width:88px;height:88px;border:1px dashed var(--line);border-radius:9px;font-size:1.3rem">📤<input type="file" accept="image/*" multiple style="display:none" onchange="vehPhotoAdd(\''+vid+'\',\''+jsArg(vlabel)+'\',this)"/></label>':'')+((!cover&&!photos.length&&!canU)?'<span style="color:var(--muted);font-size:.85rem">Nicio poză.</span>':'')+'</div></div>';
   const kindOpts=Object.keys(VLOG_KIND).map(k=>'<option value="'+k+'">'+esc(VLOG_KIND[k])+'</option>').join('');
   const addForm=canU?('<div style="border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem"><div style="font-weight:700;margin-bottom:.5rem">＋ Adaugă lucrare</div>'
@@ -4186,14 +4285,14 @@ async function clientPdf(id){
     +sec('🧾 '+tz('Facturi'), ((ir&&ir.data)||[]).length?invTbl:'')
     +sec('🏗️ '+tz('Șantiere'), ((srr&&srr.data)||[]).length?siteTbl:'')
     +sec('🗒️ '+tz('Jurnal interacțiuni'), jr)
-    +'<div class="noprint" style="margin-top:1.6rem;text-align:center"><button onclick="window.print()" style="padding:10px 22px;font-size:14px;cursor:pointer;background:#2f6bff;color:#fff;border:none;border-radius:8px">🖨️ '+esc(tz('Printează / Salvează PDF'))+'</button></div>'
-    +'</body></html>';
+    +'<div class="noprint" style="margin-top:1.6rem;text-align:center"><button data-printbtn onclick="window.print()" style="padding:10px 22px;font-size:14px;cursor:pointer;background:#2f6bff;color:#fff;border:none;border-radius:8px">🖨️ '+esc(tz('Printează / Salvează PDF'))+'</button></div>'
+    +PDF_HYDRATE_SCRIPT+'</body></html>';
   try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){ toast(tz('Eroare la generare PDF.')); }
 }
 /* ── helperi PDF partajați (fișă șantier / angajat) ── */
 function pdfTbl(heads,rows){ return rows.length? ('<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>'+heads.map(h=>'<th style="text-align:left;color:#64748b;font-weight:600;padding:.3rem .4rem;border-bottom:1px solid #e5e9f2">'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td style="padding:.3rem .4rem;border-bottom:1px solid #f0f2f7">'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>') : '<div style="color:#94a3b8;font-size:.85rem">—</div>'; }
 function pdfSec(title,inner){ return inner? ('<h2 style="font-size:1rem;margin:1.4rem 0 .5rem;border-bottom:2px solid #e5e9f2;padding-bottom:.25rem">'+esc(title)+'</h2>'+inner) : ''; }
-async function pdfSignMap(paths){ const uniq=[]; (paths||[]).forEach(p=>{ if(p&&uniq.indexOf(p)<0) uniq.push(p); }); const map={}; if(uniq.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(uniq,3600); (su.data||[]).forEach((s,i)=>{ if(s&&s.signedUrl) map[uniq[i]]=s.signedUrl; }); }catch(e){} } return map; }
+async function pdfSignMap(paths){ return mediaMap(paths,'preview'); /* fișe PDF: imagini la 800px; video → original (poster) prin fallthrough */ }
 /* extrage un cadru (poster) dintr-un video pt PDF — fallback null dacă nu merge (CORS/timeout) */
 function videoPoster(url){ return new Promise(function(resolve){ try{
   const v=document.createElement('video'); v.crossOrigin='anonymous'; v.muted=true; v.preload='metadata'; v.playsInline=true; v.src=url;
@@ -4206,13 +4305,13 @@ function videoPoster(url){ return new Promise(function(resolve){ try{
 async function pdfMediaPrep(paths){ const urlMap=await pdfSignMap(paths); const posterMap={}; const vids=[]; (paths||[]).forEach(p=>{ if(p&&isVideoPath(p)&&urlMap[p]&&vids.indexOf(p)<0) vids.push(p); });
   await Promise.all(vids.slice(0,12).map(p=>videoPoster(urlMap[p]).then(d=>{ if(d) posterMap[p]=d; }).catch(()=>{})));
   return {urlMap:urlMap, posterMap:posterMap}; }
-function pdfMediaHtml(paths, urlMap, posterMap){ posterMap=posterMap||{}; if(!paths||!paths.length) return ''; return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:.35rem">'+paths.map(function(p){ const u=urlMap[p]; if(isVideoPath(p)){ const ps=posterMap[p]; if(ps) return '<div style="position:relative;width:120px;height:90px;display:inline-block"><img src="'+ps+'" style="width:120px;height:90px;object-fit:cover;border:1px solid #e5e9f2;border-radius:6px"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.7rem;text-shadow:0 1px 5px rgba(0,0,0,.7)">▶</div></div>'; return '<div style="width:120px;height:90px;border:1px solid #e5e9f2;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f1c33;color:#fff;font-size:.72rem;text-align:center;gap:2px"><span style="font-size:1.3rem">🎬</span>'+esc(tz('Video'))+'</div>'; } return u?('<img src="'+esc(u)+'" style="width:120px;height:90px;object-fit:cover;border:1px solid #e5e9f2;border-radius:6px">'):''; }).join('')+'</div>'; }
+function pdfMediaHtml(paths, urlMap, posterMap){ posterMap=posterMap||{}; if(!paths||!paths.length) return ''; return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:.35rem">'+paths.map(function(p){ const u=urlMap[p]; if(isVideoPath(p)){ const ps=posterMap[p]; if(ps) return '<div style="position:relative;width:120px;height:90px;display:inline-block"><img src="'+ps+'" style="width:120px;height:90px;object-fit:cover;border:1px solid #e5e9f2;border-radius:6px"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.7rem;text-shadow:0 1px 5px rgba(0,0,0,.7)">▶</div></div>'; return '<div style="width:120px;height:90px;border:1px solid #e5e9f2;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f1c33;color:#fff;font-size:.72rem;text-align:center;gap:2px"><span style="font-size:1.3rem">🎬</span>'+esc(tz('Video'))+'</div>'; } return u?('<img src="'+esc(u)+'" '+MEDIA_IMG_ATTRS_EAGER+' style="width:120px;height:90px;object-fit:cover;border:1px solid #e5e9f2;border-radius:6px">'):''; }).join('')+'</div>'; }
 function pdfInfo(pairs){ return '<table style="border-collapse:collapse;margin-top:.4rem">'+pairs.map(p=>'<tr><td style="color:#64748b;padding:.2rem 1rem .2rem 0;white-space:nowrap;vertical-align:top">'+esc(p[0])+'</td><td style="padding:.2rem 0;font-weight:600">'+esc(p[1])+'</td></tr>').join('')+'</table>'; }
 async function pdfShell(docTitle, heading, innerHtml){ let logo=''; try{ logo=await firmLogoUrl(3600); }catch(e){} const firm=(state.firm&&((state.firm.automations&&state.firm.automations.brand_name)||state.firm.name))||''; const now=new Date(); const stamp=now.toLocaleDateString()+' '+now.toLocaleTimeString().slice(0,5);
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(docTitle)+'</title><style>@media print{.noprint{display:none}@page{margin:14mm}}body{font-family:system-ui,-apple-system,Arial;color:#0f1c33;max-width:820px;margin:0 auto;padding:24px}h1{font-size:1.4rem;margin:.2rem 0}</style></head><body>'
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;border-bottom:3px solid #2f6bff;padding-bottom:.8rem"><div>'+(logo?'<img src="'+esc(logo)+'" style="max-height:48px;max-width:180px;object-fit:contain;margin-bottom:.3rem"><br>':'')+'<div style="font-weight:800;font-size:1.05rem">'+esc(firm)+'</div></div><div style="text-align:right;color:#64748b;font-size:.82rem">'+esc(docTitle)+'<br>'+esc(stamp)+'</div></div>'
     +'<h1>'+heading+'</h1>'+innerHtml
-    +'<div class="noprint" style="margin-top:1.6rem;text-align:center"><button onclick="window.print()" style="padding:10px 22px;font-size:14px;cursor:pointer;background:#2f6bff;color:#fff;border:none;border-radius:8px">🖨️ '+esc(tz('Printează / Salvează PDF'))+'</button></div></body></html>'; }
+    +'<div class="noprint" style="margin-top:1.6rem;text-align:center"><button data-printbtn onclick="window.print()" style="padding:10px 22px;font-size:14px;cursor:pointer;background:#2f6bff;color:#fff;border:none;border-radius:8px">🖨️ '+esc(tz('Printează / Salvează PDF'))+'</button></div>'+PDF_HYDRATE_SCRIPT+'</body></html>'; }
 function pdfPrep(){ const w=window.open('','_blank'); if(!w){ toast(tz('Permite ferestrele pop-up pentru această pagină.')); return null; } try{ w.document.write('<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;padding:2rem">'+esc(tz('Se pregătește…'))+'</body>'); }catch(e){} return w; }
 async function empPdf(empId){
   const w=pdfPrep(); if(!w) return;
@@ -4247,7 +4346,7 @@ async function empPdf(empId){
     +pdfSec('⏱️ '+tz('Pontaj')+' ('+tz('total')+': '+totHours+'h)', ts.length?tsTbl:'')
     +pdfSec('🛡️ '+tz('SSM / Securitate'), ((ssmR&&ssmR.data)||[]).length?ssmTbl:'')
     +pdfSec('🏖️ '+tz('Concedii / absențe'), ((lvR&&lvR.data)||[]).length?lvTbl:'');
-  let av=''; if(e.photo_url){ try{ const su=await sb.storage.from('docs').createSignedUrl(e.photo_url,3600); if(su.data&&su.data.signedUrl) av='<img src="'+esc(su.data.signedUrl)+'" style="width:40px;height:40px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:8px;border:1px solid #e5e9f2">'; }catch(_){} }
+  let av=''; if(e.photo_url){ try{ const u=await mediaUrl(e.photo_url,'avatar'); if(u) av='<img src="'+esc(u)+'" '+MEDIA_IMG_ATTRS+' style="width:40px;height:40px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:8px;border:1px solid #e5e9f2">'; }catch(_){} }
   const html=await pdfShell(tz('Fișă angajat')+' — '+e.full_name, av+'👷 '+esc(e.full_name), inner);
   try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e2){ toast(tz('Eroare la generare PDF.')); }
 }
@@ -6446,9 +6545,9 @@ async function previzView(id){
   const s=sR.data;
   if(!s){ toast('Eroare la încărcare.'); closeModal(); return; }
   const meas=((mR.data)||[]).sort((a,b)=>(a.position||0)-(b.position||0));
-  const [cR,suR]=await Promise.all([ s.client_id?sb.from('clients').select('name').eq('id',s.client_id).single():Promise.resolve({data:null}), (s.photo_urls&&s.photo_urls.length)?sb.storage.from('docs').createSignedUrls(s.photo_urls,600):Promise.resolve({data:[]}) ]);
+  const [cR,suArr]=await Promise.all([ s.client_id?sb.from('clients').select('name').eq('id',s.client_id).single():Promise.resolve({data:null}), (s.photo_urls&&s.photo_urls.length)?mediaUrls(s.photo_urls,'thumb'):Promise.resolve([]) ]);
   const clientName=(cR.data&&cR.data.name)||'—';
-  let imgs=(suR.data||[]).map(x=>x.signedUrl).filter(Boolean);
+  let imgs=suArr; /* pozițional, aliniat cu photo_urls; imagini→thumb 360px, video→original (fallthrough) */
   const wt=s.work_type==='reparatie'?'Reparație':(s.work_type==='constructie'?'Construcție':'—');
   const rowKV=(k,v)=>'<div style="display:flex;gap:.6rem;padding:.35rem 0;border-bottom:1px solid var(--line);font-size:.9rem"><div style="color:var(--muted);min-width:130px">'+esc(k)+'</div><div style="font-weight:600">'+v+'</div></div>';
   const qRows=QKEYS.filter(q=>s.answers&&s.answers[q.key]!=null&&s.answers[q.key]!=='').map(q=>rowKV(q.label, esc(s.answers[q.key]))).join('');
@@ -6469,7 +6568,7 @@ async function previzView(id){
     +(mRows?H('📐 Volume / măsurători')+mRows:'')
     +(s.notes?H('💬 Comentarii')+'<div style="font-size:.9rem;white-space:pre-wrap">'+esc(s.notes)+'</div>':'')
     +((s.photo_urls&&s.photo_urls.length)?(function(){ const paths=s.photo_urls||[]; const imgP=[],imgU=[],vidU=[]; paths.forEach(function(p,i){ if(isVid(p)){ if(imgs[i]) vidU.push(imgs[i]); } else { imgP.push(p); if(imgs[i]) imgU.push(imgs[i]); } }); let out='';
-      if(imgU.length){ const _vid=galReg(imgP); out+=H('📷 Poze ('+imgU.length+')')+'<div style="display:flex;flex-wrap:wrap;gap:.5rem">'+imgU.map(function(u,i){ return '<img src="'+u+'" onclick="openGalleryId(\''+_vid+'\','+i+')" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in">'; }).join('')+'</div>'; }
+      if(imgU.length){ const _vid=galReg(imgP); out+=H('📷 Poze ('+imgU.length+')')+'<div style="display:flex;flex-wrap:wrap;gap:.5rem">'+imgU.map(function(u,i){ return '<img src="'+u+'" '+MEDIA_IMG_ATTRS+' onclick="openGalleryId(\''+_vid+'\','+i+')" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in">'; }).join('')+'</div>'; }
       if(vidU.length){ out+=H('🎬 Video ('+vidU.length+')')+vidU.map(function(u){ return '<video controls preload="metadata" style="width:100%;border-radius:10px;margin:.4rem 0;background:#000"><source src="'+u+'"></video>'; }).join(''); }
       return out; })():'')
     +'</div>'
@@ -6634,7 +6733,7 @@ async function previzPDF(id){
   const s=(await sb.from('site_surveys').select('*').eq('id',id).single()).data; if(!s){ try{w.close();}catch(e){} toast('Eroare.'); return; }
   const meas=((await sb.from('survey_measurements').select('*').eq('survey_id',id)).data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
   let clientName='—'; if(s.client_id){ const c=await sb.from('clients').select('name').eq('id',s.client_id).single(); clientName=(c.data&&c.data.name)||'—'; }
-  let imgs=[]; if(s.photo_urls&&s.photo_urls.length){ const imgOnly=s.photo_urls.filter(p=>!isVid(p)); const su=await sb.storage.from('docs').createSignedUrls(imgOnly,600); imgs=(su.data||[]).map(x=>x.signedUrl).filter(Boolean); }
+  let imgs=[]; if(s.photo_urls&&s.photo_urls.length){ const imgOnly=s.photo_urls.filter(p=>!isVid(p)); imgs=(await mediaUrls(imgOnly,'preview')).filter(Boolean); } /* fișă printabilă: imagini la 800px */
   const firm=(state.firm&&state.firm.name)||'Firmă';
   let plogo=''; { const _plu=await firmLogoUrl(600); if(_plu) plogo='<img src="'+_plu+'" style="max-height:48px;max-width:170px;margin-bottom:6px;object-fit:contain"><br>'; }
   const T=window.C373t||function(s){return s;}; const L=(window.C373lang&&window.C373lang())||'ro';
@@ -6651,9 +6750,9 @@ async function previzPDF(id){
     +(qRows?'<h2>'+T('Întrebări cheie')+'</h2><table>'+qRows+'</table>':'')
     +(mRows?'<h2>'+T('Volume / măsurători')+'</h2><table><thead><tr><th style="text-align:left">'+T('Denumire')+'</th><th style="text-align:right">'+T('Cantitate')+'</th><th style="text-align:left">'+T('Notă')+'</th></tr></thead><tbody>'+mRows+'</tbody></table>':'')
     +(s.notes?'<h2>'+T('Comentarii')+'</h2><div>'+esc(s.notes).replace(/\n/g,'<br>')+'</div>':'')
-    +(imgs.length?'<h2>'+T('Poze cu starea actuală')+'</h2><div class="imgs">'+imgs.map(u=>'<img src="'+u+'">').join('')+'</div>':'')
-    +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
-    +'</body></html>';
+    +(imgs.length?'<h2>'+T('Poze cu starea actuală')+'</h2><div class="imgs">'+imgs.map(u=>'<img src="'+u+'" '+MEDIA_IMG_ATTRS_EAGER+'>').join('')+'</div>':'')
+    +'<div class="noprint" style="margin-top:20px;text-align:center"><button data-printbtn onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
+    +PDF_HYDRATE_SCRIPT+'</body></html>';
   if(w&&!w.closed){ try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){} } else { const w2=window.open('','_blank'); if(!w2){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } w2.document.write(html); w2.document.close(); }
 }
 function previzToDeviz(id){ window.open('deviz.html?survey='+id,'_blank'); toast('Se deschide oferta cu volumele din fișă…'); }
@@ -6868,14 +6967,15 @@ function openGalleryId(id,i){ openGallery((window._galReg||{})[id]||[], i); }
 function openImg(encPath){ openGallery([decodeURIComponent(encPath)],0); }   // o singură poză → lightbox în fereastra curentă
 async function openGallery(paths,start){
   paths=(paths||[]).filter(Boolean); if(!paths.length) return; start=Math.max(0,Math.min(+start||0,paths.length-1));
-  let urls=[]; try{ const su=await sb.storage.from('docs').createSignedUrls(paths,600); urls=(su.data||[]).map(x=>(x&&x.signedUrl)||''); }catch(e){ toast('Eroare la încărcarea pozelor.'); return; }
-  window._gal={paths:paths,urls:urls,i:start,scale:1,rot:0,tx:0,ty:0,show:{},_tok:0};
+  /* NU mai pre-semnăm originalele (egress): afișarea folosește varianta „lightbox" (galResolve),
+     iar originalul se rezolvă la cerere doar pentru descărcare/print/filă nouă (galOriginal). */
+  window._gal={paths:paths,urls:[],i:start,scale:1,rot:0,tx:0,ty:0,show:{},_tok:0};
   let ov=document.getElementById('img-lb');
   if(!ov){ ov=document.createElement('div'); ov.id='img-lb'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.93);display:flex;align-items:center;justify-content:center;touch-action:none;overflow:hidden';
     const tb='style="background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:9px;width:40px;height:40px;font-size:18px;cursor:pointer"';
     ov.innerHTML='<div style="position:absolute;top:10px;right:12px;display:flex;gap:6px;z-index:2">'
         +'<button id="gl-zo" title="Micșorează (−)" '+tb+'>−</button><button id="gl-zi" title="Mărește (+)" '+tb+'>+</button>'
-        +'<button id="gl-rot" title="Rotește" '+tb+'>⟳</button><button id="gl-dl" title="Salvează (descarcă)" '+tb+'>⬇</button>'
+        +'<button id="gl-rot" title="Rotește" '+tb+'>⟳</button><button id="gl-dl" title="Descarcă originalul" '+tb+'>⬇</button>'
         +'<button id="gl-pr" title="Tipărește" '+tb+'>🖨</button><button id="gl-nw" title="Deschide în filă nouă" '+tb+'>↗</button>'
         +'<button id="gl-x" title="Închide (Esc)" '+tb+'>×</button></div>'
       +'<button id="gl-prev" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:2">‹</button>'
@@ -6892,7 +6992,7 @@ async function openGallery(paths,start){
     document.getElementById('gl-rot').onclick=function(){ const g=window._gal; if(g){ g.rot=(g.rot+90)%360; galApply(); } };
     document.getElementById('gl-dl').onclick=galDownload;
     document.getElementById('gl-pr').onclick=galPrint;
-    document.getElementById('gl-nw').onclick=function(){ const g=window._gal; if(g) window.open(g.urls[g.i],'_blank'); };
+    document.getElementById('gl-nw').onclick=function(){ const g=window._gal; if(g) galResolve(g.i).then(u=>{ if(u) window.open(u,'_blank'); }); }; /* viewing → varianta lightbox (fără egress suplimentar) */
     const gimg=document.getElementById('gl-img');
     gimg.addEventListener('dblclick',function(){ const g=window._gal; if(!g)return; g.scale=(g.scale>1?1:2); g.tx=0;g.ty=0; galApply(); });
     gimg.addEventListener('wheel',function(e){ e.preventDefault(); galZoom(e.deltaY<0?0.2:-0.2); },{passive:false});
@@ -6913,16 +7013,12 @@ async function openGallery(paths,start){
 function galDist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
 function galApply(){ const g=window._gal,img=document.getElementById('gl-img'); if(img&&g){ img.style.transform='translate('+g.tx+'px,'+g.ty+'px) scale('+g.scale+') rotate('+g.rot+'deg)'; img.style.cursor=g.scale>1?'grab':'default'; } }
 function galZoom(d){ const g=window._gal; if(!g)return; g.scale=Math.min(5,Math.max(1,Math.round((g.scale+d)*100)/100)); if(g.scale===1){ g.tx=0; g.ty=0; } galApply(); }
-/* încarcă o imagine (CORS anonim ca să putem desena pe canvas) */
-function galLoadImg(url,cors){ return new Promise(function(res,rej){ const im=new Image(); if(cors) im.crossOrigin='anonymous'; im.onload=function(){ res(im); }; im.onerror=rej; im.src=url; }); }
-function galTestLoad(url){ return new Promise(function(res){ const im=new Image(); im.onload=function(){ res(true); }; im.onerror=function(){ res(false); }; im.src=url; }); }
-/* micșorează pe dispozitiv: decodează o singură dată, întoarce un JPEG mic (dataURL) — afișarea & navigarea devin instante */
-async function galDownscale(url,max,q){ const im=await galLoadImg(url,true); const r=Math.min(1,max/Math.max(im.naturalWidth||max,im.naturalHeight||max)); const w=Math.max(1,Math.round((im.naturalWidth||max)*r)), h=Math.max(1,Math.round((im.naturalHeight||max)*r)); const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(im,0,0,w,h); return c.toDataURL('image/jpeg',q||0.62); }
-/* întoarce o variantă RAPIDĂ de afișat: 1) transformare server (dacă add-on-ul e activ) 2) micșorare pe dispozitiv. Rezultatul e cache-uit. */
-async function galResolve(i){ const g=window._gal; if(!g) return ''; if(g.show[i]) return g.show[i]; const path=g.paths[i]; if(!path) return g.urls[i]||'';
-  if(window._txOK!==false){ try{ const r=await sb.storage.from('docs').createSignedUrl(path,600,{transform:{width:1400,quality:60,resize:'contain'}}); const u=r&&r.data&&r.data.signedUrl; if(u && await galTestLoad(u)){ window._txOK=true; g.show[i]=u; return u; } }catch(e){} window._txOK=false; }
-  if(window._dsTaint){ g.show[i]=g.urls[i]||''; return g.show[i]; }
-  try{ const small=await galDownscale(g.urls[i],1400,0.62); g.show[i]=small; return small; }catch(e){ if(/security|taint/i.test(String((e&&e.name)||e))) window._dsTaint=true; g.show[i]=g.urls[i]||''; return g.show[i]; } }
+/* rezolvă originalul (semnat) DOAR la cerere explicită: descărcare / print / filă nouă */
+async function galOriginal(i){ const g=window._gal; if(!g) return ''; const path=g.paths[i]; if(!path) return ''; if(!g.urls[i]){ g.urls[i]=await fileUrlOriginal(path); } return g.urls[i]||''; }
+/* varianta de AFIȘAT în lightbox = transformare server la 1400px (fără a descărca originalul).
+   Rezultatul (URL) e cache-uit; mediaUrl reutilizează exact același signed URL. */
+async function galResolve(i){ const g=window._gal; if(!g) return ''; if(g.show[i]) return g.show[i]; const path=g.paths[i]; if(!path) return '';
+  const u=await mediaUrl(path,'lightbox'); g.show[i]=u; return u; }
 function galShow(){ const g=window._gal; if(!g) return; g.scale=1; g.rot=0; g.tx=0; g.ty=0; const img=document.getElementById('gl-img'); const idx=g.i; const tok=(g._tok=(g._tok||0)+1);
   if(img){ if(g.show[idx]){ img.style.opacity='1'; img.src=g.show[idx]; if(img.decode) img.decode().catch(function(){}); }
     else { img.style.opacity='.45'; galResolve(idx).then(function(src){ if(window._gal===g && g._tok===tok){ img.src=src; img.style.opacity='1'; if(img.decode) img.decode().catch(function(){}); } }); } }
@@ -6931,8 +7027,14 @@ function galShow(){ const g=window._gal; if(!g) return; g.scale=1; g.rot=0; g.tx
 function galPreload(){ const g=window._gal; if(!g||g.paths.length<2) return; [1,-1,2,-2].forEach(function(o){ const j=(g.i+o+g.paths.length)%g.paths.length; if(!g.show[j]) galResolve(j); }); }
 function galGo(d){ const g=window._gal; if(!g) return; g.i=(g.i+d+g.paths.length)%g.paths.length; galShow(); }
 function galClose(){ const ov=document.getElementById('img-lb'); if(ov) ov.style.display='none'; }
-async function galDownload(){ const g=window._gal; if(!g)return; const url=g.urls[g.i]; try{ const r=await fetch(url); const b=await r.blob(); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='poza-'+(g.i+1)+'.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},3000); toast('⬇ '+tz('Poză descărcată.')); }catch(e){ window.open(url,'_blank'); } }
-function galPrint(){ const g=window._gal; if(!g)return; const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write('<html><head><title>Poză</title></head><body style="margin:0;text-align:center"><img src="'+g.urls[g.i]+'" style="max-width:100%" onload="setTimeout(function(){window.print()},150)"></body></html>'); w.document.close(); }
+async function galDownload(){ const g=window._gal; if(!g)return; if(g._dl) return; g._dl=true; /* anti-dublu-clic: un singur transfer în zbor */
+  try{ const url=await galOriginal(g.i); if(!url){ toast('⚠️ '+tz('Poza nu s-a putut încărca.')); return; }
+    /* EXACT un transfer al originalului: un singur fetch → blob → download local; fără window.open ulterior (ar produce un al doilea transfer + deschidere inline). */
+    const r=await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status); const b=await r.blob(); const u=URL.createObjectURL(b);
+    const a=document.createElement('a'); a.href=u; a.download='poza-'+(g.i+1)+'.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},3000); toast('⬇ '+tz('Poză descărcată.'));
+  }catch(e){ toast('⚠️ '+tz('Poza nu s-a putut încărca.')); }
+  finally{ g._dl=false; } } /* descărcare = ORIGINALUL (acțiune explicită), un singur transfer */
+async function galPrint(){ const g=window._gal; if(!g)return; const url=await galResolve(g.i); if(!url){ toast(tz('Poza nu s-a putut încărca.')); return; } const w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up.'); return; } w.document.write('<html><head><title>Poză</title></head><body style="margin:0;text-align:center"><img src="'+url+'" style="max-width:100%" onload="setTimeout(function(){window.print()},150)" onerror="document.body.innerHTML=\'<p style=&quot;font-family:system-ui;padding:2rem&quot;>⚠️ Poza nu s-a putut încărca.</p>\'"></body></html>'); w.document.close(); }
 async function downloadDoc(encPath, encName){
   const path=decodeURIComponent(encPath); const name=encName?decodeURIComponent(encName):(path.split('/').pop().replace(/^\d+_/,''));
   toast('⬇ Se descarcă…');
@@ -7243,7 +7345,7 @@ async function recordPreview(key,id){
   const m=MODULES[key]; let r=(listState.rows||[]).find(x=>x.id===id);
   if(!r){ try{ r=(await sb.from(m.table).select('*').eq('id',id).single()).data; }catch(e){} }
   if(!r){ toast('Eroare la încărcare.'); return; }
-  let ph=''; if(r.photo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(r.photo_url,600); if(data&&data.signedUrl) ph='<img src="'+data.signedUrl+'" style="max-width:100%;max-height:240px;border-radius:10px;border:1px solid var(--line);margin-bottom:.7rem;object-fit:contain;display:block">'; }catch(e){} }
+  let ph=''; if(r.photo_url){ try{ const u=await mediaUrl(r.photo_url,'preview'); if(u) ph='<img src="'+u+'" '+MEDIA_IMG_ATTRS+' style="max-width:100%;max-height:240px;border-radius:10px;border:1px solid var(--line);margin-bottom:.7rem;object-fit:contain;display:block">'; }catch(e){} }
   const refMap={}; for(const f of (m.fields||[])){ if(f.type==='ref' && r[f.key] && !refMap[f.ref]){ try{ refMap[f.ref]=await loadRefOptions(f.ref); }catch(e){ refMap[f.ref]=[]; } } }
   const rows=(m.fields||[]).filter(f=>f.type!=='photo' && (!f.secure||FINANCE_ROLES.includes(state.role))).map(f=>{
     let v=r[f.key]; if(v==null||v==='') return '';
@@ -7356,13 +7458,12 @@ async function loadUnits(){ if(UNIT_LIST) return UNIT_LIST;
   }catch(e){ UNIT_LIST=base.concat(custom); }
   return UNIT_LIST;
 }
-/* ──── miniaturi foto „lazy": semnează căile și pune src după randare ──── */
+/* ──── miniaturi foto „lazy" în LISTE (in-app, celule 46–180px): semnează căile și pune src după randare ──── */
 async function signThumbs(){
   const imgs=Array.from(document.querySelectorAll('.lazimg[data-p]')); if(!imgs.length) return;
   const paths=Array.from(new Set(imgs.map(i=>{ try{ return decodeURIComponent(i.getAttribute('data-p')); }catch(e){ return i.getAttribute('data-p'); } })));
-  try{ const { data }=await sb.storage.from('docs').createSignedUrls(paths,3600);
-    const map={}; (data||[]).forEach((x,idx)=>{ if(x&&x.signedUrl) map[paths[idx]]=x.signedUrl; });
-    imgs.forEach(i=>{ let p; try{ p=decodeURIComponent(i.getAttribute('data-p')); }catch(e){ p=i.getAttribute('data-p'); } if(map[p]){ i.src=map[p]; i.removeAttribute('data-p'); } });
+  try{ const map=await mediaMap(paths,'thumb'); /* celule mici de listă → miniatură 360px */
+    imgs.forEach(i=>{ let p; try{ p=decodeURIComponent(i.getAttribute('data-p')); }catch(e){ p=i.getAttribute('data-p'); } if(map[p]){ i.onerror=function(){ this.style.visibility='hidden'; }; i.src=map[p]; i.removeAttribute('data-p'); } });
   }catch(e){}
 }
 /* ──── SCHIȚE AUTO-SALVATE (draft) pentru formularele generice ──── */
@@ -8415,7 +8516,7 @@ async function portalPhotoPicker(){
   let paths=[]; try{ const sr=await sb.from('site_stages').select('photo_urls').eq('site_id',p.siteId); (sr.data||[]).forEach(st=>(st.photo_urls||[]).forEach(x=>{ if(x) paths.push(x); })); }catch(e){}
   const b=$('ppk-body'); if(!b) return;
   if(!paths.length){ b.innerHTML='<div style="padding:1rem;color:var(--muted)">'+esc(tz('Nicio poză pe etapele șantierului încă. Adaugă poze la etape, apoi revino.'))+'</div>'; return; }
-  let urls=[]; try{ const su=await sb.storage.from('docs').createSignedUrls(paths,1200); urls=(su.data||[]).map(x=>(x&&x.signedUrl)||''); }catch(e){}
+  let urls=[]; try{ urls=await mediaUrls(paths,'thumb'); }catch(e){} /* selector 110px → miniatură */
   window._ppkPaths=paths;
   b.innerHTML='<div style="font-size:.82rem;color:var(--muted);margin-bottom:.5rem">'+esc(tz('Bifează pozele pe care le vede clientul:'))+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:.5rem">'+paths.map((pp,i)=>'<label style="position:relative;cursor:pointer;display:block"><input type="checkbox" class="ppk-cb" data-i="'+i+'" checked style="position:absolute;left:5px;top:5px;width:18px;height:18px;z-index:2"><img src="'+esc(urls[i]||'')+'" loading="lazy" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></label>').join('')+'</div>';
 }

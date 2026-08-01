@@ -2518,6 +2518,7 @@
     'Invitațiile sunt disponibile doar într-un cont real.':{ru:'Приглашения доступны только в реальном аккаунте.',de:'Einladungen sind nur in einem echten Konto verfügbar.',en:'Invitations are available only in a real account.'},
     'Probă gratuită':{ru:'Бесплатный пробный период',de:'Kostenlose Testphase',en:'Free trial'},
     'Proba a expirat.':{ru:'Пробный период истёк.',de:'Die Testphase ist abgelaufen.',en:'The trial has expired.'},
+    'Poza nu s-a putut încărca.':{ru:'Не удалось загрузить фото.',de:'Das Foto konnte nicht geladen werden.',en:'The photo could not be loaded.'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }
