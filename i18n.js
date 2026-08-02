@@ -2550,6 +2550,13 @@
     // ── Anulează / Refă în editoarele de documente ──
     'Anulează ultima modificare':{ru:'Отменить последнее изменение',de:'Letzte Änderung rückgängig machen',en:'Undo the last change'},
     'Refă modificarea anulată':{ru:'Вернуть отменённое изменение',de:'Rückgängig gemachte Änderung wiederherstellen',en:'Redo the undone change'},
+    // ── Sincronizarea stării canonice după acțiuni server-side (semnare / încasare) ──
+    'Documentul trebuie reîncărcat înainte de a continua editarea.':{ru:'Документ необходимо перезагрузить, прежде чем продолжить редактирование.',de:'Das Dokument muss neu geladen werden, bevor du weiterbearbeitest.',en:'The document must be reloaded before you continue editing.'},
+    'Reîncarcă documentul':{ru:'Перезагрузить документ',de:'Dokument neu laden',en:'Reload the document'},
+    'Semnarea a fost înregistrată.':{ru:'Подпись сохранена.',de:'Die Unterschrift wurde gespeichert.',en:'The signature was recorded.'},
+    'Semnarea poate fi înregistrată.':{ru:'Подпись, возможно, сохранена.',de:'Die Unterschrift wurde möglicherweise gespeichert.',en:'The signature may have been recorded.'},
+    'Încasarea a fost înregistrată.':{ru:'Оплата зарегистрирована.',de:'Die Zahlung wurde erfasst.',en:'The payment was recorded.'},
+    'Încasarea poate fi înregistrată.':{ru:'Оплата, возможно, зарегистрирована.',de:'Die Zahlung wurde möglicherweise erfasst.',en:'The payment may have been recorded.'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }

@@ -453,6 +453,22 @@ function ldSync(which){ const vr=+($('ld-vat').value)||0, ne=$('ld-net'), ge=$('
 function umFx(el){ el.dataset.prev=el.value; el.value=""; }
 function umBl(el){ if(!el.value && el.dataset.prev!=null) el.value=el.dataset.prev; }
 function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
+/* O operație server-side (încasarea) a REUȘIT sau are rezultat incert, dar starea canonică
+   (`updated_at`, pus de trigger cu now() al serverului) nu a putut fi citită înapoi.
+   NU repetăm operația financiară și NU raportăm eșec. Invalidăm tokenul de concurență: 0117
+   tratează `p_expected_updated_at is null` ca DOC_CONFLICT, deci salvarea e refuzată de SERVER,
+   nu doar de interfață. În plus dezactivăm „Salvează" și oferim o reîncărcare controlată. */
+function docStale(ceAReusit){
+  S._updatedAt=null; S._needsReload=true;
+  const b=$('btn-save'); if(b) b.disabled=true;
+  const T=window.C373t||function(s){return s;};
+  const cont=T('Documentul trebuie reîncărcat înainte de a continua editarea.');
+  toast('⚠️ '+T(ceAReusit)+' '+cont);
+  $('modal-mount').innerHTML='<div class="ov"><div class="modal" style="max-width:460px"><h3>🔄 '+esc(T('Reîncarcă documentul'))+'</h3>'
+    +'<p style="font-size:.88rem;line-height:1.5;margin:.2rem 0 .9rem">'+esc(T(ceAReusit)+' '+cont)+'</p>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end"><button class="btn" onclick="closeM()">'+esc(T('Închide'))+'</button>'
+    +'<button class="btn primary" onclick="location.reload()">🔄 '+esc(T('Reîncarcă documentul'))+'</button></div></div></div>';
+}
 async function saveLineDetails(i){
   const l=S.lines[i]; l.description=($('ld-desc').value||'').trim()||'';
   if($('ld-net')) l.unit_price=+($('ld-net').value)||0; if($('ld-vat')) l.vat_rate=+($('ld-vat').value)||0;
@@ -705,6 +721,7 @@ async function dupInvoice(){
   S._dup=false; if(b) b.disabled=false;
 }
 async function save(thenPdf){
+  if(S._needsReload){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul trebuie reîncărcat înainte de a continua editarea.')); return; }
   if(!(S.inv.number||'').trim()){ toast('Numărul facturii e obligatoriu.'); return; }
   if(!S.inv.client_id){ toast('Alege un client.'); return; }
   const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
@@ -750,9 +767,23 @@ async function save(thenPdf){
 async function markPaid(){
   if(!S.id){ toast('Salvează întâi factura.'); return; }
   if(!confirm('Marchezi factura ca plătită? Se înregistrează încasarea.')) return;
-  const { error }=await sb.rpc('pay_invoice',{p_invoice:S.id});
-  if(error){ toast('Eroare: '+error.message); return; }
-  S.inv.status='paid'; toast('✅ Factură marcată plătită.'); render(); historyReset();  // scriere pe server ⇒ punct de bază nou
+  const { data:res, error }=await sb.rpc('pay_invoice',{p_invoice:S.id});
+  if(error){
+    if(isNetErr(error)){ console.error('pay_invoice (rezultat incert)', error); docStale('Încasarea poate fi înregistrată.'); return; }
+    toast('Eroare: '+error.message); return;                 // funcția ridică excepție ⇒ plata NU s-a înregistrat
+  }
+  console.log('pay_invoice →', res);
+  // `pay_invoice` întoarce doar `text` și nu are RETURNING ⇒ un singur SELECT minimal, după id,
+  // pentru starea canonică (updated_at e pus de trg_invoices_touch cu now() al serverului).
+  const c=await sb.from('invoices').select('updated_at,status,amount_paid').eq('id',S.id).maybeSingle();
+  if(c.error || !c.data || !c.data.updated_at){
+    console.error('markPaid: încasare reușită, citirea stării canonice a eșuat', c.error||c);
+    docStale('Încasarea a fost înregistrată.'); return;
+  }
+  S.inv.status=c.data.status; S.inv.amount_paid=(c.data.amount_paid!=null?+c.data.amount_paid:null);
+  S._updatedAt=c.data.updated_at;                            // tokenul de concurență optimistă, la zi
+  toast('✅ Factură marcată plătită.'); render();
+  historyReset();                                            // abia după sincronizarea canonică
 }
 
 async function pdf(inPlace){

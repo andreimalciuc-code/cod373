@@ -548,6 +548,22 @@ function ldSync(which){ const vr=+($('ld-vat').value)||0, ne=$('ld-net'), ge=$('
 function umFx(el){ el.dataset.prev=el.value; el.value=""; }
 function umBl(el){ if(!el.value && el.dataset.prev!=null) el.value=el.dataset.prev; }
 function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
+/* O operație server-side (semnarea) a REUȘIT sau are rezultat incert, dar starea canonică
+   (`updated_at`, pus de trigger cu now() al serverului) nu a putut fi citită înapoi.
+   NU repetăm operația și NU raportăm eșec. Invalidăm tokenul de concurență: 0117 tratează
+   `p_expected_updated_at is null` ca DOC_CONFLICT, deci salvarea e refuzată de SERVER, nu doar
+   de interfață. În plus dezactivăm „Salvează" și oferim o reîncărcare controlată. */
+function docStale(ceAReusit){
+  S._updatedAt=null; S._needsReload=true;
+  const b=$('btn-save'); if(b) b.disabled=true;
+  const T=window.C373t||function(s){return s;};
+  const cont=T('Documentul trebuie reîncărcat înainte de a continua editarea.');
+  toast('⚠️ '+T(ceAReusit)+' '+cont);
+  $('modal-mount').innerHTML='<div class="ov"><div class="modal" style="max-width:460px"><h3>🔄 '+esc(T('Reîncarcă documentul'))+'</h3>'
+    +'<p style="font-size:.88rem;line-height:1.5;margin:.2rem 0 .9rem">'+esc(T(ceAReusit)+' '+cont)+'</p>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end"><button class="btn" onclick="closeM()">'+esc(T('Închide'))+'</button>'
+    +'<button class="btn primary" onclick="location.reload()">🔄 '+esc(T('Reîncarcă documentul'))+'</button></div></div></div>';
+}
 async function saveLineDetails(i){
   const l=S.lines[i]; l.description=($('ld-desc').value||'').trim()||'';
   if($('ld-net')) l.unit_price=+($('ld-net').value)||0; if($('ld-vat')) l.vat_rate=+($('ld-vat').value)||0;
@@ -787,6 +803,7 @@ async function dupEstimate(){
   S._dup=false; if(b) b.disabled=false;
 }
 async function save(thenPdf){
+  if(S._needsReload){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul trebuie reîncărcat înainte de a continua editarea.')); return; }
   if(!S.est.client_id){ toast('Alege un client.'); return; }
   const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
   $('btn-save').disabled=true;
@@ -927,9 +944,24 @@ async function sgSave(){
     const path=tid+'/signatures/'+S.id+'_'+Date.now()+'.png';
     const up=await sb.storage.from('docs').upload(path,blob,{contentType:'image/png'}); if(up.error) throw up.error;
     const name=($('sg-name').value||'').trim()||null; const now=new Date().toISOString();
-    const u=await sb.from('estimates').update({signature_url:path,signer_name:name,signed_at:now,status:'accepted'}).eq('id',S.id); if(u.error) throw u.error;
-    S.est.signature_url=path; S.est.signer_name=name; S.est.signed_at=now; S.est.status='accepted';
-    closeM(); toast('✅ Semnătură salvată. Ofertă acceptată.'); render(); historyReset();  // scriere pe server ⇒ punct de bază nou
+    // Scrierea întoarce chiar starea canonică: `updated_at` e pus de trigger cu now() al
+    // serverului, deci NU poate fi ghicit în client. Fără `.single()` — ca să distingem
+    // „update-ul a eșuat" (u.error) de „a reușit, dar nu putem citi înapoi" (0 rânduri).
+    const u=await sb.from('estimates').update({signature_url:path,signer_name:name,signed_at:now,status:'accepted'})
+      .eq('id',S.id).select('updated_at,signature_url,signer_name,signed_at,status');
+    if(u.error){
+      if(isNetErr(u.error)){ console.error('sgSave (rezultat incert)', u.error); closeM(); docStale('Semnarea poate fi înregistrată.'); return; }
+      throw u.error;                                        // eroare clară ⇒ semnarea NU s-a înregistrat
+    }
+    const row=(u.data||[])[0];
+    if(!row || !row.updated_at){                            // semnat pe server, dar starea canonică nu s-a putut citi
+      console.error('sgSave: semnare reușită, citirea stării canonice a eșuat', u);
+      closeM(); docStale('Semnarea a fost înregistrată.'); return;
+    }
+    S.est.signature_url=row.signature_url; S.est.signer_name=row.signer_name; S.est.signed_at=row.signed_at; S.est.status=row.status;
+    S._updatedAt=row.updated_at;                            // tokenul de concurență optimistă, la zi
+    closeM(); toast('✅ Semnătură salvată. Ofertă acceptată.'); render();
+    historyReset();                                          // abia după sincronizarea canonică
   }catch(e){ if(btn) btn.disabled=false; $('sg-msg').textContent='Eroare: '+(e.message||e); }
 }
 
