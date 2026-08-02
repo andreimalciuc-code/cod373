@@ -64,6 +64,7 @@
   <button class="btn" id="btn-plan" onclick="togglePlan()">📐 Plan</button>
   <button class="btn" id="btn-prev" onclick="pdf()">👁 Previzualizare</button>
   <button class="btn" id="btn-sendcl" onclick="sendOfferPortal()">🤝 Trimite clientului</button>
+  <button class="btn" id="btn-dup" onclick="dupEstimate()" style="display:none">⧉ Duplică oferta</button>
   <button class="btn primary" id="btn-save" onclick="save()">💾 Salvează</button>
 </header>
 <div id="root"><div class="center">Se încarcă…</div></div>
@@ -278,6 +279,7 @@ function skontoPct(v){ S.est.skonto_pct=(v===''?null:+v); }
 function render(){
   const t=totals();
   $('hd-num').textContent=S.est.number||'';
+  if($('btn-dup')) $('btn-dup').style.display=S.id?'':'none';
   $('hd-status').innerHTML='<span class="pill '+(S.est.status||'draft')+'">'+(STATUS[S.est.status]||'')+'</span>';
   const clientOpts='<option value="">— alege client —</option>'+S.clients.map(c=>'<option value="'+c.id+'" '+(S.est.client_id===c.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
   $('root').innerHTML=(S._restored?'<div style="max-width:1240px;margin:0 auto;padding:.5rem 1.1rem 0"><div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .8rem;font-size:.84rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><a onclick="clearDraftDz();location.href=\'deviz.html\'" style="cursor:pointer;text-decoration:underline">Începe gol</a></div></div>':'')+'<div class="wrap"><div class="left">'
@@ -751,6 +753,34 @@ function renderBOM(){
 }
 
 /* ---- SAVE ---- */
+const DUP_ERR={
+  DUP_SOURCE_NOT_FOUND:'Documentul sursă nu există sau nu ai acces la el.',
+  DUP_FORBIDDEN:'Nu ai dreptul să creezi documente în această firmă.',
+  DUP_INVALID_REQUEST_ID:'Cerere de duplicare invalidă. Reîncarcă pagina și încearcă din nou.',
+  DUP_NUMBER_CONFLICT:'Nu am putut genera un număr unic de document. Încearcă din nou.',
+  DUP_INTERNAL_ERROR:'Eroare internă la duplicare. Încearcă din nou.'
+};
+function dupErrMsg(e){ const T=window.C373t||function(s){return s;}; const code=((e&&e.message)||'').match(/DUP_[A-Z_]+/); return T((code&&DUP_ERR[code[0]])||'Nu am putut duplica documentul.'); }
+function dupUUID(){ if(crypto.randomUUID) return crypto.randomUUID(); const b=crypto.getRandomValues(new Uint8Array(16)); b[6]=b[6]&15|64; b[8]=b[8]&63|128; const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join(''); return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20); }
+/* Duplicare ofertă: RPC tranzacțional idempotent (migr 0118) — p_request_id nou per acțiune intenționată.
+   După succes navigăm TABUL CURENT la copie (originalul e salvat și neatins). Buton dezactivat cât rulează. */
+async function dupEstimate(){
+  if(!S.id){ toast('Salvează întâi oferta.'); return; }
+  if(S._dup) return;
+  const T=window.C373t||function(s){return s;};
+  if(!confirm(T('Se va crea o ofertă nouă, în ciornă, cu aceleași poziții și date comerciale (număr nou, data de azi). Originalul rămâne neschimbat. Continui?'))) return;
+  S._dup=true; const b=$('btn-dup'); if(b) b.disabled=true;
+  try{
+    const r=await sb.rpc('duplicate_estimate',{p_source_id:S.id,p_request_id:dupUUID()});
+    if(r.error) throw r.error;
+    const row=Array.isArray(r.data)?r.data[0]:r.data;
+    if(!row||!row.id) throw new Error('DUP_INTERNAL_ERROR');
+    toast('✅ '+T('Oferta a fost duplicată')+': '+esc(row.number||''));
+    location.href='deviz.html?id='+row.id;
+    return; // navigăm — nu mai reactivăm butonul
+  }catch(e){ console.error('dupEstimate', e); toast('❌ '+dupErrMsg(e)); }
+  S._dup=false; if(b) b.disabled=false;
+}
 async function save(thenPdf){
   if(!S.est.client_id){ toast('Alege un client.'); return; }
   const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
@@ -774,6 +804,7 @@ async function save(thenPdf){
     S.id=row.id; S.est.number=row.number||''; S._updatedAt=row.updated_at;
     const nel=$('f-num'); if(nel) nel.value=S.est.number;
     history.replaceState(null,'',base()+'deviz.html?id='+S.id);
+    if($('btn-dup')) $('btn-dup').style.display='';
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Ofertă salvată.'+(dp>0?' Reducere '+dp+'%':''));
     if(thenPdf) pdf();
   }catch(e){

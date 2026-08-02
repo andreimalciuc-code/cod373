@@ -880,6 +880,7 @@ const MODULES = {
 
   devize:{ title:'Devize', sub:'Estimări și oferte de preț.', icon:'📋', group:'Finanțe', table:'estimates',
     newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', acceptReject:true, orderBy:{col:'created_at',asc:false},
+    duplicable:{rpc:'duplicate_estimate',label:'Duplică oferta',confirm:'Se va crea o ofertă nouă, în ciornă, cu aceleași poziții și date comerciale (număr nou, data de azi). Originalul rămâne neschimbat. Continui?',done:'Oferta a fost duplicată'},
     dateFilter:{field:'created_at'}, chipsReplaceStatus:true,
     quickChips:[ {key:'',label:'Toate'}, {key:'draft',label:'Ciornă',test:r=>r.status==='draft'}, {key:'sent',label:'Trimise',test:r=>r.status==='sent'}, {key:'accepted',label:'Acceptate',test:r=>r.status==='accepted'}, {key:'rejected',label:'Respinse',test:r=>r.status==='rejected'} ],
     select:'id,number,title,status,subtotal,vat_total,total,valid_until,clients!client_id(name,idno),sites!site_id(name)',
@@ -902,6 +903,7 @@ const MODULES = {
 
   facturi:{ title:'Facturi', sub:'Facturi emise + e-Factura.', icon:'🧾', group:'Finanțe', table:'invoices',
     newLabel:'Factură nouă', printable:'FACTURĂ FISCALĂ', efactura:true, pageEditor:'factura.html', orderBy:{col:'created_at',asc:false},
+    duplicable:{rpc:'duplicate_invoice',label:'Duplică factura',confirm:'Se va crea o factură nouă, în ciornă, neplătită, cu aceleași poziții și date comerciale (număr nou, data de azi, fără plăți). Originalul rămâne neschimbat. Continui?',done:'Factura a fost duplicată'},
     enumFilter:{key:'inv_type', all:'Toate tipurile', map:{normal:'Normală',abschlag:'Abschlag',schluss:'Schluss'}},
     dateFilter:{field:'issue_date'},
     quickChips:[ {key:'',label:'Toate'}, {key:'unpaid',label:'Neplătite',test:r=>r.status!=='paid'&&r.status!=='cancelled'}, {key:'overdue',label:'Restante',test:r=>r.status==='overdue'||(r.due_date&&r.status!=='paid'&&r.status!=='cancelled'&&String(r.due_date).slice(0,10)<coToday())}, {key:'paid',label:'Plătite',test:r=>r.status==='paid'} ],
@@ -7317,6 +7319,7 @@ function rowActions(key,m,r){
   if(m.toSite) a.push({i:'🏗️',l:'Creează șantier din ofertă',f:"estimateToSite('"+id+"')"});
   if(m.pageEditor) a.push({i:'👁',l:'Previzualizare (PDF)',f:"openEditorPdf('"+m.pageEditor+"','"+id+"')"});
   if(m.pageEditor) a.push({i:'📋',l:'Deschide / editează (filă nouă)',f:"window.open('"+m.pageEditor+"?id="+id+"','_blank')"});
+  if(m.duplicable&&m.duplicable.rpc&&canDo(key,'c')) a.push({i:'⧉',l:m.duplicable.label,f:"dupDoc('"+key+"','"+id+"')"});
   if(m.convertible) a.push({i:'🧾',l:'Creează factură din deviz',f:"estimateToInvoice('"+id+"')"});
   if(m.efactura){ const cc=(state.firm&&state.firm.country)||'MD';
     if(cc==='RO') a.push({i:'🇷🇴',l:'e-Factură RO (ANAF/SPV — XML)',f:"genEfacturaRO('"+id+"')"});
@@ -8203,6 +8206,45 @@ async function trashEmpty(){ if(!(window._trashRows&&window._trashRows.length)){
 
 /* ════ CONVERSIE DEVIZ → FACTURĂ ════ */
 function estimateToInvoice(estId){ window.open('factura.html?estimate='+estId,'_blank'); toast('Se deschide factura cu liniile din deviz…'); }
+/* Duplicare ofertă/factură: RPC tranzacțional idempotent (migr 0118) → copie independentă în ciornă.
+   p_request_id = UUID nou per acțiune intenționată; serverul garantează o singură copie per request id.
+   Fără sbRetry și fără retry cu request id nou — la timeout utilizatorul decide singur dacă reia. */
+let _dupBusy=false;
+const DUP_ERR={
+  DUP_SOURCE_NOT_FOUND:'Documentul sursă nu există sau nu ai acces la el.',
+  DUP_FORBIDDEN:'Nu ai dreptul să creezi documente în această firmă.',
+  DUP_INVALID_REQUEST_ID:'Cerere de duplicare invalidă. Reîncarcă pagina și încearcă din nou.',
+  DUP_NUMBER_CONFLICT:'Nu am putut genera un număr unic de document. Încearcă din nou.',
+  DUP_INTERNAL_ERROR:'Eroare internă la duplicare. Încearcă din nou.'
+};
+function dupErrMsg(e){ const code=((e&&e.message)||'').match(/DUP_[A-Z_]+/); return tz((code&&DUP_ERR[code[0]])||'Nu am putut duplica documentul.'); }
+function dupUUID(){ if(crypto.randomUUID) return crypto.randomUUID(); const b=crypto.getRandomValues(new Uint8Array(16)); b[6]=b[6]&15|64; b[8]=b[8]&63|128; const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join(''); return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20); }
+async function dupDoc(key,id){
+  const m=MODULES[key], d=m&&m.duplicable; if(!d||!d.rpc) return;
+  if(_dupBusy) return;
+  if(!confirm(tz(d.confirm))) return;
+  // Fila copiei se deschide SINCRON, în gestul de click (altfel popup blocker-ul o blochează după await —
+  // același pattern ca pdf() din deviz.html). La eroare se închide; dacă e blocată, oferim buton explicit.
+  let w=null;
+  try{ w=window.open('','_blank'); if(w){ w.document.write('<!doctype html><meta charset="utf-8"><title>Cod373</title><div style="font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;font-size:15px">⏳ '+esc(tz('Se creează copia…'))+'</div>'); } }catch(e){}
+  _dupBusy=true;
+  try{
+    const r=await sb.rpc(d.rpc,{p_source_id:id,p_request_id:dupUUID()});
+    if(r.error) throw r.error;
+    const row=Array.isArray(r.data)?r.data[0]:r.data;
+    if(!row||!row.id) throw new Error('DUP_INTERNAL_ERROR');
+    toast('✅ '+tz(d.done)+': '+esc(row.number||''));
+    renderModule(key);
+    const url=m.pageEditor+'?id='+row.id;
+    if(w&&!w.closed){ w.location=url; }
+    else actionsSheet(tz(d.done)+': '+(row.number||''), [{i:'📋',l:tz('Deschide copia'),f:"window.open('"+url+"','_blank')"}]);
+  }catch(e){
+    if(w&&!w.closed){ try{ w.close(); }catch(_){ } }
+    console.error('dupDoc', e);
+    toast('❌ '+dupErrMsg(e));
+  }
+  finally{ _dupBusy=false; }
+}
 async function estimateStatus(estId,status){
   const lbl=status==='accepted'?'acceptată':'respinsă';
   if(!confirm('Marchezi oferta ca '+lbl+'?')) return;

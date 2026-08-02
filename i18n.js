@@ -2532,6 +2532,21 @@
     'Pozițiile documentului nu sunt valide.':{ru:'Позиции документа недействительны.',de:'Die Positionen des Dokuments sind ungültig.',en:'The document items are not valid.'},
     'Firma activă nu e validă. Reîncarcă pagina.':{ru:'Активная фирма недействительна. Перезагрузите страницу.',de:'Die aktive Firma ist ungültig. Lade die Seite neu.',en:'The active company is not valid. Reload the page.'},
     'Salvarea nu a reușit. Verifică datele și încearcă din nou.':{ru:'Сохранение не удалось. Проверьте данные и попробуйте снова.',de:'Das Speichern ist fehlgeschlagen. Prüfe die Daten und versuche es erneut.',en:'Saving failed. Check the data and try again.'},
+    // ── Duplicare oferte / facturi (migr 0118) ──
+    'Duplică oferta':{ru:'Дублировать оферту',de:'Angebot duplizieren',en:'Duplicate offer'},
+    'Duplică factura':{ru:'Дублировать счёт',de:'Rechnung duplizieren',en:'Duplicate invoice'},
+    'Se va crea o ofertă nouă, în ciornă, cu aceleași poziții și date comerciale (număr nou, data de azi). Originalul rămâne neschimbat. Continui?':{ru:'Будет создана новая оферта-черновик с теми же позициями и коммерческими данными (новый номер, сегодняшняя дата). Оригинал останется без изменений. Продолжить?',de:'Es wird ein neues Angebot als Entwurf mit denselben Positionen und Geschäftsdaten erstellt (neue Nummer, heutiges Datum). Das Original bleibt unverändert. Fortfahren?',en:'A new draft offer will be created with the same items and commercial data (new number, today\'s date). The original remains unchanged. Continue?'},
+    'Se va crea o factură nouă, în ciornă, neplătită, cu aceleași poziții și date comerciale (număr nou, data de azi, fără plăți). Originalul rămâne neschimbat. Continui?':{ru:'Будет создан новый счёт-черновик, неоплаченный, с теми же позициями и коммерческими данными (новый номер, сегодняшняя дата, без платежей). Оригинал останется без изменений. Продолжить?',de:'Es wird eine neue, unbezahlte Rechnung als Entwurf mit denselben Positionen und Geschäftsdaten erstellt (neue Nummer, heutiges Datum, ohne Zahlungen). Das Original bleibt unverändert. Fortfahren?',en:'A new unpaid draft invoice will be created with the same items and commercial data (new number, today\'s date, no payments). The original remains unchanged. Continue?'},
+    'Oferta a fost duplicată':{ru:'Оферта продублирована',de:'Angebot wurde dupliziert',en:'Offer duplicated'},
+    'Factura a fost duplicată':{ru:'Счёт продублирован',de:'Rechnung wurde dupliziert',en:'Invoice duplicated'},
+    'Nu am putut duplica documentul.':{ru:'Не удалось продублировать документ.',de:'Das Dokument konnte nicht dupliziert werden.',en:'Could not duplicate the document.'},
+    'Documentul sursă nu există sau nu ai acces la el.':{ru:'Исходный документ не существует или у вас нет к нему доступа.',de:'Das Quelldokument existiert nicht oder du hast keinen Zugriff darauf.',en:'The source document does not exist or you have no access to it.'},
+    'Nu ai dreptul să creezi documente în această firmă.':{ru:'У вас нет права создавать документы в этой фирме.',de:'Du bist nicht berechtigt, in dieser Firma Dokumente zu erstellen.',en:'You are not allowed to create documents in this company.'},
+    'Cerere de duplicare invalidă. Reîncarcă pagina și încearcă din nou.':{ru:'Некорректный запрос дублирования. Обновите страницу и попробуйте снова.',de:'Ungültige Duplizierungsanfrage. Lade die Seite neu und versuche es erneut.',en:'Invalid duplication request. Reload the page and try again.'},
+    'Nu am putut genera un număr unic de document. Încearcă din nou.':{ru:'Не удалось сгенерировать уникальный номер документа. Попробуйте снова.',de:'Es konnte keine eindeutige Dokumentnummer erzeugt werden. Versuche es erneut.',en:'Could not generate a unique document number. Try again.'},
+    'Eroare internă la duplicare. Încearcă din nou.':{ru:'Внутренняя ошибка при дублировании. Попробуйте снова.',de:'Interner Fehler beim Duplizieren. Versuche es erneut.',en:'Internal error while duplicating. Try again.'},
+    'Se creează copia…':{ru:'Создаётся копия…',de:'Kopie wird erstellt…',en:'Creating the copy…'},
+    'Deschide copia':{ru:'Открыть копию',de:'Kopie öffnen',en:'Open the copy'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }
