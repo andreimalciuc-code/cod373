@@ -2547,6 +2547,9 @@
     'Eroare internă la duplicare. Încearcă din nou.':{ru:'Внутренняя ошибка при дублировании. Попробуйте снова.',de:'Interner Fehler beim Duplizieren. Versuche es erneut.',en:'Internal error while duplicating. Try again.'},
     'Se creează copia…':{ru:'Создаётся копия…',de:'Kopie wird erstellt…',en:'Creating the copy…'},
     'Deschide copia':{ru:'Открыть копию',de:'Kopie öffnen',en:'Open the copy'},
+    // ── Anulează / Refă în editoarele de documente ──
+    'Anulează ultima modificare':{ru:'Отменить последнее изменение',de:'Letzte Änderung rückgängig machen',en:'Undo the last change'},
+    'Refă modificarea anulată':{ru:'Вернуть отменённое изменение',de:'Rückgängig gemachte Änderung wiederherstellen',en:'Redo the undone change'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }

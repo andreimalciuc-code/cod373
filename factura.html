@@ -15,6 +15,8 @@
   .pill.draft{ background:#eef2ff; color:#3730a3; } .pill.sent{ background:#fef9c3; color:#854d0e; } .pill.paid{ background:#dcfce7; color:#15803d; } .pill.overdue{ background:#fee2e2; color:#b91c1c; } .pill.cancelled{ background:#f1f5f9; color:#64748b; }
   .btn{ border:1px solid var(--line); background:#fff; border-radius:9px; padding:.5rem .8rem; font-size:.85rem; cursor:pointer; color:var(--ink); white-space:nowrap; }
   .btn:hover{ background:#f1f5f9; } .btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); } .btn.green{ background:var(--green); color:#fff; border-color:var(--green); }
+  .btn:disabled{ opacity:.4; cursor:default; } .btn:disabled:hover{ background:#fff; }
+  .hbtn{ padding:.42rem .6rem; font-size:1rem; line-height:1; }
   .wrap{ max-width:1440px; margin:0 auto; padding:1.1rem; display:grid; grid-template-columns:1fr 320px; gap:1.1rem; align-items:start; }
   .lines{ table-layout:fixed; }
   @media(max-width:1200px){ .wrap{ grid-template-columns:1fr; } }
@@ -53,6 +55,8 @@
   <span id="hd-status"></span>
   <div class="spacer"></div>
   <button class="btn" onclick="goBack()">↩ Înapoi</button>
+  <button class="btn hbtn" type="button" id="btn-undo" onclick="historyUndo()" title="Anulează ultima modificare" aria-label="Anulează ultima modificare" disabled>↶</button>
+  <button class="btn hbtn" type="button" id="btn-redo" onclick="historyRedo()" title="Refă modificarea anulată" aria-label="Refă modificarea anulată" disabled>↷</button>
   <button class="btn" id="btn-plan" onclick="togglePlan()">📐 Plan</button>
   <button class="btn" id="btn-prev" onclick="pdf()">👁 Previzualizare</button>
   <button class="btn" id="btn-dup" onclick="dupInvoice()" style="display:none">⧉ Duplică factura</button>
@@ -110,6 +114,7 @@ async function boot(){
   if(param('print')){ await pdf(true); return; }
   render();
   signLineThumbs();
+  historyInit();
   document.addEventListener('input',scheduleDraft); document.addEventListener('change',scheduleDraft);
   if(S._restored) toast('↩️ Schiță nesalvată restaurată.');
 }
@@ -724,6 +729,7 @@ async function save(thenPdf){
     const nel=$('f-num'); if(nel) nel.value=S.inv.number;
     history.replaceState(null,'',base()+'factura.html?id='+S.id);
     if($('btn-dup')) $('btn-dup').style.display='';
+    historyReset();   // starea salvată devine noul punct de bază: nu se poate anula peste ea
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Factură salvată.'+(dp>0?' Reducere '+dp+'%':'')); if(thenPdf) pdf();
   }catch(e){
     $('btn-save').disabled=false; console.error('save_invoice', e);
@@ -746,7 +752,7 @@ async function markPaid(){
   if(!confirm('Marchezi factura ca plătită? Se înregistrează încasarea.')) return;
   const { error }=await sb.rpc('pay_invoice',{p_invoice:S.id});
   if(error){ toast('Eroare: '+error.message); return; }
-  S.inv.status='paid'; toast('✅ Factură marcată plătită.'); render();
+  S.inv.status='paid'; toast('✅ Factură marcată plătită.'); render(); historyReset();  // scriere pe server ⇒ punct de bază nou
 }
 
 async function pdf(inPlace){
@@ -812,6 +818,75 @@ async function pdf(inPlace){
   if(w&&!w.closed){ try{ w.document.open(); w.document.write(doc); w.document.close(); }catch(e){ const w2=window.open('','_blank'); if(w2){ w2.document.write(doc); w2.document.close(); } } }
   else { const w2=window.open('','_blank'); if(!w2){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } w2.document.write(doc); w2.document.close(); }
 }
+/* ════ ISTORIC LOCAL — „↶ Anulează" / „↷ Refă" ════════════════════════════════
+   Acoperă DOAR modificările locale nesalvate din editor. Nu atinge niciodată
+   metadatele serverului (id/tenant_id/updated_at/e-Factura/estimate_id) și nu
+   face niciun apel la Supabase. După o salvare reușită (RPC 0117) istoricul
+   repornește din starea canonică ⇒ nu se poate anula peste ultima salvare. */
+const HIST_MAX=50, HIST_WAIT=500;
+/* Whitelist explicit: doar câmpurile pe care editorul le trimite legitim către
+   save_invoice + starea client de care depinde salvarea (markerul auto/manual al
+   numărului). NU intră: efactura_status/efactura_id/efactura_sent_at și legătura
+   estimate_id (S._fromEstimate) — sunt protejate de server (0117). */
+const HIST_DOC=['status','number','client_id','site_id','title','issue_date','due_date','disc_mode','disc_value','vat_mode','vat_value','materials_mode','skonto_off','skonto_pct','inv_type','contract_total','retention_pct','bank_choice','amount_paid','plan_url'];
+const HIST_LINE=['name','qty','unit','unit_price','vat_rate','disc','group','kind','description','photo_url','cat_id','_catName','_catPrice','_catUnit','_catDesc','_catPhoto'];
+let HIST={ cur:null, past:[], future:[], applying:false, tmr:null, key:null };
+function captureHistoryState(){
+  const d={}; HIST_DOC.forEach(k=>{ d[k]=(S.inv[k]===undefined?null:S.inv[k]); });
+  return JSON.stringify({ doc:d, autoNum:(S._autoNum===undefined?null:S._autoNum),
+    lines:(S.lines||[]).map(l=>{ const o={}; HIST_LINE.forEach(k=>{ o[k]=(l[k]===undefined?null:l[k]); }); return o; }),
+    groups:(S.groups||[]).map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})) });
+}
+function applyHistoryState(snap){
+  const st=JSON.parse(snap); HIST.applying=true;
+  try{
+    HIST_DOC.forEach(k=>{ S.inv[k]=st.doc[k]; });          // doar cheile din whitelist
+    if(st.autoNum!==null) S._autoNum=st.autoNum;
+    S.lines=(st.lines||[]).map(l=>Object.assign({},l));
+    S.groups=(st.groups||[]).map(g=>Object.assign({},g));
+    render();                                              // randare + totaluri prin funcțiile existente
+    saveDraftDz();                                          // schița locală rămâne sincronă (no-op dacă S.id)
+  } finally { HIST.applying=false; }
+}
+function historyButtons(){ const u=$('btn-undo'), r=$('btn-redo'); if(u) u.disabled=!HIST.past.length; if(r) r.disabled=!HIST.future.length; }
+function historyCommit(){
+  if(HIST.applying) return;
+  clearTimeout(HIST.tmr); HIST.tmr=null; HIST.key=null;
+  const snap=captureHistoryState();
+  if(HIST.cur===null){ HIST.cur=snap; historyButtons(); return; }
+  if(snap===HIST.cur) return;                              // stări identice nu se salvează
+  HIST.past.push(HIST.cur); if(HIST.past.length>HIST_MAX) HIST.past.shift();
+  HIST.cur=snap; HIST.future.length=0; historyButtons();
+}
+function historyFlush(){ if(HIST.tmr) historyCommit(); }   // finalizează tastarea în așteptare
+function historyTouch(el){                                 // tastare: un pas per control, nu per caracter
+  if(HIST.applying) return;
+  if(HIST.key && HIST.key!==el) historyCommit();           // alt control ⇒ pas logic nou
+  HIST.key=el; clearTimeout(HIST.tmr); HIST.tmr=setTimeout(historyCommit,HIST_WAIT);
+}
+function historyUndo(){ historyFlush(); if(!HIST.past.length) return; HIST.future.push(HIST.cur); HIST.cur=HIST.past.pop(); applyHistoryState(HIST.cur); historyButtons(); }
+function historyRedo(){ historyFlush(); if(!HIST.future.length) return; HIST.past.push(HIST.cur); HIST.cur=HIST.future.pop(); applyHistoryState(HIST.cur); historyButtons(); }
+function historyReset(){ clearTimeout(HIST.tmr); HIST.tmr=null; HIST.key=null; HIST.past=[]; HIST.future=[]; HIST.cur=captureHistoryState(); historyButtons(); }
+function histSkip(el){ return !!(el && el.closest && el.closest('#modal-mount')); } // în modale comite butonul lor de salvare
+function historyInit(){
+  document.addEventListener('input', e=>{ if(!histSkip(e.target)) historyTouch(e.target); });   // bubble: handlerul inline a mutat deja S
+  document.addEventListener('change', e=>{ if(!histSkip(e.target)) historyCommit(); });
+  document.addEventListener('blur', e=>{ if(!histSkip(e.target)) historyFlush(); }, true);      // blur nu bulează
+  document.addEventListener('keydown', e=>{
+    if(!(e.ctrlKey||e.metaKey) || e.altKey) return;
+    if(histSkip(e.target)) return;                          // în modale rămâne undo-ul nativ al câmpului
+    const k=(e.key||'').toLowerCase();
+    if(k==='z' && !e.shiftKey){ if(!HIST.past.length && !HIST.tmr) return; e.preventDefault(); historyUndo(); }
+    else if((k==='z' && e.shiftKey) || k==='y'){ if(!HIST.future.length) return; e.preventDefault(); historyRedo(); }
+  });
+  historyReset();
+}
+/* Acțiuni structurale (onclick / drag / modale) — un pas logic fiecare.
+   Câmpurile cu oninput/onchange NU se ambalează: sunt acoperite de listenerele de mai sus. */
+['addLine','addLineG','delLine','newGroup','groupSelection','addSelToGroup','delGroup','catalogNew','pickCatalog','lineRemovePhoto','skontoToggle','rebuildLinesFromDOM','rebuildGroupsFromDOM','saveLineDetails','saveQuickService','lcSave','attachPlan','saveNewClient'].forEach(function(n){
+  const f=window[n]; if(typeof f!=='function') return;
+  window[n]=function(){ historyFlush(); const r=f.apply(this,arguments); if(r&&typeof r.then==='function') r.then(historyCommit,historyCommit); else historyCommit(); return r; };
+});
 boot();
 </script>
 <script src="i18n.js"></script>
