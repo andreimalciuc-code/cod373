@@ -108,7 +108,7 @@ async function boot(){
   await loadCatalog();
   const id=param('id');
   if(id){ await loadEstimate(id); }
-  else { S.est.number=await genNumber(); if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()];
+  else { S.est.number=await genNumber(); S._autoNum=S.est.number; if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()];
     S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none');
     if(param('prefill')){ try{ const pf=JSON.parse(localStorage.getItem('c373_offer_prefill')||'null'); if(pf && pf.lines && pf.lines.length){ S.lines=pf.lines.map(l=>Object.assign(blankLine(),{name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20))})); S._restored=true; } localStorage.removeItem('c373_offer_prefill'); }catch(e){} }
     else if(!param('survey')){ const dr=getDraftDz(); if(dr && dr.lines && dr.lines.length){ if(dr.est) S.est=Object.assign(S.est,dr.est); S.lines=dr.lines; if(Array.isArray(dr.groups)) S.groups=dr.groups; reorderLinesBySection(); S._restored=true; } } }
@@ -153,7 +153,7 @@ async function loadCatalog(){
 async function loadEstimate(id){
   const e=await sb.from('estimates').select('*').eq('id',id).single();
   if(e.error){ toast('Eroare: '+e.error.message); return; }
-  S.id=id; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
+  S.id=id; S._updatedAt=e.data.updated_at; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'',
     disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null),
     signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null, plan_url:e.data.plan_url||null };
@@ -764,27 +764,33 @@ async function save(thenPdf){
     disc_mode:S.est.disc_mode||'none', disc_value:+S.est.disc_value||0, vat_mode:S.est.vat_mode||'none', vat_value:+S.est.vat_value||0, materials_mode:S.est.materials_mode||'detailed', skonto_off:!!S.est.skonto_off, skonto_pct:(S.est.skonto_pct!=null&&S.est.skonto_pct!==''?+S.est.skonto_pct:null),
     subtotal:t.sub, vat_total:t.vat, total:t.total, plan_url:S.est.plan_url||null };
   try{
-    if(S.id){ const u=await sb.from('estimates').update(rec).eq('id',S.id);
-      if(u.error){ if(u.error.code==='23505'||/duplicate key|estimates_tenant_number_uq/i.test(u.error.message||'')){ $('btn-save').disabled=false; const T=window.C373t||function(s){return s;}; toast(T('Numărul există deja la altă ofertă. Schimbă numărul.')+' ('+esc(S.est.number||'')+')'); return; } throw u.error; } }
-    else {
-      // Reîncearcă cu un număr nou dacă numărul se ciocnește (index unic estimates_tenant_number_uq, migr 0116) — același pattern ca la factură.
-      let insId=null, tries=0, lastErr=null;
-      while(!insId && tries<6){ const ins=await sb.from('estimates').insert(rec).select('id').single();
-        if(!ins.error){ insId=ins.data.id; break; }
-        lastErr=ins.error;
-        if(ins.error.code==='23505'||/duplicate key|estimates_tenant_number_uq/i.test(ins.error.message||'')){ tries++; rec.number=await genNumber(); S.est.number=rec.number; const nel=$('f-num'); if(nel) nel.value=rec.number; }
-        else throw ins.error; }
-      if(!insId) throw (lastErr||new Error((window.C373t||function(s){return s;})('Nu am putut genera un număr unic de ofertă.')));
-      S.id=insId; history.replaceState(null,'',base()+'deviz.html?id='+S.id); }
-    const del=await sb.from('estimate_items').delete().eq('estimate_id',S.id); if(del.error) throw del.error;
-    // Verificăm că ștergerea chiar a avut loc — altfel inserarea ar dubla liniile (protecție anti-corupere).
-    const chk=await sb.from('estimate_items').select('id',{count:'exact',head:true}).eq('estimate_id',S.id);
-    if(chk.count){ $('btn-save').disabled=false; toast('Nu am putut rescrie liniile (drepturi insuficiente pentru rolul tău). Cere owner-ului să aplice ultima actualizare sau să salveze el oferta.'); return; }
-    const items=valid.map((l,i)=>({tenant_id:tid,estimate_id:S.id,kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,position:i+1,description:l.description||null,photo_url:l.photo_url||null}));
-    const im=await sb.from('estimate_items').insert(items); if(im.error) throw im.error;
+    // Salvare ATOMICĂ (migr 0117): antet + toate pozițiile într-o SINGURĂ tranzacție (RPC save_estimate),
+    // cu optimistic concurrency pe updated_at — fereastra „zero poziții" a vechiului delete+insert dispare.
+    const items=valid.map(l=>({kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,description:l.description||null,photo_url:l.photo_url||null}));
+    const r=await sb.rpc('save_estimate',{ p_document_id:S.id||null, p_tenant_id:tid, p_document:rec, p_items:items,
+      p_expected_updated_at:S._updatedAt||null, p_number_manual:(S.id?true:!!((S.est.number||'')&&S.est.number!==S._autoNum)) });
+    if(r.error) throw r.error;
+    const row=Array.isArray(r.data)?r.data[0]:r.data;
+    S.id=row.id; S.est.number=row.number||''; S._updatedAt=row.updated_at;
+    const nel=$('f-num'); if(nel) nel.value=S.est.number;
+    history.replaceState(null,'',base()+'deviz.html?id='+S.id);
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Ofertă salvată.'+(dp>0?' Reducere '+dp+'%':''));
     if(thenPdf) pdf();
-  }catch(e){ $('btn-save').disabled=false; toast('Eroare: '+(e.message||e)); }
+  }catch(e){
+    $('btn-save').disabled=false; console.error('save_estimate', e);
+    const T=window.C373t||function(s){return s;};
+    const code=(((e&&e.message)||'').match(/DOC_[A-Z_]+/)||[])[0];
+    const M={DOC_CONFLICT:'Documentul a fost modificat într-o altă filă sau de alt utilizator. Reîncarcă documentul înainte de a continua.',
+      DOC_NUMBER_CONFLICT:'Numărul există deja la altă ofertă. Schimbă numărul.',
+      DOC_FORBIDDEN:'Nu ai dreptul să salvezi documente în această firmă.',
+      DOC_NOT_FOUND:'Documentul nu mai există.',
+      DOC_INVALID_CLIENT:'Clientul ales nu e valid.',
+      DOC_INVALID_SITE:'Șantierul ales nu e valid.',
+      DOC_INVALID_ITEMS:'Pozițiile documentului nu sunt valide.',
+      DOC_INVALID_TENANT:'Firma activă nu e validă. Reîncarcă pagina.',
+      DOC_SAVE_FAILED:'Salvarea nu a reușit. Verifică datele și încearcă din nou.'};
+    toast(code&&M[code]?('⚠️ '+T(M[code])+(code==='DOC_NUMBER_CONFLICT'?' ('+esc(S.est.number||'')+')':'')):('Eroare: '+(e.message||e)));
+  }
 }
 
 /* ---- PDF (docType: oferta | confirmare | livrare) ---- */

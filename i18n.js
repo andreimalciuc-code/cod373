@@ -2522,6 +2522,16 @@
     // ── Unicitatea numerelor de ofertă (migr 0116, SW v337) ──
     'Numărul există deja la altă ofertă. Schimbă numărul.':{ru:'Этот номер уже используется в другой оферте. Измените номер.',de:'Diese Nummer wird bereits von einem anderen Angebot verwendet. Ändere die Nummer.',en:'This number is already used by another offer. Change the number.'},
     'Nu am putut genera un număr unic de ofertă.':{ru:'Не удалось сгенерировать уникальный номер оферты.',de:'Es konnte keine eindeutige Angebotsnummer erzeugt werden.',en:'Could not generate a unique offer number.'},
+    // ── Salvare atomică documente (migr 0117, SW v338) ──
+    'Documentul a fost modificat într-o altă filă sau de alt utilizator. Reîncarcă documentul înainte de a continua.':{ru:'Документ был изменён в другой вкладке или другим пользователем. Перезагрузите документ, прежде чем продолжить.',de:'Das Dokument wurde in einem anderen Tab oder von einem anderen Benutzer geändert. Lade das Dokument neu, bevor du fortfährst.',en:'The document was modified in another tab or by another user. Reload the document before continuing.'},
+    'Numărul există deja la altă factură. Schimbă numărul.':{ru:'Этот номер уже используется в другом счёте. Измените номер.',de:'Diese Nummer wird bereits von einer anderen Rechnung verwendet. Ändere die Nummer.',en:'This number is already used by another invoice. Change the number.'},
+    'Nu ai dreptul să salvezi documente în această firmă.':{ru:'У вас нет права сохранять документы в этой фирме.',de:'Du bist nicht berechtigt, in dieser Firma Dokumente zu speichern.',en:'You are not allowed to save documents in this company.'},
+    'Documentul nu mai există.':{ru:'Документ больше не существует.',de:'Das Dokument existiert nicht mehr.',en:'The document no longer exists.'},
+    'Clientul ales nu e valid.':{ru:'Выбранный клиент недействителен.',de:'Der gewählte Kunde ist ungültig.',en:'The selected client is not valid.'},
+    'Șantierul ales nu e valid.':{ru:'Выбранный объект недействителен.',de:'Die gewählte Baustelle ist ungültig.',en:'The selected site is not valid.'},
+    'Pozițiile documentului nu sunt valide.':{ru:'Позиции документа недействительны.',de:'Die Positionen des Dokuments sind ungültig.',en:'The document items are not valid.'},
+    'Firma activă nu e validă. Reîncarcă pagina.':{ru:'Активная фирма недействительна. Перезагрузите страницу.',de:'Die aktive Firma ist ungültig. Lade die Seite neu.',en:'The active company is not valid. Reload the page.'},
+    'Salvarea nu a reușit. Verifică datele și încearcă din nou.':{ru:'Сохранение не удалось. Проверьте данные и попробуйте снова.',de:'Das Speichern ist fehlgeschlagen. Prüfe die Daten und versuche es erneut.',en:'Saving failed. Check the data and try again.'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }
