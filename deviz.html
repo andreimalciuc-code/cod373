@@ -764,8 +764,18 @@ async function save(thenPdf){
     disc_mode:S.est.disc_mode||'none', disc_value:+S.est.disc_value||0, vat_mode:S.est.vat_mode||'none', vat_value:+S.est.vat_value||0, materials_mode:S.est.materials_mode||'detailed', skonto_off:!!S.est.skonto_off, skonto_pct:(S.est.skonto_pct!=null&&S.est.skonto_pct!==''?+S.est.skonto_pct:null),
     subtotal:t.sub, vat_total:t.vat, total:t.total, plan_url:S.est.plan_url||null };
   try{
-    if(S.id){ const u=await sb.from('estimates').update(rec).eq('id',S.id); if(u.error) throw u.error; }
-    else { const ins=await sb.from('estimates').insert(rec).select('id').single(); if(ins.error) throw ins.error; S.id=ins.data.id; history.replaceState(null,'',base()+'deviz.html?id='+S.id); }
+    if(S.id){ const u=await sb.from('estimates').update(rec).eq('id',S.id);
+      if(u.error){ if(u.error.code==='23505'||/duplicate key|estimates_tenant_number_uq/i.test(u.error.message||'')){ $('btn-save').disabled=false; const T=window.C373t||function(s){return s;}; toast(T('Numărul există deja la altă ofertă. Schimbă numărul.')+' ('+esc(S.est.number||'')+')'); return; } throw u.error; } }
+    else {
+      // Reîncearcă cu un număr nou dacă numărul se ciocnește (index unic estimates_tenant_number_uq, migr 0116) — același pattern ca la factură.
+      let insId=null, tries=0, lastErr=null;
+      while(!insId && tries<6){ const ins=await sb.from('estimates').insert(rec).select('id').single();
+        if(!ins.error){ insId=ins.data.id; break; }
+        lastErr=ins.error;
+        if(ins.error.code==='23505'||/duplicate key|estimates_tenant_number_uq/i.test(ins.error.message||'')){ tries++; rec.number=await genNumber(); S.est.number=rec.number; const nel=$('f-num'); if(nel) nel.value=rec.number; }
+        else throw ins.error; }
+      if(!insId) throw (lastErr||new Error((window.C373t||function(s){return s;})('Nu am putut genera un număr unic de ofertă.')));
+      S.id=insId; history.replaceState(null,'',base()+'deviz.html?id='+S.id); }
     const del=await sb.from('estimate_items').delete().eq('estimate_id',S.id); if(del.error) throw del.error;
     // Verificăm că ștergerea chiar a avut loc — altfel inserarea ar dubla liniile (protecție anti-corupere).
     const chk=await sb.from('estimate_items').select('id',{count:'exact',head:true}).eq('estimate_id',S.id);

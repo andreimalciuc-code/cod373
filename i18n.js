@@ -2519,6 +2519,9 @@
     'Probă gratuită':{ru:'Бесплатный пробный период',de:'Kostenlose Testphase',en:'Free trial'},
     'Proba a expirat.':{ru:'Пробный период истёк.',de:'Die Testphase ist abgelaufen.',en:'The trial has expired.'},
     'Poza nu s-a putut încărca.':{ru:'Не удалось загрузить фото.',de:'Das Foto konnte nicht geladen werden.',en:'The photo could not be loaded.'},
+    // ── Unicitatea numerelor de ofertă (migr 0116, SW v337) ──
+    'Numărul există deja la altă ofertă. Schimbă numărul.':{ru:'Этот номер уже используется в другой оферте. Измените номер.',de:'Diese Nummer wird bereits von einem anderen Angebot verwendet. Ändere die Nummer.',en:'This number is already used by another offer. Change the number.'},
+    'Nu am putut genera un număr unic de ofertă.':{ru:'Не удалось сгенерировать уникальный номер оферты.',de:'Es konnte keine eindeutige Angebotsnummer erzeugt werden.',en:'Could not generate a unique offer number.'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }
