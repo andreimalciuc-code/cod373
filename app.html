@@ -3494,6 +3494,7 @@ async function subDel(childKey,id){ const c=window._subCtx; if(!confirm('Sigur �
 function closeSub(){ $('picker-mount').innerHTML=''; }
 async function subForm(childKey, row, pField, pId, after){
   const m=MODULES[childKey];
+  if(m && m.pageEditor){ openPageEditor(childKey, row?row.id:null); return; }   // al doilea motor generic — aceeași interdicție
   const refFields=m.fields.filter(f=>f.type==='ref' && f.key!==pField);
   const refData={}; for(const f of refFields){ refData[f.key]=await loadRefOptions(f.ref); }
   let body='<div id="sf-msg"></div>';
@@ -7105,7 +7106,7 @@ async function renderModule(key){
   const canAdd=canDo(key,'c');
   bar+=(!canAdd?'<span style="margin-left:auto"></span>'
     :m.wizard?'<button class="btn-primary" style="margin-left:auto;background:var(--ink,#1f2937)" onclick="openSiteWizard()">🏗️ Șantier nou cu grafic</button><button class="btn-ghost" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>'
-    :m.pageEditor?'<button class="btn-primary" style="margin-left:auto" onclick="window.open(\''+m.pageEditor+'?new=1\',\'_blank\')">📋 '+esc(m.newLabel)+' (filă nouă)</button><button class="btn-ghost" onclick="openForm(\''+key+'\')">＋ rapid</button>'
+    :m.pageEditor?'<button class="btn-primary" style="margin-left:auto" onclick="openPageEditor(\''+key+'\')">📋 '+esc(m.newLabel)+' (filă nouă)</button>'
     :'<button class="btn-primary" style="margin-left:auto" onclick="openForm(\''+key+'\')"><span>＋</span> '+esc(m.newLabel)+'</button>')+'</div>';
   // (orderItems action injectat în rowActions)
   if(m.bulkOrder && canAdd) bar=bar.replace(/<\/div>$/,'<button class="btn-ghost" id="bulk-order-btn" onclick="bulkCreateOrder()" style="margin-left:.5rem;display:none">🛒 '+esc(m.bulkOrder.label||'Creează comandă')+' (<span id="bulk-n">0</span>)</button></div>');
@@ -7218,7 +7219,7 @@ function renderList(){
   const { key,m,rows,q,status,statusField }=listState;
   if(!rows.length){
     $('mod-body').innerHTML='<div class="empty"><div class="ei">'+m.icon+'</div><div>'+TR('nimic')+'</div>'
-      +(canDo(key,'c')?'<div style="margin-top:1rem"><button class="btn-primary" onclick="openForm(\''+key+'\')">＋ '+esc(m.newLabel)+'</button></div>':'')+'</div>';
+      +(canDo(key,'c')?'<div style="margin-top:1rem"><button class="btn-primary" onclick="'+(m.pageEditor?'openPageEditor(\''+key+'\')':'openForm(\''+key+'\')')+'">＋ '+esc(m.newLabel)+'</button></div>':'')+'</div>';
     if($('list-count')) $('list-count').textContent=''; return;
   }
   let data=rows;
@@ -7329,7 +7330,7 @@ function rowActions(key,m,r){
   if(m.printable) a.push({i:'⬇',l:'Descarcă / Tipărește PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'🔢',l:'Bucăți (serii), inventar, valoare, amortizare + unde se află',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(m.vehicleLog){ if(canSee('harta')) a.push({i:'🗺️',l:'Vezi pe hartă (GPS)',f:"vehShowOnMap('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🖨️',l:tz('Fișă PDF vehicul'),f:"vehiclePdf('"+id+"')"}); }
-  if(canDo(key,'u')) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});
+  if(canDo(key,'u') && !m.pageEditor) a.push({i:'✏️',l:'Editează',f:"editRecord('"+key+"','"+id+"')"});  // pageEditor ⇒ editarea se face în editorul dedicat (acțiunea „Deschide / editează")
   if(canDo(key,'d')) a.push({i:'🗑',l:'Șterge',f:"delRecord('"+key+"','"+id+"')",d:true});
   return a;
 }
@@ -7524,6 +7525,9 @@ function srcMin(r,sk){ const s=PRICE_SRC[sk]; const ps=((r[s.emKey])||[]).map(x=
 function srcCol(sk){ const s=PRICE_SRC[sk]; return r=>{ const names=srcNames(r,sk); if(!names.length) return '—'; const mn=srcMin(r,sk); return '<span class="cell-desc" title="'+esc(names.join(', '))+'">'+esc(names.join(', '))+'</span>'+(mn!=null?'<div style="color:var(--muted);font-size:.74rem">de la '+money(mn)+'</div>':''); }; }
 async function openForm(key,row,preset){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
+  // Protecție în profunzime: documentele cu editor dedicat nu trec NICIODATĂ prin
+  // formularul generic, oricine ar apela funcția (buton vechi, callback, consolă).
+  if(MODULES[key] && MODULES[key].pageEditor){ openPageEditor(key, row?row.id:null); return; }
   const m=MODULES[key]; formCtx={ key, id: row?row.id:null, lines:[] };
   // preload ref options
   const refFields=m.fields.filter(f=>f.type==='ref');
@@ -8076,6 +8080,9 @@ function price2Sync(key,edited){
 
 async function saveRecord(){
   const key=formCtx.key, m=MODULES[key];
+  // Ultima barieră: chiar dacă s-ar ajunge aici dintr-o stare de UI veche sau
+  // dintr-un apel programatic, motorul generic NU scrie oferte/facturi.
+  if(m && m.pageEditor){ closeModal(); toast('📋 '+tz('Ofertele și facturile se editează doar în editorul lor dedicat.')); openPageEditor(key, formCtx.id); return; }
   const payload={ tenant_id: state.tenant };
   for(const f of m.fields){
     if(f.type==='photo'||f.type==='file'){ const el=$('f-'+f.key); if(el && el.files && el.files[0]){ let file=el.files[0]; if(f.type==='photo') file=await compressImage(file,1600,0.72); const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/'+Date.now()+'_'+safe; showMsg('form-msg',''); const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'}); if(up.error){ showMsg('form-msg','Eroare la încărcarea fișierului: '+up.error.message); return; } payload[f.key]=path; } continue; }
@@ -8150,6 +8157,7 @@ async function saveRecord(){
 
 async function editRecord(key,id){
   if(!canDo(key,'u')){ toast('🔒 Nu ai dreptul să editezi aici.'); return; }
+  if(MODULES[key] && MODULES[key].pageEditor){ openPageEditor(key,id); return; }   // oferte/facturi ⇒ editorul dedicat
   const m=MODULES[key];
   const { data, error } = await sb.from(m.table).select('*').eq('id',id).single();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
@@ -8577,6 +8585,19 @@ function copyPortal(){ const i=$('portal-url'); i.select(); try{ navigator.clipb
 
 /* ════ TIPĂRIRE / PDF (factură, deviz) ════ */
 function openEditorPdf(page,id){ window.open(page+'?id='+encodeURIComponent(id)+'&print=1','_blank'); }
+/* ════ EDITOARE DEDICATE (oferte / facturi) ═══════════════════════════════════
+   Documentele cu `pageEditor` se creează și se editează EXCLUSIV în editorul lor
+   standalone (deviz.html / factura.html) — singurul care salvează ATOMIC prin
+   RPC-urile 0117 (save_estimate/save_invoice), cu optimistic concurrency pe
+   `updated_at` și whitelist de câmpuri. Motorul generic (openForm/saveRecord)
+   făcea `update` fără token de concurență + `delete`+`insert` pe *_items, adică
+   exact fereastra pe care 0117 a închis-o ⇒ i se interzice accesul la aceste
+   module (DECISIONS D19). Un singur punct de navigare, refolosit peste tot. */
+function openPageEditor(key,id){
+  const m=MODULES[key]||{}; if(!m.pageEditor) return false;
+  window.open(m.pageEditor+(id?('?id='+encodeURIComponent(id)):'?new=1'),'_blank');
+  return true;
+}
 async function printDoc(key,id){
   const m=MODULES[key];
   const { data:p, error } = await sb.from(m.table).select('*, clients!client_id(name,idno,address), sites!site_id(name)').eq('id',id).single();

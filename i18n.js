@@ -2547,6 +2547,8 @@
     'Eroare internă la duplicare. Încearcă din nou.':{ru:'Внутренняя ошибка при дублировании. Попробуйте снова.',de:'Interner Fehler beim Duplizieren. Versuche es erneut.',en:'Internal error while duplicating. Try again.'},
     'Se creează copia…':{ru:'Создаётся копия…',de:'Kopie wird erstellt…',en:'Creating the copy…'},
     'Deschide copia':{ru:'Открыть копию',de:'Kopie öffnen',en:'Open the copy'},
+    // ── Editoarele dedicate pentru oferte/facturi (Lot 0A) ──
+    'Ofertele și facturile se editează doar în editorul lor dedicat.':{ru:'Оферты и счета редактируются только в их специальном редакторе.',de:'Angebote und Rechnungen werden nur in ihrem eigenen Editor bearbeitet.',en:'Offers and invoices are edited only in their dedicated editor.'},
     // ── Anulează / Refă în editoarele de documente ──
     'Anulează ultima modificare':{ru:'Отменить последнее изменение',de:'Letzte Änderung rückgängig machen',en:'Undo the last change'},
     'Refă modificarea anulată':{ru:'Вернуть отменённое изменение',de:'Rückgängig gemachte Änderung wiederherstellen',en:'Redo the undone change'},
