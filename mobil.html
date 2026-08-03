@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='327';
+const APP_BUILD='328';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -821,7 +821,7 @@ async function scrPontaj(){
   let myEmp=null,myName=''; try{ const e=await sb.from('employees').select('id,full_name').eq('user_id',S.session.user.id).maybeSingle(); if(e.data){ myEmp=e.data.id; myName=e.data.full_name; } }catch(e){}
   if(!myEmp){ $('pj').innerHTML='<div class="empty"><div class="ei">⏱️</div>Contul tău nu e legat de un angajat. Roagă biroul să te adauge ca angajat ca să poți ponta.</div>'; return; }
   let plannedSite=null,plannedName=''; try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ plannedSite=cp.data.site_id; plannedName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){}
-  let ts=null; try{ const r=await sb.from('timesheets').select('id,start_time,end_time,break_min,hours,site_id,sites(name)').eq('employee_id',myEmp).eq('work_date',d).maybeSingle(); ts=r.data||null; }catch(e){}
+  let ts=null; try{ const r=await sb.from('timesheets').select('id,start_time,end_time,break_min,hours,site_id,updated_at,approved,sites(name)').eq('employee_id',myEmp).eq('work_date',d).maybeSingle(); ts=r.data||null; }catch(e){}
   let sites=[]; try{ const sr=await sb.from('sites').select('id,name,status').order('name'); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'&&s.status!=='done'); }catch(e){}
   S._pj={ emp:myEmp, name:myName, date:d, plannedSite, plannedName, ts, sites };
   renderPontajWorker();
@@ -840,23 +840,59 @@ function renderPontajWorker(){
   } else if(!P.ts.end_time){
     h=planLine+'<div class="card" style="text-align:center"><div class="s">Lucrezi din</div><div class="t" style="font-size:1.7rem;line-height:1.2">'+esc(String(P.ts.start_time).slice(0,5))+'</div><div class="s" id="pj-elapsed">⏱️ …</div>'
       +(siteName?'<div class="s" style="margin-top:.2rem">🏗️ '+esc(siteName)+'</div>':'')
-      +'<div class="row" style="justify-content:center;gap:.6rem;margin:.8rem 0;align-items:center"><button class="mini-btn gh" onclick="pjBreakAdd(-15)">−15</button><div>☕ Pauză <b>'+(P.ts.break_min||0)+'</b> min</div><button class="mini-btn gh" onclick="pjBreakAdd(15)">+15</button></div>'
-      +'<button class="btn" style="background:#dc2626;font-size:1.15rem;padding:1rem" onclick="pjFinish()">⏹ Am terminat ziua</button></div>';
+      +'<div class="row" style="justify-content:center;gap:.6rem;margin:.8rem 0;align-items:center">'+(P.ts.approved?'':'<button class="mini-btn gh" onclick="pjBreakAdd(-15)">−15</button>')+'<div>☕ Pauză <b>'+(P.ts.break_min||0)+'</b> min</div>'+(P.ts.approved?'':'<button class="mini-btn gh" onclick="pjBreakAdd(15)">+15</button>')+'</div>'
+      +(P.ts.approved?('<div class="s" style="text-align:center;padding:.3rem">'+esc(mt('🔒 Pontaj aprobat — nu mai poate fi schimbat.'))+'</div>')
+                     :'<button class="btn" style="background:#dc2626;font-size:1.15rem;padding:1rem" onclick="pjFinish()">⏹ Am terminat ziua</button>')+'</div>';
     setTimeout(()=>{ const e=$('pj-elapsed'); if(e) e.textContent='⏱️ '+mElapsed(P.ts.start_time); },10);
     window._pjTimer=setInterval(()=>{ const e=$('pj-elapsed'); if(!e){ clearInterval(window._pjTimer); return; } e.textContent='⏱️ '+mElapsed(P.ts.start_time); },30000);
   } else {
-    h=planLine+'<div class="card" style="background:#ecfdf5;border-color:#16a34a"><div class="t">✅ Azi: '+esc(P.ts.hours)+' h</div><div class="s">'+esc(String(P.ts.start_time).slice(0,5))+'–'+esc(String(P.ts.end_time).slice(0,5))+' · pauză '+(P.ts.break_min||0)+' min'+(siteName?(' · 🏗️ '+esc(siteName)):'')+'</div></div><button class="btn gh" onclick="pjReopen()">↩️ Reia / corectează</button>';
+    h=planLine+'<div class="card" style="background:#ecfdf5;border-color:#16a34a"><div class="t">✅ Azi: '+esc(P.ts.hours)+' h</div><div class="s">'+esc(String(P.ts.start_time).slice(0,5))+'–'+esc(String(P.ts.end_time).slice(0,5))+' · pauză '+(P.ts.break_min||0)+' min'+(siteName?(' · 🏗️ '+esc(siteName)):'')+'</div></div>'
+      +(P.ts.approved?'<div class="s" style="text-align:center;padding:.5rem">'+esc(mt('🔒 Pontaj aprobat — nu mai poate fi schimbat.'))+'</div>':'<button class="btn gh" onclick="pjReopen()">↩️ Reia / corectează</button>');
   }
   el.innerHTML='<div class="s" style="margin-bottom:.5rem">📅 Azi · '+esc(P.date)+'</div>'+h+'<div id="pj-recent"></div>';
 }
+/* ── Pontaj: aceeași API atomică ca la birou (migr 0120). Nicio scriere directă în `timesheets`. ── */
+const TS_MSG={
+  TS_APPROVED:'🔒 Pontajul zilei e aprobat — nu mai poate fi schimbat. Anunță biroul dacă e greșit.',
+  TS_CONFLICT:'⚠️ Pontajul a fost schimbat între timp. Reîncarcă pagina și încearcă din nou.',
+  TS_AMBIGUOUS:'⚠️ Există mai multe pontaje pentru ziua asta. Anunță biroul.',
+  TS_FORBIDDEN:'⛔ Nu ai dreptul să modifici pontajul.',
+  TS_DELETE_FORBIDDEN:'⛔ Ștergerea a fost refuzată.',
+  TS_NOT_FOUND:'Pontajul nu mai există.',
+  TS_NOT_APPROVED:'Pontajul nu este aprobat.',
+  TS_INVALID_INPUT:'Valoare invalidă. Verifică orele și pauza.',
+  TS_INVALID_EMPLOYEE:'Angajatul nu aparține acestei firme.',
+  TS_INVALID_SITE:'Șantierul nu aparține acestei firme.'
+};
+function mt(s){ try{ return (window.C373t&&C373t(s))||s; }catch(e){ return s; } }
+function mtsCode(e){ const m=((e&&(e.message||e))||'').toString(); return Object.keys(TS_MSG).find(c=>m.indexOf(c)>=0)||null; }
+function mtsMsg(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase();
+  if(!navigator.onLine||/load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m)) return mt('📴 Fără internet. Reconectează-te și încearcă din nou.');
+  const c=mtsCode(e); return c?mt(TS_MSG[c]):('Eroare: '+esc((e&&e.message)||e)); }
+async function pjSet(payload){ const P=S._pj;
+  const r=await sb.rpc('timesheet_set',{ p_tenant_id:S.tenant, p_employee_id:P.emp, p_work_date:P.date, p_payload:payload, p_expected_updated_at:(P.ts?P.ts.updated_at:null) });
+  if(r.error) return {ok:false,msg:mtsMsg(r.error)};
+  const row=(r.data&&r.data[0])||null;
+  if(!row||!row.id) return {ok:false,msg:mt('Nu am primit confirmarea serverului. Reîncarcă pagina.')};
+  if(P.ts){ P.ts.id=row.id; P.ts.updated_at=row.updated_at; }
+  return {ok:true,row:row}; }
 async function pjStart(){ const P=S._pj; const site=P.plannedSite||($('pj-site')&&$('pj-site').value)||null; if(!site){ toast('Alege întâi șantierul.'); return; } const st=hhmm();
-  await sb.from('timesheets').delete().eq('employee_id',P.emp).eq('work_date',P.date);
-  const {data,error}=await sb.from('timesheets').insert({tenant_id:S.tenant,employee_id:P.emp,site_id:site,work_date:P.date,start_time:st,break_min:60,hours:0,approved:false}).select('id,start_time,end_time,break_min,hours,site_id,sites(name)').single();
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
-  P.ts=data; toast('▶️ Ai început ziua la '+st); renderPontajWorker(); }
-async function pjBreakAdd(delta){ const P=S._pj; if(!P.ts) return; const br=Math.max(0,(+P.ts.break_min||0)+delta); P.ts.break_min=br; renderPontajWorker(); try{ await sb.from('timesheets').update({break_min:br}).eq('id',P.ts.id); }catch(e){} }
-async function pjFinish(){ const P=S._pj; if(!P.ts) return; const en=hhmm(); const hrs=mHours(P.ts.start_time,en,P.ts.break_min); const {error}=await sb.from('timesheets').update({end_time:en,hours:hrs}).eq('id',P.ts.id); if(error){ toast('Eroare: '+esc(error.message)); return; } P.ts.end_time=en; P.ts.hours=hrs; toast('⏹ Gata! Ai pontat '+hrs+' h.'); renderPontajWorker(); }
-async function pjReopen(){ const P=S._pj; if(!P.ts) return; await sb.from('timesheets').update({end_time:null,hours:0}).eq('id',P.ts.id); P.ts.end_time=null; P.ts.hours=0; renderPontajWorker(); }
+  const r=await pjSet({site_id:site, start_time:st, end_time:null, break_min:'60', hours:'0', absence:null});
+  if(!r.ok){ toast(r.msg); return; }
+  const q=await sb.from('timesheets').select('id,start_time,end_time,break_min,hours,site_id,updated_at,approved,sites(name)').eq('id',r.row.id).maybeSingle();
+  P.ts=q.data||{id:r.row.id,updated_at:r.row.updated_at,start_time:st,end_time:null,break_min:60,hours:0,site_id:site,approved:false};
+  toast('▶️ Ai început ziua la '+st); renderPontajWorker(); }
+async function pjBreakAdd(delta){ const P=S._pj; if(!P.ts) return; const prev=(+P.ts.break_min||0); const br=Math.max(0,prev+delta); P.ts.break_min=br; renderPontajWorker();
+  const r=await pjSet({break_min:String(br)});
+  if(!r.ok){ P.ts.break_min=prev; renderPontajWorker(); toast(r.msg); } }   // eroare ⇒ revenim la valoarea de dinainte, nu rămâne o cifră mincinoasă pe ecran
+async function pjFinish(){ const P=S._pj; if(!P.ts) return; const en=hhmm(); const hrs=mHours(P.ts.start_time,en,P.ts.break_min);
+  const r=await pjSet({end_time:en, hours:String(hrs)});
+  if(!r.ok){ toast(r.msg); return; }
+  P.ts.end_time=en; P.ts.hours=hrs; toast('⏹ Gata! Ai pontat '+hrs+' h.'); renderPontajWorker(); }
+async function pjReopen(){ const P=S._pj; if(!P.ts) return;
+  const r=await pjSet({end_time:null, hours:'0'});
+  if(!r.ok){ toast(r.msg); return; }
+  P.ts.end_time=null; P.ts.hours=0; renderPontajWorker(); }
 async function scrPontajMgr(){
   $('screen').innerHTML='<div class="scr-title">Pontaj</div><button class="btn" onclick="sheetPontaj()">＋ Pontează ore</button><div id="pj" style="margin-top:1rem"><div class="loading">Se încarcă…</div></div>';
   const {data}=await sb.from('timesheets').select('id,work_date,hours,approved,employee_id,site_id');
@@ -885,9 +921,10 @@ async function savePontaj(){
   if(!emp){$('smsg').innerHTML='<div class="msg err">Alege un angajat.</div>';return;}
   if(!d||!h){$('smsg').innerHTML='<div class="msg err">Completează data și orele.</div>';return;}
   $('p-save').disabled=true;
-  const {error}=await sb.from('timesheets').insert({tenant_id:S.tenant,employee_id:emp,site_id:site,work_date:d,hours:h});
+  // p_expected_updated_at=null ⇒ doar creare; dacă ziua are deja pontaj, serverul refuză (TS_CONFLICT), fără suprascriere tăcută
+  const r=await sb.rpc('timesheet_set',{ p_tenant_id:S.tenant, p_employee_id:emp, p_work_date:d, p_payload:{site_id:site, hours:String(h)}, p_expected_updated_at:null });
   $('p-save').disabled=false;
-  if(error){$('smsg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>';return;}
+  if(r.error){$('smsg').innerHTML='<div class="msg err">'+esc(mtsCode(r.error)==='TS_CONFLICT'?mt('Există deja pontaj în această zi pentru angajat. Corectează-l de la birou.'):mtsMsg(r.error))+'</div>';return;}
   closeSheet();toast('✅ Pontaj salvat.');scrPontaj();
 }
 

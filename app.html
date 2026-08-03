@@ -2964,13 +2964,30 @@ async function empPontaj(empId, empName){
 }
 async function empPontajAdd(empId, empName){
   const h=+($('pt-hours').value||0); if(!h){ showMsg('pt-msg','Scrie orele lucrate.'); return; }
-  const rec={tenant_id:state.tenant, employee_id:empId, work_date:$('pt-date').value||null, hours:h, site_id:$('pt-site').value||null};
+  const day=$('pt-date').value||null; if(!day){ showMsg('pt-msg', tz('Alege data.')); return; }
   const btn=$('pt-add'); if(btn) btn.disabled=true;
-  const r=await sbRetry(()=>sb.from('timesheets').insert(rec));
-  if(r.error){ if(btn) btn.disabled=false; showMsg('pt-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  // aceeași cale atomică (migr 0120): p_expected_updated_at=null ⇒ doar creare; dacă ziua are deja pontaj, serverul refuză cu TS_CONFLICT (fără suprascriere tăcută)
+  const r=await sb.rpc('timesheet_set',{ p_tenant_id:state.tenant, p_employee_id:empId, p_work_date:day,
+    p_payload:{ site_id:$('pt-site').value||null, hours:String(h) }, p_expected_updated_at:null });
+  if(btn) btn.disabled=false;
+  if(r.error){ showMsg('pt-msg', tsCode(r.error)==='TS_CONFLICT' ? tz('Există deja pontaj în această zi. Modifică-l din modulul ⏱️ Pontaj.') : tsMsg(r.error)); return; }
   toast('✅ Pontaj adăugat.'); empPontaj(empId, empName);
 }
-async function empPontajDel(id, empId, empName){ if(!confirm('Ștergi acest pontaj?')) return; await softDelete('timesheets','angajati',id, function(){ empPontaj(empId, empName); }); }
+async function empPontajDel(id, empId, empName){
+  const cur=await sb.from('timesheets').select('*').eq('id',id).maybeSingle();
+  if(cur.error){ toast(tsMsg(cur.error)); return; }
+  if(!cur.data){ toast(tz(TS_MSG.TS_NOT_FOUND)); empPontaj(empId, empName); return; }
+  if(cur.data.approved){ toast(tz(TS_MSG.TS_APPROVED)); return; }
+  if(!confirm('Ștergi acest pontaj?')) return;
+  const del=await sb.from('timesheets').delete().eq('id',id).select('id');   // rowcount explicit: nicio confirmare peste o ștergere respinsă de RLS
+  if(del.error){ toast(tsMsg(del.error)); return; }
+  if(!del.data||!del.data.length){ toast(tz(TS_MSG.TS_DELETE_FORBIDDEN)); return; }
+  await moveToTrash('timesheets','angajati',[cur.data]);
+  empPontaj(empId, empName);
+  toastUndo('🗑 '+tz('Șters.'), async function(){ const ins=await sb.from('timesheets').insert(cur.data); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; }
+    try{ await sb.from('trash').delete().eq('source_table','timesheets').eq('record_id',id); }catch(e){}
+    toast('↩︎ '+tz('Restaurat.')); empPontaj(empId, empName); });
+}
 /* ── Fișa mașinii: service / mentenanță / spălătorie + documente ── */
 const VLOG_KIND={service:'🔧 Service',mentenanta:'🛠️ Mentenanță',spalatorie:'🧼 Spălătorie',reparatie:'🔩 Reparație',itp:'📋 ITP / inspecție',asigurare:'🛡️ Asigurare',alta:'• Altă cheltuială'};
 async function vehicleLog(vid, vlabel){
@@ -3616,7 +3633,24 @@ function invoiceReminder(id){
 }
 
 /* ════ PONTAJ — tabel zilnic (șantier + ore + comentariu per angajat) ════ */
-let _ptDate=null, _ptSites=[], _ptISO='', _ptSaved=new Set();
+let _ptDate=null, _ptSites=[], _ptISO='', _ptSaved=new Set(), _ptRow={};
+/* ── Pontaj: API atomică (migr 0120). Orice scriere în `timesheets` trece prin RPC-urile
+      timesheet_set / timesheet_set_bulk / timesheet_reopen — niciodată delete+insert din client. ── */
+const TS_MSG={
+  TS_APPROVED:'🔒 Pontaj aprobat — nu poate fi modificat. Cere-i unui administrator să-l redeschidă.',
+  TS_NOT_APPROVED:'Pontajul nu este aprobat — nu are nevoie de redeschidere.',
+  TS_CONFLICT:'⚠️ Pontajul a fost modificat între timp de altcineva. Am reîncărcat ziua — verifică și repetă modificarea.',
+  TS_AMBIGUOUS:'⚠️ Există mai multe pontaje pentru acest angajat în ziua aleasă. Corectează-le din fișa angajatului înainte de a edita aici.',
+  TS_FORBIDDEN:'⛔ Nu ai dreptul să modifici pontajul.',
+  TS_DELETE_FORBIDDEN:'⛔ Ștergerea pontajului a fost refuzată — nu ai acest drept.',
+  TS_NOT_FOUND:'Pontajul nu mai există.',
+  TS_INVALID_INPUT:'Valoare invalidă în pontaj. Verifică orele și pauza.',
+  TS_INVALID_EMPLOYEE:'Angajatul nu aparține acestei firme.',
+  TS_INVALID_SITE:'Șantierul nu aparține acestei firme.'
+};
+function tsCode(e){ const m=((e&&(e.message||e.hint||e))||'').toString(); return Object.keys(TS_MSG).find(c=>m.indexOf(c)>=0)||null; }
+function tsMsg(e){ if(isNetErr(e)) return netMsg(); const c=tsCode(e); return c?tz(TS_MSG[c]):('Eroare: '+esc((e&&e.message)||e)); }
+function ptCanReopen(){ return ['owner','admin','manager'].includes(state.role); }
 function ptDay(delta){ if(!_ptDate) _ptDate=new Date(coToday()+'T12:00:00'); if(delta===0) _ptDate=new Date(coToday()+'T12:00:00'); else { _ptDate=new Date(_ptDate); _ptDate.setDate(_ptDate.getDate()+delta); } renderPontaj(); }
 function ptGoDate(iso){ if(!iso) return; _ptDate=new Date(iso+'T12:00:00'); renderPontaj(); }       // sari direct la o anumită zi
 function ptOpenPicker(){ const i=$('pt-datepick'); if(!i) return; try{ if(i.showPicker){ i.showPicker(); } else { i.style.position='static'; i.style.width='auto'; i.style.height='auto'; i.style.opacity='1'; i.style.pointerEvents='auto'; i.focus(); i.click(); } }catch(e){ try{ i.focus(); i.click(); }catch(_){ } } }
@@ -3643,14 +3677,17 @@ async function renderPontaj(){
   const [empR,siteR,tsR,cpR,lvR]=await Promise.all([
     sb.from('employees').select('id,full_name,active,specialty,position'+(showRate?',hourly_rate':'')),
     sb.from('sites').select('id,name,status'),
-    sb.from('timesheets').select('employee_id,site_id,hours,note,start_time,end_time,break_min,absence').eq('work_date',_ptISO),
+    sb.from('timesheets').select('id,employee_id,site_id,hours,note,start_time,end_time,break_min,absence,approved,updated_at').eq('work_date',_ptISO),
     sb.from('crew_plan').select('employee_id,site_id,slot').eq('plan_date',_ptISO),
     sb.from('employee_leaves').select('employee_id,kind,start_date,end_date').lte('start_date',_ptISO).gte('end_date',_ptISO)
   ]);
   const emps=(empR.data||[]).filter(e=>e.active!==false).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
   _ptSites=(siteR.data||[]).filter(s=>s.status!=='done'&&s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const hm=t=>(t||'').slice(0,5);
-  const ts={}; (tsR.data||[]).forEach(t=>{ if(!ts[t.employee_id]) ts[t.employee_id]={site_id:t.site_id,hours:t.hours,note:t.note,start_time:hm(t.start_time),end_time:hm(t.end_time),break_min:t.break_min,absence:t.absence}; });
+  const ts={}; _ptRow={};
+  (tsR.data||[]).forEach(t=>{ if(!ts[t.employee_id]){ ts[t.employee_id]={site_id:t.site_id,hours:t.hours,note:t.note,start_time:hm(t.start_time),end_time:hm(t.end_time),break_min:t.break_min,absence:t.absence};
+      _ptRow[t.employee_id]={id:t.id,updated_at:t.updated_at,approved:!!t.approved,dup:false}; }
+    else { _ptRow[t.employee_id].dup=true; } });   // >1 rând pe zi ⇒ ambiguu: serverul refuză editarea (TS_AMBIGUOUS)
   _ptSaved=new Set(Object.keys(ts));
   const lv={}; (lvR.data||[]).forEach(l=>{ if(!lv[l.employee_id]) lv[l.employee_id]=l.kind; });  // concedii planificate (HR) care acoperă ziua
   // din Planificare echipe: șantier SAU mențiune/absență (note: sofer/oficiu/concediu/liber/boala)
@@ -3666,16 +3703,20 @@ async function renderPontaj(){
     const noWork = !!(tag && ptIsNoWork(tag));  // absență reală → 0 ore; mențiunile (oficiu/șofer/...) lucrează
     const st=noWork?'':(saved?(t.start_time||''):wk.start), en=noWork?'':(saved?(t.end_time||''):wk.end), br=noWork?wk.brk:(saved?(t.break_min!=null?+t.break_min:wk.brk):wk.brk);
     const initH=noWork?0:((st&&en)?ptHours(st,en,br):(t.hours!=null?+t.hours:0)); const hasH=(st&&en)||t.hours!=null;
-    const da=noWork?' disabled':'';
-    return '<tr><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+'</td>'
-      +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:140px">'+ptSiteOpts(site||'',tag||null)+'</select></td>'
+    // pontaj aprobat sau ambiguu (>1 rând pe zi) ⇒ blocat la editarea obișnuită; aprobatul se corectează doar după redeschidere explicită
+    const lk=_ptRow[e.id]||null, lockA=!!(lk&&lk.approved), lockD=!!(lk&&lk.dup), locked=lockA||lockD;
+    const da=(noWork||locked)?' disabled':''; const dl=locked?' disabled':'';
+    const lockBadge=lockA?('<div style="font-size:.7rem;color:var(--primary);white-space:nowrap">🔒 '+esc(tz('aprobat'))+(ptCanReopen()?(' · <a href="#" onclick="ptReopenRow(\''+e.id+'\');return false" style="color:var(--primary)">'+esc(tz('Redeschide'))+'</a>'):'')+'</div>')
+                 :(lockD?('<div style="font-size:.7rem;color:var(--red)">⚠️ '+esc(tz('mai multe pontaje în această zi'))+'</div>'):'');
+    return '<tr><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td><td class="tname" style="white-space:nowrap">'+esc(e.full_name)+(sp?'<div style="color:var(--muted);font-size:.72rem;font-weight:400">('+esc(sp)+')</div>':'')+lockBadge+'</td>'
+      +'<td><select id="pt-site-'+e.id+'" onchange="ptSet(\''+e.id+'\')" style="min-width:140px"'+dl+'>'+ptSiteOpts(site||'',tag||null)+'</select></td>'
       +'<td><input id="pt-s-'+e.id+'" type="time" style="width:104px" value="'+esc(st)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
       +'<td><input id="pt-e-'+e.id+'" type="time" style="width:104px" value="'+esc(en)+'"'+da+' onchange="ptSet(\''+e.id+'\')"/></td>'
       +'<td><select id="pt-b-'+e.id+'" style="min-width:104px"'+da+' onchange="ptSet(\''+e.id+'\')">'+ptBreakOpts(br)+'</select></td>'
       +'<td style="white-space:nowrap">'+(noWork
           ? '<b id="pt-h-'+e.id+'" class="pt-h" data-h="0" style="color:var(--primary)">'+esc(ptAbsLabel(tag))+'</b>'+(saved?'':'<span title="Implicit (din Planificare echipe / weekend) — neînregistrat încă" style="color:var(--muted);font-size:.7rem"> · planificat</span>')
           : '<b id="pt-h-'+e.id+'" class="pt-h" data-h="'+(initH||0)+'">'+(hasH?(Math.round(initH*100)/100):'—')+'</b> h'+(saved?'':'<span title="Program implicit — neînregistrat încă; editează sau apasă Aplică programul" style="color:var(--muted);font-size:.7rem"> · prestabilit</span>'))+'</td>'
-      +'<td><input id="pt-n-'+e.id+'" value="'+esc(t.note||'')+'" placeholder="comentariu (opțional)" style="min-width:160px;width:100%" onchange="ptSet(\''+e.id+'\')"/></td>'
+      +'<td><input id="pt-n-'+e.id+'" value="'+esc(t.note||'')+'" placeholder="comentariu (opțional)" style="min-width:160px;width:100%"'+dl+' onchange="ptSet(\''+e.id+'\')"/></td>'
       +(showRate?('<td style="white-space:nowrap;font-size:.8rem">'+((+e.hourly_rate)?(money(+e.hourly_rate)+' <span style="color:var(--muted)">/ '+money(Math.round(+e.hourly_rate*0.79*100)/100)+' net</span>'):'<span style="color:var(--muted)">—</span>')+'</td>'):'')
       +'</tr>'; }).join('');
   $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">Programul implicit al firmei ('+esc(wk.start)+'–'+esc(wk.end)+', pauză '+wk.brk+' min) apare pre-completat — editează la nevoie pe fiecare angajat; se salvează pe loc. „🕗 Aplică programul" înregistrează programul pentru toți cei planificați azi. Schimbi valorile implicite în Setări.</div>'
@@ -3685,6 +3726,9 @@ async function renderPontaj(){
 }
 async function ptSet(empId){
   const day=_ptISO;  // FIX: capturăm ziua acum — dacă navighezi între timp, salvarea nu mai pleacă pe ziua greșită
+  const lk0=_ptRow[empId];   // barieră locală; regula reală e impusă de trigger-ul din DB
+  if(lk0&&lk0.approved){ toast(tz(TS_MSG.TS_APPROVED)); return; }
+  if(lk0&&lk0.dup){ toast(tz(TS_MSG.TS_AMBIGUOUS)); return; }
   const raw=$('pt-site-'+empId).value, note=($('pt-n-'+empId).value||'').trim();
   let tag=null, site=null, noWork=false;
   if(raw.indexOf('abs:')===0){ tag=raw.slice(4); noWork=ptIsNoWork(tag); }       // absență (nu lucrează → 0 ore)
@@ -3695,21 +3739,52 @@ async function ptSet(empId){
   let st='', en='', br=0, h=0;
   if(noWork){ const hc=$('pt-h-'+empId); if(hc){ hc.dataset.h=0; hc.textContent=ptAbsLabel(tag); hc.style.color='var(--primary)'; } ptRecalcTotal(); }
   else { st=ss?ss.value:''; en=ee?ee.value:''; br=+(bb?bb.value:0)||0; const hc=$('pt-h-'+empId); if(hc) hc.style.color=''; h=ptShowH(empId); }
-  await sb.from('timesheets').delete().eq('employee_id',empId).eq('work_date',day);
-  if(tag||h>0||site||note||st||en){ const r=await sbRetry(()=>sb.from('timesheets').insert({tenant_id:state.tenant,employee_id:empId,site_id:site,work_date:day,hours:h,note:note||null,start_time:st||null,end_time:en||null,break_min:br,absence:tag,approved:false})); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
+  // O singură scriere atomică (migr 0120): fără delete+insert, cu token de concurență și fără succes fals.
+  // ATENȚIE: fără sbRetry — o reîncercare oarbă ar rescrie peste modificarea altcuiva.
+  const cur=_ptRow[empId]||null;
+  // Trimitem MEREU toate câmpurile: serverul evaluează „celulă goală" pe rezultat, nu pe payload —
+  // un payload parțial ar păstra valorile vechi, iar golirea celulei nu ar mai șterge rândul.
+  const payload={site_id:site, hours:String(h), note:note||null, start_time:st||null, end_time:en||null, break_min:String(br), absence:tag};
+  const r=await sb.rpc('timesheet_set',{ p_tenant_id:state.tenant, p_employee_id:empId, p_work_date:day, p_payload:payload, p_expected_updated_at:(cur?cur.updated_at:null) });
+  if(r.error){ toast(tsMsg(r.error));
+    if(!isNetErr(r.error) && _ptISO===day) await renderPontaj();   // revenim la adevărul din server (valoarea vizuală nu rămâne mincinoasă)
+    return; }
+  const row=(r.data&&r.data[0])||null;
+  if(!row){ toast(tz('Nu am primit confirmarea serverului. Reîmprospătez ziua…')); if(_ptISO===day) await renderPontaj(); return; }
+  if(row.action==='deleted'||row.action==='noop'){ delete _ptRow[empId]; _ptSaved&&_ptSaved.delete(empId); if(row.action==='noop'){ return; } toast('🗑 '+tz('Pontajul zilei a fost șters.')); return; }
+  _ptRow[empId]={id:row.id, updated_at:row.updated_at, approved:false, dup:false};
   _ptSaved&&_ptSaved.add(empId);
   toast((tag&&noWork)?('✅ '+ptAbsLabel(tag)+' înregistrat.'):'✅ Pontaj salvat.'); }
+/* Redeschide un pontaj aprobat (doar owner/admin/manager — regula e impusă server-side de timesheet_reopen). */
+async function ptReopenRow(empId){
+  const cur=_ptRow[empId]; if(!cur||!cur.approved){ toast(tz(TS_MSG.TS_NOT_APPROVED)); return; }
+  if(!confirm(tz('Redeschizi acest pontaj aprobat pentru corectare?'))) return;
+  const r=await sb.rpc('timesheet_reopen',{ p_id:cur.id, p_expected_updated_at:cur.updated_at });
+  if(r.error){ toast(tsMsg(r.error)); if(!isNetErr(r.error)) await renderPontaj(); return; }
+  toast('🔓 '+tz('Pontaj redeschis — îl poți corecta.'));
+  await renderPontaj(); }
 async function ptFillPlanned(){
   const day=_ptISO;
   const cp=((await sb.from('crew_plan').select('employee_id,site_id,slot,note').eq('plan_date',day)).data)||[];
   const plan={}; cp.forEach(p=>{ const cur=plan[p.employee_id]; if(cur&&cur._slot==='full'&&p.slot!=='full') return; const v=p.site_id?{site:p.site_id}:(p.note?{tag:p.note}:null); if(v){ v._slot=p.slot; plan[p.employee_id]=v; } });
   const wk=coWork();
-  let n=0; Object.keys(plan).forEach(id=>{ if(_ptSaved&&_ptSaved.has(id)) return; const pl=plan[id]; const se=$('pt-site-'+id), ss=$('pt-s-'+id), ee=$('pt-e-'+id), bb=$('pt-b-'+id); if(!se) return;
-    if(pl.site){ se.value=pl.site; if(ss)ss.value=wk.start; if(ee)ee.value=wk.end; if(bb)bb.value=String(wk.brk); }
-    else if(pl.tag){ se.value=(ptIsNoWork(pl.tag)?'abs:':'m:')+pl.tag; }
-    else return;
-    ptSet(id); _ptSaved.add(id); n++; });
-  toast(n?('✅ Înregistrat pentru '+n+' angajați planificați.'):'Toți cei planificați au deja pontaj salvat.'); }
+  // O singură tranzacție pentru toți (migr 0120) — înainte plecau N scrieri paralele nesincronizate, fără așteptare.
+  const rows=[]; Object.keys(plan).forEach(id=>{ if(_ptSaved&&_ptSaved.has(id)) return; const pl=plan[id]; if(!$('pt-site-'+id)) return;
+    if(pl.site) rows.push({employee_id:id, work_date:day, payload:{site_id:pl.site, start_time:wk.start, end_time:wk.end, break_min:String(wk.brk), hours:String(ptHours(wk.start,wk.end,wk.brk)), absence:null, note:null}});
+    else if(pl.tag){ const nw=ptIsNoWork(pl.tag);
+      rows.push({employee_id:id, work_date:day, payload:nw
+        ? {site_id:null, start_time:null, end_time:null, break_min:String(wk.brk), hours:'0', absence:pl.tag, note:null}
+        : {site_id:null, start_time:wk.start, end_time:wk.end, break_min:String(wk.brk), hours:String(ptHours(wk.start,wk.end,wk.brk)), absence:pl.tag, note:null}}); } });
+  if(!rows.length){ toast(tz('Toți cei planificați au deja pontaj salvat.')); return; }
+  const r=await sb.rpc('timesheet_set_bulk',{ p_tenant_id:state.tenant, p_rows:rows });
+  if(r.error){ toast(tsMsg(r.error)); return; }
+  const s=(r.data&&r.data[0])||{};
+  if(_ptISO===day) await renderPontaj();   // starea vine din server, nu din presupuneri
+  const done=(+s.created||0)+(+s.updated||0);
+  const skip=(+s.skipped_approved||0)+(+s.skipped_ambiguous||0)+(+s.skipped_invalid||0);
+  let m=done?('✅ '+tz('Pontaj înregistrat pentru {n} angajați planificați.').replace('{n}',done)):('ℹ️ '+tz('Niciun pontaj nou de înregistrat.'));
+  if(skip) m+=' ⚠️ '+tz('Sărite: {a} aprobate, {b} ambigue, {c} invalide.').replace('{a}',(+s.skipped_approved||0)).replace('{b}',(+s.skipped_ambiguous||0)).replace('{c}',(+s.skipped_invalid||0));
+  toast(m); }
 /* ── Raport pontaj pe perioadă (săptămână / lună), per angajat ── */
 async function ptReport(){
   const empR=await sb.from('employees').select('id,full_name,active').order('full_name');
