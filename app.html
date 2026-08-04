@@ -4949,7 +4949,16 @@ async function renderPlantafel(){
     teamSum='<div class="plsum"><span class="pllbl">Pe echipe (om-zile):</span>'+tparts.join('')+'</div>';
   }
   $('mod-body').innerHTML=planStyle()+palette+'<div class="tbl-wrap plwrap"><table class="tbl pltbl">'+head+'<tbody>'+body+'</tbody></table></div>'+summary+teamSum
-    +(planCanEdit()?'<div style="padding:.5rem 1.2rem .8rem;font-size:.76rem;color:var(--muted)"><b>💡 O singură acțiune pentru toată echipa:</b> trage un proiect (sau dă clic) pe <b>rândul colorat al echipei</b> (👥) și TOȚI membrii primesc acel șantier în ziua respectivă. Pe rândul unui singur om planifici doar acel om. „½ Jumătăți de zi" = dimineața/după-amiaza pe șantiere diferite. Se salvează automat.</div>':'');
+    +(planCanEdit()?planHintHtml():'');
+}
+/* Textul-ajutor al tablei, compus din segmente traduse (nu o frază HTML fixă). */
+function planHintHtml(){
+  return '<div style="padding:.5rem 1.2rem .8rem;font-size:.76rem;color:var(--muted)">'
+    +'<b>💡 '+esc(C373t('O singură acțiune pentru toată echipa:'))+'</b> '
+    +esc(C373t('trage un proiect (sau dă clic) pe rândul colorat al echipei (👥) și TOȚI membrii primesc acel șantier în ziua respectivă.'))+' '
+    +esc(C373t('Pe rândul unui singur om planifici doar acel om.'))+' '
+    +esc(C373t('„½ Jumătăți de zi" = dimineața/după-amiaza pe șantiere diferite. Se salvează automat.'))
+    +'</div>';
 }
 function planStyle(){ if(document.getElementById('plan-style')) return ''; var css=''
   +'.plpalette{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;padding:.6rem 1.2rem;border-bottom:1px solid var(--line)}'
@@ -7005,15 +7014,29 @@ function folderMove(id){ const f=_docFolders.find(x=>x.id===id); if(!f) return; 
 async function folderMoveGo(id){ const v=($('mv-folder')&&$('mv-folder').value)||''; closeModal(); const r=await sb.from('document_folders').update({parent_id:v||null}).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } toast('✅ '+tz('Mutat.')); renderDocumente(); }
 function docMove(id){ const d=(docsList||[]).find(x=>x.id===id); if(!d) return; docMoveModal(tz('Mută fișierul'), d.folder_id||'', null, "docMoveGo('"+id+"')"); }
 async function docMoveGo(id){ const v=($('mv-folder')&&$('mv-folder').value)||''; closeModal(); const r=await sb.from('documents').update({folder_id:v||null}).eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } const d=(docsList||[]).find(x=>x.id===id); if(d) d.folder_id=v||null; toast('✅ '+tz('Mutat.')); renderDocumente(); }
+/* Mapa NU se mai șterge definitiv: se mută în Coș, exact ca restul înregistrărilor.
+   Conținutul se ridică întâi în mapa părinte — `document_folders.parent_id` este
+   `ON DELETE CASCADE`, deci fără această mutare ștergerea ar distruge submapele.
+   Rezultatul fiecărei mutări e verificat: dacă nu se poate muta tot, mapa NU se
+   șterge. `document_folders` e tip COMPUS, deci restaurarea din Coș rămâne
+   blocată până la Lotul 0B3B (documentele mutate nu se pot re-lega automat). */
 async function folderDelete(id){ const f=_docFolders.find(x=>x.id===id); if(!f) return;
+  if(!canDo('documente','d')){ toast('🔒 '+C373t('Nu ai dreptul să ștergi aici.')); return; }
   const subF=_docFolders.filter(x=>x.parent_id===id).length, subD=(docsList||[]).filter(x=>x.folder_id===id).length;
-  if(subF||subD){ if(!confirm(tz('Mapa conține elemente. Conținutul se mută în mapa părinte, apoi mapa se șterge. Continui?'))) return;
-    await sb.from('documents').update({folder_id:f.parent_id||null}).eq('folder_id',id);
-    await sb.from('document_folders').update({parent_id:f.parent_id||null}).eq('parent_id',id);
-  } else { if(!confirm(tz('Ștergi mapa „')+f.name+'"?')) return; }
-  const r=await sb.from('document_folders').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+  if(subF||subD){ if(!confirm(tz('Mapa conține elemente. Conținutul se mută în mapa părinte, apoi mapa se mută în Coș. Continui?'))) return;
+    const u1=await sb.from('documents').update({folder_id:f.parent_id||null}).eq('folder_id',id).select('id');
+    if(u1.error){ toast(isNetErr(u1.error)?netMsg():('Eroare: '+esc(u1.error.message))); return; }
+    const u2=await sb.from('document_folders').update({parent_id:f.parent_id||null}).eq('parent_id',id).select('id');
+    if(u2.error){ toast(isNetErr(u2.error)?netMsg():('Eroare: '+esc(u2.error.message))); return; }
+    if((u1.data||[]).length<subD || (u2.data||[]).length<subF){
+      toast('⚠️ '+C373t('Nu am putut muta tot conținutul mapei. Mapa NU a fost ștearsă.')); renderDocumente(); return; }
+  } else { if(!confirm(tz('Muți mapa „')+f.name+tz('" în Coș?'))) return; }
+  const del=await sb.from('document_folders').delete().eq('id',id).select('*');
+  if(del.error){ toast(isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return; }
+  if(!(del.data||[]).length){ toast('🔒 '+C373t('Nu ai dreptul să ștergi aici.')); return; }  // 0 rânduri (RLS) ⇒ fără succes fals
+  await moveToTrash('document_folders','documente',del.data);
   if(_docFolder===id) _docFolder=f.parent_id||null;
-  toast('🗑 '+tz('Mapă ștearsă.')); renderDocumente(); }
+  toast('🗑 '+C373t('Mapă mutată în Coș.')); renderDocumente(); }
 /* ── drag & drop (mută fișiere/mape în mape, ca pe desktop) ── */
 let _docDrag=null;
 function docDragStart(ev,id,type){ _docDrag={id:id,type:type}; try{ ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',id); }catch(e){} }
@@ -7321,10 +7344,16 @@ function listExport(){ const m=listState.m; if(!m){ return; } const view=listSta
 async function bulkDelete(){ const m=listState.m, key=listState.key; if(!m||!canDo(key,'d')) return; const ids=Object.keys(_bulkSel); if(!ids.length) return;
   if(!confirm(tz('Ștergi')+' '+ids.length+' '+tz('înregistrări selectate?'))) return;
   let saved=[]; try{ const f=await sb.from(m.table).select('*').in('id',ids); saved=f.data||[]; }catch(e){}
-  const r=await sb.from(m.table).delete().in('id',ids); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
-  if(saved.length) await moveToTrash(m.table,key,saved);
+  const del=await sb.from(m.table).delete().in('id',ids).select('id');
+  if(del.error){ toast(isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return; }
+  const sterse=(del.data||[]).length;
+  if(!sterse){ toast('🔒 '+C373t('Nu ai dreptul să ștergi aici.')); return; }   // 0 rânduri (RLS) ⇒ fără succes fals
+  const okIds={}; (del.data||[]).forEach(function(x){ okIds[x.id]=1; });
+  const savedOk=saved.filter(function(x){ return okIds[x.id]; });               // în coș doar ce chiar s-a șters
+  if(savedOk.length) await moveToTrash(m.table,key,savedOk);
   _bulkSel={}; renderModule(key);
-  toastUndo('🗑 '+ids.length+' '+tz('șterse.'), async function(){ if(!saved.length){ return; } const ins=await sb.from(m.table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().in('record_id',ids); }catch(e){} toast('↩︎ '+saved.length+' '+tz('restaurate.')); if(curModuleKey()===key) renderModule(key); }); }
+  if(sterse<ids.length) toast('⚠️ '+C373t('Nu toate înregistrările au putut fi șterse.')+' ('+sterse+'/'+ids.length+')');
+  toastUndo('🗑 '+sterse+' '+tz('șterse.'), async function(){ if(!savedOk.length){ return; } const ins=await sb.from(m.table).insert(savedOk); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().in('record_id',Object.keys(okIds)); }catch(e){} toast('↩︎ '+savedOk.length+' '+tz('restaurate.')); if(curModuleKey()===key) renderModule(key); }); }
 /* ════ 🔎 CĂUTARE GLOBALĂ (Ctrl/⌘+K) ════ */
 function installHotkeys(){ if(window._hkInit) return; window._hkInit=true;
   document.addEventListener('keydown',function(e){
@@ -8328,25 +8357,72 @@ async function delRecord(key,id){
   if(!confirm('Sigur ștergi această înregistrare?')) return;
   const m=MODULES[key];
   let saved=null; try{ const f=await sb.from(m.table).select('*').eq('id',id).maybeSingle(); saved=f.data||null; }catch(e){}
-  const { error } = await sb.from(m.table).delete().eq('id',id);
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const del = await sb.from(m.table).delete().eq('id',id).select('id');
+  if(del.error){ toast(isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return; }
+  if(!(del.data||[]).length){ toast('🔒 '+C373t('Nu ai dreptul să ștergi aici.')); return; }  // 0 rânduri (RLS) ⇒ fără succes fals
   if(saved) await moveToTrash(m.table,key,[saved]);
   renderModule(key);
   toastUndo('🗑 '+tz('Șters.'), async function(){ if(!saved){ return; } const ins=await sb.from(m.table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().eq('source_table',m.table).eq('record_id',id); }catch(e){} toast('↩︎ '+tz('Restaurat.')); if(curModuleKey()===key) renderModule(key); });
 }
-/* ════ 🗑️ COȘ DE GUNOI ════ */
+/* ════ 🗑️ COȘ DE GUNOI ════
+   Tipuri COMPUSE = au copii cu `ON DELETE CASCADE`. Copiii se pierd la ștergere
+   și NU sunt în snapshot, deci o „restaurare" ar reface doar antetul: un deviz
+   fără poziții, un material fără stoc/prețuri/furnizori, un șantier fără etape.
+   Până la motorul generic părinte+copii (Lotul 0B3B) restaurarea lor e BLOCATĂ,
+   iar intrarea rămâne intactă în coș — nu se pierde nimic. Lista e derivată din
+   cheile străine reale și e dublată server-side de `trash_restore` (migr 0122). */
+const TRASH_COMPOSITE={
+  sites:'etapele, echipa, defectele, recenziile și planificările',
+  material_orders:'pozițiile comenzii',
+  clients:'jurnalul și persoanele de contact',
+  materials:'stocul, prețurile și furnizorii',
+  services:'materialele asociate',
+  tools:'locațiile, seriile și istoricul',
+  vehicles:'șoferii și istoricul',
+  estimates:'pozițiile devizului',
+  invoices:'pozițiile facturii',
+  employees:'pontajul, planificările, concediile, echipamentul și SSM-ul',
+  subcontractors:'contractele',
+  tool_units:'istoricul',
+  crew_teams:'membrii echipei',
+  payroll_runs:'liniile de salariu',
+  site_surveys:'măsurătorile',
+  document_folders:'documentele și submapele'
+};
+function trashIsComposite(tbl){ return !!TRASH_COMPOSITE[tbl]; }
+function trashCompositeMsg(tbl){
+  return '⚠️ '+C373t('Restaurarea completă a acestui tip de înregistrare nu este disponibilă încă. Elementul rămâne în Coș.')
+    +' ('+C373t('lipsesc')+': '+C373t(TRASH_COMPOSITE[tbl]||'')+')';
+}
+function trashErrMsg(e){
+  if(isNetErr(e)) return netMsg();
+  const m=((e&&(e.message||e))||'').toString();
+  if(m.indexOf('TRASH_COMPOSITE')>=0)        return '⚠️ '+C373t('Restaurarea completă a acestui tip de înregistrare nu este disponibilă încă. Elementul rămâne în Coș.');
+  if(m.indexOf('TRASH_CONFLICT')>=0)         return '⚠️ '+C373t('Există deja o înregistrare cu acest identificator. Elementul rămâne în Coș.');
+  if(m.indexOf('TRASH_DENIED')>=0)           return '🔒 '+C373t('Nu ai dreptul să restaurezi acest element.');
+  if(m.indexOf('TRASH_NOT_FOUND')>=0)        return 'ℹ️ '+C373t('Elementul nu mai este în Coș.');
+  if(m.indexOf('TRASH_INVALID_SNAPSHOT')>=0) return '⚠️ '+C373t('Copia salvată în Coș este incompletă și nu poate fi restaurată.');
+  if(m.indexOf('TRASH_FORBIDDEN')>=0)        return '🔒 '+C373t('Nu ai dreptul să restaurezi acest element.');
+  return 'Eroare: '+esc(m||C373t('necunoscută'));
+}
 function trashLabel(r){ if(!r) return ''; const v=r.name||r.full_name||r.number||r.title||r.item||r.label||r.body||r.subject||r.sender_name||''; return String(v||'').slice(0,80)||('#'+String(r.id||'').slice(0,8)); }
-async function moveToTrash(table, moduleKey, rows){ if(!rows||!rows.length) return;
+/* Salvează snapshoturile în coș. Întoarce false ȘI avertizează dacă nu a reușit —
+   altfel rândul ar dispărea definitiv, iar utilizatorul ar crede că e în coș. */
+async function moveToTrash(table, moduleKey, rows){ if(!rows||!rows.length) return true;
   try{ const uid=(state.session&&state.session.user&&state.session.user.id)||null;
     const snaps=rows.filter(Boolean).map(r=>({ tenant_id:state.tenant, source_table:table, record_id:r.id, module_key:moduleKey||null, label:trashLabel(r), data:r, deleted_by:uid }));
-    if(snaps.length) await sb.from('trash').insert(snaps);
-  }catch(e){}
+    if(!snaps.length) return true;
+    const r=await sb.from('trash').insert(snaps);
+    if(r.error){ toast('⚠️ '+C373t('Șters, dar nu am putut salva copia în Coș:')+' '+esc(r.error.message)); return false; }
+    return true;
+  }catch(e){ toast('⚠️ '+C373t('Șters, dar nu am putut salva copia în Coș:')+' '+esc((e&&e.message)||e)); return false; }
 }
 /* ștergere „moale" reutilizabilă pt ștergerile speciale (jurnal, documente, contacte, KB…) */
 async function softDelete(table, moduleKey, id, onChange){
   let saved=null; try{ saved=(await sb.from(table).select('*').eq('id',id).maybeSingle()).data||null; }catch(e){}
-  const { error }=await sb.from(table).delete().eq('id',id);
-  if(error){ toast('Eroare: '+esc(error.message)); return false; }
+  const del=await sb.from(table).delete().eq('id',id).select('id');
+  if(del.error){ toast(isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return false; }
+  if(!(del.data||[]).length){ toast('🔒 '+C373t('Nu ai dreptul să ștergi aici.')); return false; }  // 0 rânduri (RLS) ⇒ fără succes fals
   if(saved) await moveToTrash(table, moduleKey, [saved]);
   if(typeof onChange==='function'){ try{ onChange(); }catch(e){} }
   toastUndo('🗑 '+tz('Șters.'), async function(){ if(!saved) return; const ins=await sb.from(table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().eq('source_table',table).eq('record_id',id); }catch(e){} toast('↩︎ '+tz('Restaurat.')); if(typeof onChange==='function'){ try{ onChange(); }catch(e){} } });
@@ -8361,14 +8437,25 @@ async function renderTrash(){
   if(r.error){ $('mod-body').innerHTML='<div class="empty">'+esc(tz('Eroare:'))+' '+esc(r.error.message)+'</div>'; return; }
   const rows=r.data||[]; window._trashRows=rows;
   if(!rows.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">🗑️</div><div>'+esc(tz('Coșul e gol.'))+'</div></div>'; return; }
-  const body=rows.map(t=>{ const mk=t.module_key; const ic=(mk&&MODULES[mk])?MODULES[mk].icon:'📦'; const ty=(mk&&MODULES[mk])?mt(mk).title:t.source_table; const who=t.deleted_by?'':'';
-    return '<tr><td style="width:30px">'+ic+'</td><td class="tname">'+esc(t.label||('#'+String(t.record_id||'').slice(0,8)))+'</td><td>'+esc(ty)+'</td><td>'+esc(String(t.deleted_at||'').slice(0,16).replace('T',' '))+'</td>'
-      +'<td><div class="rowact"><button class="iconbtn" title="'+esc(tz('Restaurează'))+'" onclick="trashRestore(\''+t.id+'\')">♻️</button><button class="iconbtn danger" title="'+esc(tz('Șterge definitiv'))+'" onclick="trashPurge(\''+t.id+'\')">🗑</button></div></td></tr>'; }).join('');
+  const body=rows.map(t=>{ const mk=t.module_key; const ic=(mk&&MODULES[mk])?MODULES[mk].icon:'📦'; const ty=(mk&&MODULES[mk])?mt(mk).title:t.source_table; const comp=trashIsComposite(t.source_table);
+    /* tip compus ⇒ butonul e dezactivat și explicat; intrarea rămâne în coș */
+    const btnRest=comp
+      ? '<button class="iconbtn" disabled aria-disabled="true" style="opacity:.4;cursor:not-allowed" aria-label="'+esc(C373t('Restaurare indisponibilă'))+'" title="'+esc(trashCompositeMsg(t.source_table))+'">♻️</button>'
+      : '<button class="iconbtn" title="'+esc(tz('Restaurează'))+'" aria-label="'+esc(tz('Restaurează'))+'" onclick="trashRestore(\''+t.id+'\')">♻️</button>';
+    return '<tr><td style="width:30px">'+ic+'</td><td class="tname">'+esc(t.label||('#'+String(t.record_id||'').slice(0,8)))+(comp?'<div style="color:var(--muted);font-size:.72rem">⚠️ '+esc(C373t('Restaurare indisponibilă până la actualizarea următoare'))+'</div>':'')+'</td><td>'+esc(ty)+'</td><td>'+esc(String(t.deleted_at||'').slice(0,16).replace('T',' '))+'</td>'
+      +'<td><div class="rowact">'+btnRest+'<button class="iconbtn danger" title="'+esc(tz('Șterge definitiv'))+'" aria-label="'+esc(tz('Șterge definitiv'))+'" onclick="trashPurge(\''+t.id+'\')">🗑</button></div></td></tr>'; }).join('');
   $('mod-body').innerHTML='<div style="padding:.15rem 1.2rem .35rem;font-size:.78rem;color:var(--muted)">♻️ '+esc(tz('Restaurează'))+' · 🗑 '+esc(tz('Șterge definitiv'))+'</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>'+esc(tz('Element'))+'</th><th>'+esc(tz('Tip'))+'</th><th>'+esc(tz('Șters la'))+'</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
+/* Restaurarea trece prin RPC-ul atomic `trash_restore` (migr 0122): reinserează
+   rândul ȘI elimină intrarea din coș în ACEEAȘI tranzacție, cu verificarea
+   rândurilor afectate. La orice eșec, intrarea rămâne în coș. Fără sbRetry:
+   o reîncercare oarbă ar raporta „nu mai e în coș" după un succes pierdut pe rețea. */
 async function trashRestore(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!t) return;
-  const ins=await sb.from(t.source_table).insert(t.data); if(ins.error){ toast(tz('Nu am putut restaura:')+' '+esc(ins.error.message)); return; }
-  await sb.from('trash').delete().eq('id',id); toast('♻️ '+tz('Restaurat.')); renderTrash(); }
+  if(trashIsComposite(t.source_table)){ toast(trashCompositeMsg(t.source_table)); return; }  // refuz ÎNAINTE de orice scriere
+  const r=await sb.rpc('trash_restore',{p_trash_id:id});
+  if(r.error){ toast(trashErrMsg(r.error)); renderTrash(); return; }
+  if(!r.data || !r.data.length){ toast('⚠️ '+C373t('Nu am primit confirmarea serverului. Elementul rămâne în Coș.')); renderTrash(); return; }
+  toast('♻️ '+tz('Restaurat.')); renderTrash(); }
 async function trashPurge(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!confirm(tz('Ștergi definitiv acest element? Nu mai poate fi recuperat.'))) return; const r=await sb.from('trash').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } if(t&&t.data&&t.data.file_url){ try{ await sb.storage.from('docs').remove([t.data.file_url]); }catch(e){} } toast('🗑 '+tz('Șters definitiv.')); renderTrash(); }
 async function trashEmpty(){ if(!(window._trashRows&&window._trashRows.length)){ toast(tz('Coșul e gol.')); return; } if(!confirm(tz('Golești tot coșul? Toate elementele se șterg definitiv.'))) return; const files=(window._trashRows||[]).map(t=>t.data&&t.data.file_url).filter(Boolean); const r=await sb.from('trash').delete().gte('deleted_at','1900-01-01'); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } if(files.length){ try{ await sb.storage.from('docs').remove(files); }catch(e){} } toast('🧹 '+tz('Coș golit.')); renderTrash(); }
 
