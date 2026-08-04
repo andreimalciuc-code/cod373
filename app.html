@@ -7358,6 +7358,15 @@ function listExport(){ const m=listState.m; if(!m){ return; } const view=listSta
   toast('✅ '+data.length+' '+tz('rânduri exportate.')); }
 async function bulkDelete(){ const m=listState.m, key=listState.key; if(!m||!canDo(key,'d')) return; const ids=Object.keys(_bulkSel); if(!ids.length) return;
   if(!confirm(tz('Ștergi')+' '+ids.length+' '+tz('înregistrări selectate?'))) return;
+  if(trashIsTreeType(m.table)){                     // tip compus: fiecare rând = un grup atomic propriu
+    let ok=0, kids=0, lastErr=null;
+    for(const id of ids){ const tr=await trashDeleteTree(m.table, key, id);
+      if(tr.ok){ ok++; kids+=(tr.data.child_rows||0); } else lastErr=tr.err; }
+    _bulkSel={}; renderModule(key);
+    if(lastErr) toast(trashErrMsg(lastErr));
+    if(ok) toast('🗑 '+ok+' '+tz('șterse.')+(kids?(' ('+kids+' '+C373t('elemente legate')+')'):''));
+    return;
+  }
   let saved=[]; try{ const f=await sb.from(m.table).select('*').in('id',ids); saved=f.data||[]; }catch(e){}
   const del=await sb.from(m.table).delete().in('id',ids).select('id');
   if(del.error){ toast(isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return; }
@@ -8395,6 +8404,13 @@ async function delRecord(key,id){
   if(!canDo(key,'d')){ toast('🔒 Nu ai dreptul să ștergi aici.'); return; }
   if(!confirm('Sigur ștergi această înregistrare?')) return;
   const m=MODULES[key];
+  if(trashIsTreeType(m.table)){                     // tip compus acoperit de 0123
+    const tr=await trashDeleteTree(m.table, key, id);
+    if(!tr.ok){ toast(trashErrMsg(tr.err)); return; }
+    renderModule(key);
+    toast('🗑 '+tz('Șters.')+(tr.data.child_rows?(' ('+tr.data.child_rows+' '+C373t('elemente legate')+')'):''));
+    return;
+  }
   let saved=null; try{ const f=await sb.from(m.table).select('*').eq('id',id).maybeSingle(); saved=f.data||null; }catch(e){}
   const del = await sb.from(m.table).delete().eq('id',id).select('id');
   if(del.error){ toast(isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return; }
@@ -8429,9 +8445,32 @@ const TRASH_COMPOSITE={
   document_folders:'documentele și submapele'
 };
 function trashIsComposite(tbl){ return !!TRASH_COMPOSITE[tbl]; }
+/* Tipurile COMPUSE acoperite de lotul curent (migr 0123, Nivel 1): ștergerea lor
+   salvează un GRUP în coș (părinte + colecția copil), deci restaurarea poate fi
+   completă. Lista trebuie să rămână identică cu lista albă server-side din
+   `public.trash_tree_child` — serverul refuză oricum tot ce nu e acolo. */
+const TRASH_TREE_TYPES={ crew_teams:1, services:1, subcontractors:1, tool_units:1, site_surveys:1 };
+function trashIsTreeType(tbl){ return !!TRASH_TREE_TYPES[tbl]; }
+/* Cum se restaurează o intrare:
+   'standalone' = tip simplu, prin `trash_restore` (0122);
+   'tree'       = tip compus cu GRUP salvat de 0123 ⇒ `trash_restore_tree`;
+   'partial'    = tip compus, dar intrare VECHE (fără grup): snapshotul conține
+                  doar părintele, copiii nu există nicăieri ⇒ restaurarea ar fi
+                  înșelătoare, rămâne blocată;
+   'blocked'    = tip compus încă neacoperit de niciun lot. */
+function trashRestoreMode(t){
+  if(!t) return 'blocked';
+  if(!trashIsComposite(t.source_table)) return 'standalone';
+  if(t.group_id && trashIsTreeType(t.source_table)) return 'tree';
+  if(trashIsTreeType(t.source_table)) return 'partial';
+  return 'blocked';
+}
 function trashCompositeMsg(tbl){
   return '⚠️ '+C373t('Restaurarea completă a acestui tip de înregistrare nu este disponibilă încă. Elementul rămâne în Coș.')
     +' ('+C373t('lipsesc')+': '+C373t(TRASH_COMPOSITE[tbl]||'')+')';
+}
+function trashPartialMsg(){
+  return '⚠️ '+C373t('Această înregistrare a fost ștearsă înainte de actualizare: copia păstrată conține doar antetul, fără elementele legate. Restaurarea rămâne blocată.');
 }
 function trashErrMsg(e){
   if(isNetErr(e)) return netMsg();
@@ -8442,6 +8481,12 @@ function trashErrMsg(e){
   if(m.indexOf('TRASH_NOT_FOUND')>=0)        return 'ℹ️ '+C373t('Elementul nu mai este în Coș.');
   if(m.indexOf('TRASH_INVALID_SNAPSHOT')>=0) return '⚠️ '+C373t('Copia salvată în Coș este incompletă și nu poate fi restaurată.');
   if(m.indexOf('TRASH_FORBIDDEN')>=0)        return '🔒 '+C373t('Nu ai dreptul să restaurezi acest element.');
+  /* coduri introduse de migrarea 0123 (restaurarea compusă) */
+  if(m.indexOf('TRASH_PARTIAL_SNAPSHOT')>=0)   return trashPartialMsg();
+  if(m.indexOf('TRASH_ALREADY_RESTORED')>=0)   return 'ℹ️ '+C373t('Elementul a fost deja restaurat.');
+  if(m.indexOf('TRASH_UNSUPPORTED_SCHEMA')>=0) return '⚠️ '+C373t('Copia a fost salvată de o versiune mai veche și nu poate fi restaurată automat.');
+  if(m.indexOf('TRASH_SNAPSHOT_MISMATCH')>=0)  return '⚠️ '+C373t('Copia din Coș nu corespunde datelor șterse. Operația a fost anulată integral.');
+  if(m.indexOf('TRASH_INVALID_INPUT')>=0)      return '⚠️ '+C373t('Date invalide pentru această operație.');
   return 'Eroare: '+esc(m||C373t('necunoscută'));
 }
 function trashLabel(r){ if(!r) return ''; const v=r.name||r.full_name||r.number||r.title||r.item||r.label||r.body||r.subject||r.sender_name||''; return String(v||'').slice(0,80)||('#'+String(r.id||'').slice(0,8)); }
@@ -8456,8 +8501,26 @@ async function moveToTrash(table, moduleKey, rows){ if(!rows||!rows.length) retu
     return true;
   }catch(e){ toast('⚠️ '+C373t('Șters, dar nu am putut salva copia în Coș:')+' '+esc((e&&e.message)||e)); return false; }
 }
+/* Ștergerea COMPUSĂ (migr 0123, Nivel 1): snapshotul părinte + colecția copil și
+   ștergerea propriu-zisă se fac într-o SINGURĂ tranzacție server-side, cu
+   numărătorile verificate. Fără `sbRetry`: retry-ul e sigur doar prin
+   `p_request_id`, pe care îl generăm o dată și îl refolosim la reîncercare. */
+async function trashDeleteTree(table, moduleKey, id){
+  const rid=(typeof planUuid==='function')?planUuid():null;
+  const r=await sb.rpc('trash_delete_tree',{p_table:table, p_id:id, p_module_key:moduleKey||null, p_request_id:rid});
+  if(r.error) return {ok:false, err:r.error};
+  if(!r.data || r.data.ok!==true) return {ok:false, err:{message:'TRASH_NO_CONFIRMATION'}};
+  return {ok:true, data:r.data};
+}
 /* ștergere „moale" reutilizabilă pt ștergerile speciale (jurnal, documente, contacte, KB…) */
 async function softDelete(table, moduleKey, id, onChange){
+  if(trashIsTreeType(table)){                       // tip compus acoperit de 0123
+    const tr=await trashDeleteTree(table, moduleKey, id);
+    if(!tr.ok){ toast(trashErrMsg(tr.err)); return false; }
+    if(typeof onChange==='function'){ try{ onChange(); }catch(e){} }
+    toast('🗑 '+tz('Șters.')+(tr.data.child_rows?(' ('+tr.data.child_rows+' '+C373t('elemente legate')+')'):''));
+    return true;                                    // fără „Anulează": restaurarea se face din Coș, atomic
+  }
   let saved=null; try{ saved=(await sb.from(table).select('*').eq('id',id).maybeSingle()).data||null; }catch(e){}
   const del=await sb.from(table).delete().eq('id',id).select('id');
   if(del.error){ toast(isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return false; }
@@ -8474,14 +8537,21 @@ async function renderTrash(){
     +'<div id="mod-body"><div class="loading">'+esc(tz('Se încarcă…'))+'</div></div></div>';
   const r=await sb.from('trash').select('*').order('deleted_at',{ascending:false}).limit(300);
   if(r.error){ $('mod-body').innerHTML='<div class="empty">'+esc(tz('Eroare:'))+' '+esc(r.error.message)+'</div>'; return; }
-  const rows=r.data||[]; window._trashRows=rows;
+  /* rândurile-copil ale grupurilor NU se listează separat — grupul apare o dată,
+     prin rândul-rădăcină; altfel utilizatorul ar vedea „fantome" fără sens */
+  const rows=(r.data||[]).filter(t=>t.is_root!==false); window._trashRows=rows;
   if(!rows.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">🗑️</div><div>'+esc(tz('Coșul e gol.'))+'</div></div>'; return; }
-  const body=rows.map(t=>{ const mk=t.module_key; const ic=(mk&&MODULES[mk])?MODULES[mk].icon:'📦'; const ty=(mk&&MODULES[mk])?mt(mk).title:t.source_table; const comp=trashIsComposite(t.source_table);
-    /* tip compus ⇒ butonul e dezactivat și explicat; intrarea rămâne în coș */
-    const btnRest=comp
-      ? '<button class="iconbtn" disabled aria-disabled="true" style="opacity:.4;cursor:not-allowed" aria-label="'+esc(C373t('Restaurare indisponibilă'))+'" title="'+esc(trashCompositeMsg(t.source_table))+'">♻️</button>'
-      : '<button class="iconbtn" title="'+esc(tz('Restaurează'))+'" aria-label="'+esc(tz('Restaurează'))+'" onclick="trashRestore(\''+t.id+'\')">♻️</button>';
-    return '<tr><td style="width:30px">'+ic+'</td><td class="tname">'+esc(t.label||('#'+String(t.record_id||'').slice(0,8)))+(comp?'<div style="color:var(--muted);font-size:.72rem">⚠️ '+esc(C373t('Restaurare indisponibilă până la actualizarea următoare'))+'</div>':'')+'</td><td>'+esc(ty)+'</td><td>'+esc(String(t.deleted_at||'').slice(0,16).replace('T',' '))+'</td>'
+  const body=rows.map(t=>{ const mk=t.module_key; const ic=(mk&&MODULES[mk])?MODULES[mk].icon:'📦'; const ty=(mk&&MODULES[mk])?mt(mk).title:t.source_table;
+    const mode=trashRestoreMode(t);
+    const nKids=(t.manifest&&t.manifest.counts)?Object.keys(t.manifest.counts).filter(k=>k!==t.source_table).reduce((s,k)=>s+(+t.manifest.counts[k]||0),0):0;
+    /* restaurarea e activă doar când poate fi COMPLETĂ (standalone sau grup) */
+    const btnRest=(mode==='standalone'||mode==='tree')
+      ? '<button class="iconbtn" title="'+esc(tz('Restaurează'))+'" aria-label="'+esc(tz('Restaurează'))+'" onclick="trashRestore(\''+t.id+'\')">♻️</button>'
+      : '<button class="iconbtn" disabled aria-disabled="true" style="opacity:.4;cursor:not-allowed" aria-label="'+esc(C373t('Restaurare indisponibilă'))+'" title="'+esc(mode==='partial'?trashPartialMsg():trashCompositeMsg(t.source_table))+'">♻️</button>';
+    const nota = mode==='tree' ? (nKids?('<div style="color:var(--muted);font-size:.72rem">📦 '+esc(C373t('cu elementele legate'))+': '+nKids+'</div>'):'')
+      : mode==='partial' ? '<div style="color:var(--muted);font-size:.72rem">⚠️ '+esc(C373t('Copie doar cu antetul (ștergere veche)'))+'</div>'
+      : mode==='blocked' ? '<div style="color:var(--muted);font-size:.72rem">⚠️ '+esc(C373t('Restaurare indisponibilă până la actualizarea următoare'))+'</div>' : '';
+    return '<tr><td style="width:30px">'+ic+'</td><td class="tname">'+esc(t.label||('#'+String(t.record_id||'').slice(0,8)))+nota+'</td><td>'+esc(ty)+'</td><td>'+esc(String(t.deleted_at||'').slice(0,16).replace('T',' '))+'</td>'
       +'<td><div class="rowact">'+btnRest+'<button class="iconbtn danger" title="'+esc(tz('Șterge definitiv'))+'" aria-label="'+esc(tz('Șterge definitiv'))+'" onclick="trashPurge(\''+t.id+'\')">🗑</button></div></td></tr>'; }).join('');
   $('mod-body').innerHTML='<div style="padding:.15rem 1.2rem .35rem;font-size:.78rem;color:var(--muted)">♻️ '+esc(tz('Restaurează'))+' · 🗑 '+esc(tz('Șterge definitiv'))+'</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>'+esc(tz('Element'))+'</th><th>'+esc(tz('Tip'))+'</th><th>'+esc(tz('Șters la'))+'</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
@@ -8490,12 +8560,31 @@ async function renderTrash(){
    rândurilor afectate. La orice eșec, intrarea rămâne în coș. Fără sbRetry:
    o reîncercare oarbă ar raporta „nu mai e în coș" după un succes pierdut pe rețea. */
 async function trashRestore(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!t) return;
-  if(trashIsComposite(t.source_table)){ toast(trashCompositeMsg(t.source_table)); return; }  // refuz ÎNAINTE de orice scriere
-  const r=await sb.rpc('trash_restore',{p_trash_id:id});
-  if(r.error){ toast(trashErrMsg(r.error)); renderTrash(); return; }
-  if(!r.data || !r.data.length){ toast('⚠️ '+C373t('Nu am primit confirmarea serverului. Elementul rămâne în Coș.')); renderTrash(); return; }
-  toast('♻️ '+tz('Restaurat.')); renderTrash(); }
-async function trashPurge(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!confirm(tz('Ștergi definitiv acest element? Nu mai poate fi recuperat.'))) return; const r=await sb.from('trash').delete().eq('id',id); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } if(t&&t.data&&t.data.file_url){ try{ await sb.storage.from('docs').remove([t.data.file_url]); }catch(e){} } toast('🗑 '+tz('Șters definitiv.')); renderTrash(); }
+  const mode=trashRestoreMode(t);
+  /* refuz ÎNAINTE de orice scriere; serverul refuză independent oricum */
+  if(mode==='partial'){ toast(trashPartialMsg()); return; }
+  if(mode==='blocked'){ toast(trashCompositeMsg(t.source_table)); return; }
+  let r, kids=0;
+  if(mode==='tree'){
+    /* grup compus (migr 0123): părintele ȘI copiii, într-o singură tranzacție */
+    r=await sb.rpc('trash_restore_tree',{p_group_id:t.group_id, p_request_id:(typeof planUuid==='function')?planUuid():null});
+    if(r.error){ toast(trashErrMsg(r.error)); renderTrash(); return; }
+    if(!r.data || r.data.ok!==true){ toast('⚠️ '+C373t('Nu am primit confirmarea serverului. Elementul rămâne în Coș.')); renderTrash(); return; }
+    kids=+r.data.child_rows||0;
+  } else {
+    r=await sb.rpc('trash_restore',{p_trash_id:id});
+    if(r.error){ toast(trashErrMsg(r.error)); renderTrash(); return; }
+    if(!r.data || !r.data.length){ toast('⚠️ '+C373t('Nu am primit confirmarea serverului. Elementul rămâne în Coș.')); renderTrash(); return; }
+  }
+  toast('♻️ '+tz('Restaurat.')+(kids?(' ('+kids+' '+C373t('elemente legate')+')'):'')); renderTrash(); }
+async function trashPurge(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!confirm(tz('Ștergi definitiv acest element? Nu mai poate fi recuperat.'))) return;
+  /* la un grup compus se purjează TOATE rândurile lui, nu doar rădăcina —
+     altfel ar rămâne rânduri-copil orfane, invizibile în listă */
+  const r = (t && t.group_id) ? await sb.from('trash').delete().eq('group_id',t.group_id)
+                              : await sb.from('trash').delete().eq('id',id);
+  if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
+  if(t&&t.data&&t.data.file_url){ try{ await sb.storage.from('docs').remove([t.data.file_url]); }catch(e){} }
+  toast('🗑 '+tz('Șters definitiv.')); renderTrash(); }
 async function trashEmpty(){ if(!(window._trashRows&&window._trashRows.length)){ toast(tz('Coșul e gol.')); return; } if(!confirm(tz('Golești tot coșul? Toate elementele se șterg definitiv.'))) return; const files=(window._trashRows||[]).map(t=>t.data&&t.data.file_url).filter(Boolean); const r=await sb.from('trash').delete().gte('deleted_at','1900-01-01'); if(r.error){ toast('Eroare: '+esc(r.error.message)); return; } if(files.length){ try{ await sb.storage.from('docs').remove(files); }catch(e){} } toast('🧹 '+tz('Coș golit.')); renderTrash(); }
 
 /* ════ CONVERSIE DEVIZ → FACTURĂ ════ */
