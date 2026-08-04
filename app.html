@@ -3562,7 +3562,7 @@ async function renderPostcalc(){
     sb.from('sites').select('id,name,budget,status'),
     sb.from('invoices').select('site_id,estimate_id,total,status'),
     sb.from('material_orders').select('site_id,total'),
-    sb.from('timesheets').select('site_id,hours,employee_id'),
+    sbAll(function(){ return sb.from('timesheets').select('site_id,hours,employee_id').order('id',{ascending:true}); }),
     sb.from('employees').select('id,hourly_rate'),
     sb.from('estimates').select('id,site_id,total')
   ]);
@@ -3588,7 +3588,7 @@ async function postcalcDetail(siteId, siteName){
   const [invR,moR,tsR,empR,estR]=await Promise.all([
     sb.from('invoices').select('number,total,status,estimate_id,site_id'),
     sb.from('material_orders').select('number,total,ordered_at').eq('site_id',siteId),
-    sb.from('timesheets').select('hours,employee_id,work_date').eq('site_id',siteId),
+    sbAll(function(){ return sb.from('timesheets').select('hours,employee_id,work_date').eq('site_id',siteId).order('id',{ascending:true}); }),
     sb.from('employees').select('id,full_name,hourly_rate'),
     sb.from('estimates').select('id,number,total').eq('site_id',siteId)
   ]);
@@ -3813,11 +3813,14 @@ async function ptReportRun(){
   toast('⏳ Generez raportul…');
   // Deschidem fereastra SINCRON (după validare, înainte de await) ca să nu fie blocată de browser/PWA.
   let w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>Raport…</title><style>body{font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;color:#0f1c33;font-size:15px}</style><div>⏳ Se pregătește raportul…</div>'); }catch(e){}
-  let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,absence,employees!employee_id(full_name),sites!site_id(name)').gte('work_date',from).lte('work_date',to).limit(5000);
-  if(empId) q=q.eq('employee_id',empId);
-  const { data, error }=await q;
-  if(error){ try{w.close();}catch(e){} toast('Eroare: '+esc(error.message)); return; }
-  const rows=(data||[]);
+  // paginat: un singur .select() ar fi tăiat tăcut la 1000 de rânduri (max_rows)
+  const build=function(){ let q=sb.from('timesheets').select('employee_id,work_date,hours,note,start_time,end_time,break_min,site_id,absence,employees!employee_id(full_name),sites!site_id(name)')
+      .gte('work_date',from).lte('work_date',to)
+      .order('work_date',{ascending:true}).order('employee_id',{ascending:true}).order('id',{ascending:true});
+    if(empId) q=q.eq('employee_id',empId); return q; };
+  const res=await sbAll(build);
+  if(res.error){ try{w.close();}catch(e){} toast('Eroare: '+esc(res.error.message)); return; }
+  const rows=res.data||[]; const complet=res.complete!==false;
   // angajații activi (ca să marcăm și zilele lucrătoare FĂRĂ pontaj salvat)
   let empQ=sb.from('employees').select('id,full_name').eq('active',true); if(empId) empQ=empQ.eq('id',empId);
   const actEmps=((await empQ).data)||[];
@@ -3832,7 +3835,8 @@ async function ptReportRun(){
   let grand=0, gDays=0, gMiss=0, body='';
   Object.keys(byEmp).sort((a,b)=>byEmp[a].name.localeCompare(byEmp[b].name)).forEach(k=>{
     const e=byEmp[k]; grand+=e.total; gDays+=e.rows.length;
-    const missing=workDays.filter(d=>!e.days.has(d)); gMiss+=missing.length;
+    // „zi fără pontaj" se afirmă DOAR pe date complete — altfel ar fi o minciună
+    const missing=complet?workDays.filter(d=>!e.days.has(d)):[]; gMiss+=missing.length;
     const trs=e.rows.sort((a,b)=>(a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0)).map(r=>{ const dt=new Date(r.work_date+'T12:00:00'); const tag=r.absence||null; const noWork=!!(tag&&ptIsNoWork(tag)); const lbl=tag?ptAbsLabel(tag):null;
       const siteCell = lbl ? ('<b>'+esc(lbl)+'</b>') : esc((r.sites&&r.sites.name)||'—');
       return '<tr><td>'+ro(r.work_date)+'</td><td>'+dn[dt.getDay()]+'</td><td>'+siteCell+'</td><td>'+(noWork?'':esc(hm(r.start_time)))+'</td><td>'+(noWork?'':esc(hm(r.end_time)))+'</td><td>'+(noWork?'':(r.break_min!=null?(r.break_min+' min'):''))+'</td><td style="text-align:right">'+(noWork?'—':fmt(r.hours))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('');
@@ -3854,6 +3858,7 @@ async function ptReportRun(){
     +'@media print{.noprint{display:none}}</style></head><body>'
     +'<h1>'+esc(state.firm.name||'Firma')+' — Raport pontaj</h1>'
     +'<div class="muted">Perioadă: '+ro(from)+' → '+ro(to)+''+(empId&&byEmp[empId]?(' · '+esc(byEmp[empId].name)):' · toți angajații')+' · generat '+fmtDate(coToday())+'</div>'
+    +(complet?'':'<div class="emiss" style="font-size:12px">⚠️ '+esc(C373t('Raport PARȚIAL: perioada conține prea multe înregistrări pentru o singură generare. Restrânge perioada sau alege un singur angajat.'))+'</div>')
     +body
     +'<div class="grand">TOTAL GENERAL: '+fmt(grand)+' ore · '+gDays+' zile-om'+(gMiss?(' · <span style="color:#b45309">'+gMiss+' zile fără pontaj</span>'):'')+'</div>'
     +'<div class="noprint" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="padding:9px 18px;font-size:14px;cursor:pointer">🖨 Tipărește / Salvează PDF</button></div>'
@@ -3942,11 +3947,14 @@ async function psReportRun(){
   toast('⏳ '+C373t('Generez raportul…'));
   let w=window.open('','_blank'); if(!w){ toast(C373t('Permite ferestrele pop-up pentru această pagină.')); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>Raport…</title><style>body{font-family:system-ui,-apple-system,Arial;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;color:#0f1c33;font-size:15px}</style><div>⏳ …</div>'); }catch(e){}
   const [tsR,empR,rtR]=await Promise.all([
-    sb.from('timesheets').select('employee_id,hours,absence').gte('work_date',from).lte('work_date',to).limit(20000),
+    sbAll(function(){ return sb.from('timesheets').select('employee_id,hours,absence')
+      .gte('work_date',from).lte('work_date',to)
+      .order('work_date',{ascending:true}).order('employee_id',{ascending:true}).order('id',{ascending:true}); }),
     sb.from('employees').select('id,full_name,hourly_rate').eq('active',true),
     sb.from('pontaj_sim').select('employee_id,rate_gross,rate_net')
   ]);
   if(tsR.error||empR.error){ try{w.close();}catch(e){} toast('Eroare: '+esc((tsR.error||empR.error).message)); return; }
+  if(tsR.complete===false) toast('⚠️ '+C373t('Raport PARȚIAL: perioada conține prea multe înregistrări pentru o singură generare. Restrânge perioada sau alege un singur angajat.'));
   const rate={}; (rtR.data||[]).forEach(r=>{ rate[r.employee_id]={g:+r.rate_gross||0,n:+r.rate_net||0}; });
   const emp={}; (empR.data||[]).forEach(e=>{ emp[e.id]={name:e.full_name||'—',hr:+e.hourly_rate||0}; });
   const acc={}; (tsR.data||[]).forEach(t=>{ if(t.absence && ptIsNoWork(t.absence)) return; const h=+t.hours||0; if(h<=0) return; (acc[t.employee_id]=acc[t.employee_id]||{h:0}).h+=h; });
@@ -5366,7 +5374,14 @@ async function genPayroll(){
   if(existing && !confirm('Există deja un rulaj pe luna '+mo+'. Îl recalculez (șterg și refac)?')) return;
   const { data:emps }=await sb.from('employees').select('id,full_name,hourly_rate,monthly_rate').eq('active',true);
   if(!emps||!emps.length){ toast('Niciun angajat activ.'); return; }
-  const { data:ts }=await sb.from('timesheets').select('employee_id,hours,work_date').gte('work_date',period).lte('work_date',lastDay(mo));
+  // paginat OBLIGATORIU: un singur .select() taie tăcut la 1000 de rânduri (max_rows)
+  // și ar calcula salariile pe o parte din ore. Reprodus: 1861 → 1000 rânduri, 10084 h → 5280 h.
+  const tsRes=await sbAll(function(){ return sb.from('timesheets').select('employee_id,hours,work_date')
+    .gte('work_date',period).lte('work_date',lastDay(mo))
+    .order('work_date',{ascending:true}).order('employee_id',{ascending:true}).order('id',{ascending:true}); });
+  if(tsRes.error){ toast('Eroare: '+esc(tsRes.error.message)); return; }
+  if(tsRes.complete===false){ toast('⚠️ '+C373t('Prea multe pontaje pentru o singură rulare. Salariile NU au fost calculate.')); return; }
+  const ts=tsRes.data||[];
   const hours={}, worked={}; (ts||[]).forEach(t=>{ const h=Number(t.hours||0); hours[t.employee_id]=(hours[t.employee_id]||0)+h; if(h>0){ (worked[t.employee_id]=worked[t.employee_id]||new Set()).add(t.work_date); } });
   // Sărbători legale = zi liberă plătită: pentru angajații cu tarif orar, adaugă orele standard pe zilele lucrătoare de sărbătoare nelucrate.
   const _std=coStdHours(); const _H=holYear(+mo.slice(0,4)); const _holWd=Object.keys(_H).filter(iso=>iso.slice(0,7)===mo && [0,6].indexOf(new Date(iso+'T12:00:00').getDay())<0);
@@ -7595,6 +7610,30 @@ function closeQc(){ $('picker-mount').innerHTML=''; }
 function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
 function netMsg(){ return navigator.onLine ? '📡 Conexiune întreruptă. Verifică internetul și apasă din nou.' : '📴 Ești offline. Reconectează-te la internet și încearcă din nou.'; }
 /* reincearca automat o scriere de cateva ori cand reteaua pica (util pe 4G/teren) */
+/* ════ ÎNCĂRCARE COMPLETĂ, PAGINATĂ (integritatea rapoartelor) ════════════════
+   PostgREST plafonează ORICE răspuns la `max_rows` — pe acest proiect **1000**.
+   Un `.limit(5000)` din client NU ridică plafonul: serverul taie tăcut la 1000,
+   fără eroare și fără avertisment. Rapoartele de pontaj citeau astfel doar o
+   parte din zile, iar cele lipsă erau prezentate ca „fără pontaj salvat".
+   Reprodus pe demo: 1861 rânduri în DB → 1000 încărcate, 10084 h → 5280 h.
+
+   `build()` TREBUIE să întoarcă un builder NOU la fiecare apel (builderele
+   PostgREST sunt de unică folosință) și TREBUIE să conțină o ordonare stabilă,
+   altfel paginile se pot suprapune sau pierde rânduri între ele.
+   Întoarce {data, error, complete}: `complete=false` = s-a atins plafonul de
+   siguranță, deci raportul e PARȚIAL și trebuie anunțat ca atare. */
+const SB_PAGE=1000, SB_MAX_PAGES=60;
+async function sbAll(build){
+  const out=[];
+  for(let page=0; page<SB_MAX_PAGES; page++){
+    const r=await build().range(page*SB_PAGE, page*SB_PAGE+SB_PAGE-1);
+    if(r.error) return {data:null, error:r.error, complete:false};
+    const chunk=r.data||[];
+    for(let i=0;i<chunk.length;i++) out.push(chunk[i]);
+    if(chunk.length<SB_PAGE) return {data:out, error:null, complete:true};
+  }
+  return {data:out, error:null, complete:false};   // > 60.000 de rânduri: raport parțial, anunțat
+}
 async function sbRetry(fn, tries){ tries=tries||3; let last; for(let i=0;i<tries;i++){ try{ const r=await fn(); if(r&&r.error){ if(isNetErr(r.error)&&i<tries-1){ last=r; await new Promise(s=>setTimeout(s,600*(i+1))); continue; } return r; } return r; }catch(e){ last={error:e}; if(isNetErr(e)&&i<tries-1){ await new Promise(s=>setTimeout(s,600*(i+1))); continue; } return last; } } return last; }
 async function saveQc(){
   const q=QUICK[window._qcKey]; const rec={tenant_id:state.tenant};

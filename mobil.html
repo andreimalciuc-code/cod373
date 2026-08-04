@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='328';
+const APP_BUILD='329';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -895,9 +895,12 @@ async function pjReopen(){ const P=S._pj; if(!P.ts) return;
   P.ts.end_time=null; P.ts.hours=0; renderPontajWorker(); }
 async function scrPontajMgr(){
   $('screen').innerHTML='<div class="scr-title">Pontaj</div><button class="btn" onclick="sheetPontaj()">＋ Pontează ore</button><div id="pj" style="margin-top:1rem"><div class="loading">Se încarcă…</div></div>';
-  const {data}=await sb.from('timesheets').select('id,work_date,hours,approved,employee_id,site_id');
+  // ordonarea ȘI limita se fac pe SERVER: încărcarea tuturor pontajelor era tăiată
+  // tăcut la 1000 de rânduri (max_rows PostgREST), deci „ultimele 20" se alegeau
+  // dintr-un subset arbitrar și puteau sări peste cele mai recente pontaje.
+  const {data}=await sb.from('timesheets').select('id,work_date,hours,approved,employee_id,site_id').order('work_date',{ascending:false}).order('id',{ascending:false}).limit(20);
+  const rows=(data||[]);
   const em=await nameMap('employees','full_name'); const sm=await nameMap('sites','name');
-  const rows=(data||[]).slice().sort((a,b)=>(a.work_date<b.work_date?1:(a.work_date>b.work_date?-1:0))).slice(0,20);
   if(!rows.length){$('pj').innerHTML='<div class="empty"><div class="ei">⏱️</div>Niciun pontaj încă.</div>';return;}
   $('pj').innerHTML=rows.map(r=>'<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(r.employee_id?(em[r.employee_id]||'—'):'—')+' · '+esc(r.hours)+'h</div><div class="s">'+esc(r.site_id?(sm[r.site_id]||'fără șantier'):'fără șantier')+' · '+esc(r.work_date)+'</div></div>'+(r.approved?'<span class="pill green">Aprobat</span>':'<span class="pill blue">Trimis</span>')+'</div></div>').join('');
 }
