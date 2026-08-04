@@ -8404,7 +8404,7 @@ async function delRecord(key,id){
   if(!canDo(key,'d')){ toast('🔒 Nu ai dreptul să ștergi aici.'); return; }
   if(!confirm('Sigur ștergi această înregistrare?')) return;
   const m=MODULES[key];
-  if(trashIsTreeType(m.table)){                     // tip compus acoperit de 0123
+  if(trashIsTreeType(m.table)){                     // tip compus acoperit de 0123/0124
     const tr=await trashDeleteTree(m.table, key, id);
     if(!tr.ok){ toast(trashErrMsg(tr.err)); return; }
     renderModule(key);
@@ -8423,9 +8423,10 @@ async function delRecord(key,id){
    Tipuri COMPUSE = au copii cu `ON DELETE CASCADE`. Copiii se pierd la ștergere
    și NU sunt în snapshot, deci o „restaurare" ar reface doar antetul: un deviz
    fără poziții, un material fără stoc/prețuri/furnizori, un șantier fără etape.
-   Până la motorul generic părinte+copii (Lotul 0B3B) restaurarea lor e BLOCATĂ,
-   iar intrarea rămâne intactă în coș — nu se pierde nimic. Lista e derivată din
-   cheile străine reale și e dublată server-side de `trash_restore` (migr 0122). */
+   Tipurile acoperite de loturile 0B3B (vezi `TRASH_TREE_TYPES`) se salvează ca GRUP
+   și se restaurează complet; restul rămân BLOCATE, iar intrarea rămâne intactă în
+   coș — nu se pierde nimic. Lista e derivată din cheile străine reale și e dublată
+   server-side de `trash_restore` (migr 0122) / `trash_tree_plan` (migr 0123/0124). */
 const TRASH_COMPOSITE={
   sites:'etapele, echipa, defectele, recenziile și planificările',
   material_orders:'pozițiile comenzii',
@@ -8445,15 +8446,17 @@ const TRASH_COMPOSITE={
   document_folders:'documentele și submapele'
 };
 function trashIsComposite(tbl){ return !!TRASH_COMPOSITE[tbl]; }
-/* Tipurile COMPUSE acoperite de lotul curent (migr 0123, Nivel 1): ștergerea lor
-   salvează un GRUP în coș (părinte + colecția copil), deci restaurarea poate fi
-   completă. Lista trebuie să rămână identică cu lista albă server-side din
-   `public.trash_tree_child` — serverul refuză oricum tot ce nu e acolo. */
-const TRASH_TREE_TYPES={ crew_teams:1, services:1, subcontractors:1, tool_units:1, site_surveys:1 };
+/* Tipurile COMPUSE acoperite până acum (migr 0123 = Nivel 1, migr 0124 = Nivel 2):
+   ștergerea lor salvează un GRUP în coș (părinte + colecțiile copil, inclusiv
+   nepoții lui `tools`), deci restaurarea poate fi completă. Lista trebuie să rămână
+   identică cu lista albă server-side din `public.trash_tree_plan` — serverul refuză
+   oricum tot ce nu e acolo. */
+const TRASH_TREE_TYPES={ crew_teams:1, services:1, subcontractors:1, tool_units:1, site_surveys:1,
+                         materials:1, tools:1, vehicles:1, material_orders:1, clients:1 };
 function trashIsTreeType(tbl){ return !!TRASH_TREE_TYPES[tbl]; }
 /* Cum se restaurează o intrare:
    'standalone' = tip simplu, prin `trash_restore` (0122);
-   'tree'       = tip compus cu GRUP salvat de 0123 ⇒ `trash_restore_tree`;
+   'tree'       = tip compus cu GRUP salvat de 0123/0124 ⇒ `trash_restore_tree`;
    'partial'    = tip compus, dar intrare VECHE (fără grup): snapshotul conține
                   doar părintele, copiii nu există nicăieri ⇒ restaurarea ar fi
                   înșelătoare, rămâne blocată;
@@ -8481,7 +8484,9 @@ function trashErrMsg(e){
   if(m.indexOf('TRASH_NOT_FOUND')>=0)        return 'ℹ️ '+C373t('Elementul nu mai este în Coș.');
   if(m.indexOf('TRASH_INVALID_SNAPSHOT')>=0) return '⚠️ '+C373t('Copia salvată în Coș este incompletă și nu poate fi restaurată.');
   if(m.indexOf('TRASH_FORBIDDEN')>=0)        return '🔒 '+C373t('Nu ai dreptul să restaurezi acest element.');
-  /* coduri introduse de migrarea 0123 (restaurarea compusă) */
+  /* coduri introduse de migrările 0123/0124 (restaurarea compusă) */
+  if(m.indexOf('TRASH_DEPENDENCY_MISSING')>=0) return '⚠️ '+C373t('O înregistrare de care depinde aceasta (șantier, furnizor, magazin, depozit sau angajat) a fost ștearsă între timp. Restaureaz-o pe aceea întâi. Elementul rămâne în Coș.');
+  if(m.indexOf('TRASH_STORAGE_MISSING')>=0)    return '⚠️ '+C373t('Un fișier esențial al acestei înregistrări lipsește din stocare. Elementul rămâne în Coș.');
   if(m.indexOf('TRASH_PARTIAL_SNAPSHOT')>=0)   return trashPartialMsg();
   if(m.indexOf('TRASH_ALREADY_RESTORED')>=0)   return 'ℹ️ '+C373t('Elementul a fost deja restaurat.');
   if(m.indexOf('TRASH_UNSUPPORTED_SCHEMA')>=0) return '⚠️ '+C373t('Copia a fost salvată de o versiune mai veche și nu poate fi restaurată automat.');
@@ -8501,10 +8506,11 @@ async function moveToTrash(table, moduleKey, rows){ if(!rows||!rows.length) retu
     return true;
   }catch(e){ toast('⚠️ '+C373t('Șters, dar nu am putut salva copia în Coș:')+' '+esc((e&&e.message)||e)); return false; }
 }
-/* Ștergerea COMPUSĂ (migr 0123, Nivel 1): snapshotul părinte + colecția copil și
-   ștergerea propriu-zisă se fac într-o SINGURĂ tranzacție server-side, cu
-   numărătorile verificate. Fără `sbRetry`: retry-ul e sigur doar prin
-   `p_request_id`, pe care îl generăm o dată și îl refolosim la reîncercare. */
+/* Ștergerea COMPUSĂ (migr 0123 = Nivel 1, migr 0124 = Nivel 2): snapshotul părinte
+   + toate colecțiile copil (și nepoții, la `tools`) și ștergerea propriu-zisă se fac
+   într-o SINGURĂ tranzacție server-side, cu numărătorile verificate. Fără `sbRetry`:
+   retry-ul e sigur doar prin `p_request_id`, pe care îl generăm o dată și îl
+   refolosim la reîncercare. */
 async function trashDeleteTree(table, moduleKey, id){
   const rid=(typeof planUuid==='function')?planUuid():null;
   const r=await sb.rpc('trash_delete_tree',{p_table:table, p_id:id, p_module_key:moduleKey||null, p_request_id:rid});
@@ -8514,7 +8520,7 @@ async function trashDeleteTree(table, moduleKey, id){
 }
 /* ștergere „moale" reutilizabilă pt ștergerile speciale (jurnal, documente, contacte, KB…) */
 async function softDelete(table, moduleKey, id, onChange){
-  if(trashIsTreeType(table)){                       // tip compus acoperit de 0123
+  if(trashIsTreeType(table)){                       // tip compus acoperit de 0123/0124
     const tr=await trashDeleteTree(table, moduleKey, id);
     if(!tr.ok){ toast(trashErrMsg(tr.err)); return false; }
     if(typeof onChange==='function'){ try{ onChange(); }catch(e){} }
@@ -8564,19 +8570,26 @@ async function trashRestore(id){ const t=(window._trashRows||[]).find(x=>x.id===
   /* refuz ÎNAINTE de orice scriere; serverul refuză independent oricum */
   if(mode==='partial'){ toast(trashPartialMsg()); return; }
   if(mode==='blocked'){ toast(trashCompositeMsg(t.source_table)); return; }
-  let r, kids=0;
+  let r, kids=0, relinked=0, missFiles=0;
   if(mode==='tree'){
-    /* grup compus (migr 0123): părintele ȘI copiii, într-o singură tranzacție */
+    /* grup compus (migr 0123/0124): părintele ȘI toată închiderea, într-o singură tranzacție */
     r=await sb.rpc('trash_restore_tree',{p_group_id:t.group_id, p_request_id:(typeof planUuid==='function')?planUuid():null});
     if(r.error){ toast(trashErrMsg(r.error)); renderTrash(); return; }
     if(!r.data || r.data.ok!==true){ toast('⚠️ '+C373t('Nu am primit confirmarea serverului. Elementul rămâne în Coș.')); renderTrash(); return; }
     kids=+r.data.child_rows||0;
+    relinked=+r.data.relinked||0;
+    /* fișierele lipsă NU blochează restaurarea (sunt atașamente), dar utilizatorul
+       trebuie să afle — altfel ar crede că pozele/contractul s-au întors și ele */
+    missFiles=(r.data.storage_missing||[]).length;
   } else {
     r=await sb.rpc('trash_restore',{p_trash_id:id});
     if(r.error){ toast(trashErrMsg(r.error)); renderTrash(); return; }
     if(!r.data || !r.data.length){ toast('⚠️ '+C373t('Nu am primit confirmarea serverului. Elementul rămâne în Coș.')); renderTrash(); return; }
   }
-  toast('♻️ '+tz('Restaurat.')+(kids?(' ('+kids+' '+C373t('elemente legate')+')'):'')); renderTrash(); }
+  toast('♻️ '+tz('Restaurat.')+(kids?(' ('+kids+' '+C373t('elemente legate')+')'):'')
+        +(relinked?(' · '+C373t('legături refăcute')+': '+relinked):''));
+  if(missFiles) toast('⚠️ '+C373t('Restaurat, dar lipsesc din stocare fișiere atașate:')+' '+missFiles);
+  renderTrash(); }
 async function trashPurge(id){ const t=(window._trashRows||[]).find(x=>x.id===id); if(!confirm(tz('Ștergi definitiv acest element? Nu mai poate fi recuperat.'))) return;
   /* la un grup compus se purjează TOATE rândurile lui, nu doar rădăcina —
      altfel ar rămâne rânduri-copil orfane, invizibile în listă */
