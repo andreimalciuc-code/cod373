@@ -7363,7 +7363,7 @@ async function bulkDelete(){ const m=listState.m, key=listState.key; if(!m||!can
     for(const id of ids){ const tr=await trashDeleteTree(m.table, key, id);
       if(tr.ok){ ok++; kids+=(tr.data.child_rows||0); } else lastErr=tr.err; }
     _bulkSel={}; renderModule(key);
-    if(lastErr) toast(trashErrMsg(lastErr));
+    if(lastErr) toast(trashErrMsg(lastErr,'delete'));
     if(ok) toast('🗑 '+ok+' '+tz('șterse.')+(kids?(' ('+kids+' '+C373t('elemente legate')+')'):''));
     return;
   }
@@ -8406,7 +8406,7 @@ async function delRecord(key,id){
   const m=MODULES[key];
   if(trashIsTreeType(m.table)){                     // tip compus acoperit de 0123/0124
     const tr=await trashDeleteTree(m.table, key, id);
-    if(!tr.ok){ toast(trashErrMsg(tr.err)); return; }
+    if(!tr.ok){ toast(trashErrMsg(tr.err,'delete')); return; }
     renderModule(key);
     toast('🗑 '+tz('Șters.')+(tr.data.child_rows?(' ('+tr.data.child_rows+' '+C373t('elemente legate')+')'):''));
     return;
@@ -8475,15 +8475,22 @@ function trashCompositeMsg(tbl){
 function trashPartialMsg(){
   return '⚠️ '+C373t('Această înregistrare a fost ștearsă înainte de actualizare: copia păstrată conține doar antetul, fără elementele legate. Restaurarea rămâne blocată.');
 }
-function trashErrMsg(e){
+/* `ctx`='delete' când mesajul însoțește o ȘTERGERE (delRecord/bulkDelete/softDelete):
+   aceleași coduri server-side înseamnă altceva pentru utilizator. Fără el, un refuz
+   la ștergere afișa „Nu ai dreptul să RESTAUREZI", ceea ce e derutant — rolurile care
+   pot scrie dar nu pot șterge (ex. contabilul, DELETE=conducere) văd exact acest caz. */
+function trashErrMsg(e, ctx){
   if(isNetErr(e)) return netMsg();
   const m=((e&&(e.message||e))||'').toString();
+  const del=(ctx==='delete');
+  const noRight = del ? ('🔒 '+C373t('Nu ai dreptul să ștergi acest element.'))
+                      : ('🔒 '+C373t('Nu ai dreptul să restaurezi acest element.'));
   if(m.indexOf('TRASH_COMPOSITE')>=0)        return '⚠️ '+C373t('Restaurarea completă a acestui tip de înregistrare nu este disponibilă încă. Elementul rămâne în Coș.');
   if(m.indexOf('TRASH_CONFLICT')>=0)         return '⚠️ '+C373t('Există deja o înregistrare cu acest identificator. Elementul rămâne în Coș.');
-  if(m.indexOf('TRASH_DENIED')>=0)           return '🔒 '+C373t('Nu ai dreptul să restaurezi acest element.');
-  if(m.indexOf('TRASH_NOT_FOUND')>=0)        return 'ℹ️ '+C373t('Elementul nu mai este în Coș.');
+  if(m.indexOf('TRASH_DENIED')>=0)           return noRight;
+  if(m.indexOf('TRASH_NOT_FOUND')>=0)        return del ? ('ℹ️ '+C373t('Înregistrarea nu mai există.')) : ('ℹ️ '+C373t('Elementul nu mai este în Coș.'));
   if(m.indexOf('TRASH_INVALID_SNAPSHOT')>=0) return '⚠️ '+C373t('Copia salvată în Coș este incompletă și nu poate fi restaurată.');
-  if(m.indexOf('TRASH_FORBIDDEN')>=0)        return '🔒 '+C373t('Nu ai dreptul să restaurezi acest element.');
+  if(m.indexOf('TRASH_FORBIDDEN')>=0)        return noRight;
   /* coduri introduse de migrările 0123/0124 (restaurarea compusă) */
   if(m.indexOf('TRASH_DEPENDENCY_MISSING')>=0) return '⚠️ '+C373t('O înregistrare de care depinde aceasta (șantier, furnizor, magazin, depozit sau angajat) a fost ștearsă între timp. Restaureaz-o pe aceea întâi. Elementul rămâne în Coș.');
   if(m.indexOf('TRASH_STORAGE_MISSING')>=0)    return '⚠️ '+C373t('Un fișier esențial al acestei înregistrări lipsește din stocare. Elementul rămâne în Coș.');
@@ -8522,7 +8529,7 @@ async function trashDeleteTree(table, moduleKey, id){
 async function softDelete(table, moduleKey, id, onChange){
   if(trashIsTreeType(table)){                       // tip compus acoperit de 0123/0124
     const tr=await trashDeleteTree(table, moduleKey, id);
-    if(!tr.ok){ toast(trashErrMsg(tr.err)); return false; }
+    if(!tr.ok){ toast(trashErrMsg(tr.err,'delete')); return false; }
     if(typeof onChange==='function'){ try{ onChange(); }catch(e){} }
     toast('🗑 '+tz('Șters.')+(tr.data.child_rows?(' ('+tr.data.child_rows+' '+C373t('elemente legate')+')'):''));
     return true;                                    // fără „Anulează": restaurarea se face din Coș, atomic

@@ -162,6 +162,11 @@
     'Copia a fost salvată de o versiune mai veche și nu poate fi restaurată automat.':{ru:'Копия сохранена более старой версией и не может быть восстановлена автоматически.',de:'Die Kopie wurde von einer älteren Version gespeichert und kann nicht automatisch wiederhergestellt werden.',en:'The copy was saved by an older version and cannot be restored automatically.'},
     'Copia din Coș nu corespunde datelor șterse. Operația a fost anulată integral.':{ru:'Копия в Корзине не соответствует удалённым данным. Операция полностью отменена.',de:'Die Kopie im Papierkorb stimmt nicht mit den gelöschten Daten überein. Der Vorgang wurde vollständig abgebrochen.',en:'The copy in the Trash does not match the deleted data. The operation was fully rolled back.'},
     'Date invalide pentru această operație.':{ru:'Некорректные данные для этой операции.',de:'Ungültige Daten für diesen Vorgang.',en:'Invalid data for this operation.'},
+    /* Text vizibil netradus, găsit la verificarea DE din Lotul 0B3B3H (filtrul de magazine din Materiale) */
+    'Niciun magazin — adaugă în Catalog → Magazine':{ru:'Нет магазинов — добавьте в Каталог → Магазины',de:'Kein Geschäft — im Katalog → Geschäfte hinzufügen',en:'No store — add one in Catalog → Stores'},
+    /* Coș de gunoi — refuzul la ȘTERGERE, mesaj propriu (Lotul 0B3B3H, migrarea 0125) */
+    'Nu ai dreptul să ștergi acest element.':{ru:'У вас нет прав удалять этот элемент.',de:'Sie dürfen dieses Element nicht löschen.',en:'You are not allowed to delete this item.'},
+    'Înregistrarea nu mai există.':{ru:'Записи больше не существует.',de:'Der Datensatz existiert nicht mehr.',en:'The record no longer exists.'},
     /* Coș de gunoi — restaurarea compusă, Nivel 2 (migrarea 0124, Lotul 0B3B3) */
     'Elemente șterse — recuperează sau șterge definitiv.':{ru:'Удалённые элементы — восстановите или удалите окончательно.',de:'Gelöschte Elemente — wiederherstellen oder endgültig löschen.',en:'Deleted items — restore them or delete permanently.'},
     'legături refăcute':{ru:'связей восстановлено',de:'Verknüpfungen wiederhergestellt',en:'links restored'},
