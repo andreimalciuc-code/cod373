@@ -167,6 +167,14 @@
     /* Coș de gunoi — refuzul la ȘTERGERE, mesaj propriu (Lotul 0B3B3H, migrarea 0125) */
     'Nu ai dreptul să ștergi acest element.':{ru:'У вас нет прав удалять этот элемент.',de:'Sie dürfen dieses Element nicht löschen.',en:'You are not allowed to delete this item.'},
     'Înregistrarea nu mai există.':{ru:'Записи больше не существует.',de:'Der Datensatz existiert nicht mehr.',en:'The record no longer exists.'},
+    /* Mutații atomice pe colecțiile-copil (migrarea 0126, Lotul 0B3B3I).
+       „Înregistrarea nu mai există." e deja tradusă mai sus. */
+    'Lista a fost modificată între timp (alt tab sau alt coleg). Redeschide și încearcă din nou.':{ru:'Список тем временем изменили (другая вкладка или коллега). Откройте заново и повторите.',de:'Die Liste wurde inzwischen geändert (anderer Tab oder Kollege). Erneut öffnen und noch einmal versuchen.',en:'The list was changed in the meantime (another tab or colleague). Reopen it and try again.'},
+    'Nu ai dreptul să modifici această listă.':{ru:'У вас нет прав изменять этот список.',de:'Sie dürfen diese Liste nicht ändern.',en:'You are not allowed to change this list.'},
+    'O valoare aleasă nu mai există sau nu aparține firmei tale.':{ru:'Выбранное значение больше не существует или не принадлежит вашей компании.',de:'Ein gewählter Wert existiert nicht mehr oder gehört nicht zu Ihrer Firma.',en:'A selected value no longer exists or does not belong to your company.'},
+    'Datele trimise nu sunt valide.':{ru:'Отправленные данные некорректны.',de:'Die gesendeten Daten sind ungültig.',en:'The submitted data is not valid.'},
+    'Prea multe rânduri într-o singură salvare.':{ru:'Слишком много строк за одно сохранение.',de:'Zu viele Zeilen in einem einzigen Speichervorgang.',en:'Too many rows in a single save.'},
+    'Salvarea a fost refuzată de baza de date.':{ru:'База данных отклонила сохранение.',de:'Die Datenbank hat das Speichern abgelehnt.',en:'The database refused the save.'},
     /* Coș de gunoi — restaurarea compusă, Nivel 2 (migrarea 0124, Lotul 0B3B3) */
     'Elemente șterse — recuperează sau șterge definitiv.':{ru:'Удалённые элементы — восстановите или удалите окончательно.',de:'Gelöschte Elemente — wiederherstellen oder endgültig löschen.',en:'Deleted items — restore them or delete permanently.'},
     'legături refăcute':{ru:'связей восстановлено',de:'Verknüpfungen wiederhergestellt',en:'links restored'},

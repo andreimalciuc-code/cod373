@@ -3056,8 +3056,8 @@ async function vehDrivers(vid, vlabel){
 }
 async function vehDriversSave(vid, vlabel){
   const ids=[...document.querySelectorAll('.vd-cb:checked')].map(c=>c.value);
-  const del=await sb.from('vehicle_drivers').delete().eq('vehicle_id',vid); if(del.error){ showMsg('vd-msg', isNetErr(del.error)?netMsg():('Eroare: '+esc(del.error.message))); return; }
-  if(ids.length){ const rows=ids.map(eid=>({tenant_id:state.tenant,vehicle_id:vid,employee_id:eid})); const r=await sbRetry(()=>sb.from('vehicle_drivers').insert(rows)); if(r.error){ showMsg('vd-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } }
+  try{ await childRpc('vehicle_drivers_set', {p_vehicle_id:vid, p_employee_ids:ids}); }
+  catch(e){ showMsg('vd-msg', esc(e.message)); return; }
   toast('✅ Șoferi salvați ('+ids.length+').'); closeModal();
   const a=document.querySelector('.nav-item.active'); if(a&&a.dataset.view==='flota') go('flota');
 }
@@ -3259,11 +3259,14 @@ async function toolMoveDo(locId){
   const drec={tenant_id:state.tenant,tool_id:c.tid,qty:mv, site_id:(kind==='site'?lid:null), store_id:null, warehouse_id:(kind==='wh'?lid:null), holder:null, loan_type:null};
   if(kind==='loan'){ const h=(($('tm-holder')&&$('tm-holder').value)||'').trim(); if(!h){ showMsg('tm-msg','Scrie către cine.'); return; } drec.holder=h; drec.loan_type=(lid==='rented'?'rented':'lent'); }
   const btn=$('tm-go'); if(btn) btn.disabled=true;
-  let merged=false;
-  if(kind==='site'||kind==='wh'){ const tgt=(c.locs||[]).find(l=>l.id!==locId && (kind==='site'?l.site_id===lid:l.warehouse_id===lid)); if(tgt){ const r=await sbRetry(()=>sb.from('tool_locations').update({qty:(+tgt.qty||0)+mv}).eq('id',tgt.id)); if(r.error){ if(btn)btn.disabled=false; showMsg('tm-msg','Eroare: '+esc(r.error.message)); return; } merged=true; } }
-  if(!merged){ const r=await sbRetry(()=>sb.from('tool_locations').insert(drec)); if(r.error){ if(btn)btn.disabled=false; showMsg('tm-msg','Eroare: '+esc(r.error.message)); return; } }
-  if(mv>=srcQty){ await sb.from('tool_locations').delete().eq('id',locId); } else { await sb.from('tool_locations').update({qty:srcQty-mv}).eq('id',locId); }
-  await toolStockSync(c.tid); closeSub(); toast('↦ Mutat '+mv+' buc.'); toolStock(c.tid, c.tname);
+  // Comasarea cu locația-destinație, scăderea din sursă și `tools.qty` se fac
+  // server-side, în aceeași tranzacție. Înainte erau 3 cereri separate: o
+  // întrerupere între ele dubla sau pierdea bucăți.
+  const dst={kind:kind};
+  if(kind==='loan'){ dst.holder=drec.holder; dst.loan_type=drec.loan_type; } else dst.id=lid;
+  try{ await childRpc('tool_locations_apply', {p_tool_id:c.tid, p_ops:[{op:'move', loc_id:locId, qty:mv, dest:dst}]}); }
+  catch(e){ if(btn)btn.disabled=false; showMsg('tm-msg', esc(e.message)); return; }
+  closeSub(); toast('↦ Mutat '+mv+' buc.'); toolStock(c.tid, c.tname);
 }
 async function toolStockAdd(tid, tname){
   const loc=$('ts-loc').value; const qty=+($('ts-qty').value||0);
@@ -7644,6 +7647,38 @@ async function sbAll(build){
   return {data:out, error:null, complete:false};   // > 60.000 de rânduri: raport parțial, anunțat
 }
 async function sbRetry(fn, tries){ tries=tries||3; let last; for(let i=0;i<tries;i++){ try{ const r=await fn(); if(r&&r.error){ if(isNetErr(r.error)&&i<tries-1){ last=r; await new Promise(s=>setTimeout(s,600*(i+1))); continue; } return r; } return r; }catch(e){ last={error:e}; if(isNetErr(e)&&i<tries-1){ await new Promise(s=>setTimeout(s,600*(i+1))); continue; } return last; } } return last; }
+/* ── Mutații atomice pe colecțiile-copil (migrarea 0126) ────────────────────
+   Sub-rândurile NU se mai editează prin DELETE într-o cerere și INSERT în alta:
+   o cerere întreruptă la mijloc lăsa lista goală. Fiecare RPC face totul într-o
+   singură tranzacție — ori trece tot, ori nu se schimbă nimic.
+   `p_request_id` se PĂSTREAZĂ la reîncercare: repetarea aceleiași cereri întoarce
+   rezultatul memorat, nu execută a doua oară. (De aceea nu se folosește `sbRetry`,
+   care ar retrimite orbește o mutație ne-idempotentă.) */
+const CHILD_ERR={
+  CHILD_CONFLICT:           'Lista a fost modificată între timp (alt tab sau alt coleg). Redeschide și încearcă din nou.',
+  CHILD_FORBIDDEN:          'Nu ai dreptul să modifici această listă.',
+  CHILD_PARENT_NOT_FOUND:   'Înregistrarea nu mai există.',
+  CHILD_DEPENDENCY_MISSING: 'O valoare aleasă nu mai există sau nu aparține firmei tale.',
+  CHILD_INVALID_INPUT:      'Datele trimise nu sunt valide.',
+  CHILD_TOO_MANY_ROWS:      'Prea multe rânduri într-o singură salvare.',
+  CHILD_DENIED:             'Salvarea a fost refuzată de baza de date.'
+};
+function childErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in CHILD_ERR){ if(m.indexOf(k)>=0) return CHILD_ERR[k]; }
+  return isNetErr(e)?netMsg():(m||'Eroare la salvare.'); }
+async function childRpc(fn, args){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body=Object.assign({}, args, {p_request_id:rid});
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc(fn, body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!isNetErr(r.error) || i===2) break;   // se reîncearcă DOAR erorile de rețea, cu ACELAȘI request_id
+    await new Promise(s=>setTimeout(s,600*(i+1)));
+  }
+  const err=new Error(childErrMsg(last)); err.child=true; throw err;
+}
 async function saveQc(){
   const q=QUICK[window._qcKey]; const rec={tenant_id:state.tenant};
   for(const f of q.fields){ const v=($('qc-'+f.k).value||'').trim(); if(f.req&&!v){ showMsg('qc-msg','Completează „'+f.l+'".'); return; } if(v) rec[f.k]=v; }
@@ -8358,33 +8393,36 @@ async function saveRecord(){
       const { error } = await sb.from(m.lineItems.table).insert(rows);
       if(error) throw error;
     }
-    if(m.recipe){ await sb.from('service_materials').delete().eq('service_id',parentId);
-      const rrows=(formCtx.recipe||[]).filter(r=>(r.material_name||'').trim()).map((r,idx)=>({tenant_id:state.tenant,service_id:parentId,material_id:r.material_id||null,material_name:r.material_name||null,unit:r.unit||null,qty_per_unit:+r.qty_per_unit||0,waste_pct:+r.waste_pct||0,position:idx+1}));
-      if(rrows.length){ const { error }=await sb.from('service_materials').insert(rrows); if(error) throw error; }
+    if(m.recipe){ // atomic: poziția o dă serverul, ID-urile rândurilor păstrate rămân
+      const rrows=(formCtx.recipe||[]).filter(r=>(r.material_name||'').trim()).map(r=>({material_id:r.material_id||null,material_name:r.material_name||null,unit:r.unit||null,qty_per_unit:+r.qty_per_unit||0,waste_pct:+r.waste_pct||0}));
+      await childRpc('service_recipe_set', {p_service_id:parentId, p_rows:rrows});
     }
-    if(m.priceSrc){ for(const sk of m.priceSrc){ const s=PRICE_SRC[sk]; await sb.from(s.tbl).delete().eq('material_id',parentId);
-      const srows=(formCtx[s.f]||[]).filter(r=>r.ref_id).map(r=>{ const o={tenant_id:state.tenant,material_id:parentId,price:(r.price===''||r.price==null)?null:+r.price}; o[s.col]=r.ref_id; return o; });
-      if(srows.length){ const { error }=await sb.from(s.tbl).insert(srows); if(error) throw error; }
-    } }
+    if(m.priceSrc){ // ambele liste (magazine + furnizori) într-o singură tranzacție
+      const a={p_material_id:parentId, p_stores:[], p_suppliers:[]};
+      for(const sk of m.priceSrc){ const s=PRICE_SRC[sk];
+        a[s.tbl==='material_stores'?'p_stores':'p_suppliers']=(formCtx[s.f]||[]).filter(r=>r.ref_id)
+          .map(r=>({ref_id:r.ref_id, price:(r.price===''||r.price==null)?null:+r.price})); }
+      await childRpc('material_prices_set', a);
+    }
     if(m.table==='sites' && !formCtx.id){ try{ if(await seedSiteStages(parentId, payload.work_type, payload.start_date)) toast('📋 Am adăugat etape-șablon în grafic (le poți edita în Gantt).'); }catch(e){} }
     const _wasNew=!formCtx.id, _nid=parentId, _nname=payload.name;
     if(key==='instrumente' && _nid && document.querySelector('#tuf-units')){
-      const rows=Array.from(document.querySelectorAll('#tuf-units .tuf-row')); const keepIds=[];
+      const rows=Array.from(document.querySelectorAll('#tuf-units .tuf-row')); const unitRows=[];
       const up1=async(r,cls,prefix)=>{ const pf=r.querySelector('.'+cls); if(pf&&pf.files&&pf.files[0]){ const f=pf.files[0]; const path=state.tenant+'/tools/'+Date.now()+'_'+prefix+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const upr=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!upr.error) return path; } return undefined; };
       for(const r of rows){ const gv=c=>{ const e=r.querySelector(c); return e?e.value:''; }; const uid=r.dataset.uid||null;
         const serial=gv('.tuf-serial').trim(), inv=gv('.tuf-inv').trim(), val=gv('.tuf-value'), cond=gv('.tuf-cond')||'nou', date=gv('.tuf-date'), life=gv('.tuf-life'), loc=gv('.tuf-loc');
         if(!uid && !serial && !inv && !val) continue; // linie goală nouă
-        const u={tenant_id:state.tenant,tool_id:_nid,serial_no:serial||null,inventory_no:inv||null,value:val!==''?+val:null,acq_condition:cond,acq_date:date||null,useful_life_years:life!==''?+life:null,
+        const u={serial_no:serial||null,inventory_no:inv||null,value:val!==''?+val:null,acq_condition:cond,acq_date:date||null,useful_life_years:life!==''?+life:null,
           site_id:null,warehouse_id:null,holder:null,loan_type:null,loan_from:null,loan_due:null,rent_amount:null,rent_total:null,deposit_amount:null};
         const parts=(loc||'').split(':'); if(parts[0]==='wh') u.warehouse_id=parts[1]; else if(parts[0]==='site') u.site_id=parts[1];
         else if(parts[0]==='loan'){ u.loan_type=(parts[1]==='rented'?'rented':'lent'); u.holder=gv('.tuf-cui').trim()||null; const fr=gv('.tuf-from'), du=gv('.tuf-due'); if(fr) u.loan_from=fr; if(du) u.loan_due=du; if(parts[1]==='rented'){ const rt=gv('.tuf-rent'), dp=gv('.tuf-deposit'); if(rt!==''){ u.rent_amount=+rt; u.rent_total=(+rt)*rentDays(fr,du); } if(dp!=='') u.deposit_amount=+dp; } }
         const ph=await up1(r,'tuf-photo',''); if(ph!==undefined) u.photo_url=ph;
         if(parts[0]==='loan'){ const idp=await up1(r,'tuf-idphoto','id_'); if(idp!==undefined) u.id_photo_url=idp; const sg=await up1(r,'tuf-sign','sig_'); if(sg!==undefined) u.signature_url=sg; }
-        if(uid){ const rr=await sb.from('tool_units').update(u).eq('id',uid); if(rr.error) throw rr.error; keepIds.push(uid); }
-        else { const rr=await sb.from('tool_units').insert(u).select('id').single(); if(rr.error) throw rr.error; if(rr.data) keepIds.push(rr.data.id); } }
-      const orig=formCtx._unitIds||[]; const toDel=orig.filter(id=>keepIds.indexOf(id)<0);
-      if(toDel.length){ const rd=await sb.from('tool_units').delete().in('id',toDel); if(rd.error) throw rd.error; }
-      const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',_nid); await sb.from('tools').update({qty:c.count||0}).eq('id',_nid); }
+        if(uid) u.id=uid;
+        unitRows.push(u); }
+      // O singură tranzacție: adăugări, modificări, ștergerile bucăților scoase din
+      // formular și `tools.qty`. Bucățile păstrate își păstrează ID-ul (deci și istoricul).
+      await childRpc('tool_units_set', {p_tool_id:_nid, p_rows:unitRows}); }
     fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.');
     if(key==='clienti'){ const fromKanban=!!window._crmPreset; window._crmPreset=null; if(fromKanban||document.getElementById('crm-mount')){ renderClienti(); } else { renderModule(key); } }
     else renderModule(key);
