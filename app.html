@@ -439,7 +439,36 @@ function applyCountryPreset(c){ const p=COUNTRY_PRESETS[c]; if(!p)return; if($('
 let CUR='MDL'; function curUnit(){ return CURSYM[CUR]||CUR; }
 function money(n){ return n==null||n===''?'—':Number(n).toLocaleString('ro-RO',{minimumFractionDigits:0,maximumFractionDigits:2})+' '+curUnit(); }
 function dt(d){ if(!d) return '—'; const s=String(d); return /^\d{4}-\d{2}-\d{2}/.test(s)? esc(fmtDate(s)) : esc(s); }
-function sortRows(rows,col,asc){ return rows.slice().sort((a,b)=>{ let x=a[col],y=b[col]; if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1; if(x<y)return asc?-1:1; if(x>y)return asc?1:-1; return 0; }); }
+/* Ordonarea listelor generice (Lotul 0C1A).
+   Înainte se comparau valorile cu operatorii bruți `<`/`>`, adică pe unități
+   UTF-16: majusculele veneau înaintea minusculelor („acid" după „Zebra"), iar
+   diacriticele românești (ă â î ș ț), chirilicele și umlauturile — cu puncte de
+   cod mult peste ASCII — erau aruncate la coada listei. Un material nou scris
+   cu literă mică sau cu diacritice nu apărea niciodată în poziția lui
+   alfabetică, nici imediat, nici după reîncărcare (aceeași conductă rulează).
+   Acum: colator locale-aware, cu numerele comparate ca numere, și `id` drept
+   criteriu secundar stabil, ca două denumiri identice să nu-și schimbe ordinea
+   între două randări. */
+const C373_COLL=(function(){ try{ return new Intl.Collator(['ro','ru','de','en'],{sensitivity:'base',numeric:true,caseFirst:'false'}); }catch(e){ return null; } })();
+function cmpVals(x,y){
+  if(x==null&&y==null) return 0; if(x==null) return 1; if(y==null) return -1;
+  if(typeof x==='number'&&typeof y==='number') return x-y;
+  if(typeof x==='boolean'||typeof y==='boolean') return (x===y)?0:(x?1:-1);
+  const sx=String(x), sy=String(y);
+  // datele ISO și orice altceva neliteral rămân pe comparație simplă de șiruri
+  if(/^\d{4}-\d{2}-\d{2}/.test(sx)&&/^\d{4}-\d{2}-\d{2}/.test(sy)) return sx<sy?-1:(sx>sy?1:0);
+  if(C373_COLL) return C373_COLL.compare(sx,sy);
+  const lx=sx.toLowerCase(), ly=sy.toLowerCase();
+  return lx<ly?-1:(lx>ly?1:0);
+}
+function sortRows(rows,col,asc){
+  const dir=asc?1:-1;
+  return rows.slice().sort((a,b)=>{
+    const r=cmpVals(a[col],b[col]); if(r) return r*dir;
+    // criteriu secundar: ordine stabilă chiar la denumiri identice
+    return cmpVals(a.id,b.id)*dir;
+  });
+}
 function showScreen(n){ ['login','signup','onboard','invite'].forEach(s=>{ const el=$('screen-'+s); if(el) el.classList.toggle('hidden',s!==n); }); }
 function hideSplash(){ var s=document.getElementById('splash'); if(!s) return; s.style.opacity='0'; setTimeout(function(){ if(s&&s.parentNode) s.parentNode.removeChild(s); },280); }
 function openNav(){ $('sidebar').classList.add('open'); $('overlay-nav').classList.add('show'); }
@@ -7461,7 +7490,7 @@ function renderList(){
   // sortare prin clic pe antet
   if(listState.sortIdx!=null && cols[listState.sortIdx]){ const gc=cols[listState.sortIdx].get, asc=listState.sortAsc?1:-1;
     const numv=s=>{ const t=stripHtml(s).replace(/[^0-9,.\-]/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.'); return t===''?NaN:parseFloat(t); };
-    data=data.slice().sort((a,b)=>{ let xa=''; let xb=''; try{xa=String(gc(a));}catch(e){} try{xb=String(gc(b));}catch(e){} const na=numv(xa), nb=numv(xb); let r; if(!isNaN(na)&&!isNaN(nb)) r=na-nb; else r=stripHtml(xa).localeCompare(stripHtml(xb)); return r*asc; });
+    data=data.slice().sort((a,b)=>{ let xa=''; let xb=''; try{xa=String(gc(a));}catch(e){} try{xb=String(gc(b));}catch(e){} const na=numv(xa), nb=numv(xb); let r; if(!isNaN(na)&&!isNaN(nb)) r=na-nb; else r=cmpVals(stripHtml(xa),stripHtml(xb)); return r*asc; });
   }
   listState._view=data;
   const bulk = data.length>0;
@@ -8401,8 +8430,12 @@ async function wzSaveNewService(){
   const name=($('spn-name').value||'').trim(), msg=$('spn-msg'); if(!name){ msg.textContent=tz('Pune o denumire.'); return; }
   const unit=($('spn-unit').value||'').trim()||'m2'; const price=+$('spn-price').value||0;
   const btn=$('spn-save'); if(btn) btn.disabled=true;
-  const r=await sb.from('services').insert({tenant_id:state.tenant,name:name,unit:unit,price:price,active:true}).select('id,name,unit,price,vat_rate,description').single();
-  if(r.error){ if(btn) btn.disabled=false; msg.textContent=tz('Eroare:')+' '+esc(r.error.message); return; }
+  // Lotul 0C1A: și această cale trece prin contractul canonic (0127) — altfel
+  // crea servicii fără cod intern, fără categorie și fără TVA.
+  let d;
+  try{ const res=await catalogCreate('service',{name:name,unit:unit,price:price}); d=res.row; }
+  catch(e){ if(btn) btn.disabled=false; msg.textContent=catalogErrMsg(e); return; }
+  const r={data:d};
   window._services=window._services||[]; window._services.unshift(r.data);
   const a=+(($('wz-area')&&$('wz-area').value))||0;
   wizCtx.works.push({ name:r.data.name, qty:a||1, unit:r.data.unit||'m2', unit_price:+r.data.price||0, daily_output:15, norm_id:null, specialty:'' });
@@ -9217,12 +9250,29 @@ async function catalogParse(input){
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Denumire</th><th>UM</th><th>Preț</th></tr></thead><tbody>'+sample+'</tbody></table></div>'
     +'<button class="btn-primary btn-block" style="margin-top:.6rem" onclick="catalogImport()">Importă '+mats.length+' materiale</button>';
 }
+/* Lotul 0C1A: importul insera în bloc, fără cod intern și fără categorie — a
+   treia cale care producea rânduri incomplete. Acum fiecare rând trece prin
+   contractul canonic, ca să primească SKU generat pe server și să fie prins de
+   garda anti-duplicate. E mai lent, dar importul e o operație rară, iar un
+   catalog fără coduri costă mai mult decât câteva secunde de așteptare. */
 async function catalogImport(){
   const mats=(window._icMats||[]).slice(0,3000); if(!mats.length) return;
-  const rows=mats.map(m=>({tenant_id:state.tenant,name:m.name,unit:m.unit,last_price:m.price,active:true}));
-  const r=await sbRetry(()=>sb.from('materials').insert(rows));
-  if(r.error){ showMsg('ic-msg', isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
-  closeModal(); toast('✅ '+rows.length+' materiale importate în catalog.');
+  const btn=document.querySelector('#ic-preview .btn-primary'); if(btn) btn.disabled=true;
+  let ok=0; const failed=[];
+  for(let i=0;i<mats.length;i++){
+    const m=mats[i];
+    showMsg('ic-msg','⏳ '+tz('Se importă')+' '+(i+1)+'/'+mats.length+'…','ok');
+    try{ await catalogCreate('material',{ name:m.name, unit:m.unit||'buc', last_price:(m.price==null?null:+m.price), category:m.category||null }); ok++; }
+    catch(e){ failed.push((m.name||'?')+': '+(e.message||e)); }
+  }
+  if(failed.length){
+    showMsg('ic-msg', tz('Importate:')+' '+ok+'/'+mats.length+'. '+tz('Neimportate:')+' '+failed.length+' — '+esc(failed.slice(0,3).join(' · ')));
+    if(btn) btn.disabled=false;
+    renderModule('materiale');
+    return;
+  }
+  closeModal(); toast('✅ '+ok+' '+tz('materiale importate în catalog.'));
+  renderModule('materiale');
 }
 
 /* ════ ECHIPĂ / ACCES PE ȘANTIER (site_team) ════ */

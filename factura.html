@@ -555,7 +555,7 @@ function lineSearch(i,q){ S.lines[i].name=q; const dd=$('dd-'+i); if(!dd) return
   const ql=(q||'').toLowerCase().trim();
   let list = ql ? S.catalog.filter(c=>c.name.toLowerCase().includes(ql)).slice(0,8) : S.catalog.slice(0,8);
   let html=list.map(c=>{ const idx=S.catalog.indexOf(c); return '<div class="it" onmousedown="event.preventDefault();pickCatalog('+i+','+idx+')"><span>'+c.icon+'</span><span class="nm">'+esc(c.name)+'</span><span class="pr">'+esc(c.unit)+' · '+money(c.price)+'</span></div>'; }).join('');
-  if(ql && !S.catalog.some(c=>c.name.toLowerCase()===ql)){ html+='<div class="it add" onmousedown="event.preventDefault();quickAddService('+i+')"><span>＋</span><span class="nm">Adaugă în catalog „'+esc(q)+'" (material/serviciu)</span></div>'; }
+  if(ql && !S.catalog.some(c=>c.name.toLowerCase()===ql)){ html+='<div class="it add" onmousedown="event.preventDefault();quickAddService('+i+')"><span>＋</span><span class="nm">Adaugă material nou în catalog „'+esc(q)+'"</span></div>'; }
   dd.innerHTML=html||'<div class="it sub">Niciun rezultat.</div>'; dd.style.display='';
 }
 function hideDD(i){ setTimeout(()=>{ const dd=$('dd-'+i); if(dd) dd.style.display='none'; },150); }
@@ -582,7 +582,10 @@ async function lcSave(i,mode){ const l=S.lines[i]; if(!l) return;
   const isMat=(mode==='update')?(l.cat_src==='material'):(kindSel==='material'); const tbl=isMat?'materials':'services'; const vat=+l.vat_rate||(S.firm.vat_rate!=null?S.firm.vat_rate:20);
   const payload=isMat?{name:l.name,unit:l.unit,last_price:+l.unit_price||0,vat_rate:vat,description:l.description||null,photo_url:l.photo_url||null}:{name:l.name,unit:l.unit,price:+l.unit_price||0,vat_rate:vat,description:l.description||null,photo_url:l.photo_url||null};
   try{
-    if(mode==='update'){ if(!l.cat_id) throw new Error('Linia nu e legată de catalog.'); const u=await sb.from(tbl).update(payload).eq('id',l.cat_id); if(u.error) throw u.error;
+    if(mode==='update'){ if(!l.cat_id) throw new Error('Linia nu e legată de catalog.');
+      // rowcount verificat: un refuz RLS întoarce 0 rânduri fără eroare ⇒ fără succes fals
+      const u=await sb.from(tbl).update(payload).eq('id',l.cat_id).select('id'); if(u.error) throw u.error;
+      if(!(u.data||[]).length) throw new Error('Nu ai dreptul să modifici acest element din catalog.');
       const c=S.catalog.find(x=>x.id===l.cat_id&&x.src===l.cat_src); if(c){ c.name=l.name; c.unit=l.unit; c.price=+l.unit_price||0; c.vat=vat; c.desc=l.description||''; c.photo=l.photo_url||null; }
     } else { const tid=S.tenant||(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
       const ins=await sb.from(tbl).insert(Object.assign({tenant_id:tid},payload)).select('id').single(); if(ins.error) throw ins.error;
@@ -593,16 +596,86 @@ async function lcSave(i,mode){ const l=S.lines[i]; if(!l) return;
   }catch(e){ $('lc-msg').textContent='Eroare: '+((typeof isNetErr==='function'&&isNetErr(e))?'conexiune slabă':(e.message||e)); }
 }
 function catalogNew(){ const l=blankLine(); S.lines.push(l); reorderLinesBySection(); const i=S.lines.indexOf(l); renderLines(); quickAddService(i); }
+/* Lotul 0C1A: factura folosea încă tiparul de dinainte de 0127 — INSERT direct
+   cu 4 coloane din 20, fără cod intern, fără categorie, fără descriere, fără
+   poză și fără `request_id`. 0C1 a reparat doar `deviz.html`. Acum e aceeași
+   cale canonică, cu același formular complet. */
+function qaKindLabel(t){ return t==='material'?'materialul':'serviciul'; }
+function qaSync(which){
+  const vr=+($('qa-vat')&&$('qa-vat').value||0)||0;
+  const net=$('qa-price'), gross=$('qa-price-gross'); if(!net||!gross) return;
+  if(which==='net') gross.value = net.value===''?'':(Math.round((+net.value||0)*(1+vr/100)*100)/100);
+  else net.value = gross.value===''?'':(vr?Math.round((+gross.value||0)/(1+vr/100)*100)/100:(+gross.value||0));
+}
+function qaTypeChange(){
+  const t=$('qa-type')?$('qa-type').value:'service';
+  const cw=$('qa-cost-wrap'); if(cw) cw.style.display=(t==='service'?'':'none');
+  const b=$('qa-save'); if(b) b.textContent='Salvează '+qaKindLabel(t)+' în catalog';
+  const u=$('qa-unit'); if(u && !u.dataset.touched) u.value=(t==='material'?'buc':'m2');
+}
 function quickAddService(i){
-  const name=(S.lines[i]?S.lines[i].name:'')||'';
+  const l=S.lines[i]||{};
+  const name=l.name||'';
   const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct'];
   const cu=(S.firm&&S.firm.automations&&S.firm.automations.units)||[]; const units=Array.from(new Set(base.concat(cu)));
+  const cats=Array.from(new Set((S.catalog||[]).map(c=>c.cat).filter(Boolean)));
+  const kind=(l.kind==='material')?'material':'service';
+  const vat=(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20));
+  const net=+l.unit_price||0; const gross=Math.round(net*(1+(+vat||0)/100)*100)/100;
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Adaugă în catalog</h3><div id="qa-msg" style="color:var(--red);font-size:.82rem"></div>'
-    +'<div class="field"><label>Tip</label><select id="qa-type"><option value="service">🧰 Serviciu / manoperă</option><option value="material">📦 Material</option></select></div>'
+    +'<div class="field"><label>Tip</label><select id="qa-type" onchange="qaTypeChange()"><option value="service"'+(kind==='service'?' selected':'')+'>🧰 Serviciu / manoperă</option><option value="material"'+(kind==='material'?' selected':'')+'>📦 Material</option></select></div>'
     +'<div class="field"><label>Denumire *</label><input id="qa-name" value="'+esc(name)+'"/></div>'
-    +'<div class="row2"><div class="field"><label>UM</label><input id="qa-unit" list="qa-units" value="buc"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div><div class="field"><label>Preț (MDL)</label><input id="qa-price" type="number" step="any" value="0"/></div></div>'
-    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="qa-save" onclick="saveQuickService('+i+')">Creează și adaugă</button></div></div></div>';
+    +'<div class="row2"><div class="field"><label>Unitate de măsură</label><input id="qa-unit" list="qa-units" oninput="this.dataset.touched=1" value="'+esc(l.unit||(kind==='material'?'buc':'m2'))+'"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div>'
+      +'<div class="field"><label>TVA (%)</label><input id="qa-vat" type="number" step="any" value="'+esc(vat)+'" oninput="qaSync(\'net\')"/></div></div>'
+    +'<div class="field"><label>Preț client</label><div style="display:flex;gap:.5rem">'
+      +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">fără TVA</div><input id="qa-price" type="number" step="any" value="'+esc(net)+'" oninput="qaSync(\'net\')"/></div>'
+      +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">cu TVA</div><input id="qa-price-gross" type="number" step="any" value="'+esc(gross)+'" oninput="qaSync(\'gross\')"/></div>'
+      +'</div><div style="font-size:.76rem;color:var(--muted);margin-top:.2rem">Prețul cu care vinzi clientului. Se salvează fără TVA.</div></div>'
+    +'<div class="field" id="qa-cost-wrap" style="'+(kind==='service'?'':'display:none')+'"><label>Preț cost / intern (opțional)</label><input id="qa-cost" type="number" step="any"/></div>'
+    +'<div class="field"><label>Categorie</label><input id="qa-category" list="qa-cats" placeholder="ex. Zidărie, Finisaje"/><datalist id="qa-cats">'+cats.map(c=>'<option value="'+esc(c)+'"></option>').join('')+'</datalist></div>'
+    +'<div class="field"><label>Descriere</label><textarea id="qa-desc" rows="2">'+esc(l.description||'')+'</textarea></div>'
+    +'<div class="field"><label>Poză (opțional)</label><input id="qa-photo" type="file" accept="image/*"/></div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Codul intern (SKU) se generează automat pe server.</div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="qa-save" onclick="saveQuickService('+i+')">Salvează '+qaKindLabel(kind)+' în catalog</button></div></div></div>';
+  if(l.photo_url) window._qaKeepPhoto=l.photo_url; else window._qaKeepPhoto=null;
   setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
+}
+/* Contractul canonic (migrarea 0127), identic cu cel din app.html/deviz.html */
+const CATALOG_ERR={
+  CATALOG_SKU_DUPLICATE:    'Codul intern (SKU) este deja folosit de alt element din catalog.',
+  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi elemente în catalog.',
+  CATALOG_INVALID_INPUT:    'Datele trimise nu sunt valide.',
+  CATALOG_DEPENDENCY_MISSING:'Un furnizor sau magazin ales nu mai există sau nu aparține firmei tale.',
+  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.'
+};
+function catalogErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in CATALOG_ERR){ if(m.indexOf(k)>=0) return CATALOG_ERR[k]; }
+  return (typeof isNetErr==='function'&&isNetErr(e))?'Conexiune slabă — încearcă din nou.':(m||'Eroare la salvare.'); }
+let _catBusy=null;
+async function catalogCreate(kind, payload){
+  if(_catBusy) return _catBusy;               // dublu clic real: a doua apăsare așteaptă prima
+  _catBusy=catalogCreateOnce(kind, payload);
+  try{ return await _catBusy; } finally { _catBusy=null; }
+}
+async function catalogCreateOnce(kind, payload){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body={ p_tenant_id:S.tenant, p_kind:kind, p_payload:payload, p_request_id:rid };
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc('catalog_item_create', body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!(typeof isNetErr==='function'&&isNetErr(r.error)) || i===2) break;  // doar erorile de rețea, cu ACELAȘI request_id
+    await new Promise(x=>setTimeout(x,600*(i+1)));
+  }
+  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+}
+async function catalogPhotoUp(file, tag){
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path=S.tenant+'/'+tag+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg',upsert:true});
+  if(up.error) throw new Error('Poza nu s-a încărcat: '+(up.error.message||up.error));
+  return path;
 }
 function closeM(){ $('modal-mount').innerHTML=''; }
 /* ── Planul casei: panou flotant (mutabil/redimensionabil) în editor ── */
@@ -648,19 +721,32 @@ function planDrag(panel, handle){ let sx=0,sy=0,sl=0,st=0,drag=false;
 }
 async function saveQuickService(i){
   const name=($('qa-name').value||'').trim(); if(!name){ $('qa-msg').textContent='Denumirea e obligatorie.'; return; }
-  const type=$('qa-type').value, unit=($('qa-unit').value||'buc').trim(), price=+$('qa-price').value||0;
-  const vat=(S.firm.vat_rate!=null?S.firm.vat_rate:20); const btn=$('qa-save'); if(btn) btn.disabled=true;
+  const type=$('qa-type').value, unit=($('qa-unit').value||(type==='material'?'buc':'m2')).trim();
+  const price=+$('qa-price').value||0;
+  const cost=($('qa-cost')&&$('qa-cost').value!=='')?(+$('qa-cost').value||0):null;
+  const cat=($('qa-category')&&$('qa-category').value||'').trim();
+  const desc=($('qa-desc')&&$('qa-desc').value||'').trim();
+  const pf=$('qa-photo'); const file=(pf&&pf.files&&pf.files[0])||null;
+  const vat=($('qa-vat')&&$('qa-vat').value!=='')?(+$('qa-vat').value||0):(S.firm.vat_rate!=null?S.firm.vat_rate:20);
+  const btn=$('qa-save'); if(btn) btn.disabled=true;
+  let photo=null, uploaded=false;
   try{
-    let ins;
-    if(type==='material') ins=await sb.from('materials').insert({tenant_id:S.tenant,name,unit,last_price:price,vat_rate:vat}).select('id,name,unit,last_price,vat_rate').single();
-    else ins=await sb.from('services').insert({tenant_id:S.tenant,name,unit,price,vat_rate:vat}).select('id,name,unit,price,vat_rate').single();
-    if(ins.error) throw ins.error;
-    const d=ins.data, p=(type==='material'?+d.last_price:+d.price);
-    S.catalog.unshift({icon:(type==='material'?'📦':'🧰'),name:d.name,unit:d.unit,price:p,vat:+d.vat_rate});
+    if(file){ $('qa-msg').textContent='Se încarcă poza…'; photo=await catalogPhotoUp(file,'cat'); uploaded=true; $('qa-msg').textContent=''; }
+    else if(window._qaKeepPhoto) photo=window._qaKeepPhoto;
+    const payload={ name, unit, category:cat||null, description:desc||null, photo_url:photo, vat_rate:vat };
+    if(type==='material') payload.last_price=price; else { payload.price=price; if(cost!=null) payload.cost_price=cost; }
+    let res;
+    try{ res=await catalogCreate(type, payload); }
+    catch(err){ if(photo && uploaded){ try{ await sb.storage.from('docs').remove([photo]); }catch(_){} } throw err; }
+    const d=res.row, p=(type==='material'?+d.last_price:+d.price)||0;
+    S.catalog.unshift({src:type,id:d.id,icon:(type==='material'?'📦':'🧰'),name:d.name,unit:d.unit,price:p,vat:+d.vat_rate,kind:type,desc:d.description||'',photo:d.photo_url||null,cat:d.category||''});
     let l=S.lines[i]; if(!l){ S.lines.push(blankLine()); l=S.lines[S.lines.length-1]; }
-    l.name=d.name; l.unit=d.unit; l.unit_price=p; l.vat_rate=+d.vat_rate;
-    closeM(); toast('✅ Adăugat în catalog și pe factură.'); renderLines(); renderSummary();
-  }catch(e){ if(btn) btn.disabled=false; $('qa-msg').textContent=(typeof isNetErr==='function'&&isNetErr(e))?'Conexiune slabă — încearcă din nou.':('Eroare: '+(e.message||e)); }
+    // linia primește valorile CANONICE întoarse de server
+    l.name=d.name; l.unit=d.unit; l.unit_price=p; l.vat_rate=+d.vat_rate; l.kind=type;
+    if(d.description && !l.description) l.description=d.description;
+    if(d.photo_url && !l.photo_url) l.photo_url=d.photo_url;
+    closeM(); toast('✅ Adăugat în catalog ('+(res.sku||'fără cod')+') și pe factură.'); renderLines(); renderSummary();
+  }catch(e){ if(btn) btn.disabled=false; $('qa-msg').textContent=catalogErrMsg(e); }
 }
 function newClient(){
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Client nou</h3><div id="nc-msg" style="color:var(--red);font-size:.82rem"></div>'

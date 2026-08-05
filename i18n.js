@@ -188,6 +188,27 @@
     'Prea multe rânduri într-o singură salvare.':{ru:'Слишком много строк за одно сохранение.',de:'Zu viele Zeilen in einem einzigen Speichervorgang.',en:'Too many rows in a single save.'},
     'Salvarea a fost refuzată de baza de date.':{ru:'База данных отклонила сохранение.',de:'Die Datenbank hat das Speichern abgelehnt.',en:'The database refused the save.'},
 
+    /* ── O singură cale de creare în catalog din Ofertă/Factură (Lotul 0C1A) ── */
+    '📝 Detaliile poziției din ofertă':{ru:'📝 Детали позиции в смете',de:'📝 Details der Angebotsposition',en:'📝 Details of the offer line'},
+    'Adaugă în ofertă':{ru:'Добавить в смету',de:'Zum Angebot hinzufügen',en:'Add to the offer'},
+    '✅ Poziția din ofertă a fost actualizată. Catalogul a rămas neschimbat.':{ru:'✅ Позиция сметы обновлена. Каталог остался без изменений.',de:'✅ Die Angebotsposition wurde aktualisiert. Der Katalog bleibt unverändert.',en:'✅ The offer line was updated. The catalogue is unchanged.'},
+    'Preț client':{ru:'Цена для клиента',de:'Kundenpreis',en:'Customer price'},
+    'fără TVA':{ru:'без НДС',de:'ohne MwSt.',en:'excl. VAT'},
+    'cu TVA':{ru:'с НДС',de:'inkl. MwSt.',en:'incl. VAT'},
+    'Prețul cu care vinzi clientului. Se salvează fără TVA; valoarea cu TVA e doar pentru comoditate.':{ru:'Цена, по которой вы продаёте клиенту. Сохраняется без НДС; значение с НДС — только для удобства.',de:'Der Preis, zu dem Sie an den Kunden verkaufen. Gespeichert wird ohne MwSt.; der Wert inkl. MwSt. dient nur der Bequemlichkeit.',en:'The price you sell to the customer at. It is stored excluding VAT; the VAT-inclusive value is only for convenience.'},
+    'Prețul cu care vinzi clientului. Se salvează fără TVA.':{ru:'Цена, по которой вы продаёте клиенту. Сохраняется без НДС.',de:'Der Preis, zu dem Sie an den Kunden verkaufen. Gespeichert wird ohne MwSt.',en:'The price you sell to the customer at. It is stored excluding VAT.'},
+    'Preț cost / intern (opțional)':{ru:'Себестоимость / внутренняя цена (необязательно)',de:'Kosten- / interner Preis (optional)',en:'Cost / internal price (optional)'},
+    'costul tău real — pentru marjă':{ru:'ваша реальная себестоимость — для маржи',de:'Ihre tatsächlichen Kosten — für die Marge',en:'your real cost — for the margin'},
+    'Codul intern (SKU) se generează automat pe server. Furnizorii și magazinele se completează în modulul Materiale.':{ru:'Внутренний код (SKU) генерируется автоматически на сервере. Поставщики и магазины заполняются в модуле «Материалы».',de:'Die interne Nummer (SKU) wird automatisch auf dem Server erzeugt. Lieferanten und Märkte werden im Modul „Materialien" erfasst.',en:'The internal code (SKU) is generated automatically on the server. Suppliers and stores are filled in from the Materials module.'},
+    'Codul intern (SKU) se generează automat pe server.':{ru:'Внутренний код (SKU) генерируется автоматически на сервере.',de:'Die interne Nummer (SKU) wird automatisch auf dem Server erzeugt.',en:'The internal code (SKU) is generated automatically on the server.'},
+    '➕ Adaugă ca produs nou în catalog…':{ru:'➕ Добавить как новый товар в каталог…',de:'➕ Als neues Produkt im Katalog anlegen…',en:'➕ Add as a new product to the catalogue…'},
+    'Se păstrează poza de pe poziție dacă nu încarci alta.':{ru:'Фото с позиции сохранится, если не загрузите другое.',de:'Das Foto der Position bleibt erhalten, wenn Sie kein anderes hochladen.',en:'The photo from the line is kept unless you upload another one.'},
+    'Nu ai dreptul să modifici acest element din catalog.':{ru:'У вас нет прав изменять этот элемент каталога.',de:'Sie dürfen diesen Katalogeintrag nicht ändern.',en:'You are not allowed to change this catalogue item.'},
+    'Se importă':{ru:'Импортируется',de:'Wird importiert',en:'Importing'},
+    'Importate:':{ru:'Импортировано:',de:'Importiert:',en:'Imported:'},
+    'Neimportate:':{ru:'Не импортировано:',de:'Nicht importiert:',en:'Not imported:'},
+    'materiale importate în catalog.':{ru:'материалов импортировано в каталог.',de:'Materialien in den Katalog importiert.',en:'materials imported into the catalogue.'},
+
     /* ── Lista de prețuri a subcontractorilor (migrările 0128/0129, Lotul 0C2) ── */
     'Tariful a fost modificat între timp (alt tab sau alt coleg). Redeschide și încearcă din nou.':{ru:'Тариф тем временем изменили (другая вкладка или коллега). Откройте заново и повторите.',de:'Der Preis wurde inzwischen geändert (anderer Tab oder Kollege). Erneut öffnen und noch einmal versuchen.',en:'The rate was changed in the meantime (another tab or colleague). Reopen it and try again.'},
     'Nu ai dreptul să modifici tarifele subcontractorilor.':{ru:'У вас нет прав изменять тарифы субподрядчиков.',de:'Sie dürfen die Preise der Subunternehmer nicht ändern.',en:'You are not allowed to change subcontractor rates.'},
