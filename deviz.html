@@ -218,12 +218,12 @@ async function fromSurvey(sid){
       const gv='g'+Date.now().toString(36)+gi+Math.floor(Math.random()*1000);
       groups.push({ id:gv, name:svc.name||x.label, vat:(svc.vat_rate!=null?+svc.vat_rate:dv), disc:0 });
       // manopera = prețul serviciului
-      lines.push(Object.assign(blankLine(),{ name:svc.name||x.label, qty:q, unit:x.unit||svc.unit||'buc', unit_price:+svc.price||0, vat_rate:(svc.vat_rate!=null?+svc.vat_rate:dv), kind:'service', description:x.note||svc.description||'', group:gv, cat_id:svc.id, cat_src:'services', _catName:svc.name, _catPrice:+svc.price||0, _catUnit:svc.unit||'' }));
+      lines.push(Object.assign(blankLine(),{ name:svc.name||x.label, qty:q, unit:x.unit||svc.unit||'buc', unit_price:+svc.price||0, vat_rate:(svc.vat_rate!=null?+svc.vat_rate:dv), kind:'service', description:x.note||svc.description||'', group:gv, cat_id:svc.id, cat_src:'service', _catName:svc.name, _catPrice:+svc.price||0, _catUnit:svc.unit||'' }));
       // materiale din rețetă (consum × (1+pierdere%) × volum)
       (recBy[x.service_id]||[]).sort((a,b)=>(a.position||0)-(b.position||0)).forEach(r=>{
         const mat=r.material_id?matById[r.material_id]:null;
         const mq=q*(+r.qty_per_unit||0)*(1+(+r.waste_pct||0)/100);
-        lines.push(Object.assign(blankLine(),{ name:(mat&&mat.name)||r.material_name||'Material', qty:+mq.toFixed(3), unit:(mat&&mat.unit)||r.unit||'buc', unit_price:(mat?+mat.last_price||0:0), vat_rate:(mat&&mat.vat_rate!=null?+mat.vat_rate:dv), kind:'material', description:(mat&&mat.description)||'', photo_url:(mat&&mat.photo_url)||null, group:gv, cat_id:r.material_id||null, cat_src:r.material_id?'materials':'', _catName:(mat&&mat.name)||r.material_name||'', _catPrice:(mat?+mat.last_price||0:0), _catUnit:(mat&&mat.unit)||r.unit||'', _catDesc:(mat&&mat.description)||'', _catPhoto:(mat&&mat.photo_url)||'' }));
+        lines.push(Object.assign(blankLine(),{ name:(mat&&mat.name)||r.material_name||'Material', qty:+mq.toFixed(3), unit:(mat&&mat.unit)||r.unit||'buc', unit_price:(mat?+mat.last_price||0:0), vat_rate:(mat&&mat.vat_rate!=null?+mat.vat_rate:dv), kind:'material', description:(mat&&mat.description)||'', photo_url:(mat&&mat.photo_url)||null, group:gv, cat_id:r.material_id||null, cat_src:r.material_id?'material':'', _catName:(mat&&mat.name)||r.material_name||'', _catPrice:(mat?+mat.last_price||0:0), _catUnit:(mat&&mat.unit)||r.unit||'', _catDesc:(mat&&mat.description)||'', _catPhoto:(mat&&mat.photo_url)||'' }));
       });
     } else {
       lines.push(Object.assign(blankLine(),{ name:x.label, qty:q, unit:x.unit||'m2', unit_price:0, vat_rate:dv, kind:'service', description:x.note||'', group:'' }));

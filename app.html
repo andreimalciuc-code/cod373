@@ -1114,6 +1114,7 @@ const MODULES = {
 
   documente:{ title:'Acte & Documente', sub:'Contracte, scanuri, poze — stocate securizat.', icon:'📄', group:'Altele', custom:true },
   cos:{ title:'Coș de gunoi', sub:'Elemente șterse — recuperează sau șterge definitiv.', icon:'🗑️', group:'Administrare', custom:true },
+  calitate:{ title:'Calitatea catalogului', sub:'Coduri interne, câmpuri lipsă și coduri duplicate în Materiale și Servicii.', icon:'🧪', group:'Administrare', custom:true },
   ghid:{ title:'Ghid de utilizare', sub:'Cum folosești platforma, pas cu pas.', icon:'❓', group:'Altele', custom:true },
 
   utilizatori:{ title:'Utilizatori & Roluri', sub:'Membrii firmei și accesul lor.', icon:'👥', group:'Administrare', custom:true },
@@ -1297,7 +1298,7 @@ const ADMIN_ROLES=['owner','admin'];
 const OWNER_GATED_KEYS=['setari','seif','pontajsim'];
 /* Module „rezervate administratorului": implicit vizibile DOAR pentru owner/admin;
    pot fi acordate explicit altui membru prin permisiuni (bifează modulul). */
-const ADMIN_GATED_KEYS=['documente','cos'];
+const ADMIN_GATED_KEYS=['documente','cos','calitate'];
 const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Lucrător',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
 /* Permisiuni granulare. Codificare in state.perms (text[]):
    - null / gol            -> fara restrictie suplimentara (decide rolul)
@@ -2483,7 +2484,7 @@ function go(key){
   try{ localStorage.setItem('c373_last_view', key); }catch(e){}
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash, calitate:renderCalitate}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
   maybeInstallBanner();
@@ -8948,6 +8949,219 @@ async function softDelete(table, moduleKey, id, onChange){
   toastUndo('🗑 '+tz('Șters.'), async function(){ if(!saved) return; const ins=await sb.from(table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().eq('source_table',table).eq('record_id',id); }catch(e){} toast('↩︎ '+tz('Restaurat.')); if(typeof onChange==='function'){ try{ onChange(); }catch(e){} } });
   return true;
 }
+/* ══ Calitatea catalogului (Lotul 0C1B, migrarea 0130) ══════════════════════
+   Suprafață administrativă peste `catalog_quality_report`. Arată FAPTE (câmpuri
+   lipsă, coduri duplicate, utilizări reale pe ID) și propune coduri, dar nu
+   decide singură nimic în afară de atribuirea unui cod care lipsește — singura
+   schimbare care nu poate strica date. Ștergerea definitivă NU e o acțiune
+   aici: pentru asta există Coșul, cu snapshot și restaurare. */
+const CATQ_ERR={
+  CATALOG_SKU_DUPLICATE:    'Codul este deja folosit de alt element din catalog.',
+  CATALOG_FORBIDDEN:        'Nu ai dreptul să faci această operație.',
+  CATALOG_NOT_FOUND:        'Elementul nu mai există.',
+  CATALOG_INVALID_INPUT:    'Date invalide pentru această operație.',
+  CATALOG_TOO_MANY_ROWS:    'Prea multe elemente într-o singură operație.',
+  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile disponibile pentru acest tip.'
+};
+function catqErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in CATQ_ERR){ if(m.indexOf(k)>=0) return tz(CATQ_ERR[k]); }
+  return isNetErr(e)?netMsg():(m||tz('Eroare la operație.')); }
+let _catqBusy=false, _catqRows=[], _catqFilter='all', _catqQ='';
+async function catqRpc(fn,args){
+  // retry DOAR pe erori de rețea, cu ACELAȘI request_id ⇒ idempotent server-side
+  const body=Object.assign({},args); let last;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc(fn,body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error; if(!isNetErr(r.error)||i===2) break;
+    await new Promise(s=>setTimeout(s,600*(i+1)));
+  }
+  throw new Error(catqErrMsg(last));
+}
+function catqMissing(r){
+  const out=[];
+  if(!r.sku) out.push(tz('cod'));
+  if(!r.category||!String(r.category).trim()) out.push(tz('categorie'));
+  if(!r.has_description) out.push(tz('descriere'));
+  if(!r.has_photo) out.push(tz('fotografie'));
+  if(r.price==null) out.push(tz('preț'));
+  return out;
+}
+/* Motivul se compune AICI, din segmente traduse, nu se preia din `reason`-ul
+   întors de RPC: acela e un șir compus în SQL, în română, iar observer-ul de
+   traduceri nu-l poate prinde (nu e o cheie din dicționar). Câmpul serverului
+   rămâne disponibil pentru rapoarte, dar interfața nu-l afișează. */
+function catqReason(r){
+  const p=[];
+  if(!r.sku) p.push(tz('cod intern lipsă'));
+  if(r.dup_n>1) p.push(tz('cod folosit de')+' '+r.dup_n+' '+tz('articole'));
+  if(!r.category||!String(r.category).trim()) p.push(tz('categorie lipsă'));
+  if(!r.has_description) p.push(tz('descriere lipsă'));
+  if(!r.has_photo) p.push(tz('fotografie lipsă'));
+  if(r.price==null) p.push(tz('preț lipsă'));
+  p.push(r.n_refs? (tz('folosit în')+' '+r.n_refs+' '+tz('locuri')) : tz('nefolosit'));
+  return p.join(' · ');
+}
+function catqMatch(r){
+  if(_catqQ){ const q=_catqQ.toLowerCase();
+    if(!((r.name||'')+' '+(r.sku||'')+' '+(r.category||'')).toLowerCase().includes(q)) return false; }
+  if(_catqFilter==='nosku')  return !r.sku;
+  if(_catqFilter==='dup')    return r.dup_n>1;
+  if(_catqFilter==='fields') return catqMissing(r).length>0;
+  if(_catqFilter==='test')   return !!r.suspect_test;
+  if(_catqFilter==='review') return !!r.in_review;
+  if(_catqFilter==='archived') return r.active===false;
+  return true;
+}
+function catqSetFilter(f){ _catqFilter=f; catqPaint(); }
+function catqSearch(v){ _catqQ=(v||'').trim(); catqPaint(); }
+async function renderCalitate(){
+  // apărare în profunzime: gardul din `go()` e primul, dar randarea nu se bazează pe el
+  if(!canSee('calitate')){ $('content').innerHTML='<div class="panel" style="text-align:center;padding:2rem">🔒 '+esc(tz('Acces restricționat pentru rolul tău.'))+'</div>'; return; }
+  $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="renderCalitate()">↻</button>'
+    +'<input id="catq-q" placeholder="'+esc(tz('Caută după denumire sau cod…'))+'" oninput="catqSearch(this.value)" style="flex:1;min-width:140px;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)"/>'
+    +'<button class="btn-ghost" onclick="catqFixAll()">🔧 '+esc(tz('Repară toate codurile lipsă'))+'</button></div>'
+    +'<div class="panel"><div class="panel-head"><h3>🧪 '+esc(tz('Calitatea catalogului'))+'</h3></div>'
+    +'<div style="padding:.4rem 1.2rem;font-size:.82rem;color:var(--muted)">'
+      +esc(tz('Codul intern se generează pe server la orice creare. Aici vezi ce a mai rămas de curățat din istoric: câmpuri lipsă, coduri duplicate și elemente de verificat. Nimic nu se șterge din acest ecran.'))+'</div>'
+    +'<div id="catq-kpi" style="padding:.2rem 1.2rem"></div>'
+    +'<div id="catq-chips" style="padding:.3rem 1.2rem"></div>'
+    +'<div id="mod-body"><div class="loading">'+esc(tz('Se încarcă…'))+'</div></div></div>';
+  try{
+    _catqRows=await catqRpc('catalog_quality_report',{p_tenant_id:state.tenant})||[];
+  }catch(e){ $('mod-body').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; return; }
+  catqPaint();
+}
+function catqPaint(){
+  const all=_catqRows;
+  const kpi=[
+    ['nosku', '🔢', tz('Fără cod'),      all.filter(r=>!r.sku).length],
+    ['dup',   '⚠️', tz('Coduri duplicate'), all.filter(r=>r.dup_n>1).length],
+    ['fields','📝', tz('Câmpuri lipsă'), all.filter(r=>catqMissing(r).length>0).length],
+    ['test',  '🔎', tz('Posibil test'),  all.filter(r=>r.suspect_test).length],
+    ['review','🚩', tz('În revizuire'),  all.filter(r=>r.in_review).length],
+    ['archived','📦',tz('Arhivate'),     all.filter(r=>r.active===false).length]
+  ];
+  const kp=$('catq-kpi'); if(kp) kp.innerHTML='<div class="row-2" style="gap:.5rem">'
+    +kpi.map(k=>'<div class="kpi" style="cursor:pointer" onclick="catqSetFilter(\''+k[0]+'\')"><div style="font-size:.78rem;color:var(--muted)">'+k[1]+' '+esc(k[2])+'</div><div style="font-size:1.3rem;font-weight:700">'+k[3]+'</div></div>').join('')+'</div>';
+  const chips=[['all',tz('Toate')],['nosku',tz('Fără cod')],['dup',tz('Coduri duplicate')],['fields',tz('Câmpuri lipsă')],['test',tz('Posibil test')],['review',tz('În revizuire')],['archived',tz('Arhivate')]];
+  const ch=$('catq-chips'); if(ch) ch.innerHTML=chips.map(c=>'<button class="btn-ghost" style="margin:.15rem;'+(_catqFilter===c[0]?'border-color:var(--primary);color:var(--primary)':'')+'" onclick="catqSetFilter(\''+c[0]+'\')">'+esc(c[1])+'</button>').join('');
+
+  const rows=all.filter(catqMatch);
+  const body=$('mod-body'); if(!body) return;
+  if(!rows.length){ body.innerHTML='<div class="empty">'+esc(tz('Nimic de curățat aici. 🎉'))+'</div>'; return; }
+  let h='<div class="tbl-wrap"><table class="tbl"><thead><tr>'
+    +['Tip','Cod','Denumire','Categorie','Lipsuri','Utilizări','Stare','Creat','Acțiunea recomandată','Cod propus','']
+      .map(t=>'<th>'+esc(tz(t))+'</th>').join('')+'</tr></thead><tbody>';
+  rows.forEach(r=>{
+    const miss=catqMissing(r);
+    const rec = r.recommended==='sku_assign'  ? '🔢 '+tz('atribuie cod')
+              : r.recommended==='sku_decide'  ? '⚠️ '+tz('decizia ta: cine păstrează codul')
+              : r.recommended==='complete_fields' ? '📝 '+tz('completează manual')
+              : '✓ '+tz('în regulă');
+    h+='<tr>'
+      +'<td>'+(r.entity==='material'?'📦':'🧰')+'</td>'
+      +'<td>'+(r.sku?esc(r.sku):'<span style="color:var(--red)">—</span>')
+        +(r.dup_n>1?' <span class="pill delay">×'+r.dup_n+'</span>':'')+'</td>'
+      +'<td class="tname">'+esc(r.name)+(r.suspect_test?' <span class="pill plan" title="'+esc(tz('Denumire scurtă, fără spațiu și fără cifră — de verificat de om.'))+'">🔎</span>':'')
+        +(r.in_review?' <span class="pill delay">🚩</span>':'')+'</td>'
+      +'<td>'+(r.category?esc(r.category):'<span style="color:var(--muted)">—</span>')+'</td>'
+      +'<td style="font-size:.8rem;color:var(--muted)">'+esc(miss.join(', ')||'—')+'</td>'
+      +'<td>'+r.n_refs+'</td>'
+      +'<td>'+(r.active===false?'<span class="pill paused">'+esc(tz('Arhivat'))+'</span>':'<span class="pill active">'+esc(tz('Activ'))+'</span>')+'</td>'
+      +'<td style="font-size:.8rem;color:var(--muted)">'+esc(fmtDate(r.created_at))+'</td>'
+      +'<td style="font-size:.82rem">'+esc(rec)+'<div style="font-size:.74rem;color:var(--muted)">'+esc(catqReason(r))+'</div></td>'
+      +'<td>'+(r.sku_proposed?'<code>'+esc(r.sku_proposed)+'</code>':'—')+'</td>'
+      +'<td><div class="rowact">'
+        +'<button class="iconbtn" title="'+esc(tz('Deschide fișa'))+'" onclick="catqOpen(\''+r.entity+'\',\''+r.id+'\')">📝</button>'
+        +(!r.sku?'<button class="iconbtn" title="'+esc(tz('Acceptă codul propus'))+'" onclick="catqFixOne(\''+r.entity+'\',\''+r.id+'\')">✅</button>':'')
+        +(r.dup_n>1?'<button class="iconbtn" title="'+esc(tz('Rezolvă codul duplicat'))+'" onclick="catqDup(\''+r.entity+'\',\''+jsArg(r.sku)+'\')">⚠️</button>':'')
+        +'<button class="iconbtn" title="'+esc(tz('Generează un cod nou'))+'" onclick="catqNewSku(\''+r.entity+'\',\''+r.id+'\')">🔁</button>'
+        +(r.active===false
+           ?'<button class="iconbtn" title="'+esc(tz('Scoate din arhivă'))+'" onclick="catqMark(\''+r.entity+'\',\''+r.id+'\',\'unarchive\')">↩️</button>'
+           :'<button class="iconbtn" title="'+esc(tz('Arhivează'))+'" onclick="catqMark(\''+r.entity+'\',\''+r.id+'\',\'archive\')">📦</button>')
+        +(r.in_review
+           ?'<button class="iconbtn" title="'+esc(tz('Scoate marcajul de revizuire'))+'" onclick="catqMark(\''+r.entity+'\',\''+r.id+'\',\'clear_review\')">✔️</button>'
+           :'<button class="iconbtn" title="'+esc(tz('Marchează pentru revizuire'))+'" onclick="catqMark(\''+r.entity+'\',\''+r.id+'\',\'mark_review\')">🚩</button>')
+      +'</div></td></tr>';
+  });
+  h+='</tbody></table></div>';
+  body.innerHTML=h;
+}
+function catqOpen(kind,id){ editRecord(kind==='material'?'materiale':'servicii', id); }
+async function catqGuardBusy(fn){
+  if(_catqBusy){ return; }                 // dublu clic real: a doua apăsare nu pleacă
+  _catqBusy=true;
+  try{ await fn(); }catch(e){ toast('⚠️ '+esc(e.message)); }
+  finally{ _catqBusy=false; }
+}
+function catqFixAll(){ catqGuardBusy(async()=>{
+  const n=_catqRows.filter(r=>!r.sku).length;
+  if(!n){ toast('✅ '+tz('Toate elementele au deja cod intern.')); return; }
+  if(!confirm(tz('Se atribuie cod intern pentru')+' '+n+' '+tz('elemente. Nicio altă informație nu se modifică. Continui?'))) return;
+  let done=0;
+  for(const kind of ['material','service']){
+    if(!_catqRows.some(r=>!r.sku&&r.entity===kind)) continue;
+    const res=await catqRpc('catalog_quality_fix_sku',
+      {p_tenant_id:state.tenant,p_kind:kind,p_ids:null,p_request_id:crypto.randomUUID()});
+    done+=(res&&res.fixed)||0;
+  }
+  toast('✅ '+done+' '+tz('coduri atribuite.')); await renderCalitate();
+});}
+function catqFixOne(kind,id){ catqGuardBusy(async()=>{
+  const res=await catqRpc('catalog_quality_fix_sku',
+    {p_tenant_id:state.tenant,p_kind:kind,p_ids:[id],p_request_id:crypto.randomUUID()});
+  toast('✅ '+tz('Cod atribuit')+': '+esc(((res&&res.rows&&res.rows[0])||{}).sku||'')); await renderCalitate();
+});}
+function catqNewSku(kind,id){ catqGuardBusy(async()=>{
+  if(!confirm(tz('Se generează un cod nou pentru acest element. Codul vechi rămâne liber pentru altcineva. Continui?'))) return;
+  const res=await catqRpc('catalog_quality_set_sku',
+    {p_tenant_id:state.tenant,p_kind:kind,p_id:id,p_new_sku:null,
+     p_reason:tz('cod nou cerut din Calitatea catalogului'),p_request_id:crypto.randomUUID()});
+  toast('✅ '+tz('Cod nou')+': '+esc((res&&res.sku_after)||'')); await renderCalitate();
+});}
+function catqMark(kind,id,action){ catqGuardBusy(async()=>{
+  if(action==='archive'){
+    const r=_catqRows.find(x=>x.id===id);
+    if(!confirm(tz('Arhivarea scoate elementul din selectoarele de Deviz și Factură, dar NU îl șterge și nu atinge documentele existente.')
+      +(r&&r.n_refs?' '+tz('Este folosit în')+' '+r.n_refs+' '+tz('locuri.'):'')+' '+tz('Continui?'))) return;
+  }
+  await catqRpc('catalog_quality_mark',
+    {p_tenant_id:state.tenant,p_kind:kind,p_id:id,p_action:action,p_reason:null,p_request_id:crypto.randomUUID()});
+  toast('✅ '+tz('Salvat.')); await renderCalitate();
+});}
+/* Duplicatele: owner-ul alege cine PĂSTREAZĂ codul; ceilalți primesc coduri noi.
+   Nu există alegere implicită și nu se comasează nimic — două articole cu
+   același cod pot fi două produse complet diferite (cazul real MAT-0146). */
+function catqDup(kind,sku){
+  const grp=_catqRows.filter(r=>r.entity===kind&&r.sku===sku).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
+  if(grp.length<2) return;
+  const used=grp.filter(r=>r.n_refs>0);
+  const hint = used.length===1
+    ? tz('Un singur element este folosit în alte locuri — recomandarea este ca el să păstreze codul.')
+    : used.length>1
+      ? tz('Mai multe elemente sunt folosite. Nu există o alegere evidentă — decide tu.')
+      : tz('Niciun element nu este folosit nicăieri. Nu există criteriu obiectiv — recomandarea neutră este ca cel mai vechi să păstreze codul.');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">'
+    +'<div class="modal-head"><h3>⚠️ '+esc(tz('Cod duplicat'))+' '+esc(sku)+'</h3></div>'
+    +'<div class="modal-body"><div style="font-size:.85rem;color:var(--muted);margin-bottom:.6rem">'+esc(hint)+'</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr>'+['Denumire','UM','Preț','Utilizări','Creat',''].map(t=>'<th>'+esc(tz(t))+'</th>').join('')+'</tr></thead><tbody>'
+    +grp.map(r=>'<tr><td class="tname">'+esc(r.name)+'</td><td>'+esc(r.unit||'')+'</td><td>'+(r.price==null?'—':esc(r.price))+'</td>'
+      +'<td>'+r.n_refs+'</td><td style="font-size:.8rem;color:var(--muted)">'+esc(fmtDate(r.created_at))+'</td>'
+      +'<td><button class="btn" onclick="catqDupKeep(\''+kind+'\',\''+jsArg(sku)+'\',\''+r.id+'\')">'+esc(tz('Păstrează codul aici'))+'</button></td></tr>').join('')
+    +'</tbody></table></div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.6rem">'+esc(tz('Celelalte elemente primesc automat următorul cod liber. Documentele salvate nu se modifică: ele păstrează denumirea și prețul din momentul emiterii, nu codul.'))+'</div></div>'
+    +'<div class="modal-foot"><button class="btn" onclick="closeModal()">'+esc(tz('Renunță'))+'</button></div></div></div>';
+}
+function catqDupKeep(kind,sku,keepId){ catqGuardBusy(async()=>{
+  const grp=_catqRows.filter(r=>r.entity===kind&&r.sku===sku&&r.id!==keepId);
+  for(const r of grp){
+    await catqRpc('catalog_quality_set_sku',
+      {p_tenant_id:state.tenant,p_kind:kind,p_id:r.id,p_new_sku:null,
+       p_reason:tz('cod duplicat rezolvat; codul a rămas la')+' '+keepId,p_request_id:crypto.randomUUID()});
+  }
+  closeModal(); toast('✅ '+tz('Cod duplicat rezolvat.')); await renderCalitate();
+});}
 async function renderTrash(){
   $('content').innerHTML='<div class="seg"><button class="btn-ghost" onclick="renderTrash()">↻</button><span style="flex:1"></span><button class="btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="trashEmpty()">🧹 '+esc(tz('Golește coșul'))+'</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>🗑️ '+esc(tz('Coș de gunoi'))+'</h3></div>'
