@@ -958,10 +958,12 @@ const MODULES = {
 
   subcontractori:{ title:'Subcontractori', sub:'Subantreprenori și specialitățile lor.', icon:'🧑‍🔧', group:'Echipă', table:'subcontractors',
     newLabel:'Subcontractor nou', invitable:'subcontractor', orderBy:{col:'name',asc:true},
-    select:'id,name,specialty,idno,phone,rating,price_list,logo_url,birth_date',
+    subPrices:true,
+    select:'id,name,specialty,idno,phone,rating,price_list,logo_url,birth_date,subcontractor_prices(unit_price,currency,active,valid_from,valid_to)',
     columns:[
       {label:'Nume',get:r=>(r.logo_url?'<span onclick="openDoc(\''+encodeURIComponent(r.logo_url)+'\')" style="cursor:pointer" title="vezi logo">🏷️ </span>':'')+'<span class="tname">'+esc(r.name)+'</span>'},
       {label:'Specialitate (ce execută)',get:r=>esc(r.specialty||'—')},
+      {label:'Tarife',get:r=>spListCell(r)},
       {label:'Telefon',get:r=>esc(r.phone||'—')},
       {label:'Rating',get:r=>r.rating?('⭐ '+r.rating):'—'} ],
     fields:[
@@ -971,7 +973,7 @@ const MODULES = {
       {key:'phone',label:'Telefon',type:'text',hint:'Numărul de contact al subcontractantului.'},
       {key:'birth_date',label:'Data nașterii (persoană de contact)',type:'date',hint:'Opțional. Apare în „🎂 Zile de naștere" din bara de sus.'},
       {key:'rating',label:'Rating (0-5)',type:'number',hint:'Cât de bine au lucrat (0–5). Te ajută să-i compari.'},
-      {key:'price_list',label:'Listă de prețuri',type:'textarea',hint:'Prețurile lor pe lucrări. Ex: „Priză montată — 350 lei; Punct lumină — 300 lei; m² gresie — 180 lei".'},
+      {key:'price_list',label:'Listă de prețuri (câmp vechi, doar text)',type:'textarea',hint:'⚠️ Depășit — folosește „💰 Prețuri / Tarife" de mai sus. Textul de aici NU poate fi căutat, filtrat, comparat sau selectat într-un Deviz. Rămâne doar ca să nu se piardă ce era scris; mută-l în tarife când ai ocazia.'},
       {key:'contract_url',label:'Contract (fișier PDF/scan)',type:'file',hint:'Atașează contractul cu subcontractantul.'},
       {key:'logo_url',label:'Logo / poză',type:'photo',hint:'Logo-ul sau o poză a firmei subcontractante (opțional).'} ] },
 
@@ -7679,6 +7681,49 @@ async function childRpc(fn, args){
   }
   const err=new Error(childErrMsg(last)); err.child=true; throw err;
 }
+/* ── Tarifele subcontractorilor (migrarea 0128, Lotul 0C2) ─────────────────
+   Un tarif e un RÂND, nu un rând de text: are unitate, monedă, TVA, valabilitate
+   și status. Fiecare mutație trece printr-un singur RPC atomic, cu tenantul
+   determinat server-side, concurență optimistă pe `updated_at` și idempotență
+   strictă pe `request_id`.
+   Spre deosebire de `material_prices_set` (care înlocuiește TOATĂ colecția),
+   aici se salvează UN tarif odată: tarifele sunt entități versionate, iar o
+   rescriere în bloc ar șterge istoricul de preț al celorlalte rânduri. */
+const SUBPRICE_ERR={
+  SUBPRICE_CONFLICT:          'Tariful a fost modificat între timp (alt tab sau alt coleg). Redeschide și încearcă din nou.',
+  SUBPRICE_FORBIDDEN:         'Nu ai dreptul să modifici tarifele subcontractorilor.',
+  SUBPRICE_NOT_FOUND:         'Tariful sau subcontractorul nu mai există.',
+  SUBPRICE_OVERLAP:           'Există deja un tarif activ pentru aceeași lucrare, unitate și monedă în această perioadă. Închide-l întâi sau schimbă perioada.',
+  SUBPRICE_DEPENDENCY_MISSING:'Serviciul ales nu mai există sau nu aparține firmei tale.',
+  SUBPRICE_INVALID_INPUT:     'Datele tarifului nu sunt valide.',
+  SUBPRICE_DENIED:            'Salvarea a fost refuzată de baza de date.'
+};
+function subpriceErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in SUBPRICE_ERR){ if(m.indexOf(k)>=0) return SUBPRICE_ERR[k]; }
+  return isNetErr(e)?netMsg():(m||'Eroare la salvare.'); }
+let _spBusy=null;
+async function subpriceRpc(fn, args){
+  // Dublu clic REAL: a doua apăsare nu pornește o cerere nouă, ci așteaptă
+  // rezultatul primei. `request_id` singur nu ajută — două apeluri independente
+  // au două ID-uri diferite și ar crea două tarife (capcana confirmată în 0C1).
+  if(_spBusy) return _spBusy;
+  _spBusy=subpriceRpcOnce(fn, args);
+  try{ return await _spBusy; } finally { _spBusy=null; }
+}
+async function subpriceRpcOnce(fn, args){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body=Object.assign({}, args, {p_request_id:rid});
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc(fn, body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!isNetErr(r.error) || i===2) break;   // se reîncearcă DOAR erorile de rețea, cu ACELAȘI request_id
+    await new Promise(s=>setTimeout(s,600*(i+1)));
+  }
+  const err=new Error(subpriceErrMsg(last)); err.subprice=true; throw err;
+}
+
 /* ── Catalog: o singură cale de creare, server-side (migrarea 0127) ─────────
    Înainte, materialele și serviciile se inserau direct din trei locuri diferite,
    fiecare cu alt subset de câmpuri, iar codul intern se genera în client cu
@@ -7835,6 +7880,228 @@ function renderSrc(sk){ const s=PRICE_SRC[sk]; const el=$(s.mount); if(!el) retu
 function srcNames(r,sk){ const s=PRICE_SRC[sk]; const refTbl=s.ref; return ((r[s.emKey])||[]).map(x=>x[refTbl]&&x[refTbl].name).filter(Boolean); }
 function srcMin(r,sk){ const s=PRICE_SRC[sk]; const ps=((r[s.emKey])||[]).map(x=>x.price).filter(p=>p!=null); return ps.length?Math.min.apply(null,ps):null; }
 function srcCol(sk){ const s=PRICE_SRC[sk]; return r=>{ const names=srcNames(r,sk); if(!names.length) return '—'; const mn=srcMin(r,sk); return '<span class="cell-desc" title="'+esc(names.join(', '))+'">'+esc(names.join(', '))+'</span>'+(mn!=null?'<div style="color:var(--muted);font-size:.74rem">de la '+money(mn)+'</div>':''); }; }
+/* ── Tarifele subcontractorului: tabel de lucru în fișa lui (Lotul 0C2) ────
+   Înlocuiește câmpul liber `price_list`, care nu putea fi căutat, filtrat,
+   sortat, comparat, legat de un serviciu sau folosit într-un Deviz. */
+const SP_SORTS={ price:'Preț', name:'Lucrare', updated:'Actualizat', valid:'Valabilitate' };
+function spMoney(n,cur){ if(n==null||n==='') return '—';
+  return Number(n).toLocaleString('ro-RO',{minimumFractionDigits:0,maximumFractionDigits:2})+' '+esc(cur||'MDL'); }
+function spStatus(r){ const t=coToday();
+  // „Oprit" folosește var(--muted): în dark mode griul fix ar fi ilizibil pe surface
+  if(!r.active) return {k:'off',  t:'Oprit',   c:'var(--muted)'};
+  if(r.valid_from && r.valid_from > t) return {k:'future', t:'Viitor',  c:'#2f6bff'};
+  if(r.valid_to   && r.valid_to   < t) return {k:'exp',    t:'Expirat', c:'#dc2626'};
+  return {k:'act', t:'Activ', c:'#16a34a'};
+}
+function spPeriod(r){ if(!r.valid_from && !r.valid_to) return 'permanent';
+  return (r.valid_from?fmtDate(r.valid_from):'…')+' → '+(r.valid_to?fmtDate(r.valid_to):'…'); }
+function spRows(){ return formCtx.subPrices||(formCtx.subPrices=[]); }
+function spF(){ return formCtx.spF||(formCtx.spF={q:'',cat:'',st:'',unit:'',sort:'updated',asc:false}); }
+function spSetF(k,v){ spF()[k]=v; renderSubPrices(); }
+function spSort(v){ const f=spF(); if(f.sort===v) f.asc=!f.asc; else { f.sort=v; f.asc=(v==='name'); } renderSubPrices(); }
+function spView(){
+  const f=spF(); let rows=spRows().slice();
+  const q=(f.q||'').toLowerCase().trim();
+  if(q) rows=rows.filter(r=>((r.name||'')+' '+(r.code||'')+' '+(r.description||'')+' '+(r.category||'')).toLowerCase().includes(q));
+  if(f.cat)  rows=rows.filter(r=>(r.category||'')===f.cat);
+  if(f.unit) rows=rows.filter(r=>(r.unit||'')===f.unit);
+  if(f.st)   rows=rows.filter(r=>spStatus(r).k===f.st);
+  const dir=f.asc?1:-1;
+  rows.sort((a,b)=>{
+    if(f.sort==='price') return ((+a.unit_price||0)-(+b.unit_price||0))*dir;
+    if(f.sort==='name')  return String(a.name||'').localeCompare(String(b.name||''))*dir;
+    if(f.sort==='valid') return String(a.valid_from||'').localeCompare(String(b.valid_from||''))*dir;
+    return String(a.updated_at||'').localeCompare(String(b.updated_at||''))*dir;
+  });
+  return rows;
+}
+function spBlank(){ return { id:null, name:'', description:'', category:'', code:'', unit:'buc',
+  unit_price:'', currency:(state.firm&&state.firm.currency)||'MDL', vat_rate:'',
+  price_includes_vat:false, valid_from:'', valid_to:'', active:true, notes:'', service_id:'' }; }
+function spNew(){ formCtx.spDraft=spBlank(); formCtx.spMode='new'; renderSubPrices(); }
+function spEditRow(id){ const r=spRows().find(x=>x.id===id); if(!r) return;
+  formCtx.spDraft=Object.assign({}, r, {
+    unit_price:(r.unit_price!=null?r.unit_price:''), vat_rate:(r.vat_rate!=null?r.vat_rate:''),
+    valid_from:r.valid_from||'', valid_to:r.valid_to||'', category:r.category||'', code:r.code||'',
+    description:r.description||'', notes:r.notes||'', service_id:r.service_id||'' });
+  formCtx.spMode='edit'; renderSubPrices(); }
+function spDup(id){ const r=spRows().find(x=>x.id===id); if(!r) return;
+  spEditRow(id); formCtx.spDraft.id=null; formCtx.spDraft.valid_from=''; formCtx.spDraft.valid_to='';
+  formCtx.spDraft.name=(r.name||'')+' (copie)'; formCtx.spMode='new'; renderSubPrices(); }
+function spCancel(){ formCtx.spDraft=null; formCtx.spMode=null; renderSubPrices(); }
+function spSetD(k,v){ if(!formCtx.spDraft) return; formCtx.spDraft[k]=v; }
+function spMsg(t){ const el=$('sp-msg'); if(el) el.innerHTML = t?('<div class="msg err">'+esc(t)+'</div>'):''; }
+function spUnits(){ const s=new Set(); spRows().forEach(r=>{ if(r.unit) s.add(r.unit); }); (window.UNIT_LIST||[]).forEach(u=>s.add(u)); return Array.from(s); }
+function spCats(){ const s=new Set(); spRows().forEach(r=>{ if(r.category) s.add(r.category); }); (window.SP_SERVICE_CATS||[]).forEach(c=>s.add(c)); return Array.from(s).sort((a,b)=>a.localeCompare(b)); }
+
+async function spReload(){
+  const sid=formCtx.spSubId; if(!sid) return;
+  const r=await sb.from('subcontractor_prices').select('*').eq('subcontractor_id',sid).order('updated_at',{ascending:false});
+  if(r.error){ spMsg(subpriceErrMsg(r.error)); return; }
+  formCtx.subPrices=r.data||[];
+}
+async function spSave(mode){
+  const d=formCtx.spDraft; if(!d) return;
+  const btn=$('sp-save'), btn2=$('sp-save-ver'); if(btn) btn.disabled=true; if(btn2) btn2.disabled=true;
+  spMsg('');
+  const payload={ name:d.name, description:d.description||null, category:d.category||null,
+    code:d.code||null, unit:d.unit||'buc', unit_price:(d.unit_price===''||d.unit_price==null)?null:+d.unit_price,
+    currency:(d.currency||'MDL').toUpperCase(), vat_rate:(d.vat_rate===''||d.vat_rate==null)?null:+d.vat_rate,
+    price_includes_vat:!!d.price_includes_vat, valid_from:d.valid_from||null, valid_to:d.valid_to||null,
+    active:!!d.active, notes:d.notes||null, service_id:d.service_id||null };
+  try{
+    await subpriceRpc('subcontractor_price_set', {
+      p_subcontractor_id: formCtx.spSubId,
+      p_payload: payload,
+      p_price_id: d.id||null,
+      p_expected_updated_at: d.id?(d.updated_at||null):null,
+      p_mode: (mode==='version'?'version':'edit') });
+    await spReload();
+    formCtx.spDraft=null; formCtx.spMode=null; renderSubPrices();
+    toast(mode==='version'?'✅ Versiune nouă de tarif creată.':'✅ Tarif salvat.');
+  }catch(e){ if(btn) btn.disabled=false; if(btn2) btn2.disabled=false; spMsg(e.message||'Eroare la salvare.'); }
+}
+async function spToggle(id){
+  const r=spRows().find(x=>x.id===id); if(!r) return;
+  try{
+    await subpriceRpc('subcontractor_price_set', {
+      p_subcontractor_id: formCtx.spSubId,
+      p_payload: { name:r.name, description:r.description, category:r.category, code:r.code,
+        unit:r.unit, unit_price:+r.unit_price, currency:r.currency, vat_rate:r.vat_rate,
+        price_includes_vat:!!r.price_includes_vat, valid_from:r.valid_from, valid_to:r.valid_to,
+        active:!r.active, notes:r.notes, service_id:r.service_id },
+      p_price_id: id, p_expected_updated_at: r.updated_at, p_mode:'edit' });
+    await spReload(); renderSubPrices();
+    toast(r.active?'⏸ Tarif oprit.':'▶ Tarif repornit.');
+  }catch(e){ spMsg(e.message||'Eroare.'); }
+}
+async function spDelete(id){
+  const r=spRows().find(x=>x.id===id); if(!r) return;
+  if(!confirm(tz('Ștergi definitiv acest tarif? Devizele care l-au folosit rămân neschimbate.'))) return;
+  try{ await subpriceRpc('subcontractor_price_delete', {p_price_id:id});
+    await spReload(); renderSubPrices(); toast('🗑 Tarif șters.');
+  }catch(e){ spMsg(e.message||'Eroare.'); }
+}
+
+function spEditorHtml(){
+  const d=formCtx.spDraft; if(!d) return '';
+  const isEdit=!!d.id;
+  const svc=(formCtx.spServices||[]);
+  const opt='<option value="">— fără legătură (lucrare liberă) —</option>'
+    +svc.map(s=>'<option value="'+s.id+'" '+(d.service_id===s.id?'selected':'')+'>'+esc(s.name)+(s.unit?(' · '+esc(s.unit)):'')+'</option>').join('');
+  const units=spUnits().map(u=>'<option value="'+esc(u)+'"></option>').join('');
+  const cats=spCats().map(c=>'<option value="'+esc(c)+'"></option>').join('');
+  return '<div style="border:1px solid var(--primary);border-radius:10px;padding:.7rem .8rem;margin:.6rem 0;background:var(--surface)">'
+   +'<div style="font-weight:700;margin-bottom:.5rem">'+(isEdit?'✏️ Editează tariful':'＋ Tarif nou')+'</div>'
+   +'<div id="sp-msg"></div>'
+   +'<div class="field"><label>Lucrarea din catalog (opțional)</label>'
+   +'<select onchange="spPickService(this.value)">'+opt+'</select>'
+   +'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Legarea de un serviciu îți permite să compari subcontractorii pe aceeași lucrare. Tariful își păstrează totuși propria denumire și unitate — o redenumire ulterioară a serviciului NU rescrie tariful.</div></div>'
+   +'<div style="display:flex;gap:.6rem;flex-wrap:wrap">'
+     +'<div class="field" style="flex:2;min-width:200px"><label>Denumirea lucrării *</label><input id="sp-name" value="'+esc(d.name)+'" oninput="spSetD(\'name\',this.value)"/></div>'
+     +'<div class="field" style="width:150px"><label>Categorie</label><input list="sp-cats" value="'+esc(d.category)+'" oninput="spSetD(\'category\',this.value)"/><datalist id="sp-cats">'+cats+'</datalist></div>'
+     +'<div class="field" style="width:120px"><label>Cod</label><input value="'+esc(d.code)+'" oninput="spSetD(\'code\',this.value)"/></div>'
+   +'</div>'
+   +'<div style="display:flex;gap:.6rem;flex-wrap:wrap">'
+     +'<div class="field" style="width:110px"><label>Unitate *</label><input list="sp-units" value="'+esc(d.unit)+'" oninput="spSetD(\'unit\',this.value)"/><datalist id="sp-units">'+units+'</datalist></div>'
+     +'<div class="field" style="width:130px"><label>Preț unitar *</label><input type="number" step="any" value="'+esc(d.unit_price)+'" oninput="spSetD(\'unit_price\',this.value)"/></div>'
+     +'<div class="field" style="width:100px"><label>Monedă</label><input value="'+esc(d.currency)+'" maxlength="3" oninput="spSetD(\'currency\',this.value.toUpperCase())"/></div>'
+     +'<div class="field" style="width:100px"><label>TVA %</label><input type="number" step="any" value="'+esc(d.vat_rate)+'" oninput="spSetD(\'vat_rate\',this.value)" placeholder="—"/></div>'
+     +'<div class="field" style="width:150px;align-self:flex-end"><div class="chk"><input type="checkbox" id="sp-incl" '+(d.price_includes_vat?'checked':'')+' onchange="spSetD(\'price_includes_vat\',this.checked)"/> <label for="sp-incl">Prețul include TVA</label></div></div>'
+   +'</div>'
+   +'<div style="display:flex;gap:.6rem;flex-wrap:wrap">'
+     +'<div class="field" style="width:160px"><label>Valabil de la</label><input type="date" value="'+esc(d.valid_from)+'" oninput="spSetD(\'valid_from\',this.value)"/></div>'
+     +'<div class="field" style="width:160px"><label>Valabil până la</label><input type="date" value="'+esc(d.valid_to)+'" oninput="spSetD(\'valid_to\',this.value)"/></div>'
+     +'<div class="field" style="width:130px;align-self:flex-end"><div class="chk"><input type="checkbox" id="sp-act" '+(d.active?'checked':'')+' onchange="spSetD(\'active\',this.checked)"/> <label for="sp-act">Activ</label></div></div>'
+   +'</div>'
+   +'<div class="field"><label>Descriere</label><textarea rows="2" oninput="spSetD(\'description\',this.value)">'+esc(d.description)+'</textarea></div>'
+   +'<div class="field"><label>Observații</label><input value="'+esc(d.notes)+'" oninput="spSetD(\'notes\',this.value)" placeholder="ex. minim 20 m², deplasarea separat"/></div>'
+   +'<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">'
+     +'<button type="button" class="btn-primary" id="sp-save" onclick="spSave(\'edit\')">'+(isEdit?'Salvează corectura':'Adaugă tariful')+'</button>'
+     +(isEdit?'<button type="button" class="btn-ghost" id="sp-save-ver" onclick="spSave(\'version\')">📌 Creează versiune nouă</button>':'')
+     +'<button type="button" class="btn-ghost" onclick="spCancel()">'+TR('anuleaza')+'</button>'
+   +'</div>'
+   +(isEdit?'<div style="font-size:.78rem;color:var(--muted);margin-top:.4rem">„Corectura" schimbă tariful pe loc — folosește-o pentru greșeli de scriere. „Versiune nouă" închide tariful vechi la ziua dinaintea noii valabilități și creează unul nou, ca să păstrezi istoricul de preț. Devizele deja salvate rămân neatinse în ambele cazuri.</div>':'')
+   +'</div>';
+}
+function spPickService(id){
+  const d=formCtx.spDraft; if(!d) return;
+  d.service_id=id||'';
+  const s=(formCtx.spServices||[]).find(x=>x.id===id);
+  if(s){ if(!d.name||!d.name.trim()) d.name=s.name; if(s.unit) d.unit=s.unit;
+    if(!d.category && s.category) d.category=s.category; if(!d.code && s.sku) d.code=s.sku;
+    if(!d.description && s.description) d.description=s.description; }
+  renderSubPrices();
+}
+
+function renderSubPrices(){
+  const el=$('sp-mount'); if(!el) return;
+  const canW=canDo('subcontractori','u');
+  if(!formCtx.spSubId){
+    el.innerHTML='<div style="color:var(--muted);font-size:.84rem;padding:.4rem 0">Salvează întâi subcontractorul, apoi îi poți adăuga tarife. Tarifele se leagă de fișa lui, deci au nevoie de ea.</div>';
+    return;
+  }
+  const all=spRows(), view=spView(), f=spF();
+  const cats=spCats(), units=spUnits();
+  const sel=(v,cur,lbl)=>'<option value="'+esc(v)+'" '+(cur===v?'selected':'')+'>'+esc(lbl)+'</option>';
+  let h='';
+  h+='<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;margin:.2rem 0 .55rem">'
+    +'<input id="sp-q" placeholder="🔍 caută după denumire, cod, descriere…" value="'+esc(f.q)+'" oninput="spSetF(\'q\',this.value)" style="flex:1;min-width:190px"/>'
+    +'<select onchange="spSetF(\'cat\',this.value)">'+sel('',f.cat,'Toate categoriile')+cats.map(c=>sel(c,f.cat,c)).join('')+'</select>'
+    +'<select onchange="spSetF(\'st\',this.value)">'+sel('',f.st,'Toate stările')+sel('act',f.st,'Activ')+sel('future',f.st,'Viitor')+sel('exp',f.st,'Expirat')+sel('off',f.st,'Oprit')+'</select>'
+    +'<select onchange="spSetF(\'unit\',this.value)">'+sel('',f.unit,'Toate unitățile')+units.map(u=>sel(u,f.unit,u)).join('')+'</select>'
+    +'<select onchange="spSort(this.value)">'+Object.keys(SP_SORTS).map(k=>sel(k,f.sort,'Sortare: '+SP_SORTS[k])).join('')+'</select>'
+    +'<button type="button" class="delx" title="Inversează ordinea" onclick="spSort(\''+esc(f.sort)+'\')">'+(f.asc?'▲':'▼')+'</button>'
+    +'</div>';
+  if(formCtx.spMode) h+=spEditorHtml(); else h+='<div id="sp-msg"></div>';
+  if(!all.length){
+    h+='<div style="color:var(--muted);font-size:.84rem;padding:.5rem 0">Niciun tarif încă. Apasă „＋ tarif nou" ca să adaugi primul — cu unitate, monedă și valabilitate, ca să-l poți compara și folosi într-un Deviz.</div>';
+  } else if(!view.length){
+    h+='<div style="color:var(--muted);font-size:.84rem;padding:.5rem 0">Niciun tarif nu corespunde filtrelor curente. '+all.length+' în total.</div>';
+  } else {
+    h+='<div class="tbl-wrap"><table class="tbl" style="font-size:.82rem"><thead><tr>'
+      +'<th>Lucrare</th><th>Categorie</th><th>U.M.</th><th style="text-align:right">Preț unitar</th>'
+      +'<th>Valabilitate</th><th>Stare</th><th>Actualizat</th><th></th></tr></thead><tbody>';
+    view.forEach(r=>{ const st=spStatus(r);
+      h+='<tr>'
+        +'<td><span class="tname">'+esc(r.name)+'</span>'
+          +(r.code?'<div style="color:var(--muted);font-size:.74rem">'+esc(r.code)+'</div>':'')
+          +(r.description?'<div class="cell-desc" style="color:var(--muted);font-size:.74rem" title="'+esc(r.description)+'">'+esc(r.description)+'</div>':'')
+          +(r.service_id?'<div style="color:#16a34a;font-size:.72rem">🧰 legat de catalog</div>':'')
+          +(r.notes?'<div style="color:var(--muted);font-size:.72rem">📝 '+esc(r.notes)+'</div>':'')+'</td>'
+        +'<td>'+esc(r.category||'—')+'</td>'
+        +'<td>'+esc(r.unit||'—')+'</td>'
+        +'<td style="text-align:right;white-space:nowrap"><b>'+spMoney(r.unit_price,r.currency)+'</b>'
+          +'<div style="color:var(--muted);font-size:.72rem">'+(r.vat_rate!=null?('TVA '+r.vat_rate+'%'+(r.price_includes_vat?' inclus':'')):'TVA nespecificat')+'</div></td>'
+        +'<td style="white-space:nowrap">'+esc(spPeriod(r))+'</td>'
+        +'<td><span style="color:'+st.c+';font-weight:700">'+esc(st.t)+'</span></td>'
+        +'<td style="white-space:nowrap;color:var(--muted)">'+esc(fmtDate(String(r.updated_at||'').slice(0,10)))+'</td>'
+        +'<td style="white-space:nowrap">'
+          +(canW?'<button class="delx" title="Editează" onclick="spEditRow(\''+r.id+'\')">✏️</button>'
+                +'<button class="delx" title="Duplică" onclick="spDup(\''+r.id+'\')">⧉</button>'
+                +'<button class="delx" title="'+(r.active?'Oprește tariful':'Repornește tariful')+'" onclick="spToggle(\''+r.id+'\')">'+(r.active?'⏸':'▶')+'</button>'
+                +'<button class="delx" title="Șterge" onclick="spDelete(\''+r.id+'\')">×</button>':'')
+        +'</td></tr>'; });
+    h+='</tbody></table></div>';
+    h+='<div style="color:var(--muted);font-size:.76rem;margin-top:.3rem">'+view.length+' din '+all.length+' tarife.</div>';
+  }
+  el.innerHTML=h;
+}
+
+/* Coloana „Tarife" din lista de subcontractori: numărul de tarife active și
+   cel mai mic preț. Vine din embed-ul `subcontractor_prices(...)`; sub RLS,
+   rolurile fără drept de citire primesc pur și simplu o listă goală. */
+function spListCell(r){
+  const all=(r.subcontractor_prices)||[]; if(!all.length) return '<span style="color:var(--muted)">—</span>';
+  const t=coToday();
+  const act=all.filter(p=>p.active && (!p.valid_from||p.valid_from<=t) && (!p.valid_to||p.valid_to>=t));
+  if(!act.length) return '<span style="color:var(--muted)">'+all.length+' (niciunul activ)</span>';
+  let best=null; act.forEach(p=>{ if(p.unit_price!=null && (best===null||+p.unit_price<+best.unit_price)) best=p; });
+  return '<span class="tname">'+act.length+' active</span>'
+    +(best?'<div style="color:var(--muted);font-size:.74rem">de la '+spMoney(best.unit_price,best.currency)+'</div>':'')
+    +(all.length>act.length?'<div style="color:var(--muted);font-size:.72rem">'+(all.length-act.length)+' inactive</div>':'');
+}
+
 async function openForm(key,row,preset){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
   // Protecție în profunzime: documentele cu editor dedicat nu trec NICIODATĂ prin
@@ -7852,6 +8119,14 @@ async function openForm(key,row,preset){
   if(m.priceSrc){ for(const sk of m.priceSrc){ const s=PRICE_SRC[sk];
     formCtx[s.list]=((await sb.from(s.ref).select('id,name').order('name')).data)||[]; formCtx[s.f]=[];
     if(row){ const d=((await sb.from(s.tbl).select(s.col+',price').eq('material_id',row.id)).data)||[]; formCtx[s.f]=d.map(x=>({ref_id:x[s.col]||'',price:(x.price!=null?x.price:'')})); } } }
+  if(m.subPrices){ formCtx.spSubId=row?row.id:null; formCtx.subPrices=[]; formCtx.spDraft=null; formCtx.spMode=null;
+    formCtx.spF={q:'',cat:'',st:'',unit:'',sort:'updated',asc:false};
+    await loadUnits();
+    try{ const sr=await sb.from('services').select('id,name,unit,category,sku,description').order('name');
+      formCtx.spServices=sr.data||[];
+      window.SP_SERVICE_CATS=Array.from(new Set((sr.data||[]).map(x=>x.category).filter(Boolean)));
+    }catch(e){ formCtx.spServices=[]; window.SP_SERVICE_CATS=[]; }
+    if(row){ try{ await spReload(); }catch(e){} } }
   if(m.toolStockForm){ try{ const [wr,sr]=await Promise.all([sb.from('warehouses').select('id,name').order('name'), sb.from('sites').select('id,name,status')]); formCtx._whs=(wr.data||[]); formCtx._sites=(sr.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||'')); window._tsfSites=formCtx._sites; window._tufWhs=formCtx._whs; }catch(e){ formCtx._whs=[]; formCtx._sites=[]; window._tsfSites=[]; window._tufWhs=[]; }
     formCtx._toolHasUnits=false; formCtx._units=[]; formCtx._unitIds=[];
     if(row){ try{ const ur=await sb.from('tool_units').select('*').eq('tool_id',row.id).order('created_at'); formCtx._units=ur.data||[]; formCtx._unitIds=formCtx._units.map(u=>u.id); formCtx._toolHasUnits=formCtx._units.length>0; }catch(e){} } }
@@ -7889,6 +8164,12 @@ async function openForm(key,row,preset){
       +'</div>'; }
   if(m.recipe){ body+='<div class="field"><label>🧪 Rețetă — materiale folosite (consum la 1 unitate de serviciu)</label><datalist id="recipe-mat-list">'+(formCtx.materials||[]).map(mm=>'<option value="'+esc(mm.name)+'"></option>').join('')+'</datalist><div id="recipe-mount"></div><button type="button" class="addline" onclick="recipeAdd()">＋ adaugă material</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Consum × volumul măsurat (la previzualizare șantier) = cantitatea de material. Prețul se ia automat din Materiale.</div></div>'; }
   if(m.priceSrc){ m.priceSrc.forEach(sk=>{ const s=PRICE_SRC[sk]; body+='<div class="field"><label>'+s.icon+' '+s.title+' (același material la mai multe '+s.noun+'e)</label><div id="'+s.mount+'"></div><button type="button" class="addline" onclick="srcAdd(\''+sk+'\')">＋ adaugă '+s.noun+'</button><div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">'+s.hint+'</div></div>'; }); }
+  if(m.subPrices){ body+='<div class="field" style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem">'
+    +'<label>💰 Prețuri / Tarife</label>'
+    +'<div style="font-size:.8rem;color:var(--muted);margin:-.1rem 0 .5rem">Tarifele lui pe lucrări, ca rânduri separate — cu unitate, monedă, TVA și valabilitate. Le poți căuta, filtra, sorta după preț și selecta direct într-un Deviz, ca să compari subcontractorii pe aceeași lucrare.</div>'
+    +'<div id="sp-mount"></div>'
+    +(row?'<button type="button" class="addline" onclick="spNew()">＋ tarif nou</button>':'')
+    +'</div>'; }
   if(m.lineItems){ body+='<div class="field"><label>Linii</label><div id="lines-mount"></div><button type="button" class="addline" onclick="addLine()">＋ adaugă linie</button>'+(m.normsPicker?'<button type="button" class="addline" style="margin-left:1rem" onclick="openNormPicker()">📐 Din norme</button><button type="button" class="addline" style="margin-left:1rem" onclick="openServicePicker()">🧰 Din servicii</button>':'')+'</div>'; }
   if(m.bomFromNorms){ formCtx.bom=true; body+='<div id="form-bom"></div>'; await ensureNorms(); await ensureNormMaterials(); }
   if(key==='clienti'){ try{ body+=crmCustomFormHTML(row); }catch(e){} }
@@ -7907,6 +8188,7 @@ async function openForm(key,row,preset){
   if(m.recipe) renderRecipe();
   if(m.toolStockForm){ const us=(formCtx._units||[]); if(us.length){ us.forEach(u=>tufAdd(u)); } else { tufAdd(); } const cc=$('tuf-count'); if(cc) cc.value=document.querySelectorAll('#tuf-units .tuf-row').length; }
   if(m.priceSrc) m.priceSrc.forEach(sk=>renderSrc(sk));
+  if(m.subPrices) renderSubPrices();
   if(m.fields.some(f=>f.type==='price2')){ const ve=$('f-vat_rate'); if(ve) ve.addEventListener('input',function(){ m.fields.forEach(f=>{ if(f.type==='price2') price2Sync(f.key,'net'); }); }); }
   if(m.dueFromSupplier){ const mb=document.querySelector('.modal-body'); if(mb && !$('credit-msg')){ const d=document.createElement('div'); d.id='credit-msg'; const fm=$('form-msg'); if(fm&&fm.after) fm.after(d); else mb.insertBefore(d,mb.firstChild); }
     const ss=$('f-supplier_id'), ii=$('f-issue_date'), tt=$('f-total');
