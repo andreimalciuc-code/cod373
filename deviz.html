@@ -165,7 +165,14 @@ async function loadEstimate(id){
     signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null, plan_url:e.data.plan_url||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
-  const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null }; });
+  const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); const cid=x.material_id||x.service_id||null; const csrc=x.material_id?'material':(x.service_id?'service':null);
+    const cat=cid?S.catalog.find(z=>z.id===cid&&z.src===csrc):null;
+    return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null,
+      // legătura la catalog e acum PERSISTENTĂ (migr 0127): se reface la fiecare
+      // deschidere, deci „Actualizează produsul existent" rămâne disponibilă
+      cat_id:cid, cat_src:csrc,
+      _catName:cat?cat.name:undefined, _catPrice:cat?+cat.price||0:undefined, _catUnit:cat?cat.unit:undefined,
+      _catDesc:cat?(cat.desc||''):undefined, _catPhoto:cat?(cat.photo||null):undefined }; });
   // Auto-curățare: elimină liniile EXACT identice (corupere veche dintr-o regulă RLS care bloca ștergerea la salvarea făcută de manager/contabil → liniile se dublau la fiecare salvare).
   const _seen=new Set(); const _before=mapped.length;
   const deduped=mapped.filter(l=>{ const k=[l.name,l.qty,l.unit,l.unit_price,l.vat_rate,l.disc,l.group,l.description||'',l.photo_url||''].join('¦'); if(_seen.has(k)) return false; _seen.add(k); return true; });
@@ -605,6 +612,18 @@ function pickCatalog(i,ci){ const c=S.catalog[ci]; if(!c) return; const l=S.line
   if(c.photo) l.photo_url=l.photo_url||c.photo;
   if((c.src==='service'||c.src==='material') && c.id){ l.cat_id=c.id; l.cat_src=c.src; l._catName=c.name; l._catPrice=+c.price||0; l._catUnit=c.unit; l._catDesc=c.desc||''; l._catPhoto=c.photo||null; }
   renderLines(); renderSummary(); renderBOM(); signLineThumbs(); }
+// Lista EXACTĂ a câmpurilor pe care le-ar schimba actualizarea catalogului.
+// Cerință: acțiunea explicită trebuie să arate ce modifică, nu doar să întrebe.
+function lcDiffHtml(l){
+  const d=[];
+  if(l.name!==l._catName) d.push(['Denumire',l._catName,l.name]);
+  if((+l.unit_price||0)!==(+l._catPrice||0)) d.push(['Preț',money(+l._catPrice||0),money(+l.unit_price||0)]);
+  if(l.unit!==l._catUnit) d.push(['UM',l._catUnit,l.unit]);
+  if((l.description||'')!==(l._catDesc||'')) d.push(['Descriere',(l._catDesc||'—'),(l.description||'—')]);
+  if((l.photo_url||null)!==(l._catPhoto||null)) d.push(['Poză',(l._catPhoto?'existentă':'—'),(l.photo_url?'nouă':'—')]);
+  if(!d.length) return '<span style="color:var(--muted)">nimic</span>';
+  return d.map(x=>'• '+esc(x[0])+': <span style="color:var(--muted)">'+esc(String(x[1]).slice(0,40))+'</span> → <b>'+esc(String(x[2]).slice(0,40))+'</b>').join('<br>');
+}
 function lineCatalogChanged(l){ if(!l.cat_id) return false; return l.name!==l._catName || (+l.unit_price!==+l._catPrice) || l.unit!==l._catUnit || (l.description||'')!==(l._catDesc||'') || (l.photo_url||null)!==(l._catPhoto||null); }
 function saveLineToCatalog(i){ const l=S.lines[i]; if(!l||!(l.name||'').trim()){ toast('Scrie întâi denumirea liniei.'); return; }
   const changed=lineCatalogChanged(l); const inCat=!!l.cat_id;
@@ -615,7 +634,8 @@ function saveLineToCatalog(i){ const l=S.lines[i]; if(!l||!(l.name||'').trim()){
     +'<div class="field"><label>Tip</label><select id="lc-kind"><option value="service"'+(kind==='service'?' selected':'')+'>🧰 Serviciu</option><option value="material"'+(kind==='material'?' selected':'')+'>📦 Material</option></select></div>'
     +'<div id="lc-msg" style="color:var(--red);font-size:.82rem"></div>'
     +'<div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem">'
-      +((inCat&&changed)?'<button class="btn primary" onclick="lcSave('+i+',\'update\')">🔄 Actualizează produsul existent</button>':'')
+      +((inCat&&changed)?('<div style="font-size:.82rem;border:1px solid var(--line);border-radius:9px;padding:.5rem;margin-bottom:.5rem"><b>Actualizarea va schimba în catalog:</b><br>'+lcDiffHtml(l)+'</div>'
+        +'<button class="btn primary" onclick="lcSave('+i+',\'update\')">🔄 Actualizează produsul existent</button>'):'')
       +'<button class="btn'+((inCat&&changed)?'':' primary')+'" onclick="lcSave('+i+',\'new\')">➕ Salvează ca produs nou</button>'
       +'<button class="btn" onclick="closeM()">Renunță</button>'
     +'</div></div></div>';
@@ -627,23 +647,78 @@ async function lcSave(i,mode){ const l=S.lines[i]; if(!l) return;
   try{
     if(mode==='update'){ if(!l.cat_id) throw new Error('Linia nu e legată de catalog.'); const u=await sb.from(tbl).update(payload).eq('id',l.cat_id); if(u.error) throw u.error;
       const c=S.catalog.find(x=>x.id===l.cat_id&&x.src===l.cat_src); if(c){ c.name=l.name; c.unit=l.unit; c.price=+l.unit_price||0; c.vat=vat; c.desc=l.description||''; c.photo=l.photo_url||null; }
-    } else { const tid=S.tenant||(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
-      const ins=await sb.from(tbl).insert(Object.assign({tenant_id:tid},payload)).select('id').single(); if(ins.error) throw ins.error;
-      l.cat_id=ins.data.id; l.cat_src=isMat?'material':'service'; if(!l.kind) l.kind=l.cat_src; S.catalog.unshift({src:l.cat_src,id:ins.data.id,icon:(isMat?'📦':'🧰'),name:l.name,unit:l.unit,price:+l.unit_price||0,vat:vat,kind:l.cat_src,desc:l.description||'',photo:l.photo_url||null});
+    } else { // creare: aceeași cale server-side ca formularul canonic (cod generat, duplicate refuzate, idempotent)
+      const res=await catalogCreate(isMat?'material':'service', payload);
+      const d=res.row;
+      l.cat_id=d.id; l.cat_src=isMat?'material':'service'; if(!l.kind) l.kind=l.cat_src;
+      S.catalog.unshift({src:l.cat_src,id:d.id,icon:(isMat?'📦':'🧰'),name:d.name,unit:d.unit,price:+l.unit_price||0,vat:vat,kind:l.cat_src,desc:d.description||'',photo:d.photo_url||null,cat:d.category||''});
+      window._lcSku=res.sku;
     }
     l._catName=l.name; l._catPrice=+l.unit_price||0; l._catUnit=l.unit; l._catDesc=l.description||''; l._catPhoto=l.photo_url||null;
-    closeM(); toast(mode==='update'?'✅ Produs actualizat în catalog.':'✅ Produs nou salvat în catalog.'); renderLines();
-  }catch(e){ $('lc-msg').textContent='Eroare: '+((typeof isNetErr==='function'&&isNetErr(e))?'conexiune slabă':(e.message||e)); }
+    closeM(); toast(mode==='update'?'✅ Produs actualizat în catalog.':('✅ Produs nou salvat în catalog ('+(window._lcSku||'fără cod')+').')); renderLines();
+  }catch(e){ $('lc-msg').textContent=catalogErrMsg(e); }
+}
+/* ── Catalogul: aceeași cale server-side ca formularul canonic (migr 0127) ──
+   Formularul rapid rămâne compact, dar NU mai afișează câmpuri pe care le
+   ignoră: tot ce se completează aici ajunge în catalog, iar restul câmpurilor
+   avansate se completează în modulul Materiale/Servicii, printr-un link direct. */
+const CATALOG_ERR={
+  CATALOG_SKU_DUPLICATE:    'Codul intern (SKU) este deja folosit de alt element din catalog.',
+  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi elemente în catalog.',
+  CATALOG_INVALID_INPUT:    'Datele trimise nu sunt valide.',
+  CATALOG_DEPENDENCY_MISSING:'Un furnizor sau magazin ales nu mai există sau nu aparține firmei tale.',
+  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.'
+};
+function catalogErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in CATALOG_ERR){ if(m.indexOf(k)>=0) return CATALOG_ERR[k]; }
+  return (typeof isNetErr==='function'&&isNetErr(e))?'Conexiune slabă — încearcă din nou.':(m||'Eroare la salvare.'); }
+let _catBusy=null;
+async function catalogCreate(kind, payload){
+  // Dublu clic REAL: a doua apelare nu pornește o cerere nouă, ci așteaptă
+  // rezultatul primei. `request_id` singur nu ajută aici — două apeluri
+  // independente ar avea două ID-uri diferite și ar crea două rânduri.
+  // Formularul de catalog e modal, deci nu există două creări legitime simultan.
+  if(_catBusy) return _catBusy;
+  _catBusy=catalogCreateOnce(kind, payload);
+  try{ return await _catBusy; } finally { _catBusy=null; }
+}
+async function catalogCreateOnce(kind, payload){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body={ p_tenant_id:S.tenant, p_kind:kind, p_payload:payload, p_request_id:rid };
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc('catalog_item_create', body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!(typeof isNetErr==='function'&&isNetErr(r.error)) || i===2) break;  // doar erorile de rețea, cu ACELAȘI request_id
+    await new Promise(x=>setTimeout(x,600*(i+1)));
+  }
+  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+}
+// Uploadul se face ÎNAINTE de RPC. Dacă RPC-ul eșuează, obiectul proaspăt încărcat
+// se șterge — altfel ar rămâne orfan în Storage. Calea e deterministă pe cerere,
+// deci o reîncercare NU creează un al doilea fișier.
+async function catalogPhotoUp(file, tag){
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path=S.tenant+'/'+tag+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg',upsert:true});
+  if(up.error) throw new Error('Poza nu s-a încărcat: '+(up.error.message||up.error));
+  return path;
 }
 function catalogNew(){ const l=blankLine(); S.lines.push(l); reorderLinesBySection(); const i=S.lines.indexOf(l); renderLines(); quickAddService(i); }
 function quickAddService(i){
   const name=(S.lines[i]?S.lines[i].name:'')||'';
   const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct'];
   const cu=(S.firm&&S.firm.automations&&S.firm.automations.units)||[]; const units=Array.from(new Set(base.concat(cu)));
+  const cats=Array.from(new Set((S.catalog||[]).map(c=>c.cat).filter(Boolean)));
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Adaugă în catalog</h3><div id="qa-msg" style="color:var(--red);font-size:.82rem"></div>'
     +'<div class="field"><label>Tip</label><select id="qa-type"><option value="service">🧰 Serviciu / manoperă</option><option value="material">📦 Material</option></select></div>'
     +'<div class="field"><label>Denumire *</label><input id="qa-name" value="'+esc(name)+'"/></div>'
     +'<div class="row2"><div class="field"><label>UM</label><input id="qa-unit" list="qa-units" onfocus="umFx(this)" onblur="umBl(this)" value="buc"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div><div class="field"><label>Preț (MDL)</label><input id="qa-price" type="number" step="any" value="0"/></div></div>'
+    +'<div class="field"><label>Categorie</label><input id="qa-category" list="qa-cats" placeholder="ex. Zidărie, Finisaje"/><datalist id="qa-cats">'+cats.map(c=>'<option value="'+esc(c)+'"></option>').join('')+'</datalist></div>'
+    +'<div class="field"><label>Descriere</label><textarea id="qa-desc" rows="2" placeholder="Ce este, specificații, de ce a fost ales"></textarea></div>'
+    +'<div class="field"><label>Poză (opțional)</label><input id="qa-photo" type="file" accept="image/*"/></div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Codul intern (SKU) se generează automat. Furnizorii, magazinele și prețul de achiziție se completează în modulul Catalog.</div>'
     +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="qa-save" onclick="saveQuickService('+i+')">Creează și adaugă</button></div></div></div>';
   setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
 }
@@ -717,19 +792,28 @@ async function sendOfferPortal(){
 async function saveQuickService(i){
   const name=($('qa-name').value||'').trim(); if(!name){ $('qa-msg').textContent='Denumirea e obligatorie.'; return; }
   const type=$('qa-type').value, unit=($('qa-unit').value||'buc').trim(), price=+$('qa-price').value||0;
+  const cat=($('qa-category')&&$('qa-category').value||'').trim();
+  const desc=($('qa-desc')&&$('qa-desc').value||'').trim();
+  const pf=$('qa-photo'); const file=(pf&&pf.files&&pf.files[0])||null;
   const vat=(S.firm.vat_rate!=null?S.firm.vat_rate:20); const btn=$('qa-save'); if(btn) btn.disabled=true;
+  let photo=null;
   try{
-    const tid=S.tenant||(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
-    let ins;
-    if(type==='material') ins=await sb.from('materials').insert({tenant_id:tid,name,unit,last_price:price,vat_rate:vat}).select('id,name,unit,last_price,vat_rate').single();
-    else ins=await sb.from('services').insert({tenant_id:tid,name,unit,price,vat_rate:vat}).select('id,name,unit,price,vat_rate').single();
-    if(ins.error) throw ins.error;
-    const d=ins.data, p=(type==='material'?+d.last_price:+d.price);
-    S.catalog.unshift({src:type,icon:(type==='material'?'📦':'🧰'),name:d.name,unit:d.unit,price:p,vat:+d.vat_rate,kind:type});
+    if(file){ $('qa-msg').textContent='Se încarcă poza…'; photo=await catalogPhotoUp(file,'cat'); $('qa-msg').textContent=''; }
+    const payload={ name, unit, category:cat||null, description:desc||null, photo_url:photo, vat_rate:vat };
+    if(type==='material') payload.last_price=price; else payload.price=price;
+    let res;
+    try{ res=await catalogCreate(type, payload); }
+    catch(err){ if(photo){ try{ await sb.storage.from('docs').remove([photo]); }catch(_){} } throw err; }
+    const d=res.row, p=(type==='material'?+d.last_price:+d.price)||0;
+    S.catalog.unshift({src:type,id:d.id,icon:(type==='material'?'📦':'🧰'),name:d.name,unit:d.unit,price:p,vat:+d.vat_rate,kind:type,desc:d.description||'',photo:d.photo_url||null,cat:d.category||''});
     let l=S.lines[i]; if(!l){ S.lines.push(blankLine()); l=S.lines[S.lines.length-1]; }
+    // linia primește valorile CANONICE întoarse de server, plus legătura persistentă
     l.name=d.name; l.unit=d.unit; l.unit_price=p; l.vat_rate=+d.vat_rate; l.kind=type; l.norm_code=null;
-    closeM(); toast('✅ Adăugat în catalog și pe ofertă.'); renderLines(); renderSummary(); renderBOM();
-  }catch(e){ if(btn) btn.disabled=false; $('qa-msg').textContent=(typeof isNetErr==='function'&&isNetErr(e))?'Conexiune slabă — încearcă din nou.':('Eroare: '+(e.message||e)); }
+    if(d.description && !l.description) l.description=d.description;
+    if(d.photo_url && !l.photo_url) l.photo_url=d.photo_url;
+    l.cat_id=d.id; l.cat_src=type; l._catName=d.name; l._catPrice=p; l._catUnit=d.unit; l._catDesc=d.description||''; l._catPhoto=d.photo_url||null;
+    closeM(); toast('✅ Adăugat în catalog ('+(res.sku||'fără cod')+') și pe ofertă.'); renderLines(); renderSummary(); renderBOM();
+  }catch(e){ if(btn) btn.disabled=false; $('qa-msg').textContent=catalogErrMsg(e); }
 }
 function newClient(){
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Client nou</h3><div id="nc-msg" style="color:var(--red);font-size:.82rem"></div>'
@@ -818,7 +902,11 @@ async function save(thenPdf){
   try{
     // Salvare ATOMICĂ (migr 0117): antet + toate pozițiile într-o SINGURĂ tranzacție (RPC save_estimate),
     // cu optimistic concurrency pe updated_at — fereastra „zero poziții" a vechiului delete+insert dispare.
-    const items=valid.map(l=>({kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,description:l.description||null,photo_url:l.photo_url||null}));
+    // Legătura la catalog (migr 0127) merge în aceeași tranzacție. Linia își
+    // păstrează snapshotul propriu — legătura NU transformă documentul într-o
+    // vedere dinamică: prețul și denumirea rămân cele folosite în acest deviz.
+    const items=valid.map(l=>({kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,description:l.description||null,photo_url:l.photo_url||null,
+      material_id:(l.cat_src==='material'?(l.cat_id||null):null), service_id:(l.cat_src==='service'?(l.cat_id||null):null)}));
     const r=await sb.rpc('save_estimate',{ p_document_id:S.id||null, p_tenant_id:tid, p_document:rec, p_items:items,
       p_expected_updated_at:S._updatedAt||null, p_number_manual:(S.id?true:!!((S.est.number||'')&&S.est.number!==S._autoNum)) });
     if(r.error) throw r.error;

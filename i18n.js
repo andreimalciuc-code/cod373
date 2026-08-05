@@ -167,6 +167,18 @@
     /* Coș de gunoi — refuzul la ȘTERGERE, mesaj propriu (Lotul 0B3B3H, migrarea 0125) */
     'Nu ai dreptul să ștergi acest element.':{ru:'У вас нет прав удалять этот элемент.',de:'Sie dürfen dieses Element nicht löschen.',en:'You are not allowed to delete this item.'},
     'Înregistrarea nu mai există.':{ru:'Записи больше не существует.',de:'Der Datensatz existiert nicht mehr.',en:'The record no longer exists.'},
+    /* Catalog creat din Deviz (migrarea 0127, Lotul 0C1) */
+    'Codul intern (SKU) este deja folosit de alt element din catalog.':{ru:'Внутренний код (SKU) уже используется другим элементом каталога.',de:'Die interne Nummer (SKU) wird bereits von einem anderen Katalogeintrag verwendet.',en:'The internal code (SKU) is already used by another catalogue item.'},
+    'Nu ai dreptul să adaugi elemente în catalog.':{ru:'У вас нет прав добавлять элементы в каталог.',de:'Sie dürfen keine Einträge im Katalog anlegen.',en:'You are not allowed to add items to the catalogue.'},
+    'S-au epuizat codurile automate. Scrie un cod manual.':{ru:'Автоматические коды закончились. Введите код вручную.',de:'Die automatischen Nummern sind aufgebraucht. Bitte eine Nummer manuell eingeben.',en:'Automatic codes are exhausted. Enter a code manually.'},
+    'Un furnizor sau magazin ales nu mai există sau nu aparține firmei tale.':{ru:'Выбранный поставщик или магазин больше не существует или не принадлежит вашей компании.',de:'Ein gewählter Lieferant oder Markt existiert nicht mehr oder gehört nicht zu Ihrer Firma.',en:'A selected supplier or store no longer exists or does not belong to your company.'},
+    'Categorie':{ru:'Категория',de:'Kategorie',en:'Category'},
+    'Descriere':{ru:'Описание',de:'Beschreibung',en:'Description'},
+    'Poză (opțional)':{ru:'Фото (необязательно)',de:'Foto (optional)',en:'Photo (optional)'},
+    'Codul intern (SKU) se generează automat. Furnizorii, magazinele și prețul de achiziție se completează în modulul Catalog.':{ru:'Внутренний код (SKU) создаётся автоматически. Поставщики, магазины и закупочная цена заполняются в модуле «Каталог».',de:'Die interne Nummer (SKU) wird automatisch erzeugt. Lieferanten, Märkte und Einkaufspreis werden im Modul Katalog erfasst.',en:'The internal code (SKU) is generated automatically. Suppliers, stores and purchase price are filled in the Catalogue module.'},
+    'Actualizarea va schimba în catalog:':{ru:'Обновление изменит в каталоге:',de:'Die Aktualisierung ändert im Katalog:',en:'The update will change in the catalogue:'},
+    'Poza nu s-a încărcat: ':{ru:'Фото не загружено: ',de:'Das Foto wurde nicht hochgeladen: ',en:'The photo was not uploaded: '},
+    'Ce este, specificații, de ce a fost ales':{ru:'Что это, характеристики, почему выбрано',de:'Was es ist, Spezifikationen, warum gewählt',en:'What it is, specifications, why it was chosen'},
     /* Mutații atomice pe colecțiile-copil (migrarea 0126, Lotul 0B3B3I).
        „Înregistrarea nu mai există." e deja tradusă mai sus. */
     'Lista a fost modificată între timp (alt tab sau alt coleg). Redeschide și încearcă din nou.':{ru:'Список тем временем изменили (другая вкладка или коллега). Откройте заново и повторите.',de:'Die Liste wurde inzwischen geändert (anderer Tab oder Kollege). Erneut öffnen und noch einmal versuchen.',en:'The list was changed in the meantime (another tab or colleague). Reopen it and try again.'},

@@ -7679,6 +7679,46 @@ async function childRpc(fn, args){
   }
   const err=new Error(childErrMsg(last)); err.child=true; throw err;
 }
+/* ── Catalog: o singură cale de creare, server-side (migrarea 0127) ─────────
+   Înainte, materialele și serviciile se inserau direct din trei locuri diferite,
+   fiecare cu alt subset de câmpuri, iar codul intern se genera în client cu
+   `count(*) + 1` — care coboară sub maximul atribuit după orice ștergere și
+   producea coduri duplicate. Acum: un singur RPC, cod generat pe server sub
+   blocaj, duplicate refuzate de un trigger pe ambele tabele, cerere idempotentă. */
+const CATALOG_KIND={ materiale:'material', servicii:'service' };
+const CATALOG_ERR={
+  CATALOG_SKU_DUPLICATE:    'Codul intern (SKU) este deja folosit de alt element din catalog.',
+  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi elemente în catalog.',
+  CATALOG_INVALID_INPUT:    'Datele trimise nu sunt valide.',
+  CATALOG_DEPENDENCY_MISSING:'Un furnizor sau magazin ales nu mai există sau nu aparține firmei tale.',
+  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.'
+};
+function catalogErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in CATALOG_ERR){ if(m.indexOf(k)>=0) return CATALOG_ERR[k]; }
+  return isNetErr(e)?netMsg():(m||'Eroare la salvare.'); }
+let _catBusy=null;
+async function catalogCreate(kind, payload){
+  // Dublu clic REAL: a doua apelare nu pornește o cerere nouă, ci așteaptă
+  // rezultatul primei. `request_id` singur nu ajută aici — două apeluri
+  // independente ar avea două ID-uri diferite și ar crea două rânduri.
+  // Formularul de catalog e modal, deci nu există două creări legitime simultan.
+  if(_catBusy) return _catBusy;
+  _catBusy=catalogCreateOnce(kind, payload);
+  try{ return await _catBusy; } finally { _catBusy=null; }
+}
+async function catalogCreateOnce(kind, payload){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body={ p_tenant_id:state.tenant, p_kind:kind, p_payload:payload, p_request_id:rid };
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc('catalog_item_create', body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!isNetErr(r.error) || i===2) break;   // se reîncearcă DOAR erorile de rețea, cu ACELAȘI request_id
+    await new Promise(s=>setTimeout(s,600*(i+1)));
+  }
+  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+}
 async function saveQc(){
   const q=QUICK[window._qcKey]; const rec={tenant_id:state.tenant};
   for(const f of q.fields){ const v=($('qc-'+f.k).value||'').trim(); if(f.req&&!v){ showMsg('qc-msg','Completează „'+f.l+'".'); return; } if(v) rec[f.k]=v; }
@@ -7881,7 +7921,12 @@ async function openForm(key,row,preset){
     const msg=$('form-msg'); if(msg) msg.insertAdjacentHTML('beforebegin','<div id="draft-banner" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Ai un formular neterminat de data trecută — l-am completat înapoi. Continuă sau apasă „Renunță" ca să începi gol.</span><button class="btn-ghost" style="padding:.2rem .5rem;white-space:nowrap" onclick="fdraftDiscard()">🗑 Renunță</button></div>');
   }}
   // SKU generat automat (doar la adăugare, dacă e gol)
-  if(!row && m.autoCode){ const el=$('f-'+m.autoCode.field); if(el && !el.value){ try{ const { count }=await sb.from(m.table).select('id',{count:'exact',head:true}); el.value=m.autoCode.prefix+'-'+String((count||0)+1).padStart(4,'0'); }catch(e){} } }
+  // Codul propus vine de la server: pornește de la MAXIMUL real și sare peste
+  // codurile ocupate. Vechiul `count(*)+1` cobora sub maxim după fiecare ștergere
+  // și producea coduri duplicate (vezi KNOWN_BUGS #33). Rămâne doar o propunere —
+  // utilizatorul îl poate schimba, iar serverul refuză duplicatele oricum.
+  if(!row && m.autoCode && CATALOG_KIND[key]){ const el=$('f-'+m.autoCode.field);
+    if(el && !el.value){ try{ const r=await sb.rpc('catalog_next_sku',{p_tenant_id:state.tenant,p_kind:CATALOG_KIND[key]}); if(!r.error && r.data) el.value=r.data; }catch(e){} } }
   const mb=document.querySelector('.modal-body'); if(mb) mb.addEventListener('input',function(){ clearTimeout(window._fdt); window._fdt=setTimeout(fdraftSave,500); });
   // Șantier nou: pre-completează „Adresă" din „Denumire" (până când editezi manual adresa)
   if(!row && key==='santiere'){ const nm=$('f-name'), ad=$('f-address');
@@ -8384,6 +8429,13 @@ async function saveRecord(){
       const { error } = await sb.from(m.table).update(payload).eq('id',formCtx.id);
       if(error) throw error;
       if(m.lineItems){ await sb.from(m.lineItems.table).delete().eq(m.lineItems.parentKey,formCtx.id); }
+    } else if(CATALOG_KIND[key]){
+      // Materialele și serviciile se creează EXCLUSIV prin contractul canonic
+      // (migrarea 0127): codul se generează server-side, duplicatele sunt refuzate,
+      // iar cererea e idempotentă — un dublu clic nu mai poate crea două rânduri.
+      const p={}; Object.keys(payload).forEach(k=>{ if(k!=='tenant_id') p[k]=payload[k]; });
+      const res=await catalogCreate(CATALOG_KIND[key], p);
+      parentId=res.id; formCtx._newSku=res.sku;
     } else {
       const { data, error } = await sb.from(m.table).insert(payload).select('id').single();
       if(error) throw error; parentId=data.id;
