@@ -1291,14 +1291,19 @@ function TR(k){ return (UI[k]&&UI[k][LANG])||(UI[k]&&UI[k].ro)||k; }
 /* acces pe roluri */
 const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi','postcalc','restante','reconciliere'];
 const FINANCE_ROLES=['owner','admin','accountant','manager'];
-const ADMIN_KEYS=['utilizatori','setari'];
+/* `calitate` e strict owner/admin și NEacordabil prin `perms` (Lotul 0C1C):
+   ecranul enumeră tot catalogul cu utilizări și propuneri de cod, iar acțiunile
+   pornesc din el. Baza impune aceeași limită independent (`catq_guard` = ADMIN
+   din migrarea 0131), deci o bifă dată din greșeală în interfață nu deschide
+   nimic — RLS-ul rămâne autoritatea finală. */
+const ADMIN_KEYS=['utilizatori','setari','calitate'];
 const ADMIN_ROLES=['owner','admin'];
 /* Module „rezervate proprietarului": implicit invizibile pentru oricine NU e proprietar;
    devin vizibile DOAR dacă proprietarul le bifează explicit în permisiuni. */
 const OWNER_GATED_KEYS=['setari','seif','pontajsim'];
 /* Module „rezervate administratorului": implicit vizibile DOAR pentru owner/admin;
    pot fi acordate explicit altui membru prin permisiuni (bifează modulul). */
-const ADMIN_GATED_KEYS=['documente','cos','calitate'];
+const ADMIN_GATED_KEYS=['documente','cos'];
 const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Lucrător',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
 /* Permisiuni granulare. Codificare in state.perms (text[]):
    - null / gol            -> fara restrictie suplimentara (decide rolul)
@@ -6556,7 +6561,11 @@ async function empLinkPick(empId, uid, email){
 }
 /* modulele care pot fi acordate prin permisiuni (excludem dashboard-ul, mereu vizibil, și
    „Utilizatori & Roluri" — controlat strict prin rol; „Setări" și „Seif" rămân, dar implicit nebifate) */
-function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && k!=='utilizatori'); }
+/* `calitate` nu apare în checklist: e strict owner/admin și NEacordabil, deci o
+   bifă acolo n-ar face nimic — nici în interfață (`canSee` iese pe ramura
+   `ADMIN_KEYS`), nici în bază (`catq_guard` = ADMIN). Un comutator care nu
+   comută nimic e mai rău decât lipsa lui. */
+function permKeys(){ return Object.keys(MODULES).filter(k=>k!=='dashboard' && k!=='utilizatori' && k!=='calitate'); }
 /* daca rolul ar vedea modulul (oglindeste canSee fara stratul perms) */
 /* Ce bifăm IMPLICIT la invitarea unui rol — listă strictă, relevantă fiecăruia (owner/admin = tot, nu trec pe aici).
    Rolurile de teren (lucrător/șofer/subcontractant/client) primesc doar strictul necesar; restul se pot bifa manual. */
