@@ -7612,7 +7612,10 @@ async function recordPreview(key,id){
     let v=r[f.key]; if(v==null||v==='') return '';
     if(f.type==='file'){ return '<div style="display:flex;justify-content:space-between;gap:1rem;padding:.5rem 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted)">'+esc(f.label)+'</span><span style="display:flex;gap:.7rem"><a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">📎 Deschide</a><a onclick="downloadDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">⬇ Descarcă</a></span></div>'; }
     if(f.type==='checkbox') v=v?'Da':'Nu';
-    else if(f.type==='price2'){ const vr=+r.vat_rate||0, incl=priceInclVat(), st=+v||0; let net,gross; if(incl){ gross=st; net=vr?st/(1+vr/100):st; } else { net=st; gross=st*(1+vr/100); } v='fără TVA: '+money(net)+'  ·  cu TVA: '+money(gross); }
+    /* valoarea stocată e mereu netă (D34) — se afișează ambele, în ordinea dată de preferință */
+    else if(f.type==='price2'){ const vr=+r.vat_rate||0, net=+v||0, gross=VATX.gross(net,vr);
+      v=priceInclVat() ? ('cu TVA: '+money(gross)+'  ·  fără TVA: '+money(net))
+                       : ('fără TVA: '+money(net)+'  ·  cu TVA: '+money(gross)); }
     else if(f.type==='ref'){ const o=(refMap[f.ref]||[]).find(o=>String(o.value)===String(v)); if(o) v=o.label; }
     else if(f.type==='select'&&f.options){ const o=f.options.find(o=>String(o.value)===String(v)); if(o) v=o.label; }
     else if(f.type==='number'&&/price|pret|cost/i.test(f.key)) v=money(v);
@@ -7910,7 +7913,7 @@ function srcEdit(sk,i,k,v){ srcRows(sk)[i][k]=v; }
 function renderSrc(sk){ const s=PRICE_SRC[sk]; const el=$(s.mount); if(!el) return; const rows=srcRows(sk); const incl=priceInclVat();
   const opt=sel=>'<option value="">— alege '+s.noun+' —</option>'+(formCtx[s.list]||[]).map(o=>'<option value="'+o.id+'" '+(sel===o.id?'selected':'')+'>'+esc(o.name)+'</option>').join('');
   if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:.82rem;padding:.3rem 0">Niciun '+s.noun+' încă — apasă „＋ adaugă '+s.noun+'".</div>'; return; }
-  let html='<div class="tbl-wrap"><table class="tbl" style="font-size:.82rem"><thead><tr><th>'+s.noun.charAt(0).toUpperCase()+s.noun.slice(1)+'</th><th>Preț '+(incl?'(cu TVA)':'(fără TVA)')+'</th><th></th></tr></thead><tbody>';
+  let html='<div class="tbl-wrap"><table class="tbl" style="font-size:.82rem"><thead><tr><th>'+s.noun.charAt(0).toUpperCase()+s.noun.slice(1)+'</th><th>Preț (fără TVA)</th><th></th></tr></thead><tbody>';
   rows.forEach((r,i)=>{ html+='<tr><td><select onchange="srcEdit(\''+sk+'\','+i+',\'ref_id\',this.value)" style="min-width:170px">'+opt(r.ref_id||'')+'</select></td>'
     +'<td><input type="number" step="any" value="'+esc(r.price)+'" oninput="srcEdit(\''+sk+'\','+i+',\'price\',this.value)" style="width:110px"/></td>'
     +'<td><button class="delx" onclick="srcDel(\''+sk+'\','+i+')" title="Șterge">×</button></td></tr>'; });
@@ -8182,13 +8185,17 @@ async function openForm(key,row,preset){
     else if(f.type==='ref'){ const selHtml='<select id="f-'+f.key+'" style="flex:1"><option value="">— (niciunul) —</option>'+refData[f.key].map(o=>'<option value="'+o.value+'" '+(String(v)===String(o.value)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select>'; body+=qcWrap(f.ref,'f-'+f.key,selHtml); }
     else if(f.type==='photo'){ body+=(v?'<img class="lazimg" data-p="'+encodeURIComponent(v)+'" onclick="openImg(\''+encodeURIComponent(v)+'\')" style="display:block;max-width:100%;max-height:180px;border-radius:9px;border:1px solid var(--line);margin-bottom:.5rem;object-fit:contain;background:var(--bg);cursor:zoom-in">':'')+'<input id="f-'+f.key+'" type="file" accept="image/*"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a înlocui poza.</div>':''); }
     else if(f.type==='file'){ body+=(v?'<div style="margin-bottom:.4rem;display:flex;gap:.8rem"><a onclick="openDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">📎 Deschide</a><a onclick="downloadDoc(\''+encodeURIComponent(v)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">⬇ Descarcă</a></div>':'')+'<input id="f-'+f.key+'" type="file"/>'+(v?'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Încarcă alt fișier pentru a-l înlocui.</div>':''); }
+    /* `price2` — două inputuri sincronizate, dar UN SINGUR adevăr stocat: NETUL.
+       `f-<key>` (câmpul pe care îl citește `fieldValue`) e MEREU cel fără TVA.
+       `prices_incl_vat` schimbă doar ORDINEA și accentul: cu comutatorul pornit,
+       câmpul „cu TVA" apare primul și e cel în care tastezi. Înainte, el primea
+       `id="f-<key>"` și ajungea brut în DB — vezi comentariul de la `lineNetVat`. */
     else if(f.type==='price2'){ const incl=priceInclVat(); const vr=(row&&row.vat_rate!=null)?(+row.vat_rate):20; const stored=(v===''||v==null)?'':+v; let net='',gross='';
-      if(stored!==''){ if(incl){ gross=stored; net=vr?Math.round(stored/(1+vr/100)*100)/100:stored; } else { net=stored; gross=Math.round(stored*(1+vr/100)*100)/100; } }
-      const netId=incl?('f-'+f.key+'-alt'):('f-'+f.key), grossId=incl?('f-'+f.key):('f-'+f.key+'-alt');
-      body+='<div style="display:flex;gap:.6rem">'
-        +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">fără TVA</div><input id="'+netId+'" data-p2="'+f.key+'" data-role="net" type="number" step="any" value="'+esc(net)+'" oninput="price2Sync(\''+f.key+'\',\'net\')"/></div>'
-        +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">cu TVA</div><input id="'+grossId+'" data-p2="'+f.key+'" data-role="gross" type="number" step="any" value="'+esc(gross)+'" oninput="price2Sync(\''+f.key+'\',\'gross\')"/></div>'
-        +'</div>'; }
+      if(stored!==''){ net=stored; gross=VATX.r2(VATX.gross(stored,vr)); }
+      const netBox='<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">'+(incl?'fără TVA (se salvează)':'fără TVA')+'</div><input id="f-'+f.key+'" data-p2="'+f.key+'" data-role="net" type="number" step="any" value="'+esc(net)+'" oninput="price2Sync(\''+f.key+'\',\'net\')"/></div>';
+      const grossBox='<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">cu TVA</div><input id="f-'+f.key+'-alt" data-p2="'+f.key+'" data-role="gross" type="number" step="any" value="'+esc(gross)+'" oninput="price2Sync(\''+f.key+'\',\'gross\')"/></div>';
+      body+='<div style="display:flex;gap:.6rem">'+(incl?(grossBox+netBox):(netBox+grossBox))+'</div>'
+        +'<div style="font-size:.72rem;color:var(--muted);margin-top:.2rem">'+(incl?'Scrii prețul cu TVA; în catalog se păstrează valoarea fără TVA.':'În catalog se păstrează valoarea fără TVA.')+'</div>'; }
     else if(f.type==='unit'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie (ex: buc, m2, kg)')+'" onfocus="umFx(this)" onblur="umBl(this)"/><datalist id="dl-'+f.key+'">'+(UNIT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist>'; }
     else if(f.type==='category'){ body+='<input id="f-'+f.key+'" list="dl-'+f.key+'" value="'+esc(v)+'" placeholder="'+esc(f.placeholder||'alege sau scrie o categorie')+'" onfocus="umFx(this)" onblur="umBl(this)"/><datalist id="dl-'+f.key+'">'+((window.CAT_LIST||[]).map(u=>'<option value="'+esc(u)+'"></option>').join(''))+'</datalist>'; }
     else body+='<input id="f-'+f.key+'" type="'+(f.type==='number'?'number':f.type==='date'?'date':'text')+'" '+(f.step?'step="'+f.step+'"':'')+' value="'+esc(v)+'" '+(f.placeholder?'placeholder="'+esc(f.placeholder)+'"':'')+'/>';
@@ -8661,13 +8668,40 @@ async function stageDropPhoto(stageId, siteId, idx){
 }
 
 /* line items */
+/* ══ Semantica preț/TVA — sursa unică (KB#39, D34) ═══════════════════════════
+   REGULA CANONICĂ: în baza de date, orice preț este NET (fără TVA) —
+   `materials.last_price`, `services.price`, `services.cost_price`,
+   `estimate_items.unit_price`, `invoice_items.unit_price`, prețurile pe
+   furnizor/magazin.
+
+   `prices_incl_vat` e o preferință de INTRODUCERE și AFIȘARE, nu o schimbare de
+   semantică a coloanei. Înainte, cu comutatorul pornit, `price2` salva valoarea
+   BRUTĂ în ACEEAȘI coloană în care o salva netă cu comutatorul oprit (vezi
+   `netId`/`grossId` din `openForm`), iar `lineNetVat` o recitea ca brută — în
+   timp ce `deviz.html` și `factura.html` o citeau MEREU ca netă. Aceeași coloană
+   avea două înțelesuri, iar activarea setării ar fi dublat TVA-ul în documente.
+   Consecință dispărută odată cu regula: schimbarea cotei de TVA nu mai poate
+   modifica tăcut prețul stocat, pentru că brutul nu mai e valoarea autoritară.
+
+   Rotunjire — regula existentă a proiectului, păstrată deliberat: calculele
+   intermediare rulează la precizia completă a lui `Number`; rotunjirea la 2
+   zecimale se face DOAR la afișare și la valorile scrise înapoi într-un câmp.
+   Totalul e rotunjirea sumei, nu suma rotunjirilor. */
+const VATX = {
+  r2(n){ return Math.round((+n||0)*100)/100; },
+  gross(net, rate){ return (+net||0)*(1+(+rate||0)/100); },
+  net(gross, rate){ const r=+rate||0; return r ? (+gross||0)/(1+r/100) : (+gross||0); },
+  vat(net, rate){ return (+net||0)*(+rate||0)/100; }
+};
 function priceInclVat(){ return !!(state.firm&&state.firm.automations&&state.firm.automations.prices_incl_vat); }
-function lineNetVat(l){ const q=+l.qty||0,p=+l.unit_price||0,vr=+l.vat_rate||0,g=q*p; if(priceInclVat()){ const n=vr?g/(1+vr/100):g; return {net:n,vat:g-n,gross:g}; } return {net:g,vat:g*vr/100,gross:g*(1+vr/100)}; }
+/* `unit_price` e ÎNTOTDEAUNA net, indiferent de `prices_incl_vat`. */
+function lineNetVat(l){ const q=+l.qty||0,p=+l.unit_price||0,vr=+l.vat_rate||0,g=q*p;
+  return {net:g, vat:VATX.vat(g,vr), gross:VATX.gross(g,vr)}; }
 function renderLines(){
   const el=$('lines-mount'); if(!el) return;
   let sub=0,vat=0; const incl=priceInclVat();
   formCtx.lines.forEach(l=>{ const c=lineNetVat(l); sub+=c.net; vat+=c.vat; });
-  el.innerHTML='<div class="lines"><table><thead><tr><th>Denumire</th><th>Cant.</th><th>UM</th><th>Preț'+(incl?' <small style="font-weight:400">(cu TVA)</small>':'')+'</th><th>TVA%</th><th class="r">Total</th><th></th></tr></thead><tbody>'
+  el.innerHTML='<div class="lines"><table><thead><tr><th>Denumire</th><th>Cant.</th><th>UM</th><th>Preț <small style="font-weight:400">(fără TVA)</small></th><th>TVA%</th><th class="r">Total</th><th></th></tr></thead><tbody>'
     +formCtx.lines.map((l,i)=>'<tr>'
       +'<td class="li-name"><input value="'+esc(l.name)+'" oninput="lineEdit('+i+',\'name\',this.value)"/></td>'
       +'<td><input type="number" step="any" style="width:70px" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
@@ -8680,7 +8714,9 @@ function renderLines(){
   if(formCtx.bom && $('form-bom')) $('form-bom').innerHTML=bomTable(formCtx.lines);
 }
 function lineSetTotal(i,v){ const l=formCtx.lines[i]; if(!l) return; const q=+l.qty||0, gross=+v||0, vr=+l.vat_rate||0;
-  if(q>0){ if(priceInclVat()) l.unit_price=Math.round(gross/q*100)/100; else l.unit_price=Math.round(gross/(q*(1+vr/100))*100)/100; }
+  /* utilizatorul scrie TOTALUL CU TVA; `unit_price` rămâne net, deci se scoate
+     mereu TVA-ul — nu mai depinde de `prices_incl_vat` */
+  if(q>0){ l.unit_price = VATX.r2(VATX.net(gross, vr)/q); }
   renderLines(); }
 function addLine(){ formCtx.lines.push({name:'',qty:1,unit:'buc',unit_price:0,vat_rate:20}); renderLines(); }
 function delLine(i){ formCtx.lines.splice(i,1); if(!formCtx.lines.length) addLine(); else renderLines(); }

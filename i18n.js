@@ -2782,6 +2782,11 @@
     'Semnarea poate fi înregistrată.':{ru:'Подпись, возможно, сохранена.',de:'Die Unterschrift wurde möglicherweise gespeichert.',en:'The signature may have been recorded.'},
     'Încasarea a fost înregistrată.':{ru:'Оплата зарегистрирована.',de:'Die Zahlung wurde erfasst.',en:'The payment was recorded.'},
     'Încasarea poate fi înregistrată.':{ru:'Оплата, возможно, зарегистрирована.',de:'Die Zahlung wurde möglicherweise erfasst.',en:'The payment may have been recorded.'},
+    /* KB#39 / D34 — semantica preț/TVA */
+    'fără TVA (se salvează)':{ru:'без НДС (сохраняется)',de:'ohne MwSt. (wird gespeichert)',en:'excl. VAT (this is saved)'},
+    'În catalog se păstrează valoarea fără TVA.':{ru:'В каталоге сохраняется значение без НДС.',de:'Im Katalog wird der Wert ohne MwSt. gespeichert.',en:'The catalogue stores the value excluding VAT.'},
+    'Scrii prețul cu TVA; în catalog se păstrează valoarea fără TVA.':{ru:'Вы вводите цену с НДС; в каталоге сохраняется значение без НДС.',de:'Sie geben den Preis mit MwSt. ein; im Katalog wird der Wert ohne MwSt. gespeichert.',en:'You enter the price including VAT; the catalogue stores the value excluding VAT.'},
+    'Preț (fără TVA)':{ru:'Цена (без НДС)',de:'Preis (ohne MwSt.)',en:'Price (excl. VAT)'},
     /* Lotul 0C1B — Calitatea catalogului */
     'Calitatea catalogului':{ru:'Качество каталога',de:'Katalogqualität',en:'Catalogue quality'},
     'Coduri interne, câmpuri lipsă și coduri duplicate în Materiale și Servicii.':{ru:'Внутренние коды, отсутствующие поля и дублирующиеся коды в Материалах и Услугах.',de:'Interne Codes, fehlende Felder und doppelte Codes in Materialien und Leistungen.',en:'Internal codes, missing fields and duplicate codes in Materials and Services.'},
