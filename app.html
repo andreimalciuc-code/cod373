@@ -88,7 +88,7 @@
   .company-info{flex:1;min-width:0}
   .company-info .cn{font-weight:600;color:#fff;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .company-info .cp{font-size:.7rem;color:#7e8aa6;text-transform:capitalize}
-  .nav-group{padding:.8rem .9rem .3rem;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5c6986}
+  .nav-group{padding:.8rem .9rem .3rem;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8e9ab5}
   .nav{flex:1;overflow-y:auto;padding-bottom:1rem}
   .nav-item{display:flex;align-items:center;gap:.75rem;padding:.6rem .9rem;margin:.1rem .6rem;border-radius:9px;cursor:pointer;color:#aeb9d2;font-weight:500;transition:all .15s;font-size:.9rem}
   .nav-item:hover{background:var(--sidebar-hover);color:#fff}
@@ -115,17 +115,60 @@
   .crm-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.12)}
   .plhol{background:var(--red-soft)!important}
   .plday.plhol{color:var(--red)}
-  .nav-grip{flex-shrink:0;opacity:0;cursor:grab;font-size:.9rem;color:#7e8aa6;transition:opacity .15s}
-  .nav-item:hover .nav-grip{opacity:.65}
-  .nav-item.navdrop{box-shadow:inset 0 2px 0 var(--primary)}
-  .nav-item[draggable=true]{user-select:none}
+  .nav-grip{flex-shrink:0;opacity:0;cursor:grab;font-size:.9rem;color:#7e8aa6;transition:opacity .15s;padding-right:.5rem}
+  .nav-row:hover .nav-grip{opacity:.65}
+  .navdrop{box-shadow:inset 0 2px 0 var(--primary)}
+  .nav-row[draggable=true]{user-select:none}
+  /* ════ UX1 — spații de lucru (workspace-uri) ════
+     `.nav-item` rămâne cheia de stil și de selecție (go/curModuleKey/navDrop o citesc);
+     s-a schimbat DOAR eticheta de element: <div onclick> → <button>, ca meniul să fie
+     operabil de la tastatură și anunțat corect de cititoarele de ecran. */
+  .nav-row{position:relative;display:flex;align-items:center}
+  .nav-item{flex:1;min-width:0;background:none;border:none;font-family:inherit;text-align:left}
+  .nav-lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nav-fav{flex-shrink:0;background:none;border:none;cursor:pointer;font-size:.82rem;line-height:1;
+           padding:.35rem .3rem;color:#5c6986;opacity:0;transition:opacity .15s,color .15s}
+  .nav-row:hover .nav-fav,.nav-fav:focus-visible{opacity:1}
+  .nav-fav.on{opacity:1;color:#f5b544}
+  .nav-fav:hover{color:#f5b544}
+  .ws{margin:.1rem 0}
+  .ws-head{width:100%;display:flex;align-items:center;gap:.6rem;padding:.55rem .9rem;margin:.1rem .6rem;
+           width:calc(100% - 1.2rem);background:none;border:none;border-radius:9px;cursor:pointer;
+           font-family:inherit;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+           color:#8e9ab5;transition:background .15s,color .15s}
+  .ws-head:hover{background:var(--sidebar-hover);color:#dbe3f2}
+  .ws-cur>.ws-head{color:#dbe3f2}
+  .ws-ic{font-size:.95rem;flex-shrink:0}
+  .ws-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+  .ws-n{font-size:.66rem;font-weight:600;letter-spacing:0;color:#6f7c99;background:var(--sidebar-hover);
+        border-radius:20px;padding:.05rem .38rem;flex-shrink:0}
+  .ws-chev{font-size:.7rem;opacity:.75;flex-shrink:0}
+  .ws-cur{box-shadow:inset 2px 0 0 var(--primary)}
+  .ws-panel{padding-bottom:.25rem}
+  .nav-search{width:calc(100% - 1.2rem);margin:.3rem .6rem .5rem;padding:.55rem .7rem;border:1px solid var(--sidebar-hover);
+              border-radius:9px;background:none;color:#aeb9d2;cursor:pointer;display:flex;align-items:center;gap:.5rem;
+              font-size:.85rem;font-family:inherit}
+  .nav-search:hover{background:var(--sidebar-hover);color:#fff}
+  .nav-kbd{font-size:.68rem;opacity:.6;border:1px solid currentColor;border-radius:5px;padding:0 .3rem}
+  .nav-reset{background:none;border:none;color:inherit;cursor:pointer;font-weight:400;font-size:.78rem;opacity:.7;font-family:inherit}
+  /* Firul Ariadnei */
+  .crumb{display:flex;align-items:center;gap:.35rem;font-size:.72rem;font-weight:600;margin-bottom:.15rem}
+  .crumb[hidden]{display:none}
+  .crumb-ws{background:none;border:none;padding:0;cursor:pointer;font:inherit;color:var(--primary);white-space:nowrap}
+  .crumb-ws:hover{text-decoration:underline}
+  .crumb-sep{color:var(--muted)}
+  .crumb-cur{color:var(--muted);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* UX1 — focus vizibil. Înainte nu exista NICIUN `:focus-visible` în tot fișierul,
+     dar `outline:none` apărea în 11 locuri: navigarea de la tastatură era invizibilă. */
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+  .sidebar :focus-visible{outline-color:#7aa2ff}
 
   .main{display:flex;flex-direction:column;min-width:0}
-  .topbar{background:var(--surface);border-bottom:1px solid var(--line);padding:.85rem 1.6rem;display:flex;align-items:center;gap:1.2rem;position:sticky;top:0;z-index:20}
+  .topbar{background:var(--surface);border-bottom:1px solid var(--line);padding:.85rem 1.6rem;display:flex;align-items:center;gap:1.2rem;position:sticky;top:0;z-index:20;flex-wrap:wrap}
   .menu-toggle{display:none;background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text)}
-  .page-title{font-size:1.15rem;font-weight:700}
+  .page-title{font-size:1.15rem;font-weight:700;min-width:0;flex:1 1 auto}
   .page-title small{display:block;font-size:.75rem;font-weight:400;color:var(--muted);margin-top:.1rem}
-  .top-actions{margin-left:auto;display:flex;align-items:center;gap:.6rem}
+  .top-actions{margin-left:auto;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
   .user-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#2f6bff,#7aa5ff);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
   .btn-ghost{background:var(--surface);border:1px solid var(--line);color:var(--text);padding:.5rem .9rem;border-radius:9px;font-weight:600;font-size:.82rem;cursor:pointer}
   .btn-ghost:hover{background:var(--bg)}
@@ -361,8 +404,8 @@
 
   <div class="main">
     <header class="topbar">
-      <button class="menu-toggle" onclick="openNav()">☰</button>
-      <div class="page-title"><span id="ptitle">Tablou de bord</span><small id="psub"></small></div>
+      <button class="menu-toggle" onclick="openNav()" aria-controls="nav" aria-expanded="false" aria-label="Meniu">☰</button>
+      <div class="page-title"><nav id="crumb" class="crumb" aria-label="Firul Ariadnei" hidden></nav><span id="ptitle">Tablou de bord</span><small id="psub"></small></div>
       <div class="top-actions">
         <div id="topclock" class="noi18n" onclick="openCalendar()" title="Deschide calendarul (sărbători legale)" style="font-size:.78rem;color:var(--muted);font-weight:600;white-space:nowrap;margin-right:.3rem;cursor:pointer"></div>
         <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
@@ -392,7 +435,7 @@ const SUPABASE_URL = 'https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 
 let sb = null;
-const state = { session:null, tenant:null, role:null };
+const state = { session:null, tenant:null, role:null, view:null };
 function cfgOk(){ return SUPABASE_URL.startsWith('http') && SUPABASE_KEY.startsWith('sb_'); }
 
 /* ════ HELPERS ════ */
@@ -471,8 +514,15 @@ function sortRows(rows,col,asc){
 }
 function showScreen(n){ ['login','signup','onboard','invite'].forEach(s=>{ const el=$('screen-'+s); if(el) el.classList.toggle('hidden',s!==n); }); }
 function hideSplash(){ var s=document.getElementById('splash'); if(!s) return; s.style.opacity='0'; setTimeout(function(){ if(s&&s.parentNode) s.parentNode.removeChild(s); },280); }
-function openNav(){ $('sidebar').classList.add('open'); $('overlay-nav').classList.add('show'); }
-function closeNav(){ $('sidebar').classList.remove('open'); $('overlay-nav').classList.remove('show'); }
+/* UX1: sertarul de pe telefon. ATENȚIE — până în UX1 aici erau DOUĂ funcții globale
+   `openNav`: aceasta și selectorul de navigație GPS (acum `openMapNav`). Declarațiile
+   de funcții se ridică, deci ultima câștiga, iar butonul ☰ apela navigatorul de hartă
+   fără coordonate ⇒ „Coordonate lipsă." și meniul nu se deschidea deloc. Nu redenumi
+   niciuna dintre ele înapoi. */
+function navToggleAria(on){ const b=document.querySelector('.menu-toggle'); if(b) b.setAttribute('aria-expanded', on?'true':'false'); }
+function openNav(){ $('sidebar').classList.add('open'); $('overlay-nav').classList.add('show'); navToggleAria(true);
+  const f=document.querySelector('#nav .ws-head, #nav .nav-item'); if(f) try{ f.focus(); }catch(e){} }
+function closeNav(){ $('sidebar').classList.remove('open'); $('overlay-nav').classList.remove('show'); navToggleAria(false); }
 
 /* status value → label + pill class */
 const STATUS = {
@@ -1248,6 +1298,63 @@ const MODULES = {
       {key:'reply',label:'Răspunsul firmei',type:'textarea'} ] },
 };
 const GROUPS = ['Operațional','Catalog','Finanțe','Echipă','Rapoarte','Altele','Administrare'];
+
+/* ════════════════════════════════════════════════════════════════════════════
+   UX1 — MODELUL DE WORKSPACE-URI (Information Architecture)
+
+   Meniul avea 46 de destinații de nivel unu, grupate în 7 secțiuni crescute
+   organic: `Catalog` amesteca nomenclatorul cu flota și cu furnizorii, `Altele`
+   era un coș de resturi, iar harta stătea în Catalog în timp ce geamănul ei
+   structural (Gantt) stătea în Operațional.
+
+   Aici grupăm NAVIGAȚIA, nu domeniul. Nicio tabelă nu se comasează: Materiale
+   rămâne distinct de Servicii, Clienți de Furnizori, Scule de Vehicule, Facturi
+   de Devize, Angajați de Subcontractori.
+
+   `WS_MODULES` e sursa unică de adevăr și acoperă TOATE cele 55 de chei din
+   MODULES — inclusiv cele 9 `hidden:true`, care nu se randează în meniu, dar
+   trebuie să aibă un workspace ca breadcrumb-ul și deep-linkul să știe unde
+   se află utilizatorul când ajunge la ele din fișa șantierului sau a angajatului.
+   `wsAudit()` (consola) verifică acoperirea 55/55 și absența dublurilor.
+   ════════════════════════════════════════════════════════════════════════════ */
+const WORKSPACES = [
+  { id:'dashboard', icon:'▦',  title:'Tablou de bord' },
+  { id:'santiere',  icon:'🏗️', title:'Șantiere' },
+  { id:'vanzari',   icon:'📈', title:'Vânzări' },
+  { id:'financiar', icon:'🧾', title:'Financiar' },
+  { id:'catalog',   icon:'📦', title:'Catalog' },
+  { id:'achizitii', icon:'🛒', title:'Achiziții' },
+  { id:'personal',  icon:'👷', title:'Personal' },
+  { id:'resurse',   icon:'🛠️', title:'Resurse' },
+  { id:'admin',     icon:'⚙️', title:'Administrare' }
+];
+const WS_MODULES = {
+  dashboard:['dashboard'],
+  santiere :['santiere','previzualizare','gantt','plantafel','livrari','defecte',
+             'jurnal','etape','rfi','modificari','recenzii'],
+  vanzari  :['clienti','devize','calculator','licitatii','emailuri','inbox','programari'],
+  financiar:['facturi','achizitii','restante','platibil','reconciliere','postcalc','situatii'],
+  catalog  :['materiale','servicii','norme','calitate','stoc'],
+  achizitii:['furnizori','magazine','depozite','comenzi'],
+  personal :['angajati','subcontractori','pontaj','concedii','salarii','pontajsim','echipament','ssm'],
+  resurse  :['instrumente','flota','harta','alimentari','carduri_carburant'],
+  admin    :['utilizatori','setari','seif','cos','documente','ghid','cunostinte']
+};
+/* cheie modul → id workspace, construit o singură dată la încărcare */
+const MOD_WS = (function(){ const m={}; for(const w in WS_MODULES) WS_MODULES[w].forEach(k=>{ m[k]=w; }); return m; })();
+function wsOf(key){ return MOD_WS[key]||'admin'; }
+function wsDef(id){ return WORKSPACES.find(w=>w.id===id)||null; }
+/* Verificare de integritate rulabilă din consolă: acoperire 55/55, zero dubluri, zero chei fantomă. */
+function wsAudit(){
+  const all=Object.keys(MODULES), mapped=Object.keys(MOD_WS);
+  const missing=all.filter(k=>!MOD_WS[k]);
+  const ghost=mapped.filter(k=>!MODULES[k]);
+  const flat=[].concat.apply([],WORKSPACES.map(w=>WS_MODULES[w.id]||[]));
+  const dupes=flat.filter((k,i)=>flat.indexOf(k)!==i);
+  const r={modules:all.length,mapped:mapped.length,missing:missing,ghost:ghost,dupes:dupes,
+           ok:(missing.length===0&&ghost.length===0&&dupes.length===0&&all.length===mapped.length)};
+  console.log('[UX1 wsAudit]',r); return r;
+}
 const GROUPS_RU = {'Operațional':'Операционный','Catalog':'Каталог','Finanțe':'Финансы','Echipă':'Команда','Altele':'Другое','Administrare':'Администрирование'};
 const MOD_RU = {
   dashboard:['Панель управления','Обзор по фирме.'], santiere:['Объекты','Проекты фирмы.'],
@@ -1289,7 +1396,15 @@ const UI={
 };
 function TR(k){ return (UI[k]&&UI[k][LANG])||(UI[k]&&UI[k].ro)||k; }
 /* acces pe roluri */
-const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi','postcalc','restante','reconciliere'];
+/* UX1 — `platibil` și `situatii` au fost adăugate pe bază de DOVADĂ, nu de nume:
+   `platibil` („Plăți furnizori") citește EXACT aceeași tabelă ca `achizitii`
+   (`supplier_invoices`), care era deja aici — aceleași date, una gardată, cealaltă nu;
+   `situatii` („Situații de lucrări") stochează `amount`/`percent`/`statement_date`
+   legate de devize, adică decontări pe stadiu, iar grupul lui era deja `Finanțe`.
+   Aceasta e o RESTRÂNGERE de drepturi, nu o lărgire: rolurile de teren nu le mai văd.
+   Clasificarea trebuie să fie corectă independent de faptul că acele roluri sunt
+   momentan redirecționate către `mobil.html` — routingul se poate schimba. */
+const FINANCE_KEYS=['devize','facturi','achizitii','salarii','comenzi','postcalc','restante','reconciliere','platibil','situatii'];
 const FINANCE_ROLES=['owner','admin','accountant','manager'];
 /* `calitate` e strict owner/admin și NEacordabil prin `perms` (Lotul 0C1C):
    ecranul enumeră tot catalogul cu utilizări și propuneri de cod, iar acțiunile
@@ -1300,7 +1415,13 @@ const ADMIN_KEYS=['utilizatori','setari','calitate'];
 const ADMIN_ROLES=['owner','admin'];
 /* Module „rezervate proprietarului": implicit invizibile pentru oricine NU e proprietar;
    devin vizibile DOAR dacă proprietarul le bifează explicit în permisiuni. */
-const OWNER_GATED_KEYS=['setari','seif','pontajsim'];
+/* UX1 (decizie owner 2026-08-07): `setari` a IEȘIT din listă și rămâne doar în
+   `ADMIN_KEYS` ⇒ administratorul poate deschide „Setări firmă". Înainte cheia era în
+   AMBELE liste, iar ramura owner-gated câștiga în `canSee` (ADMIN_KEYS devenea cod
+   mort pentru ea): adminul NU putea intra, deși patru locuri din interfață îi ofereau
+   linkul — inclusiv unul gardat explicit pe `role==='admin'` (socialLinksBar).
+   `seif` și `pontajsim` rămân strict ale proprietarului. */
+const OWNER_GATED_KEYS=['seif','pontajsim'];
 /* Module „rezervate administratorului": implicit vizibile DOAR pentru owner/admin;
    pot fi acordate explicit altui membru prin permisiuni (bifează modulul). */
 const ADMIN_GATED_KEYS=['documente','cos'];
@@ -1323,7 +1444,17 @@ function canDo(key, act){ // act: 'c' | 'u' | 'd'
   return p.includes(key+':'+act);
 }
 function canSee(key){
+  if(!state.role) return false;                         // UX1: fără membership activ, zero module (fail-closed)
   if(state.role==='owner') return true;                 // proprietarul vede tot
+  /* UX1 — Tabloul de bord e ÎNTOTDEAUNA vizibil, așa cum `permKeys()` presupune deja
+     („excludem dashboard-ul, mereu vizibil"). Presupunerea era falsă: `dashboard` nu e
+     în nicio listă specială, deci cădea pe `moduleVisible()`, care cu `perms` ne-nul
+     cere `perms.includes('dashboard')` — iar bifa nu există, deci nimeni nu i-o putea
+     acorda. Orice manager/contabil invitat cu bifele implicite primea 47 de permisiuni
+     fără `dashboard`, iar boot-ul țintea exact `dashboard` ⇒ `#content` nu se scria
+     niciodată: aplicație cromată și goală. Tabloul agregă doar date pe care RLS le
+     filtrează oricum per rol. */
+  if(key==='dashboard') return true;
   if(MODULES[key]&&MODULES[key].ownerOnly) return false; // strict proprietar
   if(OWNER_GATED_KEYS.includes(key)){                    // rezervat proprietarului — doar dacă a fost bifat explicit
     const p=state.perms;
@@ -1497,6 +1628,11 @@ async function boot(){
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); showScreen(location.hash==='#signup'?'signup':'login'); if(location.hash==='#signup'){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} } maybeShowInvite(); hideSplash(); return; }
   state.session = session;
+  /* UX1: din acest punct `czPrefs()` citește cheia legată de utilizator. Preluăm o
+     singură dată preferințele vechi, negrupate, apoi ștergem cheia globală ca al
+     doilea utilizator de pe același calculator să nu le moștenească. Imediat după,
+     reaplicăm tema — primul `applyPrefs()` a rulat înainte să știm cine e. */
+  czAdoptLegacy(); applyPrefs();
   // getSession() dă JWT-ul LOCAL (cache) — nu reflectă o schimbare de email confirmată recent pe server.
   // Cerem userul autoritativ de pe server ca emailul afișat să fie mereu cel real.
   try{ const { data:{ user:_srvUser } }=await sb.auth.getUser(); if(_srvUser && _srvUser.email){ state.session.user=_srvUser; } }catch(e){}
@@ -1532,11 +1668,19 @@ async function boot(){
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
   subLoad();
   loadBirthdays();
-  let _lv; try{ _lv=localStorage.getItem('c373_last_view'); }catch(e){}
+  let _lv; try{ _lv=localStorage.getItem(lvKey()); }catch(e){}
   const _start=(czPrefs().start)||'last';
   let _target='dashboard';
   if(_start==='last'){ if(_lv && MODULES[_lv] && canSee(_lv)) _target=_lv; }
   else if(MODULES[_start] && !MODULES[_start].hidden && canSee(_start)) _target=_start;
+  /* UX1 — un deep-link din URL bate pagina de start și ultima vizualizare.
+     Așa funcționează în sfârșit `app.html#/catalog/materiale` la încărcare, la refresh
+     și după login; și tot așa se repară `#seif`, care înainte era legat exclusiv de
+     `hashchange` (un load cu hash nu declanșează `hashchange`), deși aplicația îi cerea
+     explicit utilizatorului să scrie „#seif" în bara de adrese. */
+  const _deep=wsBootTarget();
+  if(_deep && canSee(_deep)) _target=_deep;
+  window.addEventListener('popstate', wsOnPopState);        // Back / Forward reale
   go(_target);
   startClock();
   hideSplash();
@@ -1596,8 +1740,38 @@ async function demoToReal(){
 
 /* ════ PERSONALIZARE (per utilizator, pe dispozitiv) ════ */
 const PZ_ACCENTS=[['#2f6bff','#e8f0ff','Albastru (implicit)'],['#16b364','#e3f8ee','Verde'],['#7c3aed','#efe7fd','Mov'],['#e11d48','#fde7ec','Roșu'],['#0891b2','#dff5fa','Turcoaz'],['#ea580c','#fdecdf','Portocaliu'],['#0f1c33','#e5e9f2','Bleumarin']];
-function czPrefs(){ try{ return JSON.parse(localStorage.getItem('c373_prefs')||'{}')||{}; }catch(e){ return {}; } }
-function czSave(p){ try{ localStorage.setItem('c373_prefs', JSON.stringify(p)); }catch(e){} }
+/* ════ UX1 — preferințele sunt LEGATE DE UTILIZATOR, nu de browser ════
+   Până în UX1, toate preferințele stăteau într-o singură cheie globală `c373_prefs`.
+   Pe un calculator din birou folosit de două persoane, al doilea utilizator moștenea
+   favoritele, modulele ascunse, ordinea din meniu, spațiile deschise, tema și pagina
+   de start ale primului — și, indirect, afla ce module folosește colegul. Nu e o
+   scurgere de date de business, dar e o scurgere de context și un UX greșit.
+   Acum cheia e `c373_prefs:<user-id>`. Înainte de autentificare (ecranul de login,
+   unde se aplică doar tema) se folosește cheia veche, ca aspectul să nu sară.
+   ATENȚIE: NU memora cheia într-o variabilă la încărcare — `state.session` se
+   completează abia la boot, iar `applyPrefs()` rulează și înainte de asta. */
+function czUid(){ try{ return (state.session&&state.session.user&&state.session.user.id)||''; }catch(e){ return ''; } }
+function czKey(){ const u=czUid(); return u ? ('c373_prefs:'+u) : 'c373_prefs'; }
+function czPrefs(){ try{ return JSON.parse(localStorage.getItem(czKey())||'{}')||{}; }catch(e){ return {}; } }
+function czSave(p){ try{ localStorage.setItem(czKey(), JSON.stringify(p)); }catch(e){} }
+/* Preluare unică a preferințelor vechi, negrupate: primul utilizator care se
+   autentifică după actualizare le moștenește, apoi cheia globală se ȘTERGE — altfel
+   al doilea utilizator de pe același calculator le-ar moșteni la rândul lui.
+   Rulează o singură dată, la boot, după ce sesiunea e cunoscută. */
+function czAdoptLegacy(){
+  try{
+    const u=czUid(); if(!u) return;
+    const scoped='c373_prefs:'+u;
+    if(localStorage.getItem(scoped)!=null) return;          // are deja preferințe proprii
+    const legacy=localStorage.getItem('c373_prefs');
+    if(legacy==null) return;
+    localStorage.setItem(scoped, legacy);
+    localStorage.removeItem('c373_prefs');                  // nimeni altcineva nu le mai moștenește
+  }catch(e){}
+}
+/* Ultima vizualizare e tot stare per utilizator: altfel al doilea utilizator ar porni
+   direct în modulul în care lucra primul. */
+function lvKey(){ const u=czUid(); return u ? ('c373_last_view:'+u) : 'c373_last_view'; }
 function tz(s){ try{ return (window.C373t&&C373t(s))||s; }catch(e){ return s; } }
 function applyPrefs(){
   const p=czPrefs(), b=document.body; if(!b) return;
@@ -1610,29 +1784,182 @@ function applyPrefs(){
   if(p.accent && PZ_ACCENTS[p.accent]){ root.setProperty('--primary',PZ_ACCENTS[p.accent][0]); root.setProperty('--primary-soft',PZ_ACCENTS[p.accent][1]); }
   else { root.removeProperty('--primary'); root.removeProperty('--primary-soft'); }
 }
+/* ════════════════════════════════════════════════════════════════════════════
+   UX1 — RUTARE PE HASH (deep-link, Back/Forward, refresh, bookmark)
+
+   Înainte nu exista rutare: `go()` scria doar `localStorage['c373_last_view']`,
+   `pushState`/`popstate` aveau ZERO apariții, iar Back ieșea din aplicație. Chiar
+   `#seif` — pe care aplicația îl recomandă utilizatorului în text — NU funcționa
+   la încărcare, pentru că era legat exclusiv de `hashchange`, iar un load cu hash
+   nu declanșează `hashchange`.
+
+   Forma rutei: `#/<workspace>/<modul>`. Workspace-ul se DERIVĂ din modul (nu e
+   stare independentă), deci ruta nu poate ajunge niciodată incoerentă. La citire
+   acceptăm și formele scurte `#modul` / `#/modul`, ca linkurile vechi și `#seif`
+   să continue să funcționeze.
+   ════════════════════════════════════════════════════════════════════════════ */
+let _wsHashLock=false;                       // rupe bucla go() → hash → popstate → go()
+let _wsHashReplace=false;                    // true = înlocuiește intrarea din istoric, nu adaugă una
+function wsRouteFor(key){ return (key==='dashboard') ? '#/dashboard' : '#/'+wsOf(key)+'/'+key; }
+function wsKeyFromHash(h){
+  h=String(h||'').replace(/^#/,'');
+  if(!h) return null;
+  if(h.indexOf('access_token=')>=0) return null;      // captura Wialon, nu e rută
+  const parts=h.split('/').filter(Boolean);
+  const last=parts.length?parts[parts.length-1]:'';
+  const k=decodeURIComponent(last).toLowerCase();
+  return (k && MODULES[k]) ? k : null;
+}
+function wsSyncHash(key){
+  if(_wsHashLock) return;
+  const want=wsRouteFor(key);
+  if(location.hash===want) return;
+  _wsHashLock=true;
+  const url=location.pathname+location.search+want;
+  try{ if(_wsHashReplace) history.replaceState(null,'',url); else history.pushState(null,'',url); }
+  catch(e){ try{ location.hash=want; }catch(e2){} }
+  _wsHashReplace=false;
+  _wsHashLock=false;
+}
+/* `document.title` per modul — azi titlul e fix, ceea ce e o problemă reală de
+   accesibilitate: cu 5 taburi deschise nu le poți distinge. */
+function wsSyncTitle(key){
+  const w=wsDef(wsOf(key));
+  /* `mt(key).title` întoarce RO brut (MOD_RU e cod mort din 2026) — traducerea DOM-ului
+     o face observatorul din i18n.js, dar `document.title` NU e în DOM, deci îl trecem
+     explicit prin dicționar. Altfel titlul tabului ar fi pe jumătate tradus. */
+  const mTitle=(typeof C373t==='function')?C373t(mt(key).title):mt(key).title;
+  try{ document.title='Cod373 · '+(w&&w.id!=='dashboard'?tz(w.title)+' › ':'')+mTitle; }catch(e){}
+}
+/* Back / Forward. Ruta e derivată, deci `popstate` înseamnă „du-mă la modulul din URL".
+   Dacă între timp utilizatorul a pierdut accesul (rol schimbat), `go()` aplică garda de
+   rută și îl duce la prima destinație permisă — fără buclă, pentru că ținta e `canSee`. */
+function wsOnPopState(){
+  const k=wsKeyFromHash(location.hash);
+  if(!k || k===state.view) return;
+  _wsHashLock=true; try{ go(k); } finally { _wsHashLock=false; }
+}
+/* Destinația cerută prin URL la ÎNCĂRCARE (rezolvă și `#seif` scris în bara de adrese). */
+function wsBootTarget(){ return wsKeyFromHash(location.hash); }
+
+/* ── UX1: „Recente" — strict chei de modul, niciun conținut comercial ── */
+function wsPushRecent(key){
+  try{
+    const p=czPrefs(); const r=(p.recent||[]).filter(k=>k!==key && MODULES[k]);
+    r.unshift(key); p.recent=r.slice(0,8); czSave(p);
+  }catch(e){}
+}
+
+/* ── UX1: firul Ariadnei „Spațiu de lucru › Modul" ── */
+function wsBreadcrumb(key){
+  const el=$('crumb'); if(!el) return;
+  const w=wsDef(wsOf(key));
+  if(!w || w.id==='dashboard'){ el.innerHTML=''; el.setAttribute('hidden',''); return; }
+  el.removeAttribute('hidden');
+  el.innerHTML='<button type="button" class="crumb-ws" onclick="wsFocus(\''+w.id+'\')" title="'+esc(tz('Deschide spațiul de lucru'))+'">'
+      +'<span aria-hidden="true">'+w.icon+'</span> '+esc(tz(w.title))+'</button>'
+    +'<span class="crumb-sep" aria-hidden="true">›</span>'
+    +'<span class="crumb-cur" aria-current="page">'+esc(mt(key).title)+'</span>';
+}
+/* Clic pe spațiul de lucru din breadcrumb: îl deschide în meniu și mută focusul acolo.
+   Nu „navighează" nicăieri — un spațiu de lucru e un container, nu o destinație. */
+function wsFocus(id){
+  const p=czPrefs(); const m=wsOpenMap(); m[id]=true; p.navOpen=m; czSave(p);
+  buildNav(); openNav();
+  const b=document.querySelector('.ws-head[data-ws="'+id+'"]');
+  if(b){ try{ b.scrollIntoView({block:'nearest'}); }catch(e){} b.focus(); }
+}
+
+/* ── UX1: starea de deschidere a spațiilor de lucru (aceeași cheie localStorage
+      `c373_prefs` care ține deja favs/hidden/order — zero plumbing nou, zero migrare) ── */
+function wsOpenMap(){ const p=czPrefs(); return (p.navOpen&&typeof p.navOpen==='object')?p.navOpen:{}; }
+function wsIsOpen(id){
+  const m=wsOpenMap();
+  if(Object.prototype.hasOwnProperty.call(m,id)) return !!m[id];
+  return id===wsOf(curModuleKey());        // implicit: doar workspace-ul curent e deschis
+}
+function wsToggle(id){
+  const p=czPrefs(); const m=wsOpenMap(); m[id]=!wsIsOpen(id); p.navOpen=m; czSave(p);
+  buildNav();
+  const btn=document.querySelector('.ws-head[data-ws="'+id+'"]'); if(btn) btn.focus();
+}
+/* deschide workspace-ul care conține modulul deschis, ca submodulul activ să fie vizibil */
+function wsOpenFor(key){
+  const id=wsOf(key); if(wsIsOpen(id)) return;
+  const p=czPrefs(); const m=wsOpenMap(); m[id]=true; p.navOpen=m; czSave(p);
+}
+
+/* ── UX1: modulele pe care rolul curent chiar le poate deschide, per workspace ── */
+function wsVisibleKeys(id,prefsHidden){
+  const hid=prefsHidden||[];
+  return (WS_MODULES[id]||[]).filter(k=>MODULES[k] && !MODULES[k].hidden && canSee(k) && hid.indexOf(k)<0);
+}
+
 function buildNav(){
   installHotkeys();
   const p=czPrefs(); const hidden=p.hidden||[]; const order=p.order||[];
+  const cur=curModuleKey();                 // UX1: citit ÎNAINTE de a rescrie #nav (vezi curModuleKey)
   const visible=Object.keys(MODULES).filter(k=>!MODULES[k].hidden && canSee(k) && !hidden.includes(k));
-  let html='<div onclick="openCmdPalette()" title="Ctrl/⌘+K" style="margin:.3rem .6rem .5rem;padding:.55rem .7rem;border:1px solid var(--sidebar-hover);border-radius:9px;color:#aeb9d2;cursor:pointer;display:flex;align-items:center;gap:.5rem;font-size:.85rem">🔎 <span style="flex:1">'+esc(tz('Caută…'))+'</span><span style="font-size:.68rem;opacity:.6;border:1px solid currentColor;border-radius:5px;padding:0 .3rem">⌘K</span></div>';
+  const favs=(p.favs||[]).filter(k=>visible.includes(k));   // citit o SINGURĂ dată, apoi pasat
+  const NIO={favs:favs};
+  let html='<button type="button" class="nav-search" onclick="openCmdPalette()" title="'+esc(tz('Caută sau mergi la…'))+' (Ctrl/⌘+K)" aria-label="'+esc(tz('Caută sau mergi la…'))+'">🔎 <span style="flex:1;text-align:left">'+esc(tz('Caută sau mergi la…'))+'</span><span class="nav-kbd">⌘K</span></button>';
+
   if(order.length){
-    // meniu rearanjat manual de utilizator (listă plată, în ordinea aleasă)
+    /* Modul „meniul tău": utilizatorul și-a rearanjat manual modulele prin glisare.
+       Ordinea lui bate gruparea — nu i-o suprascriem tăcut cu workspace-uri; îi lăsăm
+       lista plată și butonul ↺ de revenire la meniul pe workspace-uri. */
     const ordered=order.filter(k=>visible.includes(k)); visible.forEach(k=>{ if(ordered.indexOf(k)<0) ordered.push(k); });
-    html+='<div class="nav-group" style="display:flex;justify-content:space-between;align-items:center;gap:.4rem">⭐ '+esc(tz('Meniul tău'))+'<span onclick="navResetOrder()" title="'+esc(tz('Revino la meniul grupat'))+'" style="cursor:pointer;font-weight:400;font-size:.78rem;opacity:.7">↺</span></div>';
-    ordered.forEach(k=>{ html+=navItemHTML(k,MODULES[k]); });
+    html+='<div class="nav-group" style="display:flex;justify-content:space-between;align-items:center;gap:.4rem">⭐ '+esc(tz('Meniul tău'))+'<button type="button" class="nav-reset" onclick="navResetOrder()" title="'+esc(tz('Revino la meniul pe spații de lucru'))+'" aria-label="'+esc(tz('Revino la meniul pe spații de lucru'))+'">↺</button></div>';
+    ordered.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
   } else {
-    const favs=(p.favs||[]).filter(k=>visible.includes(k));
-    if(favs.length){ html+='<div class="nav-group">⭐ '+esc(tz('Favorite'))+'</div>'; favs.forEach(k=>{ html+=navItemHTML(k,MODULES[k]); }); }
-    GROUPS.forEach(g=>{
-      const keys=visible.filter(k=>MODULES[k].group===g && favs.indexOf(k)<0);
+    /* Acasă, primul. Tabloul de bord e o destinație unică, nu un container: îl scoatem
+       din acordeon ca să nu ceară două clicuri, și îl punem SUS — sub Favorite/Recente
+       ar arăta ca un element „recent", nu ca pagina de pornire. */
+    if(canSee('dashboard') && !hidden.includes('dashboard')){
+      html+=navItemHTML('dashboard',MODULES.dashboard,{favs:favs,solo:true});
+    }
+    /* ⭐ Favorite — scurtături, NU permisiuni: lista e filtrată prin `visible`, deci dacă
+       accesul dispare, scurtătura dispare odată cu el. */
+    if(favs.length){
+      html+='<div class="nav-group">⭐ '+esc(tz('Favorite'))+'</div>';
+      favs.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
+    }
+    /* 🕘 Recente — maximum 6 destinații, doar chei de modul (niciun conținut comercial). */
+    /* `cur` e exclus deliberat: modulul pe care ești ACUM nu e „recent", e curent —
+       altfel ar apărea de două ori în meniu, ambele evidențiate. */
+    const rec=(p.recent||[]).filter(k=>visible.includes(k) && favs.indexOf(k)<0 && k!=='dashboard' && k!==cur).slice(0,6);
+    if(rec.length){
+      html+='<div class="nav-group">🕘 '+esc(tz('Recente'))+'</div>';
+      rec.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
+    }
+    /* Spații de lucru: unul apare DOAR dacă rolul poate deschide cel puțin un submodul
+       din el. Niciodată un spațiu gol. */
+    WORKSPACES.forEach(w=>{
+      if(w.id==='dashboard') return;                 // deja randat sus, ca intrare directă
+      const keys=wsVisibleKeys(w.id,hidden);
       if(!keys.length) return;
-      html+='<div class="nav-group">'+esc(tg(g))+'</div>';
-      keys.forEach(k=>{ html+=navItemHTML(k,MODULES[k]); });
+      const isCur=(w.id===wsOf(cur));
+      const open=wsIsOpen(w.id);
+      html+='<section class="ws'+(isCur?' ws-cur':'')+'">'
+        +'<button type="button" class="ws-head" data-ws="'+w.id+'" aria-expanded="'+(open?'true':'false')+'" aria-controls="ws-p-'+w.id+'" onclick="wsToggle(\''+w.id+'\')">'
+          +'<span class="ws-ic" aria-hidden="true">'+w.icon+'</span>'
+          +'<span class="ws-t">'+esc(tz(w.title))+'</span>'
+          +'<span class="ws-n" aria-hidden="true">'+keys.length+'</span>'
+          +'<span class="ws-chev" aria-hidden="true">'+(open?'▾':'▸')+'</span>'
+        +'</button>'
+        +'<div class="ws-panel" id="ws-p-'+w.id+'" role="group" aria-label="'+esc(tz(w.title))+'"'+(open?'':' hidden')+'>';
+      keys.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
+      html+='</div></section>';
     });
   }
   html+=socialLinksBar();
   $('nav').innerHTML=html;
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===curModuleKey()));
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    const on=(n.dataset.view===cur);
+    n.classList.toggle('active',on);
+    if(on) n.setAttribute('aria-current','page'); else n.removeAttribute('aria-current');
+  });
+  wsBreadcrumb(cur);
 }
 const SOCIAL_DEFS=[['website','🌐','Site web','https://firma.md'],['facebook','📘','Facebook','https://facebook.com/…'],['instagram','📸','Instagram','https://instagram.com/…'],['tiktok','🎵','TikTok','https://tiktok.com/@…'],['youtube','▶️','YouTube','https://youtube.com/@…'],['linkedin','💼','LinkedIn','https://linkedin.com/company/…'],['x','✖️','X (Twitter)','https://x.com/…']];
 function socialLinksBar(){
@@ -1642,11 +1969,41 @@ function socialLinksBar(){
   if(!items.length){ return (state.role==='owner'||state.role==='admin')? '<div style="margin:.7rem .6rem .3rem;padding-top:.6rem;border-top:1px solid rgba(255,255,255,.08)"><a onclick="go(\'setari\')" class="nav-group" style="cursor:pointer;color:#aeb9d2;display:block">🔗 '+esc(tz('Adaugă site & rețele'))+'</a></div>' : ''; }
   return '<div style="margin:.7rem .6rem .4rem;padding-top:.6rem;border-top:1px solid rgba(255,255,255,.08)"><div class="nav-group" style="margin:0 0 .35rem">🔗 '+esc(tz('Online'))+'</div><div style="display:flex;flex-wrap:wrap;gap:.35rem;padding:0 .3rem">'+items.join('')+'</div></div>';
 }
-function navItemHTML(k,m){ return '<div class="nav-item" data-view="'+k+'" draggable="true" ondragstart="navDragStart(event,\''+k+'\')" ondragover="navDragOver(event,this)" ondragleave="this.classList.remove(\'navdrop\')" ondrop="navDrop(event,\''+k+'\')" ondragend="navDragEnd()" onclick="go(\''+k+'\')"><span class="ic">'+m.icon+'</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(mt(k).title)+'</span><span class="nav-grip" title="'+esc(tz('Trage ca să rearanjezi'))+'">⠿</span></div>'; }
+/* UX1: elementul de meniu devine un <button> real (înainte era `<div onclick>`: fără rol,
+   fără focus, inaccesibil de la tastatură). `data-view`, `onclick="go(k)"` și clasa
+   `.nav-item` rămân identice, deci `go()`, `curModuleKey()` și `navDrop()` nu se schimbă.
+   Glisarea se mută pe rândul-container, ca mânerul ⠿ să fie o zonă de tras reală.
+   `o.favs` se primește din `buildNav` — altfel am citi localStorage de 46 de ori. */
+function navItemHTML(k,m,o){
+  o=o||{};
+  const t=esc(mt(k).title);
+  const isFav=(o.favs||[]).indexOf(k)>-1;
+  const favLbl=esc(isFav?tz('Elimină din favorite'):tz('Adaugă la favorite'));
+  return '<div class="nav-row'+(o.solo?' nav-solo':'')+'" draggable="true"'
+      +' ondragstart="navDragStart(event,\''+k+'\')" ondragover="navDragOver(event,this)"'
+      +' ondragleave="this.classList.remove(\'navdrop\')" ondrop="navDrop(event,\''+k+'\')" ondragend="navDragEnd()">'
+    +'<button type="button" class="nav-item" data-view="'+k+'" onclick="go(\''+k+'\')" title="'+t+'">'
+      +'<span class="ic" aria-hidden="true">'+m.icon+'</span>'
+      +'<span class="nav-lbl">'+t+'</span>'
+    +'</button>'
+    +'<button type="button" class="nav-fav'+(isFav?' on':'')+'" onclick="navTogFav(\''+k+'\')"'
+      +' aria-pressed="'+(isFav?'true':'false')+'" aria-label="'+favLbl+'" title="'+favLbl+'">★</button>'
+    +'<span class="nav-grip" aria-hidden="true" title="'+esc(tz('Trage ca să rearanjezi'))+'">⠿</span>'
+  +'</div>';
+}
+/* Favorit = scurtătură, NU permisiune. `buildNav` filtrează lista prin `visible`, deci
+   dacă accesul la modul dispare, scurtătura dispare odată cu el. */
+function navTogFav(k){
+  const p=czPrefs(); const f=p.favs||[]; const i=f.indexOf(k);
+  if(i>-1) f.splice(i,1); else f.push(k);
+  p.favs=f; czSave(p); buildNav();
+  const b=document.querySelector('.nav-fav[aria-label]'); if(b){} // focusul rămâne pe meniu
+  toast(i>-1 ? '☆ '+tz('Eliminat din favorite') : '⭐ '+tz('Adăugat la favorite'));
+}
 let _navDragKey=null;
 function navDragStart(ev,key){ _navDragKey=key; if(ev.dataTransfer){ ev.dataTransfer.effectAllowed='move'; try{ ev.dataTransfer.setData('text/plain',key); }catch(e){} } }
 function navDragOver(ev,el){ ev.preventDefault(); if(ev.dataTransfer) ev.dataTransfer.dropEffect='move'; if(el&&el.classList) el.classList.add('navdrop'); }
-function navDragEnd(){ _navDragKey=null; document.querySelectorAll('.nav-item.navdrop').forEach(n=>n.classList.remove('navdrop')); }
+function navDragEnd(){ _navDragKey=null; document.querySelectorAll('.navdrop').forEach(n=>n.classList.remove('navdrop')); }
 function navDrop(ev,targetKey){ ev.preventDefault(); ev.stopPropagation(); const from=_navDragKey||((ev.dataTransfer&&ev.dataTransfer.getData('text/plain'))||''); navDragEnd(); if(!from||from===targetKey) return;
   const p=czPrefs(); let cur=Array.from(document.querySelectorAll('#nav .nav-item')).map(n=>n.dataset.view).filter(Boolean);
   cur=cur.filter(k=>k!==from); const ti=cur.indexOf(targetKey); cur.splice(ti<0?cur.length:ti,0,from);
@@ -2482,12 +2839,54 @@ async function inboxBulkArchive(){ const ids=inboxSelIds(); if(!ids.length) retu
   const r=await sb.from('inbound_media').update({status:'archived'}).in('id',ids); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
   toast('🗄️ '+ids.length+' '+tz('arhivate.')); renderInbox(); }
 
+/* UX1 — prima destinație permisă, folosită ca plasă de siguranță de `go()`.
+   Ordinea workspace-urilor, apoi ordinea din WS_MODULES: aterizăm unde ar ateriza
+   privirea utilizatorului în meniu, nu pe o cheie aleasă alfabetic. */
+function firstAllowedKey(){
+  for(const w of WORKSPACES){
+    for(const k of (WS_MODULES[w.id]||[])){
+      if(MODULES[k] && !MODULES[k].hidden && canSee(k)) return k;
+    }
+  }
+  return null;
+}
 function go(key){
   const m=MODULES[key]; if(!m) return;
-  if(!canSee(key)){ toast('🔒 Acces restricționat pentru rolul tău.'); return; }
+  /* UX1 / route guard (Etapa 17): un refuz nu mai lasă ecranul gol.
+     Cazul real: un manager invitat cu bifele implicite primea `perms` fără `dashboard`
+     (nu există bifă pentru el), deci `go('dashboard')` de la boot refuza și `#content`
+     nu se scria NICIODATĂ — aplicație cromată, goală. Acum redirecționăm către prima
+     destinație permisă și spunem de ce. Fără buclă: ținta e garantat `canSee`. */
+  if(!canSee(key)){
+    const alt=firstAllowedKey();
+    if(alt && alt!==key){
+      toast('🔒 '+tz('Nu ai acces la acest modul — te-am dus la')+' „'+mt(alt).title+'".');
+      /* Redirecționarea TREBUIE să se vadă în URL — altfel bara de adrese ar minți
+         („#/admin/seif" în timp ce ești pe Tablou de bord) și un refresh ar reîncerca
+         la nesfârșit o rută interzisă. Ridicăm lacătul pus de `popstate` și ÎNLOCUIM
+         intrarea interzisă din istoric, ca Back să nu se întoarcă în ea. */
+      _wsHashLock=false; _wsHashReplace=true;
+      go(alt); return;
+    }
+    toast('🔒 '+tz('Acces restricționat pentru rolul tău.')); return;
+  }
   if(key!=='seif' && window._vk){ window._vk=null; window._vkItems=null; } // seiful se blochează când pleci din modul
-  try{ localStorage.setItem('c373_last_view', key); }catch(e){}
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));
+  state.view=key;                                   // UX1: ruta curentă, sursă unică de adevăr
+  try{ localStorage.setItem(lvKey(), key); }catch(e){}
+  wsSyncTitle(key);                                 // UX1: NECONDIȚIONAT — `wsSyncHash` iese
+                                                    // devreme când lacătul e pus de `popstate`,
+                                                    // deci la Back/Forward titlul ar rămâne vechi
+  wsSyncHash(key);                                  // UX1: deep-link + Back/Forward
+  wsOpenFor(key);                                   // UX1: deschide workspace-ul care conține modulul
+  wsPushRecent(key);                                // UX1: „Recente"
+  /* UX1: reconstruim meniul ca „Recente", steaua de favorit, spațiul de lucru deschis,
+     evidențierea și firul Ariadnei să fie coerente după fiecare navigare. `buildNav()`
+     nu face NICIUN apel de rețea (nici `canSee`), deci costul e strict DOM.
+     Păstrăm poziția de derulare a barei laterale — altfel fiecare navigare ar arunca
+     utilizatorul înapoi în capul listei. */
+  const _navEl=$('nav'); const _navScroll=_navEl?_navEl.scrollTop:0;
+  buildNav();
+  if(_navEl) _navEl.scrollTop=_navScroll;
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
   if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash, calitate:renderCalitate}[key]||renderDashboard)(); }
   else renderModule(key);
@@ -2723,7 +3122,16 @@ async function openNotifPanel(){
 const APP_VERSION='cod373-v255';
 const MAIL_DOMAIN=''; /* se completează după conectarea domeniului platformei */
 const SUPPORT_CATS=['Eroare / ceva nu merge','Întrebare','Propunere / funcție nouă','Altceva'];
-function curModuleKey(){ const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard'; }
+/* UX1: ruta curentă e o VARIABILĂ, nu o deducție din DOM.
+   Înainte, funcția citea `.nav-item.active` — dar `buildNav()` rescrie `#nav` (ștergând
+   `.active`) ÎNAINTE să întrebe cine e activ, deci răspunsul era invariabil „dashboard";
+   iar un modul fără intrare în meniu (ascuns din 🎨 Personalizare, sau `seif` după
+   `vaultHide()`) nu avea deloc nod activ. DOM-ul rămâne doar rezervă, pentru apelurile
+   de dinaintea primului `go()`. */
+function curModuleKey(){
+  if(state.view && MODULES[state.view]) return state.view;
+  const a=document.querySelector('.nav-item.active'); return a?a.dataset.view:'dashboard';
+}
 async function openSupport(){
   const cats=SUPPORT_CATS.map(c=>'<option>'+esc(c)+'</option>').join('');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px">'
@@ -3390,7 +3798,7 @@ async function siteLocation(siteId, siteName){
 }
 function slocInfo(){ const el=$('sloc-info'); const g=window._sloc; if(!el||!g) return;
   if(g.lat!=null&&g.lng!=null){ const acc=g.acc; const warn=(acc!=null&&acc>100); const accTxt=(acc!=null)?(' <span style="color:'+(warn?'#b45309':'var(--muted)')+';font-weight:600;font-size:.82rem">±'+acc+' m'+(warn?' ⚠️':'')+'</span>'):'';
-    el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b>'+accTxt+' <a onclick="openNav('+g.lat+','+g.lng+',\''+jsArg(g.name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a></span>'
+    el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b>'+accTxt+' <a onclick="openMapNav('+g.lat+','+g.lng+',\''+jsArg(g.name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a></span>'
       +(warn?'<div style="font-size:.76rem;color:#b45309;margin-top:.35rem">'+esc(C373t('Precizie slabă — probabil ești pe calculator (locație din WiFi/internet, nu GPS). Pentru exactitate, capturează pe telefon, afară, la fața locului; sau lipește un link Google Maps cu pinul fix exact.'))+'</div>':''); }
   else el.innerHTML='<span style="color:var(--muted)">'+esc(C373t('Nicio locație salvată. Apasă „Locația mea acum" pe teren, sau lipește un link de hartă.'))+'</span>'; }
 function slocParse(v){ const c=parseLatLng(v); if(c){ window._sloc.lat=c.lat; window._sloc.lng=c.lng; window._sloc.acc=null; slocInfo(); } }
@@ -6054,7 +6462,7 @@ let _hMap=null,_hMarkers={},_hTimer=null,_hFollow=null,_hVeh=[],_hPts=[],_hSel=n
 let _hSites=null,_hSitePts=[],_hSitesOn=true;
 function siteDivIcon(status){ const col=({active:'#16a34a',planned:'#2f6bff',paused:'#d97706',done:'#6b7280',cancelled:'#9ca3af'})[status]||'#2f6bff';
   return L.divIcon({className:'',html:'<div style="font-size:22px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));position:relative">🏗️<span style="position:absolute;right:-2px;top:-2px;width:9px;height:9px;border-radius:50%;background:'+col+';box-shadow:0 0 0 2px #fff"></span></div>',iconSize:[26,26],iconAnchor:[13,22],popupAnchor:[0,-20]}); }
-function hSitePopup(s){ const lat=+s.lat,lng=+s.lng; return '<div style="min-width:150px"><div style="font-weight:700">🏗️ '+esc(s.name)+'</div>'+(s.address?'<div style="font-size:.8rem;color:#666">'+esc(s.address)+'</div>':'')+'<div style="font-size:.78rem;margin:.25rem 0">'+pill(s.status)+'</div><div style="display:flex;gap:.7rem;margin-top:.3rem"><a onclick="openNav('+lat+','+lng+',\''+jsArg(s.name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+tz('Navighează')+'</a><a onclick="closeModal();siteHub(\''+s.id+'\',\''+jsArg(s.name)+'\')" style="cursor:pointer;color:var(--primary)">📂 '+tz('Detalii')+'</a></div></div>'; }
+function hSitePopup(s){ const lat=+s.lat,lng=+s.lng; return '<div style="min-width:150px"><div style="font-weight:700">🏗️ '+esc(s.name)+'</div>'+(s.address?'<div style="font-size:.8rem;color:#666">'+esc(s.address)+'</div>':'')+'<div style="font-size:.78rem;margin:.25rem 0">'+pill(s.status)+'</div><div style="display:flex;gap:.7rem;margin-top:.3rem"><a onclick="openMapNav('+lat+','+lng+',\''+jsArg(s.name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+tz('Navighează')+'</a><a onclick="closeModal();siteHub(\''+s.id+'\',\''+jsArg(s.name)+'\')" style="cursor:pointer;color:var(--primary)">📂 '+tz('Detalii')+'</a></div></div>'; }
 async function hartaLoadSites(){
   if(!_hMap) return;
   if(!_hSites){ _hSites=L.layerGroup(); if(_hSitesOn) _hSites.addTo(_hMap); }
@@ -6067,7 +6475,7 @@ function hSitesToggle(){ _hSitesOn=!_hSitesOn; if(_hSites&&_hMap){ if(_hSitesOn)
 /* ── POI pe hartă: 🏢 Oficiu, 🏬 Depozite, 🏭 Furnizori ── */
 let _hWh=null,_hWhPts=[],_hWhOn=true, _hSup=null,_hSupPts=[],_hSupOn=false, _hOffice=null,_hOfficePt=null,_hOfficeOn=true;
 function poiIcon(emoji,col){ return L.divIcon({className:'',html:'<div style="font-size:22px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));position:relative">'+emoji+(col?'<span style="position:absolute;right:-2px;top:-2px;width:9px;height:9px;border-radius:50%;background:'+col+';box-shadow:0 0 0 2px #fff"></span>':'')+'</div>',iconSize:[26,26],iconAnchor:[13,22],popupAnchor:[0,-20]}); }
-function poiPopup(emoji,name,lat,lng,extra){ return '<div style="min-width:150px"><div style="font-weight:700">'+emoji+' '+esc(name)+'</div>'+(extra||'')+'<div style="margin-top:.3rem"><a onclick="openNav('+lat+','+lng+',\''+jsArg(name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+tz('Navighează')+'</a></div></div>'; }
+function poiPopup(emoji,name,lat,lng,extra){ return '<div style="min-width:150px"><div style="font-weight:700">'+emoji+' '+esc(name)+'</div>'+(extra||'')+'<div style="margin-top:.3rem"><a onclick="openMapNav('+lat+','+lng+',\''+jsArg(name)+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+tz('Navighează')+'</a></div></div>'; }
 async function hartaLoadWarehouses(){ if(!_hMap) return; if(!_hWh){ _hWh=L.layerGroup(); if(_hWhOn) _hWh.addTo(_hMap); } _hWh.clearLayers(); _hWhPts=[];
   let rows=[]; try{ const r=await sb.from('warehouses').select('id,name,lat,lng').not('lat','is',null).not('lng','is',null); rows=r.data||[]; }catch(e){}
   rows.forEach(w=>{ if(w.lat==null||w.lng==null) return; _hWhPts.push({lat:+w.lat,lng:+w.lng}); _hWh.addLayer(L.marker([+w.lat,+w.lng],{icon:poiIcon('🏬')}).bindPopup(poiPopup('🏬',w.name||'Depozit',+w.lat,+w.lng))); });
@@ -6522,12 +6930,27 @@ async function renderUtilizatori(){
     const me=state.session.user.id;
     const roleOpts=(cur,uid)=>Object.keys(ROLE_LABELS).map(r=>'<option value="'+r+'" '+(r===cur?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
     membersList=data||[];
+    /* UX1: `list_members()` nu întoarce `perms`. Le citim O SINGURĂ dată, în lot —
+       nu o interogare per rând — ca să putem marca vizibil membrii cu politică
+       personalizată. Fără acest semn, lista derulantă de rol pare să facă mereu
+       același lucru, deși pentru ei se comportă diferit (cazul C). */
+    let _pmap={};
+    try{
+      const pr=await sb.from('memberships').select('user_id,perms,role').eq('tenant_id',state.tenant);
+      (pr.data||[]).forEach(m=>{ _pmap[m.user_id]={perms:m.perms||null, role:m.role}; });
+    }catch(e){}
+    const permBadge=(uid)=>{
+      const m=_pmap[uid]; if(!m||m.perms==null) return '';
+      if(permsEqual(m.perms, roleDefaultPerms(m.role))) return '';
+      return ' <span class="pill planned" title="'+esc(tz('Permisiuni personalizate, diferite de presetul rolului. Schimbarea rolului nu le șterge fără confirmare.'))+'">🔧 '+esc(tz('personalizate'))+'</span>';
+    };
     const body=(data||[]).map(u=>{ const self=u.user_id===me;
       return '<tr'+(self?'':' onclick="memberOptions(\''+u.user_id+'\')" style="cursor:pointer"')+'><td class="tname">'+esc(u.email)+(self?' <small style="color:var(--muted)">(tu)</small>':'')+'</td>'
-      +'<td onclick="event.stopPropagation()"><select '+(self?'disabled':'')+' onchange="changeRole(\''+u.user_id+'\',this.value)">'+roleOpts(u.role)+'</select></td>'
+      +'<td onclick="event.stopPropagation()"><select '+(self?'disabled':'')+' onchange="changeRole(\''+u.user_id+'\',this.value,this)">'+roleOpts(u.role)+'</select>'+permBadge(u.user_id)+'</td>'
       +'<td>'+(u.active?'<span class="pill active">Activ</span>':'<span class="pill cancelled">Inactiv</span>')+'</td>'
       +'<td><div class="rowact">'
       +(self?'':'<button class="iconbtn" title="Permisiuni (module accesibile)" onclick="event.stopPropagation();editMemberPerms(\''+u.user_id+'\',\''+u.role+'\',\''+esc(u.email).replace(/\x27/g,"")+'\')">🔐</button>')
+      +((!self && permBadge(u.user_id))?'<button class="iconbtn" title="'+esc(tz('Resetează la permisiunile rolului'))+'" onclick="event.stopPropagation();resetMemberPermsToRole(\''+u.user_id+'\')">↺</button>':'')
       +(self?'':'<button class="iconbtn" title="'+(u.active?'Dezactivează':'Activează')+'" onclick="event.stopPropagation();toggleMember(\''+u.user_id+'\','+(u.active?'false':'true')+')">'+(u.active?'🚫':'✅')+'</button>')
       +'</div></td></tr>'; }).join('');
     $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Rol</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
@@ -6747,7 +7170,91 @@ async function saveMember(){
   }
   closeModal(); toast('✅ Membru adăugat.'); renderUtilizatori();
 }
-async function changeRole(uid,role){ const { error }=await sb.rpc('set_member_role',{ p_user:uid, p_role:role }); if(error){ toast('Eroare: '+esc(error.message)); } else toast('✅ Rol actualizat.'); }
+/* ════════════════════════════════════════════════════════════════════════════
+   UX1 / migr 0135 — SCHIMBAREA ROLULUI ESTE ȘI O SCHIMBARE DE PERMISIUNI
+
+   Vechiul `set_member_role` scria doar `role`. Un `worker` invitat cu bifele
+   implicite are `perms` = cele 8 chei ale lui; promovat la `manager`, rămânea cu
+   ele — fără Devize, fără Facturi, fără Salarii — în timp ce interfața anunța
+   „✅ Rol actualizat.". Lista derulantă arăta ca o promovare și se comporta ca o
+   blocare. Reversul: un manager retrogradat își păstra drepturile financiare.
+
+   Regula canonică, decisă din DATE, nu presupusă:
+     A. `perms` NULL          → membership pe implicitul rolului. Schimbăm doar rolul.
+     B. `perms` == implicitul rolului VECHI → e un instantaneu al presetului vechi.
+                                 Îl ducem la presetul rolului NOU, atomic.
+     C. `perms` personalizate → NU le distrugem tăcut. Păstrăm politica, o semnalăm
+                                 vizibil și oferim o acțiune explicită de resetare.
+   ════════════════════════════════════════════════════════════════════════════ */
+/* Presetul implicit al unui rol — ACEEAȘI sursă folosită de checklistul de invitație
+   (`permChecklistHtml` → `permModState` → `roleCanSeeKey`, cu owner-gated forțat pe
+   fals). O singură definiție a politicii; serverul primește rezultatul, nu o rescrie. */
+function roleDefaultPerms(role){
+  return permKeys().filter(k => !OWNER_GATED_KEYS.includes(k) && roleCanSeeKey(role,k));
+}
+function permsEqual(a,b){
+  if(a==null && b==null) return true;
+  if(a==null || b==null) return false;
+  if(a.length!==b.length) return false;
+  const x=a.slice().sort(), y=b.slice().sort();
+  return x.every((v,i)=>v===y[i]);
+}
+/* Clasifică membershipul în A / B / C, citind starea reală din bază. */
+async function memberPermCase(uid, curRole){
+  let perms=null;
+  const { data, error }=await sb.from('memberships').select('perms,role')
+    .eq('tenant_id',state.tenant).eq('user_id',uid).maybeSingle();
+  if(error) throw error;
+  if(!data) throw new Error('MEMBERSHIP_NOT_FOUND');
+  perms=data.perms||null;
+  const role=data.role;
+  if(perms==null) return {kind:'A', perms:null, role:role};
+  if(permsEqual(perms, roleDefaultPerms(role))) return {kind:'B', perms:perms, role:role};
+  return {kind:'C', perms:perms, role:role};
+}
+async function changeRole(uid, role, selEl){
+  let c;
+  try{ c=await memberPermCase(uid); }
+  catch(e){ toast('Eroare: '+esc(e.message||e)); renderUtilizatori(); return; }
+
+  /* Cazul C — politică personalizată. Nu o rescriem fără să întrebăm. */
+  let mode='keep', newPerms=null;
+  if(c.kind==='B'){ mode='role_defaults'; newPerms=roleDefaultPerms(role); }
+  if(c.kind==='C'){
+    const ok=confirm(tz('Acest membru are permisiuni personalizate, diferite de presetul rolului.')+'\n\n'
+      +tz('Vrei să le PĂSTREZI așa cum sunt? Rolul se schimbă oricum.')+'\n\n'
+      +tz('OK = păstrează permisiunile personalizate · Anulează = înlocuiește-le cu presetul rolului nou.'));
+    if(!ok){ mode='role_defaults'; newPerms=roleDefaultPerms(role); }
+  }
+  if(selEl) selEl.disabled=true;
+  const { data, error }=await sb.rpc('membership_role_apply',{
+    p_user:uid, p_role:role, p_mode:mode, p_perms:newPerms,
+    p_expect_role:c.role, p_expect_perms:c.perms
+  });
+  if(selEl) selEl.disabled=false;
+  if(error){
+    const m=String(error.message||'');
+    if(m.indexOf('MEMBERSHIP_LAST_OWNER')>=0) toast('🔒 '+tz('Firma ar rămâne fără proprietar. Numește întâi alt proprietar.'));
+    else if(m.indexOf('MEMBERSHIP_CONFLICT')>=0) toast('⚠️ '+tz('Altcineva a modificat acest membru între timp. Am reîncărcat lista.'));
+    else if(m.indexOf('MEMBERSHIP_NOT_FOUND')>=0) toast('⚠️ '+tz('Membrul nu mai există în firmă.'));
+    else toast('Eroare: '+esc(error.message));
+    renderUtilizatori(); return;
+  }
+  const r=(data&&typeof data==='object')?data:{};
+  toast('✅ '+tz('Rol actualizat.')+(r.perms_changed?(' '+tz('Permisiunile au fost aduse la presetul rolului.')):(c.kind==='C'?(' '+tz('Permisiunile personalizate au fost păstrate.')):'')));
+  renderUtilizatori();
+}
+/* Acțiune EXPLICITĂ: readu permisiunile la presetul rolului curent. */
+async function resetMemberPermsToRole(uid){
+  let c; try{ c=await memberPermCase(uid); }catch(e){ toast('Eroare: '+esc(e.message||e)); return; }
+  if(!confirm(tz('Resetezi permisiunile la presetul rolului?')+'\n\n'+tz('Politica personalizată se pierde.'))) return;
+  const { error }=await sb.rpc('membership_role_apply',{
+    p_user:uid, p_role:c.role, p_mode:'role_defaults', p_perms:roleDefaultPerms(c.role),
+    p_expect_role:c.role, p_expect_perms:c.perms
+  });
+  if(error){ toast('Eroare: '+esc(error.message)); renderUtilizatori(); return; }
+  toast('✅ '+tz('Permisiunile au fost aduse la presetul rolului.')); renderUtilizatori();
+}
 async function toggleMember(uid,active){ const { error }=await sb.rpc('set_member_active',{ p_user:uid, p_active:active }); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('✅ Actualizat.'); renderUtilizatori(); }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -6829,7 +7336,7 @@ async function previzView(id){
     +'<div class="modal-body">'
     +rowKV('Client',esc(clientName))
     +rowKV('Adresă',esc(s.address||'—'))
-    +((s.answers&&s.answers._geo&&s.answers._geo.lat!=null)?rowKV('📍 Locație','<a onclick="openNav('+s.answers._geo.lat+','+s.answers._geo.lng+',\''+jsArg(s.name||'Șantier')+'\')" style="cursor:pointer;color:var(--primary);font-weight:700">🧭 '+esc(C373t('Navighează'))+'</a> <span style="color:var(--muted);font-weight:400;font-size:.82rem">('+(+s.answers._geo.lat).toFixed(5)+', '+(+s.answers._geo.lng).toFixed(5)+')</span>'):'')
+    +((s.answers&&s.answers._geo&&s.answers._geo.lat!=null)?rowKV('📍 Locație','<a onclick="openMapNav('+s.answers._geo.lat+','+s.answers._geo.lng+',\''+jsArg(s.name||'Șantier')+'\')" style="cursor:pointer;color:var(--primary);font-weight:700">🧭 '+esc(C373t('Navighează'))+'</a> <span style="color:var(--muted);font-weight:400;font-size:.82rem">('+(+s.answers._geo.lat).toFixed(5)+', '+(+s.answers._geo.lng).toFixed(5)+')</span>'):'')
     +rowKV('Data vizitei',esc(s.visit_date||'—'))
     +rowKV('Tip lucrare',wt+(s.area_m2?' · '+s.area_m2+' m²':''))
     +(s.surveyor_name?rowKV('Responsabil',esc(s.surveyor_name)):'')
@@ -6903,7 +7410,7 @@ async function openPrevizForm(row, meas){
 /* ── Locație șantier (GPS) + alegerea navigatorului (ca pe WhatsApp) ── */
 function pvGeoInfo(){ const el=$('pv-geo-info'); if(!el) return; const g=previzCtx&&previzCtx._geo;
   if(g&&g.lat!=null&&g.lng!=null){ const acc=g.acc; const warn=(acc!=null&&acc>100); const accTxt=(acc!=null)?(' <span style="color:'+(warn?'#b45309':'var(--muted)')+';font-weight:600;font-size:.82rem">±'+acc+' m'+(warn?' ⚠️':'')+'</span>'):'';
-    el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b>'+accTxt+' <a onclick="openNav('+g.lat+','+g.lng+',\''+jsArg((previzCtx&&previzCtx._geoLbl)||'Șantier')+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a> <span onclick="pvClearGeo()" style="cursor:pointer;color:var(--red)" title="'+esc(C373t('Șterge locația'))+'">✕</span></span>'
+    el.innerHTML='<span style="display:inline-flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:var(--primary-soft,#eef2ff);border:1px solid var(--primary,#2f6bff);border-radius:9px;padding:.35rem .6rem"><b>📍 '+(+g.lat).toFixed(5)+', '+(+g.lng).toFixed(5)+'</b>'+accTxt+' <a onclick="openMapNav('+g.lat+','+g.lng+',\''+jsArg((previzCtx&&previzCtx._geoLbl)||'Șantier')+'\')" style="cursor:pointer;color:var(--primary);font-weight:600">🧭 '+esc(C373t('Deschide / Navighează'))+'</a> <span onclick="pvClearGeo()" style="cursor:pointer;color:var(--red)" title="'+esc(C373t('Șterge locația'))+'">✕</span></span>'
       +(warn?'<div style="font-size:.76rem;color:#b45309;margin-top:.35rem">'+esc(C373t('Precizie slabă — probabil ești pe calculator (locație din WiFi/internet, nu GPS). Pentru exactitate, capturează pe telefon, afară, la fața locului; sau lipește un link Google Maps cu pinul fix exact.'))+'</div>':''); }
   else el.innerHTML='<span style="color:var(--muted);font-size:.8rem">'+esc(C373t('Nicio locație salvată. Apasă „Locația mea acum" pe teren, sau lipește un link de hartă.'))+'</span>'; }
 function pvClearGeo(){ if(previzCtx){ previzCtx._geo=null; } const i=$('pv-geo'); if(i) i.value=''; pvGeoInfo(); }
@@ -6918,7 +7425,7 @@ function parseLatLng(v){ v=(v||'').trim(); if(!v) return null;
   m=v.match(/^\s*(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/); if(m) return {lat:+m[1],lng:+m[2]};   // „lat, lng"
   return null; }
 /* sheet cu alegerea navigatorului (Google Maps / Waze / Apple Maps / copiază) */
-function openNav(lat,lng,label){ lat=+lat; lng=+lng; if(isNaN(lat)||isNaN(lng)){ toast('Coordonate lipsă.'); return; }
+function openMapNav(lat,lng,label){ lat=+lat; lng=+lng; if(isNaN(lat)||isNaN(lng)){ toast('Coordonate lipsă.'); return; }
   const ll=lat+','+lng;
   const acts=[
     {i:'🗺️',l:'Google Maps (navighează)',f:"window.open('https://www.google.com/maps/dir/?api=1&destination="+ll+"','_blank')"},
@@ -7464,7 +7971,15 @@ async function bulkDelete(){ const m=listState.m, key=listState.key; if(!m||!can
 function installHotkeys(){ if(window._hkInit) return; window._hkInit=true;
   document.addEventListener('keydown',function(e){
     if((e.metaKey||e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key==='k'||e.key==='K')){ e.preventDefault(); openCmdPalette(); return; }
-    if(e.key==='Escape'){ const m=document.getElementById('modal-mount'); if(m&&m.innerHTML.trim()){ const lb=document.getElementById('img-lb'); if(lb&&lb.style.display&&lb.style.display!=='none') return; closeModal(); } }
+    if(e.key==='Escape'){
+      const m=document.getElementById('modal-mount');
+      if(m&&m.innerHTML.trim()){ const lb=document.getElementById('img-lb'); if(lb&&lb.style.display&&lb.style.display!=='none') return; closeModal(); return; }
+      /* UX1: Escape închide și sertarul de navigație de pe telefon — un panou care se
+         poate deschide de la tastatură trebuie să se poată și închide așa. Focusul se
+         întoarce pe butonul ☰, ca să nu rămână orfan în pagina de dedesubt. */
+      const sbEl=document.getElementById('sidebar');
+      if(sbEl&&sbEl.classList.contains('open')){ closeNav(); const b=document.querySelector('.menu-toggle'); if(b) try{ b.focus(); }catch(err){} }
+    }
   });
 }
 function openCmdPalette(){
@@ -7602,7 +8117,7 @@ function rowActions(key,m,r){
   if(m.invitable&&ADMIN_ROLES.includes(state.role)){ a.push({i:'📩',l:'Invită în aplicație (trimite link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
     if(m.invitable==='employee') a.push({i:'🔗',l:'Leagă de un cont existent',f:"empLinkAccount('"+id+"','"+jsArg(r.full_name)+"')"}); }
   if(m.siteHub) a.push({i:'📂',l:'Detalii șantier (jurnal, etape, stoc, situații, RFI…)',f:"siteHub('"+id+"','"+jsArg(r.name)+"')"});
-  if(m.siteHub){ if(r.lat!=null&&r.lng!=null) a.push({i:'🧭',l:'Navighează la șantier',f:"openNav("+r.lat+","+r.lng+",'"+jsArg(r.name)+"')"}); a.push({i:'📍',l:'Locație șantier (GPS / link)',f:"siteLocation('"+id+"','"+jsArg(r.name)+"')"}); }
+  if(m.siteHub){ if(r.lat!=null&&r.lng!=null) a.push({i:'🧭',l:'Navighează la șantier',f:"openMapNav("+r.lat+","+r.lng+",'"+jsArg(r.name)+"')"}); a.push({i:'📍',l:'Locație șantier (GPS / link)',f:"siteLocation('"+id+"','"+jsArg(r.name)+"')"}); }
   if(m.siteHub) a.push({i:'📦',l:'Ce se află aici (instrumente + materiale)',f:"siteContents('"+id+"','"+jsArg(r.name)+"')"});
   if(m.siteHub) a.push({i:'🖨️',l:tz('Fișă PDF șantier'),f:"sitePdf('"+id+"')"});
   if(m.warehouseHub) a.push({i:'📦',l:'Ce se află în depozit (instrumente, materiale, flotă)',f:"warehouseContents('"+id+"','"+jsArg(r.name)+"')"});
