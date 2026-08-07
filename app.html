@@ -7775,14 +7775,34 @@ async function subpriceRpcOnce(fn, args){
 const CATALOG_KIND={ materiale:'material', servicii:'service' };
 const CATALOG_ERR={
   CATALOG_SKU_DUPLICATE:    'Codul intern (SKU) este deja folosit de alt element din catalog.',
-  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi elemente în catalog.',
+  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi sau să modifici elemente în catalog.',
   CATALOG_INVALID_INPUT:    'Datele trimise nu sunt valide.',
   CATALOG_DEPENDENCY_MISSING:'Un furnizor sau magazin ales nu mai există sau nu aparține firmei tale.',
-  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.'
+  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.',
+  CATALOG_NOT_FOUND:        'Elementul din catalog nu mai există sau nu aparține firmei tale.',
+  // Contractul de preț v2 (D35). Serverul refuză o scriere a cărei semantică
+  // nu poate fi stabilită — mai bine un refuz clar decât un preț salvat greșit.
+  PRICE_SEMANTICS_REQUIRED:  'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_CONTRACT_UNSUPPORTED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_MODE_INVALID:        'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_SUBTARIFF_GROSS_NOT_CONVERTED:'Tariful subcontractorului este cu TVA inclus și nu a fost convertit. Reîncarcă pagina (Ctrl+R) și alege tariful din nou.'
 };
 function catalogErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
   for(const k in CATALOG_ERR){ if(m.indexOf(k)>=0) return CATALOG_ERR[k]; }
   return isNetErr(e)?netMsg():(m||'Eroare la salvare.'); }
+// Jurnalul refuzurilor de semantică se scrie din CLIENT, nu din refuz: un
+// `insert` urmat de `raise` s-ar pierde, pentru că excepția anulează tranzacția,
+// iar Postgres nu are tranzacții autonome. Un client v357 declară mereu
+// contractul, deci NU ar trebui să fie refuzat niciodată — dacă totuși apare o
+// intrare, e semn că ceva servește cod vechi.
+// ⚠ Un client ≤v356 nu cunoaște funcția, deci nu raportează: un jurnal gol NU
+//   dovedește că nu mai există taburi vechi.
+const PRICE_CODES=['PRICE_SEMANTICS_REQUIRED','PRICE_CONTRACT_UNSUPPORTED','PRICE_MODE_INVALID'];
+function priceReject(e, surface){
+  const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  const code=PRICE_CODES.find(k=>m.indexOf(k)>=0); if(!code) return;
+  try{ sb.rpc('price_reject_report',{ p_tenant_id:state.tenant, p_surface:String(surface||'necunoscut').slice(0,64), p_reason:code }).then(()=>{},()=>{}); }catch(_){}
+}
 let _catBusy=null;
 async function catalogCreate(kind, payload){
   // Dublu clic REAL: a doua apelare nu pornește o cerere nouă, ci așteaptă
@@ -7795,7 +7815,7 @@ async function catalogCreate(kind, payload){
 }
 async function catalogCreateOnce(kind, payload){
   const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
-  const body={ p_tenant_id:state.tenant, p_kind:kind, p_payload:payload, p_request_id:rid };
+  const body={ p_tenant_id:state.tenant, p_kind:kind, p_payload:withPriceContract(payload), p_request_id:rid };
   let last=null;
   for(let i=0;i<3;i++){
     let r; try{ r=await sb.rpc('catalog_item_create', body); }catch(e){ r={error:e}; }
@@ -7804,6 +7824,27 @@ async function catalogCreateOnce(kind, payload){
     if(!isNetErr(r.error) || i===2) break;   // se reîncearcă DOAR erorile de rețea, cu ACELAȘI request_id
     await new Promise(s=>setTimeout(s,600*(i+1)));
   }
+  priceReject(last,'catalog_item_create');
+  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+}
+// Actualizarea unui element de catalog trece prin ACELASI contract ca si crearea
+// (D35). Pana acum crearea mergea prin `catalog_item_create`, iar MODIFICAREA
+// pretului se facea cu `sb.from(tabela).update(...)` direct — aceeasi coloana,
+// dar fara nicio validare de semantica si fara conversie brut->net. Serverul
+// converteste dupa semantica DECLARATA si verifica rowcount-ul, deci un refuz
+// RLS nu mai poate trece drept succes.
+async function catalogUpdate(kind, id, payload){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body={ p_tenant_id:state.tenant, p_kind:kind, p_id:id, p_payload:withPriceContract(payload), p_request_id:rid };
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc('catalog_item_update', body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!(typeof isNetErr==='function'&&isNetErr(r.error)) || i===2) break;   // doar erorile de retea, cu ACELASI request_id
+    await new Promise(x=>setTimeout(x,600*(i+1)));
+  }
+  priceReject(last,'catalog_item_update');
   const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
 }
 async function saveQc(){
@@ -8693,6 +8734,14 @@ const VATX = {
   net(gross, rate){ const r=+rate||0; return r ? (+gross||0)/(1+r/100) : (+gross||0); },
   vat(net, rate){ return (+net||0)*(+rate||0)/100; }
 };
+// Contractul de pret v2 (D35). Clientul DECLARA explicit ce semantica au
+// preturile pe care le trimite, ca serverul sa nu mai ghiceasca din setarea
+// firmei. In v356+ campul cu `id="f-<key>"` este INTOTDEAUNA cel fara TVA
+// (D34), deci valoarea trimisa e mereu NETA, indiferent de `prices_incl_vat`.
+// Se trimite in interiorul JSONB-ului, nu ca parametru nou: semnatura RPC
+// ramane neschimbata, deci un tab vechi ramas pe cache nu se rupe.
+const PRICE_CONTRACT = { price_contract_version:'2', price_input_mode:'net' };
+function withPriceContract(o){ return Object.assign({}, o||{}, PRICE_CONTRACT); }
 function priceInclVat(){ return !!(state.firm&&state.firm.automations&&state.firm.automations.prices_incl_vat); }
 /* `unit_price` e ÎNTOTDEAUNA net, indiferent de `prices_incl_vat`. */
 function lineNetVat(l){ const q=+l.qty||0,p=+l.unit_price||0,vr=+l.vat_rate||0,g=q*p;
@@ -8786,7 +8835,13 @@ async function saveRecord(){
   try{ const { data:{ session } }=await sb.auth.getSession(); if(session && session.expires_at && session.expires_at*1000 < Date.now()+60000){ await sb.auth.refreshSession(); } }catch(e){}
   try{
     let parentId=formCtx.id;
-    if(formCtx.id){
+    if(formCtx.id && CATALOG_KIND[key]){
+      // Simetric cu crearea: si MODIFICAREA trece prin contractul canonic, ca
+      // pretul sa fie convertit dupa semantica declarata, nu ghicita.
+      const p={}; Object.keys(payload).forEach(k=>{ if(k!=='tenant_id') p[k]=payload[k]; });
+      await catalogUpdate(CATALOG_KIND[key], formCtx.id, p);
+      if(m.lineItems){ await sb.from(m.lineItems.table).delete().eq(m.lineItems.parentKey,formCtx.id); }
+    } else if(formCtx.id){
       const { error } = await sb.from(m.table).update(payload).eq('id',formCtx.id);
       if(error) throw error;
       if(m.lineItems){ await sb.from(m.lineItems.table).delete().eq(m.lineItems.parentKey,formCtx.id); }

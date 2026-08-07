@@ -94,6 +94,14 @@ const VATX = {
   net(gross, rate){ const r=+rate||0; return r ? (+gross||0)/(1+r/100) : (+gross||0); },
   vat(net, rate){ return (+net||0)*(+rate||0)/100; }
 };
+// Contractul de pret v2 (D35). Clientul DECLARA explicit ce semantica au
+// preturile pe care le trimite, ca serverul sa nu mai ghiceasca din setarea
+// firmei. In v356+ campul cu `id="f-<key>"` este INTOTDEAUNA cel fara TVA
+// (D34), deci valoarea trimisa e mereu NETA, indiferent de `prices_incl_vat`.
+// Se trimite in interiorul JSONB-ului, nu ca parametru nou: semnatura RPC
+// ramane neschimbata, deci un tab vechi ramas pe cache nu se rupe.
+const PRICE_CONTRACT = { price_contract_version:'2', price_input_mode:'net' };
+function withPriceContract(o){ return Object.assign({}, o||{}, PRICE_CONTRACT); }
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
 function param(k){ return new URLSearchParams(location.search).get(k); }
 function goBack(){ if(history.length>1) history.back(); else location.href='app.html'; }
@@ -828,8 +836,7 @@ async function lcSave(i,mode){ const l=S.lines[i]; if(!l) return;
   try{
     if(mode==='update'){ if(!l.cat_id) throw new Error('Linia nu e legată de catalog.');
       // rowcount verificat: un refuz RLS întoarce 0 rânduri fără eroare ⇒ fără succes fals
-      const u=await sb.from(tbl).update(payload).eq('id',l.cat_id).select('id'); if(u.error) throw u.error;
-      if(!(u.data||[]).length) throw new Error('Nu ai dreptul să modifici acest element din catalog.');
+      await catalogUpdate(isMat?'material':'service', l.cat_id, payload);
       const c=S.catalog.find(x=>x.id===l.cat_id&&x.src===l.cat_src); if(c){ c.name=l.name; c.unit=l.unit; c.price=+l.unit_price||0; c.vat=vat; c.desc=l.description||''; c.photo=l.photo_url||null; }
     } else { // creare: aceeași cale server-side ca formularul canonic (cod generat, duplicate refuzate, idempotent)
       const res=await catalogCreate(isMat?'material':'service', payload);
@@ -848,14 +855,32 @@ async function lcSave(i,mode){ const l=S.lines[i]; if(!l) return;
    avansate se completează în modulul Materiale/Servicii, printr-un link direct. */
 const CATALOG_ERR={
   CATALOG_SKU_DUPLICATE:    'Codul intern (SKU) este deja folosit de alt element din catalog.',
-  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi elemente în catalog.',
+  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi sau să modifici elemente în catalog.',
   CATALOG_INVALID_INPUT:    'Datele trimise nu sunt valide.',
   CATALOG_DEPENDENCY_MISSING:'Un furnizor sau magazin ales nu mai există sau nu aparține firmei tale.',
-  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.'
+  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.',
+  CATALOG_NOT_FOUND:        'Elementul din catalog nu mai există sau nu aparține firmei tale.',
+  // Contractul de preț v2 (D35). Serverul refuză o scriere a cărei semantică
+  // nu poate fi stabilită — mai bine un refuz clar decât un preț salvat greșit.
+  PRICE_SEMANTICS_REQUIRED:  'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_CONTRACT_UNSUPPORTED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_MODE_INVALID:        'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_SUBTARIFF_GROSS_NOT_CONVERTED:'Tariful subcontractorului este cu TVA inclus și nu a fost convertit. Reîncarcă pagina (Ctrl+R) și alege tariful din nou.'
 };
 function catalogErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
   for(const k in CATALOG_ERR){ if(m.indexOf(k)>=0) return CATALOG_ERR[k]; }
   return (typeof isNetErr==='function'&&isNetErr(e))?'Conexiune slabă — încearcă din nou.':(m||'Eroare la salvare.'); }
+// Jurnalul refuzurilor de semantică se scrie din CLIENT, nu din refuz: un
+// `insert` urmat de `raise` s-ar pierde, pentru că excepția anulează tranzacția.
+// Un client v357 declară mereu contractul, deci NU ar trebui refuzat niciodată.
+// ⚠ Un client ≤v356 nu cunoaște funcția ⇒ un jurnal gol NU dovedește că nu mai
+//   există taburi vechi în circulație.
+const PRICE_CODES=['PRICE_SEMANTICS_REQUIRED','PRICE_CONTRACT_UNSUPPORTED','PRICE_MODE_INVALID'];
+function priceReject(e, surface){
+  const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  const code=PRICE_CODES.find(k=>m.indexOf(k)>=0); if(!code) return;
+  try{ sb.rpc('price_reject_report',{ p_tenant_id:S.tenant, p_surface:String(surface||'necunoscut').slice(0,64), p_reason:code }).then(()=>{},()=>{}); }catch(_){}
+}
 let _catBusy=null;
 async function catalogCreate(kind, payload){
   // Dublu clic REAL: a doua apelare nu pornește o cerere nouă, ci așteaptă
@@ -868,7 +893,7 @@ async function catalogCreate(kind, payload){
 }
 async function catalogCreateOnce(kind, payload){
   const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
-  const body={ p_tenant_id:S.tenant, p_kind:kind, p_payload:payload, p_request_id:rid };
+  const body={ p_tenant_id:S.tenant, p_kind:kind, p_payload:withPriceContract(payload), p_request_id:rid };
   let last=null;
   for(let i=0;i<3;i++){
     let r; try{ r=await sb.rpc('catalog_item_create', body); }catch(e){ r={error:e}; }
@@ -877,6 +902,27 @@ async function catalogCreateOnce(kind, payload){
     if(!(typeof isNetErr==='function'&&isNetErr(r.error)) || i===2) break;  // doar erorile de rețea, cu ACELAȘI request_id
     await new Promise(x=>setTimeout(x,600*(i+1)));
   }
+  priceReject(last,'catalog_item_create');
+  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+}
+// Actualizarea unui element de catalog trece prin ACELASI contract ca si crearea
+// (D35). Pana acum crearea mergea prin `catalog_item_create`, iar MODIFICAREA
+// pretului se facea cu `sb.from(tabela).update(...)` direct — aceeasi coloana,
+// dar fara nicio validare de semantica si fara conversie brut->net. Serverul
+// converteste dupa semantica DECLARATA si verifica rowcount-ul, deci un refuz
+// RLS nu mai poate trece drept succes.
+async function catalogUpdate(kind, id, payload){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body={ p_tenant_id:S.tenant, p_kind:kind, p_id:id, p_payload:withPriceContract(payload), p_request_id:rid };
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc('catalog_item_update', body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!(typeof isNetErr==='function'&&isNetErr(r.error)) || i===2) break;   // doar erorile de retea, cu ACELASI request_id
+    await new Promise(x=>setTimeout(x,600*(i+1)));
+  }
+  priceReject(last,'catalog_item_update');
   const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
 }
 // Uploadul se face ÎNAINTE de RPC. Dacă RPC-ul eșuează, obiectul proaspăt încărcat
@@ -1138,7 +1184,7 @@ async function save(thenPdf){
       sub_price_at:l.sub_price_at||null, sub_price_amount:(l.sub_price_amount==null?null:+l.sub_price_amount),
       sub_price_currency:l.sub_price_currency||null, sub_price_name:l.sub_price_name||null,
       sub_price_unit:l.sub_price_unit||null}));
-    const r=await sb.rpc('save_estimate',{ p_document_id:S.id||null, p_tenant_id:tid, p_document:rec, p_items:items,
+    const r=await sb.rpc('save_estimate',{ p_document_id:S.id||null, p_tenant_id:tid, p_document:withPriceContract(rec), p_items:items,
       p_expected_updated_at:S._updatedAt||null, p_number_manual:(S.id?true:!!((S.est.number||'')&&S.est.number!==S._autoNum)) });
     if(r.error) throw r.error;
     const row=Array.isArray(r.data)?r.data[0]:r.data;
@@ -1161,7 +1207,14 @@ async function save(thenPdf){
       DOC_INVALID_SITE:'Șantierul ales nu e valid.',
       DOC_INVALID_ITEMS:'Pozițiile documentului nu sunt valide.',
       DOC_INVALID_TENANT:'Firma activă nu e validă. Reîncarcă pagina.',
-      DOC_SAVE_FAILED:'Salvarea nu a reușit. Verifică datele și încearcă din nou.'};
+      DOC_SAVE_FAILED:'Salvarea nu a reușit. Verifică datele și încearcă din nou.',
+      // Contractul de preț v2 (D35): serverul refuză un document a cărui semantică
+      // de preț nu poate fi stabilită, în loc să ghicească și să dubleze TVA-ul.
+      PRICE_SEMANTICS_REQUIRED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+      PRICE_CONTRACT_UNSUPPORTED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+      PRICE_MODE_INVALID:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+      PRICE_SUBTARIFF_GROSS_NOT_CONVERTED:'Tariful subcontractorului este cu TVA inclus și nu a fost convertit. Reîncarcă pagina (Ctrl+R) și alege tariful din nou.'};
+    priceReject(e,'save_estimate');
     toast(code&&M[code]?('⚠️ '+T(M[code])+(code==='DOC_NUMBER_CONFLICT'?' ('+esc(S.est.number||'')+')':'')):('Eroare: '+(e.message||e)));
   }
 }
