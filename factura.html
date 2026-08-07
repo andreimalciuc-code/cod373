@@ -210,11 +210,21 @@ function vatSelectHtml(i,cur){ return '<select id="vt-'+i+'" onchange="lineSetVa
 function lineSetVat(i,v){ const rate=(v===''?0:+v||0); const l=S.lines[i]; if(!l) return;
   if(!l.group && S.inv.vat_mode==='total'){ S.inv.vat_value=rate; S.lines.forEach(x=>{ if(!x.group) x.vat_rate=rate; }); render(); }
   else { l.vat_rate=rate; refreshLineTotal(i); renderSummary(); } }
-function groupTotals(grp){ let net=0, vat=0; const f=(1-(+grp.disc||0)/100); S.lines.forEach(l=>{ if(l.group===grp.id){ const g=(+l.qty||0)*(+l.unit_price||0); net+=g; vat+=g*f*(+l.vat_rate||0)/100; } }); const base=net*f; return { net:net, base:base, vat:vat, total:base+vat }; }
+/* KB#48A — o linie fără denumire NU e salvată ca poziție (`save()` o filtrează),
+   deci nu are voie să intre în totaluri: altfel antetul rămâne permanent în
+   dezacord cu `invoice_items`. Aceeași regulă e impusă server-side de
+   `app.calc_totals`, iar `save_invoice` refuză un antet care nu se reconstituie. */
+function lineCounts(l){ return !!((l.name||'').trim()); }
+/* KB#48A — `vat_mode='none'` înseamnă TVA zero INCLUSIV pe grupuri (invarianta I3).
+   Înainte, `groupTotals` nu consulta deloc `vat_mode`, așa că o factură „fără TVA"
+   care conținea un grup producea TVA și îl scria în `invoices.vat_total`. */
+function groupTotals(grp){ let net=0, vat=0; const f=(1-(+grp.disc||0)/100); const vm=S.inv.vat_mode||'none';
+  S.lines.forEach(l=>{ if(l.group===grp.id && lineCounts(l)){ const g=(+l.qty||0)*(+l.unit_price||0); net+=g; if(vm!=='none') vat+=g*f*(+l.vat_rate||0)/100; } });
+  const base=net*f; return { net:net, base:base, vat:vat, total:base+vat }; }
 function totals(){
   const dm=S.inv.disc_mode||'none', vm=S.inv.vat_mode||'none';
   let gross=0, base=0, disc=0, vat=0;
-  const ung=S.lines.filter(l=>!l.group);
+  const ung=S.lines.filter(l=>!l.group && lineCounts(l));
   let uGross=0,uNet=0; ung.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); uGross+=g; uNet+=(dm==='line'? g*(1-(+l.disc||0)/100):g); });
   const uF=(dm==='total')?(1-(+S.inv.disc_value||0)/100):1; const uBase=uNet*uF;
   gross+=uGross; base+=uBase; disc+=(uGross-uBase);
@@ -240,7 +250,9 @@ function firmBankAccounts(){ var au=(S.firm&&S.firm.automations)||{};
   return ((S.firm&&S.firm.bank_accounts)||'').split(/\n+/).map(function(x){return x.trim();}).filter(Boolean).map(function(line,i){ return {id:'b'+i,bank:'',iban:'',swift:'',note:'',label:line,legacy:line}; }); }
 function firmBankLines(){ return firmBankAccounts().map(function(a){return a.label;}); }
 function setInvBank(v){ S.inv.bank_choice=v; }
-function setAmountPaid(v){ S.inv.amount_paid=(v===''?null:+v); renderSummary(); }
+/* KB#48A: `setAmountPaid` a fost eliminată. Suma încasată nu mai e un câmp de
+   intrare — e proiecția registrului (`opening_paid + ledger_paid`), menținută de
+   `invoice_payment_apply`. Vezi `markPaid()` / `payApply()`. */
 function bankBlockHtml(a){ if(a.legacy) return esc(a.legacy); var L=[]; if(a.bank) L.push('<b>'+esc(a.bank)+'</b>'); if(a.iban) L.push('<b>IBAN:</b> '+esc(a.iban)); if(a.swift) L.push('<b>SWIFT/BIC:</b> '+esc(a.swift)); if(a.note) L.push(esc(a.note)); return L.join('<br>'); }
 function bankTextForPdf(){ var accs=firmBankAccounts(); var ch=S.inv.bank_choice||''; if(ch==='__off') return ''; var sel=ch?accs.filter(function(a){return a.id===ch;}):accs; if(!sel.length) sel=accs; return sel.map(bankBlockHtml).join('<br><br>'); }
 /* Subsol detaliat cu date de companie (stil sevdesk/lexoffice) — mărunt, pe 3 coloane, sub linia documentului */
@@ -295,7 +307,12 @@ function render(){
       +'<div class="field"><label>Client</label><div style="display:flex;gap:.4rem"><select id="f-client" style="flex:1" onchange="S.inv.client_id=this.value">'+clientOpts+'</select><button class="btn" onclick="newClient()">＋ nou</button></div></div>'
       +'<div class="field"><label>Titlu / ce lucrări (apare în listă)</label><input id="f-title" value="'+esc(S.inv.title||'')+'" placeholder="Ex: Manoperă gard vecin" oninput="S.inv.title=this.value"/></div>'
       +'<div class="row2"><div class="field"><label>Număr factură *</label><input id="f-num" value="'+esc(S.inv.number)+'" oninput="S.inv.number=this.value"/></div>'
-      +'<div class="field"><label>Stare</label><select id="f-status" onchange="S.inv.status=this.value;render()">'+Object.keys(STATUS).map(k=>'<option value="'+k+'" '+(S.inv.status===k?'selected':'')+'>'+STATUS[k]+'</option>').join('')+'</select></div></div>'
+      /* KB#48A: „Plătită" nu mai e o opțiune din formular — e o stare a registrului
+         de plăți. Serverul refuză oricum trecerea (PAYMENT_CONTRACT_REQUIRED); o
+         ascundem ca operatorul să nu întâlnească o eroare pentru o alegere care
+         arată legitimă. Rămâne vizibilă pe facturile deja plătite, ca istoricul
+         să se poată reafișa. */
+      +'<div class="field"><label>Stare</label><select id="f-status" onchange="S.inv.status=this.value;render()">'+Object.keys(STATUS).filter(k=>k!=='paid'||S.inv.status==='paid').map(k=>'<option value="'+k+'" '+(S.inv.status===k?'selected':'')+'>'+STATUS[k]+'</option>').join('')+'</select></div></div>'
       +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.inv.issue_date||'')+'" oninput="S.inv.issue_date=this.value"/></div>'
       +'<div class="field"><label>Scadență</label><input type="date" id="f-due" value="'+esc(S.inv.due_date||'')+'" oninput="S.inv.due_date=this.value"/></div></div>'
       +(firmBankAccounts().length?(
@@ -305,7 +322,13 @@ function render(){
           +'<option value="__off"'+(S.inv.bank_choice==='__off'?' selected':'')+'>✕ Nu afișa niciun cont</option>'
         +'</select></div>'
       ):'')
-      +'<div class="field"><label>💵 Sumă încasată / avans primit (opțional)</label><input id="f-paid" type="number" step="any" value="'+esc(S.inv.amount_paid!=null?S.inv.amount_paid:'')+'" oninput="setAmountPaid(this.value)" placeholder="ex: 5000 — apare „Achitat" și „Rest de plată""/></div>'
+      /* KB#48A: „Sumă încasată" nu mai e un câmp tastat. Suma plătită e proiecția
+         registrului de plăți, menținută server-side; se modifică doar prin
+         „Înregistrează încasare". Două mecanisme active ar fi însemnat păstrarea
+         defectului: un scalar decorativ pe care nimic nu îl reconcilia. */
+      +'<div class="field"><label>💵 Încasat</label>'
+        +'<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem .1rem;flex-wrap:wrap"><b style="font-size:1.02rem">'+money(+S.inv.amount_paid||0)+'</b>'
+        +'<span class="sub" style="font-size:.78rem">se modifică prin „Înregistrează încasare"</span></div></div>'
       +'<div style="border-top:1px dashed var(--line);margin-top:.5rem;padding-top:.6rem">'
         +'<div class="field"><label>🇩🇪 Tip factură (decontare pe stadii)</label><select id="f-invtype" onchange="setInvType(this.value)">'
           +'<option value="normal"'+(S.inv.inv_type==='normal'?' selected':'')+'>Factură normală</option>'
@@ -333,7 +356,7 @@ function render(){
     +'<div class="right"><div class="panel"><h3>Sumar</h3><div id="sum"></div>'
         +'<button class="btn primary" style="width:100%;margin-top:.8rem" onclick="save()">💾 Salvează factura</button>'
         +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="save(true)">🖨 Salvează & PDF</button>'
-        +(S.inv.status!=='paid'?'<button class="btn green" style="width:100%;margin-top:.5rem" onclick="markPaid()">💵 Marchează plătită</button>':'<div class="sub" style="margin-top:.6rem;text-align:center">✅ Factură încasată</div>')
+        +(S.inv.status!=='paid'?'<button class="btn green" style="width:100%;margin-top:.5rem" onclick="markPaid()">💵 Înregistrează încasare</button>':'<div class="sub" style="margin-top:.6rem;text-align:center">✅ Factură încasată</div>')
       +'</div>'
       +'<div class="panel"><h3>e-Factura (SFS)</h3><div class="sub">Poți genera XML-ul pentru SFS din lista de Facturi (butonul 🏛️). Integrarea completă cu SFS se activează la cerere.</div></div>'
     +'</div></div>';
@@ -881,7 +904,9 @@ async function save(thenPdf){
     inv_type:S.inv.inv_type||'normal', contract_total:(S.inv.contract_total!=null&&S.inv.contract_total!==''?+S.inv.contract_total:null), retention_pct:(S.inv.retention_pct!=null&&S.inv.retention_pct!==''?+S.inv.retention_pct:null), bank_choice:(S.inv.bank_choice||null),
     groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
     disc_mode:S.inv.disc_mode||'none', disc_value:+S.inv.disc_value||0, vat_mode:S.inv.vat_mode||'none', vat_value:+S.inv.vat_value||0, materials_mode:S.inv.materials_mode||'detailed', skonto_off:!!S.inv.skonto_off, skonto_pct:(S.inv.skonto_pct!=null&&S.inv.skonto_pct!==''?+S.inv.skonto_pct:null),
-    subtotal:t.sub, vat_total:t.vat, total:t.total, amount_paid:(S.inv.amount_paid!=null&&S.inv.amount_paid!==''?+S.inv.amount_paid:null), plan_url:S.inv.plan_url||null };
+    // KB#48A: `amount_paid` NU se mai trimite. `save_invoice` nici nu-l mai
+    // scrie — o cheie absentă din payload ar fi șters tăcut avansul istoric.
+    subtotal:t.sub, vat_total:t.vat, total:t.total, plan_url:S.inv.plan_url||null };
   try{
     // Salvare ATOMICĂ (migr 0117): antet + toate pozițiile într-o SINGURĂ tranzacție (RPC save_invoice),
     // cu optimistic concurrency pe updated_at. Serverul PREZERVĂ estimate_id/efactura_* la re-salvare.
@@ -914,31 +939,93 @@ async function save(thenPdf){
       PRICE_SEMANTICS_REQUIRED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
       PRICE_CONTRACT_UNSUPPORTED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
       PRICE_MODE_INVALID:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
-      PRICE_SUBTARIFF_GROSS_NOT_CONVERTED:'Tariful subcontractorului este cu TVA inclus și nu a fost convertit. Reîncarcă pagina (Ctrl+R) și alege tariful din nou.'};
+      PRICE_SUBTARIFF_GROSS_NOT_CONVERTED:'Tariful subcontractorului este cu TVA inclus și nu a fost convertit. Reîncarcă pagina (Ctrl+R) și alege tariful din nou.',
+      // KB#48A: serverul refuză un antet care nu se reconstituie din liniile trimise
+      FISCAL_TOTALS_MISMATCH:'Totalurile facturii nu se potrivesc cu pozițiile ei. Reîncarcă pagina (Ctrl+R); dacă problema persistă, factura conține date istorice inconsistente și trebuie verificată.',
+      PAYMENT_CONTRACT_REQUIRED:'Starea „Plătită" se obține doar prin „Înregistrează încasare", nu din formular.'};
     priceReject(e,'save_invoice');
     toast(code&&M[code]?('⚠️ '+T(M[code])+(code==='DOC_NUMBER_CONFLICT'?' ('+esc(S.inv.number||'')+')':'')):('Eroare: '+(e.message||e)));
   }
 }
+/* ── KB#48A: încasarea trece EXCLUSIV prin registrul canonic de plăți ───────
+   Vechiul `pay_invoice(id)` nu primea sumă, nu avea idempotență, nu avea lock și
+   insera în `bank_transactions` totalul integral. A fost dezactivat server-side
+   (ridică PAYMENT_CONTRACT_REQUIRED), deci un tab rămas pe cache-ul SW vechi NU
+   mai poate crea o tranzacție financiară. Aici se cere suma explicit, iar soldul
+   afișat vine din snapshotul canonic, nu dintr-un calcul local. */
+const PAY_ERR={
+  PAYMENT_FORBIDDEN:'Nu ai dreptul să înregistrezi încasări în această firmă.',
+  PAYMENT_INVOICE_NOT_FOUND:'Factura nu mai există.',
+  PAYMENT_AMOUNT_INVALID:'Suma trebuie să fie mai mare decât zero.',
+  PAYMENT_EXCEEDS_OUTSTANDING:'Suma depășește soldul rămas al facturii.',
+  PAYMENT_REQUEST_REQUIRED:'Aplicația ta este o versiune veche și nu poate înregistra încasări. Reîncarcă pagina (Ctrl+R).',
+  PAYMENT_REQUEST_CONFLICT:'Această încasare a fost deja înregistrată cu altă sumă. Reîncarcă pagina (Ctrl+R).',
+  PAYMENT_CONTRACT_REQUIRED:'Aplicația ta este o versiune veche și nu poate înregistra încasări. Reîncarcă pagina (Ctrl+R).',
+  PAYMENT_BANK_TX_INVALID:'Tranzacția bancară nu este validă.',
+  PAYMENT_BANK_TX_ALREADY_APPLIED:'Această tranzacție bancară a fost deja alocată unei facturi.',
+  PAYMENT_CURRENCY_MISMATCH:'Moneda tranzacției nu corespunde facturii.',
+  PAYMENT_SOURCE_INVALID:'Sursa încasării nu este validă.',
+  FISCAL_FORBIDDEN:'Nu ai dreptul să vezi datele financiare ale acestei facturi.',
+  FISCAL_INVOICE_NOT_FOUND:'Factura nu mai există.'};
+function payErrMsg(e){ const T=window.C373t||function(s){return s;};
+  const m=((e&&e.message)||''); const c=m.match(/PAYMENT_[A-Z_]+|FISCAL_[A-Z_]+/);
+  return (c&&PAY_ERR[c[0]])?T(PAY_ERR[c[0]]):('Eroare: '+m); }
+
 async function markPaid(){
-  if(!S.id){ toast('Salvează întâi factura.'); return; }
-  if(!confirm('Marchezi factura ca plătită? Se înregistrează încasarea.')) return;
-  const { data:res, error }=await sb.rpc('pay_invoice',{p_invoice:S.id});
-  if(error){
-    if(isNetErr(error)){ console.error('pay_invoice (rezultat incert)', error); docStale('Încasarea poate fi înregistrată.'); return; }
-    toast('Eroare: '+error.message); return;                 // funcția ridică excepție ⇒ plata NU s-a înregistrat
+  const T=window.C373t||function(s){return s;};
+  if(!S.id){ toast(T('Salvează întâi factura.')); return; }
+  const r=await sb.rpc('invoice_snapshot',{p_invoice:S.id});
+  if(r.error){ toast('⚠️ '+payErrMsg(r.error)); return; }
+  const s=r.data||{}, p=s.payment||{}; const out=+s.outstanding||0;
+  // cheia de idempotență se generează O DATĂ, la deschiderea dialogului: un retry
+  // după timeout sau un dublu clic retrimit ACEEAȘI cerere, nu una nouă
+  S._payReq='pay-'+S.id+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+  const row=(lbl,val,strong,muted)=>'<div style="display:flex;justify-content:space-between'+(muted?';color:var(--muted)':'')+'"><span>'+esc(T(lbl))+'</span>'+(strong?'<b>':'<span>')+money(val)+(strong?'</b>':'</span>')+'</div>';
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:430px"><h3>💵 '+esc(T('Înregistrează încasare'))+'</h3>'
+    +'<div id="pay-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div style="font-size:.9rem;line-height:1.85;margin:.4rem 0 .7rem">'
+      +row('De plată:', s.payable, true)
+      +((+p.opening_paid||0)>0.005?row('Sold plătit anterior / istoric:', p.opening_paid, false, true):'')
+      +((+p.ledger_paid||0)>0.005?row('Încasări înregistrate:', p.ledger_paid, false, true):'')
+      +row('Deja plătit:', p.paid_to_date, true)
+      +'<div style="border-top:1px solid #e5e9f2;margin-top:.25rem;padding-top:.25rem">'+row('Sold rămas:', out, true)+'</div>'
+    +'</div>'
+    +(out<=0.005
+      ? '<div style="font-size:.86rem;color:var(--muted)">'+esc(T('Factura este achitată integral.'))+'</div>'
+      : '<div class="field"><label>'+esc(T('Suma încasată'))+'</label><input id="pay-amt" type="number" step="0.01" min="0.01" value="'+num2(out)+'"/></div>'
+       +'<div class="field"><label>'+esc(T('Data încasării'))+'</label><input id="pay-date" type="date" value="'+esc(new Date().toISOString().slice(0,10))+'"/></div>')
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem"><button class="btn" onclick="closeM()">'+esc(T('Renunță'))+'</button>'
+    +(out<=0.005?'':'<button class="btn green" id="pay-go" onclick="payApply()">'+esc(T('Înregistrează'))+'</button>')
+    +'</div></div></div>';
+}
+
+async function payApply(){
+  const T=window.C373t||function(s){return s;};
+  const btn=$('pay-go'), msg=$('pay-msg');
+  const amt=+(($('pay-amt')&&$('pay-amt').value)||0);
+  const dt=(($('pay-date')&&$('pay-date').value)||null);
+  if(!(amt>0)){ if(msg) msg.textContent=T('Suma trebuie să fie mai mare decât zero.'); return; }
+  if(btn){ btn.disabled=true; btn.textContent=T('Se înregistrează…'); }   // starea reală e impusă de server, nu de buton
+  const r=await sb.rpc('invoice_payment_apply',{p_invoice:S.id,p_amount:amt,p_request_id:S._payReq,p_paid_date:dt,p_source:'manual'});
+  if(r.error){
+    if(btn){ btn.disabled=false; btn.textContent=T('Înregistrează'); }
+    // rețea incertă: NU reîncercăm automat — aceeași cheie e deja pregătită dacă
+    // operatorul redeschide dialogul, iar serverul refuză o a doua înregistrare
+    if(isNetErr(r.error)){ closeM(); docStale(T('Încasarea poate fi înregistrată.')); return; }
+    if(msg) msg.textContent=payErrMsg(r.error);
+    return;
   }
-  console.log('pay_invoice →', res);
-  // `pay_invoice` întoarce doar `text` și nu are RETURNING ⇒ un singur SELECT minimal, după id,
-  // pentru starea canonică (updated_at e pus de trg_invoices_touch cu now() al serverului).
-  const c=await sb.from('invoices').select('updated_at,status,amount_paid').eq('id',S.id).maybeSingle();
-  if(c.error || !c.data || !c.data.updated_at){
-    console.error('markPaid: încasare reușită, citirea stării canonice a eșuat', c.error||c);
-    docStale('Încasarea a fost înregistrată.'); return;
-  }
-  S.inv.status=c.data.status; S.inv.amount_paid=(c.data.amount_paid!=null?+c.data.amount_paid:null);
-  S._updatedAt=c.data.updated_at;                            // tokenul de concurență optimistă, la zi
-  toast('✅ Factură marcată plătită.'); render();
-  historyReset();                                            // abia după sincronizarea canonică
+  const s=r.data||{};
+  S.inv.status=s.status||S.inv.status;
+  if(s.payment&&s.payment.paid_to_date!=null) S.inv.amount_paid=+s.payment.paid_to_date;
+  closeM();
+  // plata atinge `invoices` ⇒ `trg_invoices_touch` a mutat `updated_at`; fără
+  // resincronizare, următoarea salvare a operatorului ar pica pe DOC_CONFLICT
+  const c=await sb.from('invoices').select('updated_at').eq('id',S.id).maybeSingle();
+  if(c.error||!c.data||!c.data.updated_at){ docStale(T('Încasarea a fost înregistrată.')); return; }
+  S._updatedAt=c.data.updated_at;
+  toast('✅ '+T('Încasare înregistrată.')+' '+T('Sold rămas:')+' '+money(s.outstanding));
+  render(); historyReset();
 }
 
 async function pdf(inPlace){

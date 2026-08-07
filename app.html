@@ -3662,7 +3662,26 @@ async function renderRestante(){
   $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută factură sau client…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.9rem">Total restant: <b style="color:#dc2626">'+money(tot)+'</b> · '+overdue.length+' facturi</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Factură</th><th>Client</th><th>Sumă</th><th>Scadență</th><th>Întârziere</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
-async function invoicePaid(id){ if(!confirm('Marchezi factura ca încasată?')) return; const r=await sbRetry(()=>sb.from('invoices').update({status:'paid'}).eq('id',id)); if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; } toast('✅ Factură încasată.'); renderRestante(); }
+/* KB#48A: „încasat" nu mai e o schimbare de status, ci o plată CU SUMĂ, scrisă în
+   registrul canonic. Vechiul `update({status:'paid'})` nu scria nimic nicăieri și
+   e acum refuzat de bază (PAYMENT_CONTRACT_REQUIRED). */
+async function invoicePaid(id){
+  const fs=await fiscalSnapshot(id,false);
+  if(!fs.ok){ toast('⚠️ '+fs.msg); return; }
+  const s=fs.snap, out=+s.outstanding||0;
+  if(out<=0.005){ toast(fiscalT('Factura este achitată integral.')); return; }
+  const raw=prompt(fiscalT('Suma încasată')+' — '+fiscalT('sold rămas:')+' '+money(out), (Math.round(out*100)/100).toFixed(2));
+  if(raw===null) return;
+  const amt=+String(raw).replace(',','.');
+  if(!(amt>0)){ toast(fiscalT('Suma trebuie să fie mai mare decât zero.')); return; }
+  // fără `sbRetry`: la o eroare de rețea nu știm dacă plata a intrat, iar o a doua
+  // trimitere cu altă cheie ar fi o a DOUA plată
+  const r=await sb.rpc('invoice_payment_apply',{p_invoice:id,p_amount:amt,p_request_id:payReqId(id),p_source:'manual'});
+  if(r.error){ toast(isNetErr(r.error)?netMsg():('⚠️ '+payErrApp(r.error))); return; }
+  const ns=r.data||{};
+  toast('✅ '+fiscalT('Încasare înregistrată.')+' '+fiscalT('Sold rămas:')+' '+money(ns.outstanding));
+  renderRestante();
+}
 function invoiceReminder(id){
   const i=(window._restante||{})[id]; if(!i) return; const cl=i.clients||{};
   const today=new Date().toISOString().slice(0,10); const d=Math.floor((new Date(today)-new Date(i.due_date))/86400000);
@@ -4084,13 +4103,25 @@ function reconRender(tx){
   $('mod-body').innerHTML='<div style="padding:.5rem 1.2rem;font-size:.85rem">'+tx.length+' încasări găsite. Verifică potrivirea și confirmă.</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Descriere</th><th>Sumă</th><th>Factură</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="padding:1rem;color:var(--muted)">Toate reconciliate. 🎉</td></tr>')+'</tbody></table></div>';
 }
+/* KB#48A — reconcilierea veche potrivea factura după TEXT, o marca integral
+   plătită INDIFERENT de suma încasată, nu verifica eroarea celui de-al doilea
+   `update` și folosea `sbRetry` peste un INSERT ne-idempotent. Acum: suma e cea
+   din extras, e validată față de soldul real, iar aplicarea trece prin ACELAȘI
+   motor de plată, cu cheie de idempotență stabilă pe rândul din extras. */
 async function reconConfirm(idx){
-  const t=(window._reconTx||[])[idx]; if(!t) return; const sel=$('rc-'+idx); const invId=sel&&sel.value; if(!invId){ toast('Alege factura pentru această încasare.'); return; }
-  const r1=await sbRetry(()=>sb.from('payments').insert({tenant_id:state.tenant,invoice_id:invId,amount:t.amt,paid_date:reconDate(t.date),method:'transfer',reference:t.desc||null}));
-  if(r1.error){ toast(isNetErr(r1.error)?netMsg():('Eroare: '+esc(r1.error.message))); return; }
-  await sb.from('invoices').update({status:'paid'}).eq('id',invId);
-  _reconInv=_reconInv.filter(i=>i.id!==invId);
-  toast('✅ Plată reconciliată. Factură încasată.');
+  const t=(window._reconTx||[])[idx]; if(!t) return; const sel=$('rc-'+idx); const invId=sel&&sel.value;
+  if(!invId){ toast('Alege factura pentru această încasare.'); return; }
+  const fs=await fiscalSnapshot(invId,false);
+  if(!fs.ok){ toast('⚠️ '+fs.msg); return; }
+  const out=+fs.snap.outstanding||0, amt=Math.round((+t.amt||0)*100)/100;
+  if(!(amt>0)){ toast(fiscalT('Suma trebuie să fie mai mare decât zero.')); return; }
+  if(amt-out>0.005){ toast('⚠️ '+fiscalT('Suma din extras depășește soldul rămas al facturii.')+' ('+money(out)+')'); return; }
+  if(!t._req) t._req='recon-'+invId+'-'+(t.date||'')+'-'+amt.toFixed(2);
+  const r=await sb.rpc('bank_payment_reconcile',{p_invoice:invId,p_amount:amt,p_request_id:t._req,p_occurred_at:reconDate(t.date),p_description:(t.desc||null)});
+  if(r.error){ toast(isNetErr(r.error)?netMsg():('⚠️ '+payErrApp(r.error))); return; }
+  const ns=r.data||{};
+  if((+ns.outstanding||0)<=0.005) _reconInv=_reconInv.filter(i=>i.id!==invId);
+  toast('✅ '+fiscalT('Plată reconciliată.')+' '+fiscalT('Sold rămas:')+' '+money(ns.outstanding));
   reconRender((window._reconTx||[]).filter((_,i)=>i!==idx));
 }
 
@@ -5293,9 +5324,16 @@ async function renderDashboard(){
   const counts=await Promise.all(defs.map(d=>sb.from(d[1]).select('*',{count:'exact',head:true}).then(r=>r.count||0)));
   let kpis='', chartHtml='';
   if(fin){
-    const { data:inv }=await sb.from('invoices').select('total,status');
-    let facturat=0,incasat=0,restant=0;
-    (inv||[]).forEach(i=>{ const t=+i.total||0; facturat+=t; if(i.status==='paid')incasat+=t; if(i.status==='overdue')restant+=t; });
+    /* KB#48A: nimic din proiect nu setează vreodată `status='overdue'` (zero
+       apariții), deci KPI-ul „Restant" citea permanent 0 în timp ce modulul
+       Restanțe lista facturi restante. Se derivă din scadență, exact ca filtrul
+       „Restante" din lista de facturi și ca `buck()` din cash-flow — nu e nevoie
+       de un motor global de status pentru asta. */
+    const { data:inv }=await sb.from('invoices').select('total,status,due_date');
+    let facturat=0,incasat=0,restant=0; const _t0=coToday();
+    (inv||[]).forEach(i=>{ const t=+i.total||0; facturat+=t;
+      if(i.status==='paid') incasat+=t;
+      else if(i.status!=='cancelled' && i.due_date && String(i.due_date).slice(0,10)<_t0) restant+=t; });
     const neincasat=facturat-incasat;
     kpis+=kpiCard(TR('kpiFacturat'),money(facturat),'facturi')
       +kpiCard(TR('kpiIncasat'),money(incasat),'facturi','var(--green)')
@@ -9389,26 +9427,112 @@ function download(content, filename, mime){
   a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
-/* ════ e-FACTURA (schelet UBL + simulare trimitere) ════ */
+/* ════ e-FACTURA ════ */
 function xmlEsc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c])); }
+
+/* ── KB#48A: snapshotul financiar canonic, sursa UNICĂ a exporturilor ───────
+   `genUBL` recalcula din `invoice_items` și nu atingea niciodată totalurile
+   stocate: pe datele reale, 3 din 29 de facturi ar fi declarat alt total decât
+   documentul (+44% în agregat). Acum fiecare export pornește de la
+   `invoice_snapshot`, iar un document care nu se reconstituie din pozițiile lui
+   NU mai poate fi exportat — fail-closed, nu „aproximativ". */
+const FISCAL_DIAG={
+  INVOICE_TOTAL_MISMATCH:'totalul stocat nu se reconstituie din poziții',
+  INVOICE_SUBTOTAL_MISMATCH:'subtotalul stocat nu se reconstituie din poziții',
+  INVOICE_HEADER_SUM_MISMATCH:'totalul nu este suma dintre subtotal și TVA',
+  VAT_MODE_TOTAL_MISMATCH:'factura este marcată „fără TVA", dar are TVA nenul',
+  INVOICE_EMPTY_LINES_WITH_TOTAL:'factura are total, dar nicio poziție',
+  INVOICE_LINES_REPLICATED:'pozițiile facturii apar duplicate',
+  INVOICE_ORPHAN_GROUP_ITEMS:'unele poziții aparțin unui grup inexistent'};
+function fiscalT(s){ try{ return window.C373t?window.C373t(s):s; }catch(e){ return s; } }
+function fiscalBlockedMsg(snap){
+  const d=(snap&&snap.diagnostics)||[];
+  const why=d.filter(c=>FISCAL_DIAG[c]).map(c=>fiscalT(FISCAL_DIAG[c])).join('; ');
+  return fiscalT('Factura conține date istorice inconsistente și necesită verificare înainte de export fiscal.')+(why?(' ('+why+')'):'');
+}
+/* Întoarce {ok, snap} sau {ok:false, msg}. Nu descarcă și nu trimite nimic dacă
+   documentul nu poate fi reprezentat fidel.
+   `requireExportable=false` se folosește pentru ÎNCASĂRI: banii primiți pe o
+   factură istoric inconsistentă sunt reali și trebuie să poată fi înregistrați —
+   se blochează exportul fiscal, nu evidența plăților. */
+async function fiscalSnapshot(id, requireExportable){
+  if(requireExportable===undefined) requireExportable=true;
+  const r=await sb.rpc('invoice_snapshot',{p_invoice:id});
+  if(r.error){
+    const m=((r.error&&r.error.message)||'');
+    if(/FISCAL_FORBIDDEN/.test(m)) return {ok:false,msg:fiscalT('Nu ai dreptul să vezi datele financiare ale acestei facturi.')};
+    if(/FISCAL_INVOICE_NOT_FOUND/.test(m)) return {ok:false,msg:fiscalT('Factura nu mai există.')};
+    if(/function .*invoice_snapshot/.test(m)) return {ok:false,msg:fiscalT('Aplicația ta este o versiune veche. Reîncarcă pagina (Ctrl+R).')};
+    return {ok:false,msg:'Eroare: '+m};
+  }
+  const s=r.data||{};
+  if(requireExportable && !s.exportable) return {ok:false,snap:s,msg:fiscalBlockedMsg(s)};
+  return {ok:true,snap:s};
+}
+
+/* Mesajele contractului de plată, comune modulelor Restanțe și Reconciliere. */
+const PAY_ERR_APP={
+  PAYMENT_FORBIDDEN:'Nu ai dreptul să înregistrezi încasări în această firmă.',
+  PAYMENT_INVOICE_NOT_FOUND:'Factura nu mai există.',
+  PAYMENT_AMOUNT_INVALID:'Suma trebuie să fie mai mare decât zero.',
+  PAYMENT_EXCEEDS_OUTSTANDING:'Suma depășește soldul rămas al facturii.',
+  PAYMENT_REQUEST_REQUIRED:'Aplicația ta este o versiune veche și nu poate înregistra încasări. Reîncarcă pagina (Ctrl+R).',
+  PAYMENT_REQUEST_CONFLICT:'Această încasare a fost deja înregistrată cu altă sumă. Reîncarcă pagina (Ctrl+R).',
+  PAYMENT_CONTRACT_REQUIRED:'Aplicația ta este o versiune veche și nu poate înregistra încasări. Reîncarcă pagina (Ctrl+R).',
+  PAYMENT_BANK_TX_INVALID:'Tranzacția bancară nu este validă.',
+  PAYMENT_BANK_TX_ALREADY_APPLIED:'Această tranzacție bancară a fost deja alocată unei facturi.',
+  PAYMENT_CURRENCY_MISMATCH:'Moneda tranzacției nu corespunde facturii.',
+  PAYMENT_SOURCE_INVALID:'Sursa încasării nu este validă.'};
+function payErrApp(e){ const m=((e&&e.message)||''); const c=m.match(/PAYMENT_[A-Z_]+/);
+  return (c&&PAY_ERR_APP[c[0]])?fiscalT(PAY_ERR_APP[c[0]]):('Eroare: '+m); }
+function payReqId(id){ return 'app-'+id+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8); }
 async function genEfactura(id){
+  /* KB#48A — DOUĂ schimbări de fond:
+     1) generarea NU mai marchează documentul „trimis". Înainte scria
+        `efactura_status='sent'` + `efactura_id='SIM-…'`, deci baza susținea că
+        documentul a ajuns la autoritate, deși nu pleca nimic. `sent` se poate
+        scrie doar după confirmarea unei transmiteri reale.
+     2) liniile poartă acum netul REAL, deci Σ(Qty×Price×…) se reconciliază cu
+        `<Subtotal>` — înainte, o reducere făcea ca același fișier să se
+        contrazică singur. */
+  const fs=await fiscalSnapshot(id);
+  if(!fs.ok){ toast('⛔ '+fs.msg); return; }
+  const snap=fs.snap;
   const { data:inv, error } = await sb.from('invoices').select('*, clients!client_id(name,idno)').eq('id',id).single();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
-  const { data:items } = await sb.from('invoice_items').select('name,qty,unit,unit_price,vat_rate').eq('invoice_id',id);
+  const { data:items } = await sb.from('invoice_items').select('name,qty,unit,unit_price,vat_rate,disc,group_id').eq('invoice_id',id).order('position',{ascending:true});
   const f=state.firm||{}; const cl=inv.clients||{};
-  const lines=(items||[]).map((l,i)=>'    <InvoiceLine><ID>'+(i+1)+'</ID><Qty unit="'+xmlEsc(l.unit)+'">'+xmlEsc(l.qty)+'</Qty>'
-    +'<Item>'+xmlEsc(l.name)+'</Item><Price>'+xmlEsc(l.unit_price)+'</Price><VAT>'+xmlEsc(l.vat_rate)+'</VAT></InvoiceLine>').join('\n');
+  const vmode=snap.vat_mode||'none', dmode=snap.disc_mode||'none';
+  const gdisc={}; (inv.groups||[]).forEach(g=>{ if(g&&g.id) gdisc[g.id]=1-(+g.disc||0)/100; });
+  const named=(items||[]).filter(l=>(l.name||'').trim());
+  const lnet=l=>{ const g=(+l.qty||0)*(+l.unit_price||0);
+    if(l.group_id && gdisc[l.group_id]!=null) return g*gdisc[l.group_id];
+    return dmode==='line' ? g*(1-(+l.disc||0)/100) : g; };
+  const nets=named.map(l=>Math.round(lnet(l)*100)/100);
+  const lineSum=Math.round(nets.reduce((a,b)=>a+b,0)*100)/100;
+  const base=+snap.stored.subtotal||0;
+  const allowance=Math.round((lineSum-base)*100)/100;
+  if(Math.abs(lineSum-allowance-base)>0.02){ toast('⛔ '+fiscalBlockedMsg(snap)); return; }
+  const n2e=v=>(+v||0).toFixed(2);
+  const lines=named.map((l,i)=>'    <InvoiceLine><ID>'+(i+1)+'</ID><Qty unit="'+xmlEsc(l.unit)+'">'+xmlEsc(l.qty)+'</Qty>'
+    +'<Item>'+xmlEsc(l.name)+'</Item><Price>'+xmlEsc(l.unit_price)+'</Price>'
+    +'<Net>'+n2e(nets[i])+'</Net>'
+    +'<VAT>'+n2e(vmode==='none'?0:(vmode==='total'?(+inv.vat_value||0):(+l.vat_rate||0)))+'</VAT></InvoiceLine>').join('\n');
+  const paid=Math.round((+((snap.payment||{}).paid_to_date)||0)*100)/100;
   const xml='<?xml version="1.0" encoding="UTF-8"?>\n<Invoice xmlns="urn:cod373:efactura">\n'
     +'  <Number>'+xmlEsc(inv.number)+'</Number>\n  <IssueDate>'+xmlEsc(inv.issue_date)+'</IssueDate>\n'
     +'  <Supplier><Name>'+xmlEsc(f.name)+'</Name><IDNO>'+xmlEsc(f.idno||'')+'</IDNO></Supplier>\n'
     +'  <Customer><Name>'+xmlEsc(cl.name||'')+'</Name><IDNO>'+xmlEsc(cl.idno||'')+'</IDNO></Customer>\n'
     +'  <Lines>\n'+lines+'\n  </Lines>\n'
-    +'  <Totals><Subtotal>'+xmlEsc(inv.subtotal)+'</Subtotal><VAT>'+xmlEsc(inv.vat_total)+'</VAT><Total>'+xmlEsc(inv.total)+'</Total><Currency>'+xmlEsc(inv.currency||'MDL')+'</Currency></Totals>\n'
+    +'  <Totals><LineTotal>'+n2e(lineSum)+'</LineTotal>'
+      +(allowance>0.005?'<Discount>'+n2e(allowance)+'</Discount>':'')
+      +'<Subtotal>'+n2e(base)+'</Subtotal><VAT>'+n2e(snap.stored.vat_total)+'</VAT><Total>'+n2e(snap.stored.total)+'</Total>'
+      +(paid>0.005?'<Prepaid>'+n2e(paid)+'</Prepaid>':'')
+      +'<Payable>'+n2e(Math.round(((+snap.stored.total||0)-paid)*100)/100)+'</Payable>'
+      +'<Currency>'+xmlEsc(snap.currency||inv.currency||'MDL')+'</Currency></Totals>\n'
     +'</Invoice>';
-  await sb.from('invoices').update({ efactura_status:'sent', efactura_id:'SIM-'+Date.now(), efactura_sent_at:new Date().toISOString() }).eq('id',id);
   download(xml,'efactura-'+(inv.number||id)+'.xml','application/xml');
-  toast('🏛️ XML e-Factura generat și marcat „trimis". Trimiterea reală la SFS se activează cu certificatul.');
-  renderModule('facturi');
+  toast('🏛️ '+fiscalT('XML e-Factura generat. NU a fost transmis — încarcă-l în SFS; transmiterea automată se activează cu certificatul.'));
 }
 
 /* ════ INTEGRĂRI CONTABILITATE (lexoffice / sevdesk via proxy acct) ════ */
@@ -9430,23 +9554,63 @@ async function acctTest(provider){
 async function acctCall(provider, path, method, payload){ const au=(state.firm&&state.firm.automations)||{}; const key=provider==='lexoffice'?au.lexoffice_key:au.sevdesk_key; if(!key) throw new Error('Cheia '+provider+' nu e setată în Setări.'); const { data, error }=await sb.functions.invoke('acct',{body:{provider:provider,path:path,method:method||'GET',key:key,payload:payload}}); if(error) throw new Error(error.message||'proxy'); if(data&&data.error) throw new Error(data.error); return data; }
 async function acctInvoiceData(id){ const inv=(await sb.from('invoices').select('*, clients!client_id(name,idno,address,email)').eq('id',id).single()).data; if(!inv) throw new Error('Factura nu a fost găsită.'); const items=((await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[]).filter(it=>(it.name||'').trim()); if(!items.length) throw new Error('Factura nu are linii.'); return {inv, items, cl:inv.clients||{}}; }
 async function pushLexoffice(id){ toast('⏳ Trimit în lexoffice…');
-  try{ const {inv,items,cl}=await acctInvoiceData(id);
+  try{ const _fl=await fiscalSnapshot(id); if(!_fl.ok){ toast('⛔ '+_fl.msg); return; } const lxSnap=_fl.snap;
+    const {inv,items,cl}=await acctInvoiceData(id);
     const iso=(inv.issue_date||new Date().toISOString().slice(0,10))+'T00:00:00.000+02:00';
-    const lineItems=items.map(it=>({ type:'custom', name:String(it.name), quantity:(+it.qty||1), unitName:(it.unit||'Stück'), unitPrice:{ currency:'EUR', netAmount:+(+it.unit_price||0).toFixed(2), taxRatePercentage:+(it.vat_rate||0) } }));
-    const payload={ voucherDate:iso, address:{ name:(cl.name||'Client'), countryCode:'DE' }, lineItems:lineItems, totalPrice:{ currency:'EUR' }, taxConditions:{ taxType:'net' }, shippingConditions:{ shippingDate:iso, shippingType:'service' } };
+    /* KB#48A: prețul trimis e netul EFECTIV (cu reducerile de linie/grup aplicate),
+       cota respectă `vat_mode`, iar moneda vine din document — nu mai e „EUR" fix. */
+    const lxCur=(lxSnap.currency||inv.currency||'EUR');
+    const lxVm=lxSnap.vat_mode||'none', lxDm=lxSnap.disc_mode||'none';
+    const lxGd={}; (inv.groups||[]).forEach(g=>{ if(g&&g.id) lxGd[g.id]=1-(+g.disc||0)/100; });
+    const lxUnit=it=>{ const p=(+it.unit_price||0);
+      if(it.group_id && lxGd[it.group_id]!=null) return p*lxGd[it.group_id];
+      return lxDm==='line' ? p*(1-(+it.disc||0)/100) : p; };
+    const lxRate=it=> lxVm==='none' ? 0 : (lxVm==='total' ? (+inv.vat_value||0) : (+it.vat_rate||0));
+    const lineItems=items.map(it=>({ type:'custom', name:String(it.name), quantity:(+it.qty||1), unitName:(it.unit||'Stück'), unitPrice:{ currency:lxCur, netAmount:+(lxUnit(it)).toFixed(2), taxRatePercentage:+lxRate(it) } }));
+    const lxNet=lineItems.reduce((a,l)=>a+l.quantity*l.unitPrice.netAmount,0);
+    if(Math.abs(Math.round(lxNet*100)/100-(+lxSnap.stored.subtotal||0))>0.02){ toast('⛔ '+fiscalBlockedMsg(lxSnap)); return; }
+    const payload={ voucherDate:iso, address:{ name:(cl.name||'Client'), countryCode:'DE' }, lineItems:lineItems, totalPrice:{ currency:lxCur }, taxConditions:{ taxType:(lxVm==='none'?'vatfree':'net') }, shippingConditions:{ shippingDate:iso, shippingType:'service' } };
     const r=await acctCall('lexoffice','/v1/invoices?finalize=false','POST',payload);
     if(r.status>=200&&r.status<300){ toast('✅ Trimis în lexoffice (ciornă)'+(r.body&&r.body.id?' · ID '+String(r.body.id).slice(0,8):'')+'.'); }
     else { let m=(r.body&&(r.body.message||(r.body.IssueList&&r.body.IssueList[0]&&(r.body.IssueList[0].i18nKey||r.body.IssueList[0].source))))||('cod '+r.status); toast('❌ lexoffice: '+esc(typeof m==='string'?m:JSON.stringify(m)).slice(0,170)); }
   }catch(e){ toast('❌ '+(e.message||e)); } }
 async function pushSevdesk(id){ toast('⏳ Trimit în sevdesk…');
-  try{ const {inv,items,cl}=await acctInvoiceData(id);
+  try{ const _fs=await fiscalSnapshot(id); if(!_fs.ok){ toast('⛔ '+_fs.msg); return; } const sdSnap=_fs.snap;
+    const {inv,items,cl}=await acctInvoiceData(id);
     const su=await acctCall('sevdesk','/v1/SevUser','GET'); const userId=su.body&&su.body.objects&&su.body.objects[0]&&su.body.objects[0].id; if(!userId) throw new Error('Nu am găsit utilizatorul sevdesk (verifică token-ul).');
     let contactId=null; const found=await acctCall('sevdesk','/v1/Contact?depth=0&name='+encodeURIComponent(cl.name||'Client'),'GET'); if(found.body&&found.body.objects&&found.body.objects.length) contactId=found.body.objects[0].id;
     if(!contactId){ const cc=await acctCall('sevdesk','/v1/Contact','POST',{ name:(cl.name||'Client'), category:{ id:3, objectName:'Category' } }); contactId=cc.body&&cc.body.objects&&cc.body.objects.id; }
     if(!contactId) throw new Error('Nu am putut crea contactul în sevdesk.');
     const today=(inv.issue_date||new Date().toISOString().slice(0,10));
-    const posSave=items.map(it=>({ objectName:'InvoicePos', mapAll:true, quantity:(+it.qty||1), price:(+it.unit_price||0), name:String(it.name), unity:{ id:1, objectName:'Unity' }, taxRate:(+it.vat_rate||0) }));
-    const invoiceObj={ objectName:'Invoice', mapAll:true, invoiceNumber:(inv.number||''), contact:{ id:contactId, objectName:'Contact' }, contactPerson:{ id:userId, objectName:'SevUser' }, invoiceDate:today, status:100, invoiceType:'RE', currency:'EUR', taxRate:((items[0]&&+items[0].vat_rate)||0), taxText:'Umsatzsteuer', taxType:'default', discount:0, addressCountry:{ id:1, objectName:'StaticCountry' } };
+    /* KB#48A — mapping-ul pornea de la `unit_price` brut, ignora `vat_mode`,
+       hardcoda `currency:'EUR'` și `discount:0`, iar `taxRate` al facturii lua
+       cota PRIMEI linii (o factură cu cote mixte pierdea restul). Acum totul vine
+       din snapshotul canonic, iar payloadul se reconciliază matematic cu el. */
+    const snap=sdSnap;
+    const vmode=snap.vat_mode||'none', dmode=snap.disc_mode||'none';
+    const gd={}; (inv.groups||[]).forEach(g=>{ if(g&&g.id) gd[g.id]=1-(+g.disc||0)/100; });
+    const effUnit=it=>{ const p=(+it.unit_price||0);
+      if(it.group_id && gd[it.group_id]!=null) return p*gd[it.group_id];
+      return dmode==='line' ? p*(1-(+it.disc||0)/100) : p; };
+    const rateOf=it=> vmode==='none' ? 0 : (vmode==='total' ? (+inv.vat_value||0) : (+it.vat_rate||0));
+    const posSave=items.map(it=>({ objectName:'InvoicePos', mapAll:true, quantity:(+it.qty||1),
+      price:Math.round(effUnit(it)*100)/100, name:String(it.name),
+      unity:{ id:1, objectName:'Unity' }, taxRate:rateOf(it) }));
+    // reducerea de document devine procent explicit, nu o modificare tăcută de preț
+    const posNet=posSave.reduce((a,p)=>a+p.quantity*p.price,0);
+    const base=+snap.stored.subtotal||0;
+    const discPct=(posNet>0.005)?Math.round(((posNet-base)/posNet*100)*1e6)/1e6:0;
+    const rates=Array.from(new Set(posSave.map(p=>+p.taxRate||0)));
+    // verificarea matematică: ce ar factura sevDesk trebuie să fie ce spune Cod373
+    const sdVat=posSave.reduce((a,p)=>a+p.quantity*p.price*(1-discPct/100)*(+p.taxRate||0)/100,0);
+    if(Math.abs(Math.round((posNet*(1-discPct/100))*100)/100-base)>0.02
+       || Math.abs(Math.round(sdVat*100)/100-(+snap.stored.vat_total||0))>0.02){
+      toast('⛔ '+fiscalBlockedMsg(snap)); return; }
+    const invoiceObj={ objectName:'Invoice', mapAll:true, invoiceNumber:(inv.number||''), contact:{ id:contactId, objectName:'Contact' }, contactPerson:{ id:userId, objectName:'SevUser' }, invoiceDate:today, status:100, invoiceType:'RE',
+      currency:(snap.currency||inv.currency||'EUR'),
+      taxRate:(rates.length===1?rates[0]:0), taxText:(vmode==='none'?'Steuerfrei':'Umsatzsteuer'),
+      taxType:(vmode==='none'?'noteu':'default'), discount:discPct,
+      addressCountry:{ id:1, objectName:'StaticCountry' } };
     const r=await acctCall('sevdesk','/v1/Invoice/Factory/saveInvoice','POST',{ invoice:invoiceObj, invoicePosSave:posSave, invoicePosDelete:null });
     if(r.status>=200&&r.status<300){ const sid=r.body&&r.body.objects&&r.body.objects.invoice&&r.body.objects.invoice.id; toast('✅ Trimis în sevdesk (ciornă)'+(sid?' · ID '+sid:'')+'.'); }
     else { toast('❌ sevdesk: cod '+r.status+' — '+esc(JSON.stringify(r.body)).slice(0,160)); }
@@ -9481,21 +9645,67 @@ async function genEfacturaRO(id){ return genUBL(id,'ro'); }
 async function genUBL(id, kind){
   kind=kind||'de'; const RO=(kind==='ro');
   toast('⏳ Generez e-Factura…');
+  // 1) snapshotul canonic ÎNAINTE de orice — dacă documentul e inconsistent, ne oprim aici
+  const fs=await fiscalSnapshot(id);
+  if(!fs.ok){ toast('⛔ '+fs.msg); return; }
+  const snap=fs.snap;
   const inv=(await sb.from('invoices').select('*, clients!client_id(name,idno,address,email)').eq('id',id).single()).data; if(!inv){ toast('Eroare.'); return; }
   const items=((await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[]).filter(it=>(it.name||'').trim());
-  const f=state.firm||{}, au=f.automations||{}, cl=inv.clients||{}; const cur=RO?'RON':((f.currency||'EUR').toUpperCase()); const ccode=RO?'RO':((f.country)||'DE');
+  const f=state.firm||{}, au=f.automations||{}, cl=inv.clients||{};
+  // moneda documentului, nu a firmei: `invoices.currency` era ignorat complet
+  const cur=(snap.currency||inv.currency||(RO?'RON':'EUR')).toUpperCase(); const ccode=RO?'RO':((f.country)||'DE');
   const custID=RO?'urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1':'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0';
   const X=s=>(''+(s==null?'':s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   const n2=v=>(+v||0).toFixed(2);
   const vatNo=au.vat_id || ((RO&&f.vat_payer!==false?'RO':'')+(f.idno||''));
-  /* totaluri și defalcare TVA pe cote — calculate din linii, ca XML-ul să fie intern consistent */
-  let lineSum=0; const groups={};
-  items.forEach(it=>{ const net=Math.round((+it.qty||0)*(+it.unit_price||0)*100)/100; lineSum+=net; const r=+it.vat_rate||0; (groups[r]=groups[r]||{base:0,rate:r}).base+=net; });
-  lineSum=Math.round(lineSum*100)/100;
-  let taxAmt=0; const taxSub=Object.keys(groups).sort((a,b)=>b-a).map(k=>{ const g=groups[k]; const tx=Math.round(g.base*g.rate)/100; taxAmt+=tx; return '    <cac:TaxSubtotal>\n      <cbc:TaxableAmount currencyID="'+cur+'">'+n2(g.base)+'</cbc:TaxableAmount>\n      <cbc:TaxAmount currencyID="'+cur+'">'+n2(tx)+'</cbc:TaxAmount>\n      <cac:TaxCategory><cbc:ID>'+(g.rate>0?'S':'Z')+'</cbc:ID><cbc:Percent>'+n2(g.rate)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>\n    </cac:TaxSubtotal>'; }).join('\n');
-  taxAmt=Math.round(taxAmt*100)/100; const grand=Math.round((lineSum+taxAmt)*100)/100;
-  const lineXml=items.map((it,i)=>{ const net=Math.round((+it.qty||0)*(+it.unit_price||0)*100)/100;
-    return '  <cac:InvoiceLine>\n    <cbc:ID>'+(i+1)+'</cbc:ID>\n    <cbc:InvoicedQuantity unitCode="C62">'+(+it.qty||0)+'</cbc:InvoicedQuantity>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(net)+'</cbc:LineExtensionAmount>\n    <cac:Item>\n      <cbc:Name>'+X(it.name)+'</cbc:Name>\n      <cac:ClassifiedTaxCategory><cbc:ID>'+((+it.vat_rate||0)>0?'S':'Z')+'</cbc:ID><cbc:Percent>'+n2(it.vat_rate)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>\n    </cac:Item>\n    <cac:Price><cbc:PriceAmount currencyID="'+cur+'">'+n2(it.unit_price)+'</cbc:PriceAmount></cac:Price>\n  </cac:InvoiceLine>';
+  /* ── KB#48A: valorile declarate vin din SNAPSHOT, nu dintr-un recalcul propriu ──
+     Reținerea de garanție și avansurile pe stadii (Abschlag) nu au reprezentare
+     fidelă în acest profil UBL: PayableAmount ar înceta să fie
+     TaxInclusiveAmount − PrepaidAmount. Preferăm refuzul unei alegeri arbitrare. */
+  if((+snap.retention||0)>0.005){ toast('⛔ '+fiscalT('Factura are reținere de garanție, care nu poate fi reprezentată fidel în e-Factură. Verific-o înainte de export.')); return; }
+  if((+snap.advances||0)>0.005){ toast('⛔ '+fiscalT('Factura scade avansuri facturate anterior, care nu pot fi reprezentate fidel în e-Factură. Verific-o înainte de export.')); return; }
+
+  const base=+snap.stored.subtotal||0, taxAmt=Math.round((+snap.stored.vat_total||0)*100)/100, grand=+snap.stored.total||0;
+  const prepaid=Math.round((+((snap.payment||{}).paid_to_date)||0)*100)/100;
+  const payable=Math.round((grand-prepaid)*100)/100;
+  const vmode=snap.vat_mode||'none', dmode=snap.disc_mode||'none';
+
+  // netul REAL al liniei: reducerea de linie se aplică doar liniilor negrupate și
+  // doar pe `disc_mode='line'`; fiecare grup are reducerea LUI, necondiționată
+  const gdisc={}; (inv.groups||[]).forEach(g=>{ if(g&&g.id) gdisc[g.id]=1-(+g.disc||0)/100; });
+  const lnet=it=>{ const g=(+it.qty||0)*(+it.unit_price||0);
+    if(it.group_id && gdisc[it.group_id]!=null) return g*gdisc[it.group_id];
+    return dmode==='line' ? g*(1-(+it.disc||0)/100) : g; };
+  const nets=items.map(it=>Math.round(lnet(it)*100)/100);
+  const lineSum=Math.round(nets.reduce((a,b)=>a+b,0)*100)/100;
+  // reducerea de DOCUMENT devine AllowanceCharge — elementul care lipsea complet
+  const allowance=Math.round((lineSum-base)*100)/100;
+  if(Math.abs(lineSum-allowance-base)>0.02){ toast('⛔ '+fiscalBlockedMsg(snap)); return; }
+
+  /* defalcarea pe cote respectă `vat_mode`: „fără TVA" înseamnă o singură
+     categorie scutită, nu cotele de pe linii (exact defectul §2.2) */
+  const rateOf=it=> vmode==='none' ? 0 : (vmode==='total' ? (+inv.vat_value||0) : (+it.vat_rate||0));
+  const buckets={};
+  items.forEach((it,i)=>{ const r=rateOf(it); (buckets[r]=buckets[r]||{rate:r,net:0}).net+=nets[i]; });
+  // alocăm reducerea de document proporțional cu ponderea fiecărei cote
+  const keys=Object.keys(buckets).sort((a,b)=>b-a);
+  let taxSum=0; const subs=keys.map(k=>{ const b=buckets[k];
+    const share=lineSum>0.005?(b.net/lineSum):(keys.length?1/keys.length:0);
+    const taxable=Math.round((b.net-allowance*share)*100)/100;
+    const tx=(vmode==='none')?0:Math.round(taxable*b.rate)/100;
+    taxSum+=tx;
+    return {rate:b.rate, taxable:taxable, tax:tx}; });
+  taxSum=Math.round(taxSum*100)/100;
+  // reconcilierea finală: XML-ul trebuie să declare EXACT ce spune documentul
+  const sumTaxable=Math.round(subs.reduce((a,s)=>a+s.taxable,0)*100)/100;
+  if(Math.abs(taxSum-taxAmt)>0.02 || Math.abs(sumTaxable-base)>0.02
+     || Math.abs(base+taxAmt-grand)>0.02){ toast('⛔ '+fiscalBlockedMsg(snap)); return; }
+
+  const taxSub=subs.map(s=>'    <cac:TaxSubtotal>\n      <cbc:TaxableAmount currencyID="'+cur+'">'+n2(s.taxable)+'</cbc:TaxableAmount>\n      <cbc:TaxAmount currencyID="'+cur+'">'+n2(s.tax)+'</cbc:TaxAmount>\n      <cac:TaxCategory><cbc:ID>'+(s.rate>0?'S':(vmode==='none'?'E':'Z'))+'</cbc:ID><cbc:Percent>'+n2(s.rate)+'</cbc:Percent>'+(s.rate>0?'':'<cbc:TaxExemptionReasonCode>VATEX-EU-O</cbc:TaxExemptionReasonCode>')+'<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>\n    </cac:TaxSubtotal>').join('\n');
+  const allowXml=(allowance>0.005)?('  <cac:AllowanceCharge>\n    <cbc:ChargeIndicator>false</cbc:ChargeIndicator>\n    <cbc:AllowanceChargeReason>'+X(fiscalT('Reducere comercială'))+'</cbc:AllowanceChargeReason>\n    <cbc:Amount currencyID="'+cur+'">'+n2(allowance)+'</cbc:Amount>\n    <cac:TaxCategory><cbc:ID>'+(subs[0]&&subs[0].rate>0?'S':(vmode==='none'?'E':'Z'))+'</cbc:ID><cbc:Percent>'+n2(subs[0]?subs[0].rate:0)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>\n  </cac:AllowanceCharge>\n'):'';
+  const lineXml=items.map((it,i)=>{
+    const r=rateOf(it);
+    return '  <cac:InvoiceLine>\n    <cbc:ID>'+(i+1)+'</cbc:ID>\n    <cbc:InvoicedQuantity unitCode="C62">'+(+it.qty||0)+'</cbc:InvoicedQuantity>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(nets[i])+'</cbc:LineExtensionAmount>\n    <cac:Item>\n      <cbc:Name>'+X(it.name)+'</cbc:Name>\n      <cac:ClassifiedTaxCategory><cbc:ID>'+(r>0?'S':(vmode==='none'?'E':'Z'))+'</cbc:ID><cbc:Percent>'+n2(r)+'</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>\n    </cac:Item>\n    <cac:Price><cbc:PriceAmount currencyID="'+cur+'">'+n2(it.unit_price)+'</cbc:PriceAmount></cac:Price>\n  </cac:InvoiceLine>';
   }).join('\n');
   const sellerParty='  <cac:AccountingSupplierParty><cac:Party>\n'
     +(au.email?'    <cbc:EndpointID schemeID="EM">'+X(au.email)+'</cbc:EndpointID>\n':'')
@@ -9520,9 +9730,17 @@ async function genUBL(id, kind){
     +(inv.due_date?'  <cbc:DueDate>'+inv.due_date+'</cbc:DueDate>\n':'')
     +'  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>\n  <cbc:DocumentCurrencyCode>'+cur+'</cbc:DocumentCurrencyCode>\n'
     +'  <cbc:BuyerReference>'+X(au.buyer_ref||cl.name||'NA')+'</cbc:BuyerReference>\n'
-    +sellerParty+buyerParty+payMeans
+    +sellerParty+buyerParty+payMeans+allowXml
     +'  <cac:TaxTotal><cbc:TaxAmount currencyID="'+cur+'">'+n2(taxAmt)+'</cbc:TaxAmount>\n'+taxSub+'\n  </cac:TaxTotal>\n'
-    +'  <cac:LegalMonetaryTotal>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(lineSum)+'</cbc:LineExtensionAmount>\n    <cbc:TaxExclusiveAmount currencyID="'+cur+'">'+n2(lineSum)+'</cbc:TaxExclusiveAmount>\n    <cbc:TaxInclusiveAmount currencyID="'+cur+'">'+n2(grand)+'</cbc:TaxInclusiveAmount>\n    <cbc:PayableAmount currencyID="'+cur+'">'+n2(grand)+'</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n'
+    /* LineExtensionAmount = Σ liniilor (cu reducerile de linie/grup deja aplicate);
+       TaxExclusiveAmount = baza de TVA a documentului = LineExtension − Allowance;
+       PrepaidAmount = ce s-a încasat efectiv, din registrul canonic de plăți;
+       PayableAmount = TaxInclusive − Prepaid. Înainte, ultimele două lipseau, iar
+       TaxExclusive era pus egal cu LineExtension — deci orice reducere dispărea. */
+    +'  <cac:LegalMonetaryTotal>\n    <cbc:LineExtensionAmount currencyID="'+cur+'">'+n2(lineSum)+'</cbc:LineExtensionAmount>\n    <cbc:TaxExclusiveAmount currencyID="'+cur+'">'+n2(base)+'</cbc:TaxExclusiveAmount>\n    <cbc:TaxInclusiveAmount currencyID="'+cur+'">'+n2(grand)+'</cbc:TaxInclusiveAmount>\n'
+      +(allowance>0.005?'    <cbc:AllowanceTotalAmount currencyID="'+cur+'">'+n2(allowance)+'</cbc:AllowanceTotalAmount>\n':'')
+      +(prepaid>0.005?'    <cbc:PrepaidAmount currencyID="'+cur+'">'+n2(prepaid)+'</cbc:PrepaidAmount>\n':'')
+      +'    <cbc:PayableAmount currencyID="'+cur+'">'+n2(payable)+'</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n'
     +lineXml+'\n</Invoice>';
   download(xml,(RO?'eFactura-RO-':'XRechnung-')+(inv.number||id)+'.xml','application/xml;charset=utf-8');
   const miss=[]; if(!au.vat_id&&!RO) miss.push('Cod TVA'); if(!au.city) miss.push('oraș'); if(!au.zip) miss.push('cod poștal'); if(!au.iban) miss.push('IBAN'); if(!au.email) miss.push('email');

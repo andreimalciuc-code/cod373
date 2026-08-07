@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='329';
+const APP_BUILD='330';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -497,17 +497,12 @@ async function payInvoiceSheet(id,number,total){
     '<div id="pay-msg"></div>'
     +'<div class="card" style="margin:0 0 1rem;text-align:center"><div class="s">Sumă de plată</div><div style="font-size:1.8rem;font-weight:800;margin-top:.2rem">'+money(total)+'</div></div>'
     +(acc?'<div class="card" style="margin:0 0 1rem"><div class="s">Transfer bancar către</div><b>'+esc(acc.bank||'Bancă')+'</b><div style="font-family:monospace;margin-top:.3rem">'+esc(acc.iban||'IBAN nedefinit')+'</div></div>':'')
-    +'<button class="btn" id="pay-btn" onclick="doPay(\''+id+'\')">💳 Plătește online (card)</button>'
-    +'<p style="font-size:.78rem;color:var(--muted);margin-top:.8rem">Demo: plata online cu cardul prin MAIB/Paynet se activează la lansare. Apăsarea confirmă plata în sistem.</p>');
-}
-async function doPay(id){
-  const m='Confirmi plata acestei facturi?'; if(!confirm(window.C373t?C373t(m):m)) return;
-  $('pay-btn').disabled=true; $('pay-btn').textContent='Se procesează…';
-  const {data,error}=await sb.rpc('pay_invoice',{p_invoice:id});
-  if(error){ $('pay-msg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>'; $('pay-btn').disabled=false; $('pay-btn').textContent='💳 Plătește online (card)'; return; }
-  if(data==='ALREADY'){ toast('Factura era deja plătită.'); }
-  else toast('✅ Plată confirmată. Mulțumim!');
-  closeSheet(); scrClientFacturi();
+    /* KB#48A: butonul „Plătește online" chema `pay_invoice`, care marca factura
+       plătită și insera în `bank_transactions` totalul integral — la apăsarea
+       CLIENTULUI, fără sumă și fără registru. Toate cele 5 încasări istorice
+       „Plată online (demo)" vin de aici. O confirmare a plătitorului nu e o
+       plată: încasarea se înregistrează de firmă, prin registrul canonic. */
+    +'<p style="font-size:.78rem;color:var(--muted);margin-top:.8rem">Achită prin transfer bancar folosind datele de mai sus. Plata online cu cardul se activează la lansare. După încasare, firma o înregistrează în sistem.</p>');
 }
 
 async function scrSubHome(){
