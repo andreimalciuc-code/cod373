@@ -1,12 +1,26 @@
 /* Cod373 service worker — stale-while-revalidate pentru pagini (rapid), cache-first pentru resurse */
-const CACHE = 'cod373-v360';
+/* v360 = UX1.1 (navigație personalizabilă), deja live. UX2 se publică peste el ⇒ v361.
+   Numărul provizoriu din checkpointul UX2 a fost înlocuit după ce s-a citit constanta
+   reală din `main`, nu presupusă. */
+const CACHE = 'cod373-v361';
 const ASSETS = [
-  './app.html', './mobil.html', './acces.html', './portal.html', './erp.html', './grafic.html', './deviz.html', './factura.html', './i18n.js',
+  './app.html', './mobil.html', './acces.html', './portal.html', './erp.html', './grafic.html', './deviz.html', './factura.html', './i18n.js', './catalog-form.js',
   './manifest.webmanifest', './manifest-mobil.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png'
 ];
 
+/* `cache.add(url)` trece prin cache-ul HTTP al browserului: dacă acolo stă încă
+   sub-resursa de la versiunea anterioară (i18n.js și catalog-form.js se cer FĂRĂ
+   cache-buster), noul cache se umple cu fișiere VECHI — adică exact combinația
+   pe care versionarea trebuia s-o excludă: pagină nouă + dicționar/formular vechi.
+   `{cache:'reload'}` obligă fiecare intrare din precache să vină de pe rețea.
+   Reprodus la testarea UX2: SW-ul v360 a preluat un `i18n.js` cu 1319 octeți mai
+   mic decât cel servit de server, fără nicio eroare. */
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => Promise.all(ASSETS.map(a => c.add(a).catch(()=>{})))).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c => Promise.all(ASSETS.map(a => c.add(new Request(a, { cache: 'reload' })).catch(()=>{}))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {

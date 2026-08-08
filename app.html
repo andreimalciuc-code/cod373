@@ -3208,9 +3208,11 @@ async function aiCall(mode, input, history, image){
   return data;
 }
 /* Generează/îmbunătățește descrierea unui produs/serviciu cu AI (pe baza denumirii din formular) */
-async function aiDescribe(fieldKey, moduleKey, btn){
-  const ta=$('f-'+fieldKey); if(!ta) return;
-  const nameEl=$('f-name'); const name=(nameEl&&nameEl.value||'').trim();
+/* `els` e opțional: formularul canonic de catalog (UX2) are alte id-uri decât
+   `f-<key>`, deci își pasează direct elementele. Restul modulelor apelează la fel. */
+async function aiDescribe(fieldKey, moduleKey, btn, els){
+  const ta=(els&&els.ta)||$('f-'+fieldKey); if(!ta) return;
+  const nameEl=(els&&els.name)||$('f-name'); const name=(nameEl&&nameEl.value||'').trim();
   if(!name){ toast(C373t('Scrie întâi denumirea, apoi apasă ✨ AI.')); if(nameEl) nameEl.focus(); return; }
   const kind = moduleKey==='servicii' ? 'serviciu / lucrare de construcții' : (moduleKey==='materiale' ? 'material de construcții' : ((MODULES[moduleKey]&&MODULES[moduleKey].title)||'produs'));
   const cur=(ta.value||'').trim();
@@ -8450,6 +8452,21 @@ function qcWrap(refKey, selectId, selectHtml){ return QUICK[refKey] ? ('<div sty
 function qcAddOption(selectId,id,label){ const s=$(selectId); if(!s) return; const o=document.createElement('option'); o.value=id; o.textContent=label; o.selected=true; s.appendChild(o); s.value=id; s.dispatchEvent(new Event('change')); }
 function quickCreate(refKey, cb){
   const q=QUICK[refKey]; if(!q){ toast('Nu se poate crea aici.'); return; }
+  /* ►► UX2: „＋ nou" pentru Material deschide tot formularul CANONIC.
+     Înainte avea trei câmpuri (denumire/UM/categorie) și insera DIRECT în
+     `materials`, ocolind `catalog_item_create` — singura cale admisă de D29.
+     Se montează în `picker-mount` (nu `modal-mount`), fiindcă e deschis PESTE un
+     formular existent, și NU atinge `formCtx` — acela aparține formularului de
+     dedesubt. Fără colecții-copil: e o creare rapidă dintr-un dropdown, iar
+     prețurile pe furnizori se completează în modulul Materiale. */
+  // Fallback-ul NU e `saveQc`: acela ar insera direct în `materials`. Dacă fișierul
+  // partajat lipsește (cache vechi), trimitem la formularul modulului, care trece
+  // tot prin `catalog_item_create`. Nicio cale de creare în afara contractului.
+  if(refKey==='materials'){
+    if(window.CatalogForm) cfQuickMaterial(cb);
+    else { toast('📦 '+tz('Deschid formularul de Material.')); openForm('materiale'); }
+    return;
+  }
   window._qcCb=cb; window._qcKey=refKey;
   const body=q.fields.map(f=>'<div class="field"><label>'+esc(f.l)+(f.req?' *':'')+'</label><input id="qc-'+f.k+'" value="'+esc(f.def||'')+'"/></div>').join('');
   $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:70" onclick="if(event.target===this)closeQc()"><div class="modal" style="max-width:420px">'
@@ -8623,7 +8640,11 @@ async function catalogCreateOnce(kind, payload){
     await new Promise(s=>setTimeout(s,600*(i+1)));
   }
   priceReject(last,'catalog_item_create');
-  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+  // `err.net` păstrează NATURA erorii dincolo de traducerea mesajului: cine decide
+  // curățarea unui obiect Storage trebuie să știe dacă serverul a refuzat explicit
+  // (sigur nu s-a creat nimic) sau dacă doar s-a pierdut răspunsul (incert) — KB#60.
+  const err=new Error(catalogErrMsg(last)); err.catalog=true;
+  err.net=(typeof isNetErr==='function' && isNetErr(last)); throw err;
 }
 // Actualizarea unui element de catalog trece prin ACELASI contract ca si crearea
 // (D35). Pana acum crearea mergea prin `catalog_item_create`, iar MODIFICAREA
@@ -8643,7 +8664,11 @@ async function catalogUpdate(kind, id, payload){
     await new Promise(x=>setTimeout(x,600*(i+1)));
   }
   priceReject(last,'catalog_item_update');
-  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+  // `err.net` păstrează NATURA erorii dincolo de traducerea mesajului: cine decide
+  // curățarea unui obiect Storage trebuie să știe dacă serverul a refuzat explicit
+  // (sigur nu s-a creat nimic) sau dacă doar s-a pierdut răspunsul (incert) — KB#60.
+  const err=new Error(catalogErrMsg(last)); err.catalog=true;
+  err.net=(typeof isNetErr==='function' && isNetErr(last)); throw err;
 }
 async function saveQc(){
   const q=QUICK[window._qcKey]; const rec={tenant_id:state.tenant};
@@ -8983,8 +9008,153 @@ function spListCell(r){
     +(all.length>act.length?'<div style="color:var(--muted);font-size:.72rem">'+(all.length-act.length)+' inactive</div>':'');
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   UX2 — CATALOGUL FOLOSEȘTE FORMULARUL CANONIC PARTAJAT
+
+   Până aici, Materialul și Serviciul aveau DOUĂ definiții de interfață: motorul
+   generic de mai jos și formularul din editoare. Acum e una singură
+   (`catalog-form.js`), folosită de app + deviz/ofertă + factură.
+
+   SEAM-UL E DELIBERAT ÎNGUST. `openForm`/`saveRecord` deservesc ~27 de formulare;
+   un rewrite al lor ar fi fost un risc fără legătură cu obiectivul lotului. Doar
+   `materiale` și `servicii` sunt deviate; orice alt modul intră neschimbat pe
+   ramura generică, byte cu byte.
+
+   CE NU SE PIERDE: prețurile pe furnizori/magazine (Material) și rețeta de
+   materiale (Serviciu) sunt colecții-copil reale ale acestei aplicații. Ele intră
+   ca `extras` — HTML randat de gazdă, montat cu ACELEAȘI `renderSrc`/`renderRecipe`
+   și salvat cu ACELEAȘI `material_prices_set`/`service_recipe_set`. Formularul
+   partajat le găzduiește; nu le reimplementează și nu le înlocuiește.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function cfDraftStore(){
+  /* Aceleași chei de coloană și același `fdraftKey` ca la formularul generic —
+     schițele salvate înainte de UX2 rămân valabile. */
+  const keyOf=k=>(k==='material'?'materiale':'servicii');
+  return {
+    get:k=>fdraftGet(keyOf(k)),
+    save:(k,o)=>{ try{ localStorage.setItem(fdraftKey(keyOf(k)),JSON.stringify({t:Date.now(),v:o})); }catch(e){} },
+    clear:k=>fdraftClear(keyOf(k))
+  };
+}
+/* ── Datele colecțiilor-copil. Editorul lor trăiește în `catalog-form.js`, ca să fie
+      IDENTIC în toate gazdele; aici furnizăm doar listele și rândurile existente. ── */
+async function cfChildrenData(row){
+  const out={};
+  const [sup,sto,mats]=await Promise.all([
+    sb.from('suppliers').select('id,name').order('name'),
+    sb.from('stores').select('id,name').order('name'),
+    sb.from('materials').select('id,name,unit,last_price').order('name')
+  ]);
+  out.suppliers={ options:(sup.data||[]), rows:[] };
+  out.stores   ={ options:(sto.data||[]), rows:[] };
+  out.recipe   ={ materials:(mats.data||[]), rows:[] };
+  if(row){
+    const [ms,mst,rec]=await Promise.all([
+      sb.from('material_suppliers').select('supplier_id,price').eq('material_id',row.id),
+      sb.from('material_stores').select('store_id,price').eq('material_id',row.id),
+      sb.from('service_materials').select('*').eq('service_id',row.id).order('position')
+    ]);
+    out.suppliers.rows=(ms.data||[]).map(x=>({ref_id:x.supplier_id||'',price:(x.price!=null?x.price:'')}));
+    out.stores.rows   =(mst.data||[]).map(x=>({ref_id:x.store_id||'',price:(x.price!=null?x.price:'')}));
+    const pm={}; (mats.data||[]).forEach(m=>pm[m.id]=m);
+    out.recipe.rows=(rec.data||[]).map(x=>({material_id:x.material_id||null,
+      material_name:x.material_name||(pm[x.material_id]?pm[x.material_id].name:''),
+      unit:x.unit||'',qty_per_unit:+x.qty_per_unit||0,waste_pct:+x.waste_pct||0,
+      _price:(x.material_id&&pm[x.material_id])?(+pm[x.material_id].last_price||0):0}));
+  }
+  return out;
+}
+/* Scrierea rămâne pe aceleași RPC-uri tranzacționale ca înainte (D28). */
+async function cfSaveChildren(kind,id,data){
+  if(kind==='service') await childRpc('service_recipe_set',{p_service_id:id,p_rows:data.recipe||[]});
+  else await childRpc('material_prices_set',{p_material_id:id,
+    p_suppliers:data.suppliers||[], p_stores:data.stores||[]});
+}
+async function cfOpenCatalog(key,row,carry){
+  const m=MODULES[key], kind=CATALOG_KIND[key];
+  formCtx={ key, id: row?row.id:null, lines:[] };
+  await loadUnits();
+  try{ const cr=await sb.from(m.table).select('category'); const s=new Set();
+    (cr.data||[]).forEach(x=>{ if(x.category) s.add(x.category); });
+    window.CAT_LIST=Array.from(s).sort((a,b)=>a.localeCompare(b)); }catch(e){ window.CAT_LIST=[]; }
+  // preîncărcările colecțiilor-copil — identice cu cele din motorul generic
+  const children=await cfChildrenData(row);
+
+  let createdId=null;                       // vezi `removeUpload` mai jos
+  CatalogForm.open({
+    mount:'modal-mount', kind:kind, mode: row?'edit':'create', id: row?row.id:null,
+    units:UNIT_LIST||[], categories:window.CAT_LIST||[],
+    vatDefault:(state.firm&&state.firm.vat_rate!=null?state.firm.vat_rate:20),
+    preferGross:priceInclVat(),
+    children:children, saveChildren:cfSaveChildren,
+    draftStore: (row||carry)?null:cfDraftStore(),
+    /* Comutarea Tipului redeschide formularul pe modulul celălalt, cu valorile
+       purtate mai departe — inclusiv fotografia încă neîncărcată. */
+    onKindChange:c=>{ const k2=(c.kind==='material')?'materiale':'servicii';
+      if(!canDo(k2,'c')){ toast('🔒 Nu ai dreptul să adaugi aici.'); return; }
+      cfOpenCatalog(k2,null,c); },
+    draft: row ? { name:row.name, unit:row.unit, category:row.category, description:row.description,
+                   sku:row.sku, vat_rate:row.vat_rate, photo_url:row.photo_url,
+                   price:(kind==='material'?row.last_price:row.price), cost_price:row.cost_price }
+               : (carry||{}),
+    compress:f=>compressImage(f,1600,0.72),
+    openImg:p=>openImg(encodeURIComponent(p)),
+    /* Prefixul id-urilor formularului canonic e `c373f-`, NU `cf-`: `cf-<cheie>` e
+       deja folosit de câmpurile CRM personalizate din `crmCustomFormHTML`, iar
+       cheile acelea le alege utilizatorul. Un câmp CRM numit „name" ar fi produs
+       exact `cf-name` — două elemente cu același id în aceeași pagină. */
+    aiDescribe:(ta,k,btn)=>aiDescribe('description', k==='material'?'materiale':'servicii', btn, {ta:ta,name:$('c373f-name')}),
+    nextSku:async k=>{ try{ const r=await sb.rpc('catalog_next_sku',{p_tenant_id:state.tenant,p_kind:k}); return (!r.error&&r.data)?r.data:null; }catch(e){ return null; } },
+    signUrl:async p=>{ try{ const {data}=await sb.storage.from('docs').createSignedUrl(p,3600); return (data&&data.signedUrl)||''; }catch(e){ return ''; } },
+    upload:async f=>{ const safe=(f.name||'poza.jpg').replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path=state.tenant+'/catalog/cat_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
+      const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'});
+      if(up.error) throw new Error('Poza nu s-a încărcat: '+up.error.message); return path; },
+    /* Un material editat aici își are deja poza proprie ⇒ nimic de copiat. `adopt`
+       există pentru pozele împrumutate de pe poziții de document, ceea ce în modulul
+       de catalog nu se întâmplă. */
+    removeUpload:async (p,err)=>{ if(createdId) return;      // elementul EXISTĂ: poza e a lui
+      if(err && (err.net || isNetErr(err))) return;          // incert dacă serverul a procesat (KB#60)
+      try{ await sb.storage.from('docs').remove([p]); }catch(e){} },
+    create:async (k,pl)=>{ const res=await catalogCreate(k,pl); createdId=res.id; return res; },
+    update:async (k,id,pl)=>{ const res=await catalogUpdate(k,id,pl); createdId=id; return res; },
+    errMsg:e=>isNetErr(e)?netMsg():catalogErrMsg(e),
+    onSaved:res=>{ toast('✅ '+tz('Salvat în baza de date.')+(res.sku?(' ('+res.sku+')'):'')); renderModule(key); }
+  });
+}
+/* Creare rapidă de Material din alt formular. Deliberat fără `extras` și fără
+   `formCtx`: nu are voie să atingă starea formularului peste care se deschide. */
+async function cfQuickMaterial(cb){
+  await loadUnits();
+  let cats=[]; try{ const cr=await sb.from('materials').select('category'); const s=new Set();
+    (cr.data||[]).forEach(x=>{ if(x.category) s.add(x.category); }); cats=Array.from(s).sort((a,b)=>a.localeCompare(b)); }catch(e){}
+  let createdId=null;
+  CatalogForm.open({
+    mount:'picker-mount', kind:'material', mode:'create', title:'Material nou', saveLabel:'Creează',
+    units:UNIT_LIST||[], categories:cats,
+    vatDefault:(state.firm&&state.firm.vat_rate!=null?state.firm.vat_rate:20),
+    preferGross:priceInclVat(),
+    compress:f=>compressImage(f,1600,0.72),
+    nextSku:async k=>{ try{ const r=await sb.rpc('catalog_next_sku',{p_tenant_id:state.tenant,p_kind:k}); return (!r.error&&r.data)?r.data:null; }catch(e){ return null; } },
+    signUrl:async p=>{ try{ const {data}=await sb.storage.from('docs').createSignedUrl(p,3600); return (data&&data.signedUrl)||''; }catch(e){ return ''; } },
+    upload:async f=>{ const safe=(f.name||'poza.jpg').replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path=state.tenant+'/catalog/cat_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
+      const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'});
+      if(up.error) throw new Error('Poza nu s-a încărcat: '+up.error.message); return path; },
+    removeUpload:async (p,err)=>{ if(createdId || (err && (err.net || isNetErr(err)))) return;   // KB#60
+      try{ await sb.storage.from('docs').remove([p]); }catch(e){} },
+    create:async (k,pl)=>{ const res=await catalogCreate('material',pl); createdId=res.id; return res; },
+    errMsg:e=>isNetErr(e)?netMsg():catalogErrMsg(e),
+    onSaved:res=>{ const d=res.row||{}; toast('✅ '+tz('Creat:')+' '+esc(d.name||''));
+      if(typeof cb==='function') cb(d.id||createdId, d.name||''); }
+  });
+}
 async function openForm(key,row,preset){
   if(!canDo(key, row?'u':'c')){ toast(row?'🔒 Nu ai dreptul să editezi aici.':'🔒 Nu ai dreptul să adaugi aici.'); return; }
+  // ►► UX2: Materialul și Serviciul au un singur formular, comun cu editoarele.
+  // Dacă `catalog-form.js` lipsește (cache vechi), motorul generic de mai jos preia
+  // neschimbat — o degradare sigură, nu un ecran gol.
+  if(CATALOG_KIND[key] && window.CatalogForm){ return cfOpenCatalog(key,row); }
   // Protecție în profunzime: documentele cu editor dedicat nu trec NICIODATĂ prin
   // formularul generic, oricine ar apela funcția (buton vechi, callback, consolă).
   if(MODULES[key] && MODULES[key].pageEditor){ openPageEditor(key, row?row.id:null); return; }
@@ -10805,6 +10975,7 @@ async function printDoc(key,id){
 })();
 </script>
 <script src="i18n.js"></script>
+<script src="catalog-form.js"></script>
 <script>/* marcheaza limba activa in selectorul de pe pagina de start */
 (function(){ try{ var l=(window.C373lang&&C373lang())||localStorage.getItem('c373_lang')||'ro';
   document.querySelectorAll('#gate-langs [data-glang]').forEach(function(b){ b.classList.toggle('on', b.dataset.glang===l); }); }catch(e){} })();</script>

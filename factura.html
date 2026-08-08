@@ -627,7 +627,13 @@ function saveLineToCatalog(i){ const l=S.lines[i]; if(!l||!(l.name||'').trim()){
    `deviz.html` fusese reparat, `factura.html` nu. Din 0130 baza generează
    oricum codul, dar categoria tot s-ar fi pierdut, iar dublul clic n-ar fi
    fost idempotent. */
-function lcNew(i){ const l=S.lines[i]; if(!l) return; quickAddService(i); }
+function lcNew(i){
+  const l=S.lines[i]; if(!l) return;
+  const kindSel=($('lc-kind')&&$('lc-kind').value)||l.cat_src||l.kind||'service';
+  quickAddService(i,{ kind:kindSel, name:l.name, unit:l.unit, price:+l.unit_price||0,
+    vat_rate:(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20)),
+    description:l.description||'', photo_url:l.photo_url||null });
+}
 async function lcSave(i,mode){ const l=S.lines[i]; if(!l) return;
   if(mode!=='update'){ lcNew(i); return; }
   const isMat=(l.cat_src==='material'); const tbl=isMat?'materials':'services'; const vat=+l.vat_rate||(S.firm.vat_rate!=null?S.firm.vat_rate:20);
@@ -646,45 +652,69 @@ function catalogNew(){ const l=blankLine(); S.lines.push(l); reorderLinesBySecti
    cu 4 coloane din 20, fără cod intern, fără categorie, fără descriere, fără
    poză și fără `request_id`. 0C1 a reparat doar `deviz.html`. Acum e aceeași
    cale canonică, cu același formular complet. */
-function qaKindLabel(t){ return t==='material'?'materialul':'serviciul'; }
-function qaSync(which){
-  const vr=+($('qa-vat')&&$('qa-vat').value||0)||0;
-  const net=$('qa-price'), gross=$('qa-price-gross'); if(!net||!gross) return;
-  if(which==='net') gross.value = net.value===''?'':(Math.round((+net.value||0)*(1+vr/100)*100)/100);
-  else net.value = gross.value===''?'':(vr?Math.round((+gross.value||0)/(1+vr/100)*100)/100:(+gross.value||0));
+/* ── UX2: formularul canonic, comun cu app.html si deviz.html ──
+   Inainte, factura avea propriul formular redus — si diverse fata de deviz:
+   `lcNew` nu transmitea niciun preset, nu se precompleta categoria si NU exista
+   niciun text despre fotografia preluata. Fotografia era retinuta intern, dar
+   utilizatorul vedea un camp gol. Acum toate trei aplicatiile deschid acelasi
+   formular, iar fotografia se VEDE. Contractul server ramane aici, in gazda. */
+function cfHost(i){
+  return {
+    mount:'modal-mount',
+    units:(S.firm&&S.firm.automations&&S.firm.automations.units)||[],
+    categories:Array.from(new Set((S.catalog||[]).map(c=>c.cat).filter(Boolean))),
+    vatDefault:(S.firm.vat_rate!=null?S.firm.vat_rate:20),
+    preferGross:!!(S.firm&&S.firm.automations&&S.firm.automations.prices_incl_vat),
+    signUrl:async function(pth){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(pth,3600); return (data&&data.signedUrl)||''; }catch(e){ return ''; } },
+    upload:function(f){ return catalogPhotoUp(f,'cat'); },
+    adopt:catalogPhotoAdopt,
+    nextSku:catalogNextSku,
+    children:S._cfChildren||null, saveChildren:cfSaveChildren,
+    create:function(k,pl){ return catalogCreate(k,pl); },
+    update:function(k,id,pl){ return catalogUpdate(k,id,pl); },
+    // Ștergem copia DOAR când serverul a refuzat explicit; la eroare de rețea nu
+    // se poate ști dacă cererea a ajuns, iar ștergerea ar lăsa articolul cu imagine
+    // ruptă. Un obiect orfan e mult mai puțin grav (KB#60).
+    removeUpload:function(pth, err){
+      if(err && (err.net || (typeof isNetErr==='function' && isNetErr(err)))) return Promise.resolve();
+      return sb.storage.from('docs').remove([pth]);
+    },
+    errMsg:catalogErrMsg,
+    ctx:{ i:i },
+    onSaved:cfLinkLine
+  };
 }
-function qaTypeChange(){
-  const t=$('qa-type')?$('qa-type').value:'service';
-  const cw=$('qa-cost-wrap'); if(cw) cw.style.display=(t==='service'?'':'none');
-  const b=$('qa-save'); if(b) b.textContent='Salvează '+qaKindLabel(t)+' în catalog';
-  const u=$('qa-unit'); if(u && !u.dataset.touched) u.value=(t==='material'?'buc':'m2');
+function cfLinkLine(res, ctx){
+  const d=res.row, type=res.kind;
+  const p=(type==='material'?+d.last_price:+d.price)||0;
+  S.catalog.unshift({src:type,id:d.id,icon:(type==='material'?'📦':'🧰'),name:d.name,unit:d.unit,price:p,vat:+d.vat_rate,kind:type,desc:d.description||'',photo:d.photo_url||null,cat:d.category||''});
+  let l=S.lines[ctx.i]; if(!l){ S.lines.push(blankLine()); l=S.lines[S.lines.length-1]; }
+  l.name=d.name; l.unit=d.unit; l.unit_price=p; l.vat_rate=+d.vat_rate; l.kind=type;
+  if(d.description && !l.description) l.description=d.description;
+  if(d.photo_url && !l.photo_url) l.photo_url=d.photo_url;
+  l.cat_id=d.id; l.cat_src=type; l._catName=d.name; l._catPrice=p; l._catUnit=d.unit; l._catDesc=d.description||''; l._catPhoto=d.photo_url||null;
+  toast('✅ Adăugat în catalog ('+(res.sku||'fără cod')+') și pe factură.');
+  renderLines(); renderSummary();
 }
-function quickAddService(i){
-  const l=S.lines[i]||{};
-  const name=l.name||'';
-  const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct'];
-  const cu=(S.firm&&S.firm.automations&&S.firm.automations.units)||[]; const units=Array.from(new Set(base.concat(cu)));
-  const cats=Array.from(new Set((S.catalog||[]).map(c=>c.cat).filter(Boolean)));
-  const kind=(l.kind==='material')?'material':'service';
-  const vat=(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20));
-  const net=+l.unit_price||0; const gross=Math.round(net*(1+(+vat||0)/100)*100)/100;
-  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Adaugă în catalog</h3><div id="qa-msg" style="color:var(--red);font-size:.82rem"></div>'
-    +'<div class="field"><label>Tip</label><select id="qa-type" onchange="qaTypeChange()"><option value="service"'+(kind==='service'?' selected':'')+'>🧰 Serviciu / manoperă</option><option value="material"'+(kind==='material'?' selected':'')+'>📦 Material</option></select></div>'
-    +'<div class="field"><label>Denumire *</label><input id="qa-name" value="'+esc(name)+'"/></div>'
-    +'<div class="row2"><div class="field"><label>Unitate de măsură</label><input id="qa-unit" list="qa-units" oninput="this.dataset.touched=1" value="'+esc(l.unit||(kind==='material'?'buc':'m2'))+'"/><datalist id="qa-units">'+units.map(u=>'<option value="'+esc(u)+'"></option>').join('')+'</datalist></div>'
-      +'<div class="field"><label>TVA (%)</label><input id="qa-vat" type="number" step="any" value="'+esc(vat)+'" oninput="qaSync(\'net\')"/></div></div>'
-    +'<div class="field"><label>Preț client</label><div style="display:flex;gap:.5rem">'
-      +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">fără TVA</div><input id="qa-price" type="number" step="any" value="'+esc(net)+'" oninput="qaSync(\'net\')"/></div>'
-      +'<div style="flex:1"><div style="font-size:.74rem;color:var(--muted);margin-bottom:.15rem">cu TVA</div><input id="qa-price-gross" type="number" step="any" value="'+esc(gross)+'" oninput="qaSync(\'gross\')"/></div>'
-      +'</div><div style="font-size:.76rem;color:var(--muted);margin-top:.2rem">Prețul cu care vinzi clientului. Se salvează fără TVA.</div></div>'
-    +'<div class="field" id="qa-cost-wrap" style="'+(kind==='service'?'':'display:none')+'"><label>Preț cost / intern (opțional)</label><input id="qa-cost" type="number" step="any"/></div>'
-    +'<div class="field"><label>Categorie</label><input id="qa-category" list="qa-cats" placeholder="ex. Zidărie, Finisaje"/><datalist id="qa-cats">'+cats.map(c=>'<option value="'+esc(c)+'"></option>').join('')+'</datalist></div>'
-    +'<div class="field"><label>Descriere</label><textarea id="qa-desc" rows="2">'+esc(l.description||'')+'</textarea></div>'
-    +'<div class="field"><label>Poză (opțional)</label><input id="qa-photo" type="file" accept="image/*"/></div>'
-    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">Codul intern (SKU) se generează automat pe server.</div>'
-    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="qa-save" onclick="saveQuickService('+i+')">Salvează '+qaKindLabel(kind)+' în catalog</button></div></div></div>';
-  if(l.photo_url) window._qaKeepPhoto=l.photo_url; else window._qaKeepPhoto=null;
-  setTimeout(()=>$('qa-name')&&$('qa-name').focus(),50);
+async function quickAddService(i,preset){
+  const l=S.lines[i]||{}; const p=preset||{};
+  const kind=p.kind||((l.cat_src==='material'||l.kind==='material')?'material':'service');
+  try{ S._cfChildren=await cfChildrenData(); }catch(e){ S._cfChildren=null; }
+  CatalogForm.open(Object.assign(cfHost(i),{
+    kind:kind, mode:'create',
+    saveLabel:'Salvează în catalog și adaugă în factură',
+    draft:{
+      name:(p.name!=null?p.name:(l.name||'')),
+      unit:(p.unit||l.unit||''),
+      price:(p.price!=null?+p.price:(+l.unit_price||0)),
+      vat_rate:(p.vat_rate!=null?+p.vat_rate:(l.vat_rate!=null?+l.vat_rate:null)),
+      description:(p.description!=null?p.description:(l.description||'')),
+      category:(p.category||''),
+      photo_url:(p.photo_url!==undefined?p.photo_url:(l.photo_url||null)),
+      // poza rămâne a DOCUMENTULUI: catalogul primește o copie proprie la salvare
+      photo_borrowed:true
+    }
+  }));
 }
 /* Contractul canonic (migrarea 0127), identic cu cel din app.html/deviz.html */
 const CATALOG_ERR={
@@ -733,7 +763,11 @@ async function catalogCreateOnce(kind, payload){
     await new Promise(x=>setTimeout(x,600*(i+1)));
   }
   priceReject(last,'catalog_item_create');
-  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+  // `err.net` păstrează NATURA erorii dincolo de traducerea mesajului: cine decide
+  // curățarea unui obiect Storage trebuie să știe dacă serverul a refuzat explicit
+  // (sigur nu s-a creat nimic) sau dacă doar s-a pierdut răspunsul (incert) — KB#60.
+  const err=new Error(catalogErrMsg(last)); err.catalog=true;
+  err.net=(typeof isNetErr==='function' && isNetErr(last)); throw err;
 }
 // Actualizarea unui element de catalog trece prin ACELASI contract ca si crearea
 // (D35). Pana acum crearea mergea prin `catalog_item_create`, iar MODIFICAREA
@@ -753,14 +787,56 @@ async function catalogUpdate(kind, id, payload){
     await new Promise(x=>setTimeout(x,600*(i+1)));
   }
   priceReject(last,'catalog_item_update');
-  const err=new Error(catalogErrMsg(last)); err.catalog=true; throw err;
+  // `err.net` păstrează NATURA erorii dincolo de traducerea mesajului: cine decide
+  // curățarea unui obiect Storage trebuie să știe dacă serverul a refuzat explicit
+  // (sigur nu s-a creat nimic) sau dacă doar s-a pierdut răspunsul (incert) — KB#60.
+  const err=new Error(catalogErrMsg(last)); err.catalog=true;
+  err.net=(typeof isNetErr==='function' && isNetErr(last)); throw err;
 }
+// ⚠️ CALEA TREBUIE SĂ FIE UNICĂ. Până în UX2 era `<tenant>/cat_<nume-fișier>`, cu
+// `upsert:true` și fără marcaj de timp: două materiale create din documente cu
+// fișiere numite la fel — `IMG_0001.jpg`, `poza.jpg`, implicitul telefoanelor —
+// ajungeau pe ACELAȘI obiect, iar al doilea îl suprascria tăcut pe primul.
+// Materialul A rămânea cu poza materialului B.
 async function catalogPhotoUp(file, tag){
   const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-  const path=S.tenant+'/'+tag+'_'+safe;
-  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg',upsert:true});
+  const path=S.tenant+'/catalog/'+tag+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
   if(up.error) throw new Error('Poza nu s-a încărcat: '+(up.error.message||up.error));
   return path;
+}
+// Poza de pe poziția documentului aparține DOCUMENTULUI. La „Salvează în catalog"
+// articolul primește o COPIE proprie, ca imaginea lui să rămână validă indiferent
+// ce se întâmplă ulterior cu poziția sau cu factura.
+async function catalogPhotoAdopt(srcPath){
+  if(!srcPath) return null;
+  const base=String(srcPath).split('/').pop()||'poza.jpg';
+  const dst=S.tenant+'/catalog/cat_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+base;
+  const cp=await sb.storage.from('docs').copy(srcPath,dst);
+  if(cp.error) throw new Error('Poza nu s-a copiat în catalog: '+(cp.error.message||cp.error));
+  return dst;
+}
+// Codul propus de server (`catalog_next_sku`, migr 0127), ca în app.html.
+async function catalogNextSku(kind){
+  try{ const r=await sb.rpc('catalog_next_sku',{p_tenant_id:S.tenant,p_kind:kind});
+    return (!r.error && r.data) ? r.data : null; }catch(e){ return null; }
+}
+/* Colecțiile-copil canonice — ACELEAȘI ca în modulul Materiale/Servicii și în ofertă.
+   Editorul e în `catalog-form.js`; aici doar datele și RPC-ul. */
+async function cfChildrenData(){
+  const [sup,sto,mats]=await Promise.all([
+    sb.from('suppliers').select('id,name').order('name'),
+    sb.from('stores').select('id,name').order('name'),
+    sb.from('materials').select('id,name,unit,last_price').order('name')
+  ]);
+  return { suppliers:{options:(sup.data||[]),rows:[]},
+           stores:{options:(sto.data||[]),rows:[]},
+           recipe:{materials:(mats.data||[]),rows:[]} };
+}
+async function cfSaveChildren(kind,id,data){
+  const call=async(fn,args)=>{ const r=await sb.rpc(fn,args); if(r.error) throw r.error; return r.data; };
+  if(kind==='service') await call('service_recipe_set',{p_service_id:id,p_rows:data.recipe||[]});
+  else await call('material_prices_set',{p_material_id:id,p_suppliers:data.suppliers||[],p_stores:data.stores||[]});
 }
 function closeM(){ $('modal-mount').innerHTML=''; }
 /* ── Planul casei: panou flotant (mutabil/redimensionabil) în editor ── */
@@ -803,35 +879,6 @@ function planDrag(panel, handle){ let sx=0,sy=0,sl=0,st=0,drag=false;
   handle.addEventListener('touchstart',e=>{ if(e.target.tagName==='BUTTON')return; const t=e.touches[0]; start(t.clientX,t.clientY); },{passive:true});
   handle.addEventListener('touchmove',e=>{ const t=e.touches[0]; move(t.clientX,t.clientY); },{passive:true});
   handle.addEventListener('touchend',()=>{drag=false;},{passive:true});
-}
-async function saveQuickService(i){
-  const name=($('qa-name').value||'').trim(); if(!name){ $('qa-msg').textContent='Denumirea e obligatorie.'; return; }
-  const type=$('qa-type').value, unit=($('qa-unit').value||(type==='material'?'buc':'m2')).trim();
-  const price=+$('qa-price').value||0;
-  const cost=($('qa-cost')&&$('qa-cost').value!=='')?(+$('qa-cost').value||0):null;
-  const cat=($('qa-category')&&$('qa-category').value||'').trim();
-  const desc=($('qa-desc')&&$('qa-desc').value||'').trim();
-  const pf=$('qa-photo'); const file=(pf&&pf.files&&pf.files[0])||null;
-  const vat=($('qa-vat')&&$('qa-vat').value!=='')?(+$('qa-vat').value||0):(S.firm.vat_rate!=null?S.firm.vat_rate:20);
-  const btn=$('qa-save'); if(btn) btn.disabled=true;
-  let photo=null, uploaded=false;
-  try{
-    if(file){ $('qa-msg').textContent='Se încarcă poza…'; photo=await catalogPhotoUp(file,'cat'); uploaded=true; $('qa-msg').textContent=''; }
-    else if(window._qaKeepPhoto) photo=window._qaKeepPhoto;
-    const payload={ name, unit, category:cat||null, description:desc||null, photo_url:photo, vat_rate:vat };
-    if(type==='material') payload.last_price=price; else { payload.price=price; if(cost!=null) payload.cost_price=cost; }
-    let res;
-    try{ res=await catalogCreate(type, payload); }
-    catch(err){ if(photo && uploaded){ try{ await sb.storage.from('docs').remove([photo]); }catch(_){} } throw err; }
-    const d=res.row, p=(type==='material'?+d.last_price:+d.price)||0;
-    S.catalog.unshift({src:type,id:d.id,icon:(type==='material'?'📦':'🧰'),name:d.name,unit:d.unit,price:p,vat:+d.vat_rate,kind:type,desc:d.description||'',photo:d.photo_url||null,cat:d.category||''});
-    let l=S.lines[i]; if(!l){ S.lines.push(blankLine()); l=S.lines[S.lines.length-1]; }
-    // linia primește valorile CANONICE întoarse de server
-    l.name=d.name; l.unit=d.unit; l.unit_price=p; l.vat_rate=+d.vat_rate; l.kind=type;
-    if(d.description && !l.description) l.description=d.description;
-    if(d.photo_url && !l.photo_url) l.photo_url=d.photo_url;
-    closeM(); toast('✅ Adăugat în catalog ('+(res.sku||'fără cod')+') și pe factură.'); renderLines(); renderSummary();
-  }catch(e){ if(btn) btn.disabled=false; $('qa-msg').textContent=catalogErrMsg(e); }
 }
 function newClient(){
   $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Client nou</h3><div id="nc-msg" style="color:var(--red);font-size:.82rem"></div>'
@@ -1156,12 +1203,13 @@ function historyInit(){
 }
 /* Acțiuni structurale (onclick / drag / modale) — un pas logic fiecare.
    Câmpurile cu oninput/onchange NU se ambalează: sunt acoperite de listenerele de mai sus. */
-['addLine','addLineG','delLine','newGroup','groupSelection','addSelToGroup','delGroup','catalogNew','pickCatalog','lineRemovePhoto','skontoToggle','rebuildLinesFromDOM','rebuildGroupsFromDOM','saveLineDetails','saveQuickService','lcSave','attachPlan','saveNewClient'].forEach(function(n){
+['addLine','addLineG','delLine','newGroup','groupSelection','addSelToGroup','delGroup','catalogNew','pickCatalog','lineRemovePhoto','skontoToggle','rebuildLinesFromDOM','rebuildGroupsFromDOM','saveLineDetails','cfLinkLine','lcSave','attachPlan','saveNewClient'].forEach(function(n){
   const f=window[n]; if(typeof f!=='function') return;
   window[n]=function(){ historyFlush(); const r=f.apply(this,arguments); if(r&&typeof r.then==='function') r.then(historyCommit,historyCommit); else historyCommit(); return r; };
 });
 boot();
 </script>
+<script src="catalog-form.js"></script>
 <script src="i18n.js"></script>
 </body>
 </html>
