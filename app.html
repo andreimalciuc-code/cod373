@@ -115,10 +115,32 @@
   .crm-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.12)}
   .plhol{background:var(--red-soft)!important}
   .plday.plhol{color:var(--red)}
-  .nav-grip{flex-shrink:0;opacity:0;cursor:grab;font-size:.9rem;color:#7e8aa6;transition:opacity .15s;padding-right:.5rem}
-  .nav-row:hover .nav-grip{opacity:.65}
+  /* UX1.1: mânerul e un buton real — se vede la hover ȘI la focus de tastatură. */
+  .nav-grip{flex-shrink:0;opacity:0;cursor:grab;font-size:.9rem;color:#7e8aa6;transition:opacity .15s;
+            padding:0 .5rem 0 .15rem;background:none;border:none;font-family:inherit;line-height:1}
+  .nav-row:hover .nav-grip,.ws-hrow:hover .nav-grip{opacity:.65}
+  .nav-grip:focus-visible{opacity:1;outline:2px solid var(--primary);outline-offset:1px;border-radius:5px}
+  .nav-grip:active{cursor:grabbing}
+  .nav-grip-off{width:1.1rem;padding:0;pointer-events:none}
   .navdrop{box-shadow:inset 0 2px 0 var(--primary)}
-  .nav-row[draggable=true]{user-select:none}
+  .navdragging{opacity:.45}
+  /* ținta „spațiu de lucru": conturul cuprinde tot antetul, ca destinația să fie evidentă */
+  .ws-hrow{display:flex;align-items:center}
+  .ws-hrow .ws-head{flex:1;min-width:0}
+  .ws-hrow.wsdrop{outline:2px dashed var(--primary);outline-offset:-2px;border-radius:10px}
+  /* Pe ecrane tactile HTML5 drag&drop nu se declanșează din deget, deci mânerul ar
+     promite ceva ce nu funcționează: îl ascundem vizual, dar îl lăsăm focusabil —
+     o tabletă cu tastatură poate rearanja cu săgeți. Layoutul personalizat se
+     AFIȘEAZĂ corect pe mobil; doar rearanjarea prin glisare e desktop-only. */
+  @media (hover:none) and (pointer:coarse){
+    .nav-grip{opacity:0;width:0;padding:0;overflow:hidden}
+    .nav-grip:focus-visible{opacity:1;width:auto;padding:0 .5rem 0 .15rem}
+  }
+  .nav-resetrow{margin:.5rem .6rem .2rem;padding-top:.5rem;border-top:1px solid rgba(255,255,255,.08)}
+  .nav-reset-lay{background:none;border:none;color:#aeb9d2;cursor:pointer;font:inherit;font-size:.78rem;
+                 opacity:.75;padding:.25rem 0;text-align:left;width:100%}
+  .nav-reset-lay:hover{opacity:1;text-decoration:underline}
+  .nav-recent-h{margin-top:.5rem}
   /* ════ UX1 — spații de lucru (workspace-uri) ════
      `.nav-item` rămâne cheia de stil și de selecție (go/curModuleKey/navDrop o citesc);
      s-a schimbat DOAR eticheta de element: <div onclick> → <button>, ca meniul să fie
@@ -1824,7 +1846,10 @@ function wsSyncHash(key){
 /* `document.title` per modul — azi titlul e fix, ceea ce e o problemă reală de
    accesibilitate: cu 5 taburi deschise nu le poți distinge. */
 function wsSyncTitle(key){
-  const w=wsDef(wsOf(key));
+  /* UX1.1: același spațiu ca în firul Ariadnei (`wsOfUser`). Dacă utilizatorul a mutat
+     vizual Materiale în Achiziții, titlul tabului nu are voie să spună „Catalog" —
+     ar contrazice și meniul, și breadcrumb-ul de deasupra conținutului. */
+  const w=wsDef(wsOfUser(key));
   /* `mt(key).title` întoarce RO brut (MOD_RU e cod mort din 2026) — traducerea DOM-ului
      o face observatorul din i18n.js, dar `document.title` NU e în DOM, deci îl trecem
      explicit prin dicționar. Altfel titlul tabului ar fi pe jumătate tradus. */
@@ -1851,9 +1876,12 @@ function wsPushRecent(key){
 }
 
 /* ── UX1: firul Ariadnei „Spațiu de lucru › Modul" ── */
+/* Firul Ariadnei arată spațiul în care utilizatorul VEDE modulul (`wsOfUser`), nu
+   pe cel canonic: altfel ar contrazice meniul de lângă el. Domeniul de business
+   (`WS_MODULES`) rămâne neschimbat — se schimbă doar unde apare în bara laterală. */
 function wsBreadcrumb(key){
   const el=$('crumb'); if(!el) return;
-  const w=wsDef(wsOf(key));
+  const w=wsDef(wsOfUser(key));
   if(!w || w.id==='dashboard'){ el.innerHTML=''; el.setAttribute('hidden',''); return; }
   el.removeAttribute('hidden');
   el.innerHTML='<button type="button" class="crumb-ws" onclick="wsFocus(\''+w.id+'\')" title="'+esc(tz('Deschide spațiul de lucru'))+'">'
@@ -1876,7 +1904,7 @@ function wsOpenMap(){ const p=czPrefs(); return (p.navOpen&&typeof p.navOpen==='
 function wsIsOpen(id){
   const m=wsOpenMap();
   if(Object.prototype.hasOwnProperty.call(m,id)) return !!m[id];
-  return id===wsOf(curModuleKey());        // implicit: doar workspace-ul curent e deschis
+  return id===wsOfUser(curModuleKey());    // implicit: doar spațiul curent (cel VIZUAL) e deschis
 }
 function wsToggle(id){
   const p=czPrefs(); const m=wsOpenMap(); m[id]=!wsIsOpen(id); p.navOpen=m; czSave(p);
@@ -1885,72 +1913,144 @@ function wsToggle(id){
 }
 /* deschide workspace-ul care conține modulul deschis, ca submodulul activ să fie vizibil */
 function wsOpenFor(key){
-  const id=wsOf(key); if(wsIsOpen(id)) return;
+  const id=wsOfUser(key); if(wsIsOpen(id)) return;
   const p=czPrefs(); const m=wsOpenMap(); m[id]=true; p.navOpen=m; czSave(p);
 }
 
-/* ── UX1: modulele pe care rolul curent chiar le poate deschide, per workspace ── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   UX1.1 — PERSONALIZAREA NAVIGAȚIEI CA *OVERLAY*, NU CA INSTANTANEU
+
+   Ce mergea prost până aici: `navDrop` citea TOATE elementele `.nav-item` din DOM
+   și salva o listă PLATĂ de 46 de chei în `prefs.order`; `buildNav` vedea apoi
+   `order.length` și comuta pe ramura „Meniul tău" — o listă plată, fără spații de
+   lucru. O singură glisare ștergea deci întreaga structură, iar modulele din
+   spațiile închise apăreau brusc toate. Mutarea nici nu avea efectul cerut:
+   ordinea salvată era ordinea DOM, nu schimbarea făcută de utilizator.
+
+   Modelul nou păstrează structura canonică drept SURSĂ DE ADEVĂR și reține doar
+   DIFERENȚELE:
+     nav.wsOrder  — ordinea spațiilor, doar dacă utilizatorul le-a rearanjat
+     nav.modOrder — { <spațiu>: [chei] }, doar pentru spațiile atinse
+     nav.modWs    — { <cheie>: <spațiu> }, doar pentru modulele mutate în alt spațiu
+   Nicăieri o copie a celor 55 de module: un modul adăugat în viitor apare automat
+   în spațiul lui canonic, la coadă, fără ca personalizarea veche să înghețe meniul.
+
+   Personalizarea e STRICT VIZUALĂ. Nu atinge `MODULES`, rutele, cheile de
+   permisiune, RLS sau vreo tabelă — doar locul din bara laterală.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function navOv(){
+  const p=czPrefs(); const n=(p.nav&&typeof p.nav==='object')?p.nav:{};
+  return { wsOrder:Array.isArray(n.wsOrder)?n.wsOrder:[],
+           modOrder:(n.modOrder&&typeof n.modOrder==='object')?n.modOrder:{},
+           modWs:(n.modWs&&typeof n.modWs==='object')?n.modWs:{} };
+}
+function navOvSave(o){
+  const p=czPrefs();
+  const clean={};
+  if(o.wsOrder&&o.wsOrder.length) clean.wsOrder=o.wsOrder;
+  const mo={}; for(const w in (o.modOrder||{})) if((o.modOrder[w]||[]).length) mo[w]=o.modOrder[w];
+  if(Object.keys(mo).length) clean.modOrder=mo;
+  const mw={}; for(const k in (o.modWs||{})) if(o.modWs[k]&&o.modWs[k]!==wsOf(k)) mw[k]=o.modWs[k];
+  if(Object.keys(mw).length) clean.modWs=mw;
+  if(Object.keys(clean).length) p.nav=clean; else delete p.nav;
+  czSave(p);
+}
+function navHasLayout(){ const o=navOv(); return !!(o.wsOrder.length||Object.keys(o.modOrder).length||Object.keys(o.modWs).length); }
+/* Spațiul în care utilizatorul VEDE modulul. Ținta se validează: un spațiu dispărut
+   dintr-o versiune viitoare nu are voie să ascundă modulul — cade pe canonic. */
+function wsOfUser(key){
+  const t=navOv().modWs[key];
+  return (t && wsDef(t)) ? t : wsOf(key);
+}
+/* Ordinea spațiilor: întâi cele pe care utilizatorul le-a aranjat, apoi restul în
+   ordinea canonică — deci un spațiu nou apare singur, fără reset de preferințe. */
+function wsListOrdered(){
+  const ov=navOv().wsOrder, all=WORKSPACES.filter(w=>w.id!=='dashboard');
+  if(!ov.length) return all;
+  const idx=id=>{ const i=ov.indexOf(id); return i<0?Infinity:i; };
+  return all.map((w,i)=>({w,i})).sort((a,b)=>{
+    const ia=idx(a.w.id), ib=idx(b.w.id);
+    return ia!==ib ? ia-ib : a.i-b.i;             // sortare stabilă pe ordinea canonică
+  }).map(x=>x.w);
+}
+/* ── UX1: modulele pe care rolul curent chiar le poate deschide, per workspace ──
+   UX1.1: „per workspace" înseamnă acum spațiul VIZUAL (`wsOfUser`), iar ordinea
+   respectă `modOrder`. Filtrul de permisiuni rămâne neatins: personalizarea nu
+   poate face vizibil un modul pe care rolul nu-l poate deschide. */
 function wsVisibleKeys(id,prefsHidden){
   const hid=prefsHidden||[];
-  return (WS_MODULES[id]||[]).filter(k=>MODULES[k] && !MODULES[k].hidden && canSee(k) && hid.indexOf(k)<0);
+  const canon=WS_MODULES[id]||[];
+  const moved=Object.keys(navOv().modWs).filter(k=>wsOfUser(k)===id && canon.indexOf(k)<0);
+  const keys=canon.filter(k=>wsOfUser(k)===id).concat(moved)
+    .filter(k=>MODULES[k] && !MODULES[k].hidden && canSee(k) && hid.indexOf(k)<0);
+  const ord=navOv().modOrder[id]||[];
+  if(!ord.length) return keys;
+  const idx=k=>{ const i=ord.indexOf(k); return i<0?Infinity:i; };
+  return keys.map((k,i)=>({k,i})).sort((a,b)=>{
+    const ia=idx(a.k), ib=idx(b.k);
+    return ia!==ib ? ia-ib : a.i-b.i;
+  }).map(x=>x.k);
 }
 
 function buildNav(){
   installHotkeys();
-  const p=czPrefs(); const hidden=p.hidden||[]; const order=p.order||[];
+  navMigrateLegacyOrder();                  // `prefs.order` plat → overlay pe spații (o singură dată)
+  const p=czPrefs(); const hidden=p.hidden||[];
   const cur=curModuleKey();                 // UX1: citit ÎNAINTE de a rescrie #nav (vezi curModuleKey)
   const visible=Object.keys(MODULES).filter(k=>!MODULES[k].hidden && canSee(k) && !hidden.includes(k));
   const favs=(p.favs||[]).filter(k=>visible.includes(k));   // citit o SINGURĂ dată, apoi pasat
   const NIO={favs:favs};
   let html='<button type="button" class="nav-search" onclick="openCmdPalette()" title="'+esc(tz('Caută sau mergi la…'))+' (Ctrl/⌘+K)" aria-label="'+esc(tz('Caută sau mergi la…'))+'">🔎 <span style="flex:1;text-align:left">'+esc(tz('Caută sau mergi la…'))+'</span><span class="nav-kbd">⌘K</span></button>';
 
-  if(order.length){
-    /* Modul „meniul tău": utilizatorul și-a rearanjat manual modulele prin glisare.
-       Ordinea lui bate gruparea — nu i-o suprascriem tăcut cu workspace-uri; îi lăsăm
-       lista plată și butonul ↺ de revenire la meniul pe workspace-uri. */
-    const ordered=order.filter(k=>visible.includes(k)); visible.forEach(k=>{ if(ordered.indexOf(k)<0) ordered.push(k); });
-    html+='<div class="nav-group" style="display:flex;justify-content:space-between;align-items:center;gap:.4rem">⭐ '+esc(tz('Meniul tău'))+'<button type="button" class="nav-reset" onclick="navResetOrder()" title="'+esc(tz('Revino la meniul pe spații de lucru'))+'" aria-label="'+esc(tz('Revino la meniul pe spații de lucru'))+'">↺</button></div>';
-    ordered.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
-  } else {
-    /* Acasă, primul. Tabloul de bord e o destinație unică, nu un container: îl scoatem
-       din acordeon ca să nu ceară două clicuri, și îl punem SUS — sub Favorite/Recente
-       ar arăta ca un element „recent", nu ca pagina de pornire. */
-    if(canSee('dashboard') && !hidden.includes('dashboard')){
-      html+=navItemHTML('dashboard',MODULES.dashboard,{favs:favs,solo:true});
-    }
-    /* ⭐ Favorite — scurtături, NU permisiuni: lista e filtrată prin `visible`, deci dacă
-       accesul dispare, scurtătura dispare odată cu el. */
-    if(favs.length){
-      html+='<div class="nav-group">⭐ '+esc(tz('Favorite'))+'</div>';
-      favs.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
-    }
-    /* 🕘 Recente — maximum 6 destinații, doar chei de modul (niciun conținut comercial). */
-    /* `cur` e exclus deliberat: modulul pe care ești ACUM nu e „recent", e curent —
-       altfel ar apărea de două ori în meniu, ambele evidențiate. */
-    const rec=(p.recent||[]).filter(k=>visible.includes(k) && favs.indexOf(k)<0 && k!=='dashboard' && k!==cur).slice(0,6);
-    if(rec.length){
-      html+='<div class="nav-group">🕘 '+esc(tz('Recente'))+'</div>';
-      rec.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
-    }
-    /* Spații de lucru: unul apare DOAR dacă rolul poate deschide cel puțin un submodul
-       din el. Niciodată un spațiu gol. */
-    WORKSPACES.forEach(w=>{
-      if(w.id==='dashboard') return;                 // deja randat sus, ca intrare directă
-      const keys=wsVisibleKeys(w.id,hidden);
-      if(!keys.length) return;
-      const isCur=(w.id===wsOf(cur));
-      const open=wsIsOpen(w.id);
-      html+='<section class="ws'+(isCur?' ws-cur':'')+'">'
+  /* UX1.1: NU mai există ramură „meniu plat". Structura pe spații de lucru e
+     permanentă; personalizarea o rearanjează, nu o înlocuiește. */
+  /* Acasă, primul. Tabloul de bord e o destinație unică, nu un container: îl scoatem
+     din acordeon ca să nu ceară două clicuri, și îl punem SUS — sub Favorite/Recente
+     ar arăta ca un element „recent", nu ca pagina de pornire. */
+  if(canSee('dashboard') && !hidden.includes('dashboard')){
+    html+=navItemHTML('dashboard',MODULES.dashboard,{favs:favs,solo:true});
+  }
+  /* ⭐ Favorite — scurtături, NU permisiuni: lista e filtrată prin `visible`, deci dacă
+     accesul dispare, scurtătura dispare odată cu el. Glisarea NU o atinge. */
+  if(favs.length){
+    html+='<div class="nav-group">⭐ '+esc(tz('Favorite'))+'</div>';
+    favs.forEach(k=>{ html+=navItemHTML(k,MODULES[k],{favs:favs,nodrag:true}); });
+  }
+  /* Spații de lucru: unul apare DOAR dacă rolul poate deschide cel puțin un submodul
+     din el. Niciodată un spațiu gol. Ordinea e cea aleasă de utilizator. */
+  wsListOrdered().forEach(w=>{
+    const keys=wsVisibleKeys(w.id,hidden);
+    if(!keys.length) return;
+    const isCur=(w.id===wsOfUser(cur));
+    const open=wsIsOpen(w.id);
+    html+='<section class="ws'+(isCur?' ws-cur':'')+'" data-wssec="'+w.id+'">'
+      +'<div class="ws-hrow" ondragover="wsDragOver(event,this)" ondragleave="wsDragLeave(this)" ondrop="wsDrop(event,\''+w.id+'\')">'
         +'<button type="button" class="ws-head" data-ws="'+w.id+'" aria-expanded="'+(open?'true':'false')+'" aria-controls="ws-p-'+w.id+'" onclick="wsToggle(\''+w.id+'\')">'
           +'<span class="ws-ic" aria-hidden="true">'+w.icon+'</span>'
           +'<span class="ws-t">'+esc(tz(w.title))+'</span>'
           +'<span class="ws-n" aria-hidden="true">'+keys.length+'</span>'
           +'<span class="ws-chev" aria-hidden="true">'+(open?'▾':'▸')+'</span>'
         +'</button>'
-        +'<div class="ws-panel" id="ws-p-'+w.id+'" role="group" aria-label="'+esc(tz(w.title))+'"'+(open?'':' hidden')+'>';
-      keys.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
-      html+='</div></section>';
-    });
+        +'<button type="button" class="nav-grip ws-grip" draggable="true"'
+          +' ondragstart="wsDragStart(event,\''+w.id+'\')" ondragend="navDragEnd()"'
+          +' onkeydown="wsGripKey(event,\''+w.id+'\')"'
+          +' aria-label="'+esc(tz('Mută spațiul de lucru'))+'" title="'+esc(tz('Trage ca să rearanjezi — sau săgeți sus/jos'))+'">⠿</button>'
+      +'</div>'
+      +'<div class="ws-panel" id="ws-p-'+w.id+'" role="group" aria-label="'+esc(tz(w.title))+'"'+(open?'':' hidden')+'>';
+    keys.forEach(k=>{ html+=navItemHTML(k,MODULES[k],NIO); });
+    html+='</div></section>';
+  });
+  /* 🕘 Recente — JOS, sub spațiile de lucru: e un istoric, nu o destinație de pornire.
+     Maximum 6 chei de modul, niciun conținut comercial. `cur` e exclus deliberat —
+     modulul pe care ești ACUM nu e „recent", e curent. Nu se afișează dacă e goală. */
+  const rec=(p.recent||[]).filter(k=>visible.includes(k) && favs.indexOf(k)<0 && k!=='dashboard' && k!==cur).slice(0,6);
+  if(rec.length){
+    html+='<div class="nav-group nav-recent-h">🕘 '+esc(tz('Recente'))+'</div>';
+    rec.forEach(k=>{ html+=navItemHTML(k,MODULES[k],{favs:favs,nodrag:true}); });
+  }
+  if(navHasLayout()){
+    html+='<div class="nav-resetrow"><button type="button" class="nav-reset-lay" onclick="navResetLayout()">↺ '
+      +esc(tz('Restabilește ordinea implicită'))+'</button></div>';
   }
   html+=socialLinksBar();
   $('nav').innerHTML=html;
@@ -1974,21 +2074,36 @@ function socialLinksBar(){
    `.nav-item` rămân identice, deci `go()`, `curModuleKey()` și `navDrop()` nu se schimbă.
    Glisarea se mută pe rândul-container, ca mânerul ⠿ să fie o zonă de tras reală.
    `o.favs` se primește din `buildNav` — altfel am citi localStorage de 46 de ori. */
+/* UX1.1: glisarea pornește DOAR de pe mâner, nu de pe tot rândul. Rândul întreg
+   `draggable` transforma orice clic ratat într-o mutare accidentală — exact genul de
+   „am mutat fără să vreau" care a produs raportul. Mânerul e acum un `<button>` real,
+   deci are focus și etichetă, iar săgețile sus/jos mută elementul fără mouse.
+   Favoritele și Recentele NU se glisează (`nodrag`): sunt liste derivate, nu structură. */
 function navItemHTML(k,m,o){
   o=o||{};
   const t=esc(mt(k).title);
   const isFav=(o.favs||[]).indexOf(k)>-1;
   const favLbl=esc(isFav?tz('Elimină din favorite'):tz('Adaugă la favorite'));
-  return '<div class="nav-row'+(o.solo?' nav-solo':'')+'" draggable="true"'
-      +' ondragstart="navDragStart(event,\''+k+'\')" ondragover="navDragOver(event,this)"'
-      +' ondragleave="this.classList.remove(\'navdrop\')" ondrop="navDrop(event,\''+k+'\')" ondragend="navDragEnd()">'
+  const drag=!o.nodrag && !o.solo;
+  return '<div class="nav-row'+(o.solo?' nav-solo':'')+'"'
+      +(drag?(' ondragover="navDragOver(event,this)" ondragleave="this.classList.remove(\'navdrop\')"'
+             +' ondrop="navDrop(event,\''+k+'\')"'):'')+'>'
     +'<button type="button" class="nav-item" data-view="'+k+'" onclick="go(\''+k+'\')" title="'+t+'">'
       +'<span class="ic" aria-hidden="true">'+m.icon+'</span>'
       +'<span class="nav-lbl">'+t+'</span>'
     +'</button>'
     +'<button type="button" class="nav-fav'+(isFav?' on':'')+'" onclick="navTogFav(\''+k+'\')"'
       +' aria-pressed="'+(isFav?'true':'false')+'" aria-label="'+favLbl+'" title="'+favLbl+'">★</button>'
-    +'<span class="nav-grip" aria-hidden="true" title="'+esc(tz('Trage ca să rearanjezi'))+'">⠿</span>'
+    +(drag
+      ? '<button type="button" class="nav-grip" draggable="true"'
+         +' ondragstart="navDragStart(event,\''+k+'\')" ondragend="navDragEnd()"'
+         +' onkeydown="navGripKey(event,\''+k+'\')"'
+         /* Numele modulului trece EXPLICIT prin dicționar: observatorul i18n traduce
+            doar string-uri care sunt chei întregi, iar „Mută modulul — Servicii" nu e
+            cheie — ar fi rămas jumătate tradus pentru cititoarele de ecran. */
+         +' aria-label="'+esc(tz('Mută modulul'))+' — '+esc((typeof C373t==='function')?C373t(mt(k).title):mt(k).title)+'"'
+         +' title="'+esc(tz('Trage ca să rearanjezi — sau săgeți sus/jos'))+'">⠿</button>'
+      : '<span class="nav-grip nav-grip-off" aria-hidden="true"></span>')
   +'</div>';
 }
 /* Favorit = scurtătură, NU permisiune. `buildNav` filtrează lista prin `visible`, deci
@@ -2000,15 +2115,145 @@ function navTogFav(k){
   const b=document.querySelector('.nav-fav[aria-label]'); if(b){} // focusul rămâne pe meniu
   toast(i>-1 ? '☆ '+tz('Eliminat din favorite') : '⭐ '+tz('Adăugat la favorite'));
 }
-let _navDragKey=null;
-function navDragStart(ev,key){ _navDragKey=key; if(ev.dataTransfer){ ev.dataTransfer.effectAllowed='move'; try{ ev.dataTransfer.setData('text/plain',key); }catch(e){} } }
-function navDragOver(ev,el){ ev.preventDefault(); if(ev.dataTransfer) ev.dataTransfer.dropEffect='move'; if(el&&el.classList) el.classList.add('navdrop'); }
-function navDragEnd(){ _navDragKey=null; document.querySelectorAll('.navdrop').forEach(n=>n.classList.remove('navdrop')); }
-function navDrop(ev,targetKey){ ev.preventDefault(); ev.stopPropagation(); const from=_navDragKey||((ev.dataTransfer&&ev.dataTransfer.getData('text/plain'))||''); navDragEnd(); if(!from||from===targetKey) return;
-  const p=czPrefs(); let cur=Array.from(document.querySelectorAll('#nav .nav-item')).map(n=>n.dataset.view).filter(Boolean);
-  cur=cur.filter(k=>k!==from); const ti=cur.indexOf(targetKey); cur.splice(ti<0?cur.length:ti,0,from);
-  p.order=cur; czSave(p); buildNav(); }
-function navResetOrder(){ if(!confirm(tz('Revii la meniul grupat implicit?\n\nOrdinea ta personalizată a modulelor se va șterge, iar meniul revine pe grupuri (⭐ Favorite + secțiuni). Poți rearanja oricând la loc prin glisare.'))) return; const p=czPrefs(); delete p.order; czSave(p); buildNav(); toast('✅ '+tz('Revino la meniul grupat')); }
+/* ── UX1.1: glisare care mută DOAR elementul tras ──────────────────────────────
+   Vechiul `navDrop` reconstruia întreaga navigație dintr-un instantaneu al DOM-ului.
+   Acum se scrie exclusiv ordinea spațiului atins (sau apartenența unui singur modul),
+   iar restul meniului rămâne pe structura canonică. */
+let _navDragKey=null, _navDragWs=null;
+function navDragStart(ev,key){
+  _navDragKey=key; _navDragWs=null;
+  if(ev.dataTransfer){ ev.dataTransfer.effectAllowed='move'; try{ ev.dataTransfer.setData('text/plain',key); }catch(e){} }
+  const row=ev.target&&ev.target.closest?ev.target.closest('.nav-row'):null; if(row) row.classList.add('navdragging');
+}
+function navDragOver(ev,el){
+  if(!_navDragKey) return;                       // un spațiu tras nu se lasă pe un modul
+  ev.preventDefault(); if(ev.dataTransfer) ev.dataTransfer.dropEffect='move';
+  if(el&&el.classList) el.classList.add('navdrop');
+}
+function navDragEnd(){
+  _navDragKey=null; _navDragWs=null;
+  document.querySelectorAll('.navdrop,.navdragging,.wsdrop').forEach(n=>n.classList.remove('navdrop','navdragging','wsdrop'));
+}
+/* Modul lăsat peste alt modul: reordonare în spațiul ȚINTEI. Dacă ținta e în alt
+   spațiu, e totodată o mutare între spații — o singură gestică pentru ambele. */
+function navDrop(ev,targetKey){
+  ev.preventDefault(); ev.stopPropagation();
+  const from=_navDragKey||((ev.dataTransfer&&ev.dataTransfer.getData('text/plain'))||'');
+  navDragEnd();
+  if(!from||from===targetKey||!MODULES[from]) return;
+  const ws=wsOfUser(targetKey);
+  const list=wsVisibleKeys(ws,(czPrefs().hidden)||[]);
+  const fi=list.indexOf(from), ti=list.indexOf(targetKey);
+  /* Direcția contează. „Inserează înaintea țintei" e corect doar când elementul vine
+     de DEDESUBT; tras în jos peste vecinul imediat, ar fi însemnat „pune-l unde era
+     deja" — adică o mutare fără efect. Venind de deasupra, se așază DUPĂ țintă. */
+  navPlace(from, ws, (fi>-1 && fi<ti) ? (list[ti+1]||null) : targetKey);
+}
+/* Spațiu ca țintă de drop: mută modulul la finalul acelui spațiu. Permis și când
+   spațiul e închis — headerul e o țintă legitimă, nu doar panoul deschis. */
+function wsDragOver(ev,el){
+  if(!_navDragKey && !_navDragWs) return;
+  ev.preventDefault(); if(ev.dataTransfer) ev.dataTransfer.dropEffect='move';
+  if(el&&el.classList) el.classList.add('wsdrop');
+}
+function wsDragLeave(el){ if(el&&el.classList) el.classList.remove('wsdrop'); }
+function wsDrop(ev,wsId){
+  ev.preventDefault(); ev.stopPropagation();
+  const modKey=_navDragKey, fromWs=_navDragWs;
+  navDragEnd();
+  if(fromWs){                                                        // spațiu peste spațiu
+    if(fromWs===wsId) return;
+    const ids=wsListOrdered().map(w=>w.id);
+    const fi=ids.indexOf(fromWs), ti=ids.indexOf(wsId);
+    navMoveWs(fromWs, (fi>-1 && fi<ti) ? (ids[ti+1]||null) : wsId);  // aceeași regulă de direcție
+    return;
+  }
+  if(!modKey||!MODULES[modKey]) return;
+  if(wsOfUser(modKey)===wsId) return;
+  navPlace(modKey,wsId,null);
+}
+function wsDragStart(ev,wsId){
+  _navDragWs=wsId; _navDragKey=null;
+  if(ev.dataTransfer){ ev.dataTransfer.effectAllowed='move'; try{ ev.dataTransfer.setData('text/plain','ws:'+wsId); }catch(e){} }
+}
+/* Așază `key` în spațiul `ws`, înaintea lui `beforeKey` (sau la final).
+   Scrie DOAR ordinea spațiilor atinse — nimic despre restul meniului. */
+function navPlace(key, ws, beforeKey){
+  if(!wsDef(ws)) return;
+  const o=navOv(); const hid=(czPrefs().hidden)||[];
+  const srcWs=wsOfUser(key);
+  if(srcWs!==ws){
+    if(ws===wsOf(key)) delete o.modWs[key];      // înapoi acasă ⇒ nu mai stocăm excepția
+    else o.modWs[key]=ws;
+    navOvSave(o);                                 // ca `wsVisibleKeys` să vadă noua apartenență
+    const src=wsVisibleKeys(srcWs,hid);           // sursa, fără modulul mutat
+    const o2=navOv(); o2.modOrder[srcWs]=src; navOvSave(o2);
+  }
+  const o3=navOv();
+  let list=wsVisibleKeys(ws,hid).filter(k=>k!==key);
+  const ti=beforeKey?list.indexOf(beforeKey):-1;
+  list.splice(ti<0?list.length:ti,0,key);
+  o3.modOrder[ws]=list; navOvSave(o3);
+  buildNav();
+  const g=document.querySelector('.nav-row .nav-item[data-view="'+key+'"]');
+  if(g){ const grip=g.parentNode.querySelector('.nav-grip'); if(grip&&grip.focus) grip.focus(); }
+}
+/* Reordonarea spațiilor: lista completă a spațiilor, în noua ordine. */
+function navMoveWs(fromId,toId){
+  const cur=wsListOrdered().map(w=>w.id);
+  const i=cur.indexOf(fromId); if(i<0) return;
+  cur.splice(i,1);
+  const ti=cur.indexOf(toId);
+  cur.splice(ti<0?cur.length:ti,0,fromId);
+  const o=navOv(); o.wsOrder=cur; navOvSave(o);
+  buildNav();
+  const b=document.querySelector('.ws-grip[onkeydown*="\''+fromId+'\'"]'); if(b) b.focus();
+}
+/* ── Alternativa la tastatură: săgeți sus/jos pe mâner ── */
+function navGripKey(ev,key){
+  if(ev.key!=='ArrowUp'&&ev.key!=='ArrowDown') return;
+  ev.preventDefault(); ev.stopPropagation();
+  const ws=wsOfUser(key), list=wsVisibleKeys(ws,(czPrefs().hidden)||[]);
+  const i=list.indexOf(key); if(i<0) return;
+  const j=ev.key==='ArrowUp'?i-1:i+1;
+  if(j<0||j>=list.length) return;
+  navPlace(key, ws, ev.key==='ArrowUp'?list[j]:(list[j+1]||null));
+}
+function wsGripKey(ev,wsId){
+  if(ev.key!=='ArrowUp'&&ev.key!=='ArrowDown') return;
+  ev.preventDefault(); ev.stopPropagation();
+  const ids=wsListOrdered().map(w=>w.id);
+  const i=ids.indexOf(wsId); if(i<0) return;
+  const j=ev.key==='ArrowUp'?i-1:i+1;
+  if(j<0||j>=ids.length) return;
+  navMoveWs(wsId, ev.key==='ArrowUp'?ids[j]:(ids[j+1]||null));
+}
+/* Resetul atinge EXCLUSIV aranjarea. Favoritele, tema, limba, Recentele și starea
+   de deschidere a spațiilor rămân — sunt alte preferințe, nu layout. */
+function navResetLayout(){
+  if(!confirm(tz('Restabilești ordinea implicită a meniului?\n\nSe șterge doar aranjarea ta (ordinea spațiilor și a modulelor). Favoritele, tema și limba rămân neschimbate.'))) return;
+  const p=czPrefs(); delete p.nav; delete p.order; czSave(p);
+  buildNav(); toast('↺ '+tz('Ordinea implicită a fost restabilită.'));
+}
+/* ── Migrarea preferinței vechi `order` (listă PLATĂ de chei) ──────────────────
+   Din lista plată se poate deduce SIGUR un singur lucru: ordinea relativă a
+   modulelor din același spațiu. Ordinea între spații NU e reprezentată acolo, deci
+   nu se inventează. Migrăm doar spațiile unde ordinea chiar diferă de cea canonică,
+   apoi ștergem cheia veche — ea era exact ce comuta meniul pe listă plată. */
+function navMigrateLegacyOrder(){
+  const p=czPrefs(); const old=p.order;
+  if(!Array.isArray(old)||!old.length) return;
+  const o=navOv();
+  WORKSPACES.forEach(w=>{
+    if(w.id==='dashboard') return;
+    const canon=(WS_MODULES[w.id]||[]).filter(k=>MODULES[k]&&old.indexOf(k)>-1);
+    if(canon.length<2) return;
+    const sorted=canon.slice().sort((a,b)=>old.indexOf(a)-old.indexOf(b));
+    if(sorted.join(',')!==canon.join(',') && !o.modOrder[w.id]) o.modOrder[w.id]=sorted;
+  });
+  navOvSave(o);
+  const p2=czPrefs(); delete p2.order; czSave(p2);
+}
 /* ── Avatar + semnătură (cross-device, tabel user_prefs) ── */
 async function loadUserPrefs(){
   try{ const { data }=await sb.from('user_prefs').select('avatar_url,signature_url,prefs').eq('tenant_id',state.tenant).eq('user_id',state.session.user.id).maybeSingle(); state.uprefs=data||{}; }catch(e){ state.uprefs={}; }
@@ -2551,7 +2796,7 @@ function openPersonalize(){
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Densitate tabele'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(dens==='comfy'?'on':'')+'" onclick="pzSetDens(\'comfy\')">'+esc(tz('Confortabil'))+'</button><button class="'+(dens==='compact'?'on':'')+'" onclick="pzSetDens(\'compact\')">'+esc(tz('Compact'))+'</button></div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Mărime text'))+'</div><div class="pz-seg" style="margin-bottom:1rem"><button class="'+(txt==='normal'?'on':'')+'" onclick="pzSetText(\'normal\')">'+esc(tz('Normal'))+'</button><button class="'+(txt==='large'?'on':'')+'" onclick="pzSetText(\'large\')">'+esc(tz('Mare'))+'</button><button class="'+(txt==='xl'?'on':'')+'" onclick="pzSetText(\'xl\')">'+esc(tz('Foarte mare'))+'</button></div>'
     +'<div style="font-weight:700;margin:.2rem 0 .4rem">'+esc(tz('Pagina de start'))+'</div><select onchange="pzSetStart(this.value)" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-bottom:1rem;background:var(--surface);color:var(--text)">'+opts+'</select>'
-    +'<div style="font-weight:700;margin:.2rem 0 .2rem">'+esc(tz('Module în meniu'))+'</div><div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('⭐ pune favoritele sus · 👁 ascunde din meniu'))+'<br>'+esc(tz('🖱️ Trage modulele direct în bara din stânga ca să le rearanjezi.'))+'</div>'+mods
+    +'<div style="font-weight:700;margin:.2rem 0 .2rem">'+esc(tz('Module în meniu'))+'</div><div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem">'+esc(tz('⭐ pune favoritele sus · 👁 ascunde din meniu'))+'<br>'+esc(tz('🖱️ În bara din stânga, trage de mânerul ⠿ ca să rearanjezi modulele sau spațiile de lucru — sau folosește săgețile sus/jos.'))+'</div>'+mods
     +(canSee('setari')?('<hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0">'
       +'<div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--primary);font-weight:800;margin:.1rem 0 .35rem">⚙️ '+esc(tz('Firmă'))+'</div>'
       +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">'+esc(tz('Date firmă, TVA, integrări, membri, export contabil etc. (la nivel de companie).'))+'</div>'
