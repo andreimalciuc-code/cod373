@@ -433,6 +433,7 @@
         <div class="lang-sw" style="display:none"><button data-lang-btn="ro" class="on" onclick="setLang('ro')">RO</button><button data-lang-btn="ru" onclick="setLang('ru')">RU</button></div>
         <button class="btn-ghost" id="hol-btn" onclick="openCalendar()" title="Următoarea sărbătoare legală" style="display:none">🎉</button>
         <button class="btn-ghost" id="bday-btn" onclick="openBirthdays()" title="Zile de naștere apropiate" style="position:relative;display:none">🎂<span id="bday-badge" style="position:absolute;top:-4px;right:-4px;background:var(--accent);color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:0 .3rem;display:none"></span></button>
+        <button class="btn-ghost" id="task-btn" onclick="openTaskForm()" title="Task nou" aria-label="Task nou">＋✅</button>
         <button class="btn-ghost" id="guide-btn" onclick="openModuleGuide(curModuleKey())" title="Ghid de utilizare">❓</button>
         <button class="btn-ghost" id="support-btn" onclick="openSupport()" title="Suport / Ajutor">🛟</button>
         <button class="btn-ghost" id="ai-btn" onclick="openAI()" title="Asistent AI">🤖</button>
@@ -717,6 +718,7 @@ const MODULES = {
   emailuri:{ title:'Mesaje clienți', sub:'Trimite emailuri clienților și primește răspunsurile aici.', icon:'📨', group:'Operațional', custom:true },
   plantafel:{ title:'Planificare echipe', sub:'Cine, pe ce șantier, în ce zi — pe săptămână.', icon:'🗓️', group:'Operațional', custom:true },
   programari:{ title:'Programări', sub:'Întâlniri, vizite, măsurători, recepții — cu reminder și adăugare în calendarul telefonului.', icon:'📆', group:'Operațional', custom:true },
+  taskuri:{ title:'Taskuri', sub:'Sarcini și delegare — cine face ce, până când.', icon:'✅', group:'Operațional', custom:true },
   postcalc:{ title:'Postcalculație (marjă)', sub:'Plan vs. real pe fiecare șantier: facturat, costuri, marjă.', icon:'📈', group:'Rapoarte', custom:true },
   restante:{ title:'Restanțe & remindere', sub:'Facturi neîncasate scadente — trimite remindere.', icon:'⏰', group:'Rapoarte', custom:true },
   platibil:{ title:'Plăți furnizori', sub:'Scadențar — facturi de la furnizori de plătit.', icon:'💸', group:'Rapoarte', custom:true },
@@ -1352,7 +1354,7 @@ const WORKSPACES = [
 ];
 const WS_MODULES = {
   dashboard:['dashboard'],
-  santiere :['santiere','previzualizare','gantt','plantafel','livrari','defecte',
+  santiere :['santiere','previzualizare','gantt','plantafel','taskuri','livrari','defecte',
              'jurnal','etape','rfi','modificari','recenzii'],
   vanzari  :['clienti','devize','calculator','licitatii','emailuri','inbox','programari'],
   financiar:['facturi','achizitii','restante','platibil','reconciliere','postcalc','situatii'],
@@ -3133,7 +3135,7 @@ function go(key){
   buildNav();
   if(_navEl) _navEl.scrollTop=_navScroll;
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash, calitate:renderCalitate}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, taskuri:renderTaskuri, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash, calitate:renderCalitate}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
   maybeInstallBanner();
@@ -3337,6 +3339,9 @@ function notifOpen(type, id){
   closeModal();
   if(type==='message'){ if(typeof openTeamChat==='function') openTeamChat(); return; }
   if(type==='client' && id){ clientHub(id); return; }
+  if(type==='task'){ go('taskuri'); if(id){ let tr=0; const ti=setInterval(function(){ tr++;
+      try{ if(curModuleKey()==='taskuri' && (window._tkRows||[]).some(r=>r.id===id)){ clearInterval(ti); taskDetail(id); return; } }catch(e){}
+      if(tr>24) clearInterval(ti); },140); } return; }
   const map={ material_order:'comenzi', estimate:'devize', invoice:'facturi', defect:'defecte', site:'santiere', planned:'santiere', delivery:'livrari', appointment:'programari' };
   const key=map[type]; if(!key){ return; }
   go(key);
@@ -3356,7 +3361,7 @@ async function openNotifPanel(){
   const { data }=await sb.from('notifications').select('id,title,body,entity_type,entity_id,created_at');
   const list=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1)).slice(0,50);
   localStorage.setItem('c373_notif_seen', Date.now()); loadNotifCount();
-  const ic={material_order:'🛒',estimate:'📋',invoice:'🧾',defect:'🔧',message:'💬',delivery:'🚚',planned:'📅',site:'🏗️',appointment:'📆',client:'🤝'};
+  const ic={material_order:'🛒',estimate:'📋',invoice:'🧾',defect:'🔧',message:'💬',delivery:'🚚',planned:'📅',site:'🏗️',appointment:'📆',client:'🤝',task:'✅'};
   let fuSection=''; try{ const t=coToday(); const fr=await sb.from('client_activities').select('client_id,body,due_date,clients(name)').eq('kind','task').eq('done',false).lte('due_date',isoLocal(new Date(Date.now()+7*86400000))).order('due_date'); const fus=(fr.data||[]);
     if(fus.length) fuSection='<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:.3rem">⏰ '+esc(C373t('Follow-up clienți'))+'</div>'+fus.slice(0,20).map(a=>{ const ov=a.due_date<t; return '<div onclick="closeModal();clientHub(\''+a.client_id+'\')" style="padding:.55rem 0;border-bottom:1px solid var(--line);cursor:pointer"><div style="font-weight:600">⏰ '+esc(a.clients?a.clients.name:'client')+'</div>'+(a.body?'<div style="color:var(--muted);font-size:.85rem">'+esc(a.body)+'</div>':'')+'<div style="font-size:.74rem;font-weight:600;color:'+(ov?'var(--red)':'var(--primary)')+'">'+esc(fmtDate(a.due_date))+'</div></div>'; }).join('')+'<div style="height:.9rem"></div>'; }catch(e){}
   const rows=list.length
@@ -5972,6 +5977,285 @@ async function runAutomations(estId){
 
 /* ════ DASHBOARD ════ */
 function kpiCard(label,val,view,accent){ return '<div class="kpi"'+(view?' onclick="go(\''+view+'\')" style="cursor:pointer"':'')+'><div class="kt">'+esc(label)+'</div><div class="kv"'+(accent?' style="color:'+accent+'"':'')+'>'+val+'</div></div>'; }
+/* ════ TASKURI — TASK1-A (migr 0136) ════
+   Motorul de taskuri și delegare. Toate scrierile trec prin RPC-urile canonice
+   (task_create / task_update / task_assign / task_set_status) — contract impus
+   de gardă în DB (TASK_CONTRACT_REQUIRED), CAS pe updated_at (TASK_CONFLICT),
+   idempotență pe request_id. Vizibilitatea o dă RLS: asignat / creator / MGMT. */
+const TASK_STATUSES=[['todo','📥','De făcut'],['in_progress','▶️','În lucru'],['waiting','⏸️','În așteptare'],['done','✅','Gata'],['cancelled','🚫','Anulat']];
+function taskStatusIcon(s){ const x=TASK_STATUSES.find(t=>t[0]===s); return x?x[1]:'📥'; }
+function taskStatusText(s){ const x=TASK_STATUSES.find(t=>t[0]===s); return x?tz(x[2]):s; }
+function taskIsMgmt(){ return ['owner','admin','manager'].includes(state.role); }
+function taskOverdue(t){ return !!(t.due_date && t.due_date<coToday() && ['todo','in_progress','waiting'].includes(t.status)); }
+async function taskAssigneesLoad(force){
+  if(window._taskAsg && !force) return window._taskAsg;
+  try{ const r=await sb.rpc('task_assignees',{p_tenant_id:state.tenant}); if(r.error) throw r.error; window._taskAsg=r.data||[]; }
+  catch(e){ window._taskAsg=window._taskAsg||[]; }
+  return window._taskAsg;
+}
+function taskAsgLabel(uid){ if(!uid) return tz('Neatribuit');
+  if(state.session&&uid===state.session.user.id) return tz('Eu');
+  const a=(window._taskAsg||[]).find(x=>x.user_id===uid); if(a) return a.label;
+  return '…'; }
+function taskErrMsg(e){
+  const m=String((e&&(e.message||e))||'');
+  const map={ TASK_CONTRACT_REQUIRED:'Aplicația ta este o versiune veche. Reîncarcă pagina (Ctrl+R).',
+    TASK_INVALID_ASSIGNEE:'Responsabilul ales nu e membru activ al firmei.',
+    TASK_INVALID_STATUS:'Stare necunoscută.',
+    TASK_INVALID_INPUT:'Date invalide. Verifică titlul și termenul.',
+    TASK_LINK_NOT_FOUND:'Înregistrarea legată nu a fost găsită.',
+    TASK_LINK_INVALID:'Legătură invalidă.',
+    TASK_NOT_FOUND:'Taskul nu a fost găsit.',
+    TASK_CONFLICT:'Taskul a fost modificat între timp. Reîncarcă lista.',
+    TASK_FORBIDDEN:'Nu ai dreptul pentru această acțiune.' };
+  for(const k in map){ if(m.indexOf(k)>=0) return tz(map[k]); }
+  return tz('Eroare:')+' '+m;
+}
+function taskNextWorkday(){ let d=new Date(new Date(coToday()+'T00:00:00').getTime()+86400000);
+  while(d.getDay()===0||d.getDay()===6) d=new Date(d.getTime()+86400000); return isoLocal(d); }
+/* ── Quick create: acțiunea globală „＋ Task" ── */
+async function openTaskForm(preset){
+  if(!canSee('taskuri')){ toast('🔒 '+tz('Acces restricționat pentru rolul tău.')); return; }
+  preset=preset||{};
+  const asg=await taskAssigneesLoad();
+  const me=state.session.user.id;
+  const opts=asg.map(a=>'<option value="'+a.user_id+'" '+(((preset.assignee||me)===a.user_id)?'selected':'')+'>'+esc(a.user_id===me?tz('Eu'):a.label)+'</option>').join('');
+  const tISO=coToday(), mISO=isoLocal(new Date(new Date(tISO+'T00:00:00').getTime()+86400000)), wISO=taskNextWorkday();
+  const chip=(d,lbl,sel)=>'<button type="button" class="btn-ghost tk-due" data-d="'+d+'" onclick="taskDuePick(this)" style="font-size:.8rem'+(sel?';border-color:var(--primary)':'')+'">'+lbl+'</button>';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px" role="dialog" aria-modal="true" aria-labelledby="tk-h"><div class="modal-head"><h3 id="tk-h">✅ '+esc(tz('Task nou'))+'</h3><button class="x" onclick="closeModal()" aria-label="'+esc(tz('Închide'))+'">×</button></div><div class="modal-body">'
+    +'<div style="display:grid;gap:.7rem">'
+    +vfld(tz('Ce trebuie făcut?')+' *','tk-title',preset.title||'','text',tz('ex: Pregătește oferta pentru client'))
+    +'<div><label style="font-size:.8rem;font-weight:600" for="tk-asg">'+tz('Responsabil')+'</label><select id="tk-asg" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)">'+opts+'</select></div>'
+    +'<div><label style="font-size:.8rem;font-weight:600">'+tz('Termen')+'</label>'
+      +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem" role="group" aria-label="'+esc(tz('Termen'))+'">'
+      +chip(tISO,tz('Azi'),false)+chip(mISO,tz('Mâine'),false)+chip(wISO,tz('Următoarea zi lucrătoare'),false)+chip('',tz('Fără termen'),!preset.due_date)
+      +'</div>'
+      +'<input id="tk-due" type="date" value="'+esc(preset.due_date||'')+'" onchange="document.querySelectorAll(\'.tk-due\').forEach(b=>b.style.borderColor=\'\')" aria-label="'+esc(tz('Alege data'))+'" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-top:.4rem"></div>'
+    +'<a onclick="const x=document.getElementById(\'tk-more\');x.style.display=x.style.display===\'none\'?\'grid\':\'none\'" style="cursor:pointer;font-size:.82rem;color:var(--primary)">⚙️ '+tz('Mai multe opțiuni')+'</a>'
+    +'<div id="tk-more" style="display:none;gap:.7rem">'
+      +'<div><label style="font-size:.8rem;font-weight:600" for="tk-desc">'+tz('Descriere')+'</label><textarea id="tk-desc" rows="3" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem">'+esc(preset.description||'')+'</textarea></div>'
+      +'<div><label style="font-size:.8rem;font-weight:600" for="tk-pri">'+tz('Prioritate')+'</label><select id="tk-pri" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)"><option value="normal" selected>'+tz('Normală')+'</option><option value="high">❗ '+tz('Înaltă')+'</option><option value="low">'+tz('Scăzută')+'</option></select></div>'
+    +'</div>'
+    +(preset.link&&preset.link.label?'<div style="font-size:.8rem;color:var(--muted)">🔗 '+esc(preset.link.label)+'</div>':'')
+    +'<div id="tk-err" style="color:var(--red);font-size:.82rem" role="alert"></div>'
+    +'</div>'
+    +'<div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end"><button class="btn-ghost" onclick="closeModal()">'+tz('Anulează')+'</button><button class="btn" id="tk-save" onclick="taskQuickSave()">'+tz('Salvează')+'</button></div>'
+    +'</div></div></div>';
+  window._tkLink = preset.link||null;
+  setTimeout(()=>{ const e=$('tk-title'); if(e) e.focus(); },60);
+}
+function taskDuePick(btn){ const i=$('tk-due'); if(i) i.value=btn.dataset.d||'';
+  document.querySelectorAll('.tk-due').forEach(b=>b.style.borderColor=''); btn.style.borderColor='var(--primary)'; }
+async function taskQuickSave(){
+  const err=$('tk-err'); const title=($('tk-title')&&$('tk-title').value||'').trim();
+  if(!title){ if(err) err.textContent=tz('Scrie ce trebuie făcut.'); return; }
+  if(window._tkBusy) return; window._tkBusy=true;                 // gardă „în zbor" (D29)
+  const btn=$('tk-save'); if(btn) btn.disabled=true;
+  const payload={ title,
+    assignee: ($('tk-asg')&&$('tk-asg').value)||null,
+    due_date: ($('tk-due')&&$('tk-due').value)||null,
+    description: ($('tk-desc')&&$('tk-desc').value.trim())||null,
+    priority: ($('tk-pri')&&$('tk-pri').value)||'normal' };
+  if(window._tkLink&&window._tkLink.entity_type) payload.links=[window._tkLink];
+  try{
+    const r=await sb.rpc('task_create',{p_tenant_id:state.tenant,p_payload:payload,p_request_id:planUuid()});
+    if(r.error) throw r.error;
+    closeModal(); toast('✅ '+tz('Task creat.'));
+    if(state.view==='taskuri') renderTaskuri(); else if(state.view==='dashboard') renderDashboard();
+  }catch(e){ if(err) err.textContent=taskErrMsg(e); }
+  finally{ window._tkBusy=false; if(btn) btn.disabled=false; }
+}
+/* ── Task Center (modulul „taskuri") ── */
+async function renderTaskuri(){
+  $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Se încarcă…')+'</div>';
+  await taskAssigneesLoad();
+  const f=window._tkFilter||(window._tkFilter={who:'mine',st:'open',q:''});
+  let rows=[];
+  try{
+    const r=await sb.from('tasks').select('*').eq('tenant_id',state.tenant)
+      .order('due_date',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false}).limit(400);
+    if(r.error) throw r.error; rows=r.data||[];
+  }catch(e){ $('content').innerHTML='<div class="card" style="padding:1.5rem">'+tz('Eroare:')+' '+esc(e.message||e)+'</div>'; return; }
+  window._tkRows=rows;
+  const who=[['mine',tz('Ale mele')],['created',tz('Delegate de mine')]]; if(taskIsMgmt()) who.push(['all',tz('Toate')]);
+  const sts=[['open',tz('Active')],['today',tz('Azi')],['overdue',tz('Întârziate')],['done',tz('Gata')],['all',tz('Toate stările')]];
+  const seg=(items,cur,fld)=>items.map(x=>'<button class="btn-ghost" onclick="window._tkFilter.'+fld+'=\''+x[0]+'\';taskApplyFilter(true)" aria-pressed="'+(cur===x[0])+'" style="font-size:.8rem'+(cur===x[0]?';border-color:var(--primary);color:var(--primary);font-weight:700':'')+'">'+x[1]+'</button>').join('');
+  $('content').innerHTML=
+    '<div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.7rem;flex-wrap:wrap">'
+      +'<button class="btn" onclick="openTaskForm()">＋ '+tz('Task nou')+'</button>'
+      +'<input id="tk-q" value="'+esc(f.q||'')+'" placeholder="🔎 '+esc(tz('Caută taskuri…'))+'" oninput="clearTimeout(window._tkQT);window._tkQT=setTimeout(()=>{window._tkFilter.q=this.value;taskApplyFilter(false)},200)" style="flex:1;min-width:150px;max-width:320px;padding:.5rem .7rem;border:1px solid var(--line);border-radius:9px;background:var(--surface)">'
+    +'</div>'
+    +'<div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.45rem" role="group" aria-label="'+esc(tz('Filtru'))+'">'+seg(who,f.who,'who')+'</div>'
+    +'<div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.8rem" role="group" aria-label="'+esc(tz('Stare'))+'">'+seg(sts,f.st,'st')+'</div>'
+    +'<div id="tk-list"></div>';
+  taskApplyFilter(false);
+}
+function taskApplyFilter(rerenderChips){
+  if(rerenderChips){ renderTaskuri(); return; }
+  const f=window._tkFilter; const me=state.session.user.id; const t=coToday();
+  let rows=window._tkRows||[];
+  if(f.who==='mine') rows=rows.filter(x=>x.assignee===me);
+  else if(f.who==='created') rows=rows.filter(x=>x.created_by===me);
+  const open=x=>['todo','in_progress','waiting'].includes(x.status);
+  if(f.st==='open') rows=rows.filter(open);
+  else if(f.st==='today') rows=rows.filter(x=>open(x)&&x.due_date===t);
+  else if(f.st==='overdue') rows=rows.filter(x=>taskOverdue(x));
+  else if(f.st==='done') rows=rows.filter(x=>x.status==='done');
+  if(f.q){ const q=f.q.toLowerCase(); rows=rows.filter(x=>((x.title||'')+' '+(x.description||'')).toLowerCase().indexOf(q)>=0); }
+  const el=$('tk-list'); if(!el) return;
+  el.innerHTML=rows.length?rows.map(taskCard).join('')
+    :'<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Niciun task aici. Creează unul cu ＋ Task.')+'</div>';
+}
+function taskCanStatus(t){ const me=state.session.user.id; return taskIsMgmt()||t.assignee===me||t.created_by===me; }
+function taskCanManage(t){ const me=state.session.user.id; return taskIsMgmt()||t.created_by===me; }
+function taskActionsHtml(t){
+  if(!taskCanStatus(t)) return '';
+  const b=[];
+  if(t.status==='todo'||t.status==='waiting') b.push(['in_progress','▶ '+tz('Începe')]);
+  if(t.status==='in_progress') b.push(['waiting','⏸ '+tz('În așteptare')]);
+  if(t.status!=='done'&&t.status!=='cancelled') b.push(['done','✔ '+tz('Gata')]);
+  if((t.status==='done'||t.status==='cancelled')) b.push(['todo','↩ '+tz('Redeschide')]);
+  return b.map(x=>'<a onclick="taskSetStatus(\''+t.id+'\',\''+x[0]+'\',event)" style="cursor:pointer;color:var(--primary);font-weight:600">'+x[1]+'</a>').join('');
+}
+function taskCard(t){
+  const ov=taskOverdue(t); const me=state.session.user.id;
+  const due=t.due_date?('<span style="font-weight:700;font-size:.78rem;white-space:nowrap;color:'+(ov?'var(--red)':'var(--primary)')+'">'+(ov?('⚠️ '+tz('Întârziat')+' · '):'')+esc(fmtDate(t.due_date))+'</span>'):'';
+  const pri=t.priority==='high'?'<span style="font-size:.7rem;background:var(--chip,#eef1f6);color:var(--muted);border-radius:6px;padding:.1rem .45rem;white-space:nowrap">❗ '+tz('Prioritate înaltă')+'</span>':'';
+  const who=[('👤 '+esc(taskAsgLabel(t.assignee))),(t.created_by&&t.created_by!==me)?(tz('de la')+' '+esc(taskAsgLabel(t.created_by))):''].filter(Boolean).join(' · ');
+  const dim=t.status==='done'||t.status==='cancelled';
+  return '<div class="card" onclick="taskDetail(\''+t.id+'\')" style="padding:.7rem .85rem;display:flex;gap:.7rem;align-items:flex-start;margin-bottom:.5rem;cursor:pointer'+(dim?';opacity:.62':'')+'">'
+    +'<div style="min-width:26px;font-size:1.05rem" aria-hidden="true">'+taskStatusIcon(t.status)+'</div>'
+    +'<div style="flex:1;min-width:0">'
+      +'<div style="font-weight:600;display:flex;gap:.45rem;align-items:center;flex-wrap:wrap"><span>'+esc(t.title)+'</span>'+pri+due+'</div>'
+      +'<div style="font-size:.8rem;color:var(--muted);margin-top:.15rem">'+taskStatusText(t.status)+' · '+who+'</div>'
+      +'<div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-top:.4rem;font-size:.8rem">'+taskActionsHtml(t)+'</div>'
+    +'</div></div>';
+}
+async function taskSetStatus(id, st, ev){ if(ev){ ev.stopPropagation(); }
+  const t=(window._tkRows||[]).find(x=>x.id===id)||window._tkDetail||((window._tkDashRows||[]).find(x=>x.id===id));
+  if(!t) return;
+  if(st==='cancelled' && !confirm(tz('Anulezi acest task?'))) return;
+  try{
+    const r=await sb.rpc('task_set_status',{p_task_id:id,p_status:st,p_expected_updated_at:t.updated_at,p_request_id:planUuid()});
+    if(r.error) throw r.error;
+    toast('✅ '+tz('Actualizat.')); closeModal();
+    if(state.view==='taskuri') renderTaskuri(); else if(state.view==='dashboard') renderDashboard();
+  }catch(e){ toast(taskErrMsg(e));
+    if(String(e&&e.message||'').indexOf('TASK_CONFLICT')>=0){ if(state.view==='taskuri') renderTaskuri(); } }
+}
+const TASK_EV_LBL={created:'creat',assigned:'atribuit',reassigned:'reatribuit',status_changed:'stare schimbată',completed:'finalizat',reopened:'redeschis',cancelled:'anulat',due_changed:'termen schimbat',priority_changed:'prioritate schimbată',updated:'modificat'};
+const TASK_LINK_MOD={client:'clienti',site:'santiere',estimate:'devize',invoice:'facturi',material:'materiale',service:'servicii',supplier:'furnizori',subcontractor:'subcontractori',employee:'angajati',tool:'instrumente',vehicle:'flota',document:'documente',material_order:'comenzi'};
+function taskOpenLink(type,id){
+  const m=TASK_LINK_MOD[type];
+  /* Link ≠ permisiune (0136): obiectul se deschide DOAR prin permisiunile existente */
+  if(!m||!canSee(m)){ toast('🔒 '+tz('Nu ai acces la această înregistrare.')); return; }
+  closeModal();
+  if(type==='client'&&id){ clientHub(id); return; }
+  go(m);
+}
+async function taskDetail(id){
+  let t=null, evs=[], links=[];
+  try{
+    const [tr,er,lr]=await Promise.all([
+      sb.from('tasks').select('*').eq('id',id).single(),
+      sb.from('task_events').select('event,detail,actor,created_at').eq('task_id',id).order('created_at',{ascending:false}).limit(40),
+      sb.from('task_links').select('entity_type,entity_id,label').eq('task_id',id)
+    ]);
+    if(tr.error) throw tr.error;
+    t=tr.data; evs=er.data||[]; links=lr.data||[];
+  }catch(e){ toast(taskErrMsg(e)); return; }
+  window._tkDetail=t;
+  const ov=taskOverdue(t);
+  const meta=[
+    [tz('Stare'), taskStatusText(t.status)],
+    [tz('Responsabil'), taskAsgLabel(t.assignee)],
+    [tz('Creat de'), taskAsgLabel(t.created_by)],
+    [tz('Termen'), t.due_date?((ov?'⚠️ ':'')+fmtDate(t.due_date)):tz('Fără termen')],
+    [tz('Prioritate'), t.priority==='high'?('❗ '+tz('Înaltă')):(t.priority==='low'?tz('Scăzută'):tz('Normală'))],
+    (t.completed_at?[tz('Finalizat la'), fmtDT(t.completed_at)]:null)
+  ].filter(Boolean).map(x=>'<div style="display:flex;gap:.6rem;font-size:.85rem;padding:.2rem 0"><span style="min-width:110px;color:var(--muted)">'+esc(x[0])+'</span><span style="font-weight:600">'+esc(x[1])+'</span></div>').join('');
+  const linkHtml=links.length?('<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:.7rem 0 .25rem">🔗 '+esc(tz('Legături'))+'</div>'
+    +links.map(l=>'<a onclick="taskOpenLink(\''+esc(l.entity_type)+'\',\''+(l.entity_id||'')+'\')" style="cursor:pointer;color:var(--primary);display:inline-block;margin-right:.7rem">🔗 '+esc(l.label||tz(l.entity_type)||l.entity_type)+'</a>').join('')):'';
+  const evHtml=evs.length?('<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:.9rem 0 .25rem">🕘 '+esc(tz('Istoric'))+'</div>'
+    +evs.map(ev=>'<div style="font-size:.78rem;color:var(--muted);padding:.18rem 0">'+esc(fmtDT(ev.created_at))+' · <b>'+esc(tz(TASK_EV_LBL[ev.event]||ev.event))+'</b> · '+esc(taskAsgLabel(ev.actor))+'</div>').join('')):'';
+  const actions=taskActionsHtml(t);
+  const manage=taskCanManage(t)
+    ?('<a onclick="taskEditForm()" style="cursor:pointer">✏️ '+tz('Editează')+'</a>'
+      +(t.status!=='cancelled'&&t.status!=='done'?'<a onclick="taskSetStatus(\''+t.id+'\',\'cancelled\',event)" style="cursor:pointer;color:var(--red)">🚫 '+tz('Anulează taskul')+'</a>':''))
+    :'';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px" role="dialog" aria-modal="true"><div class="modal-head"><h3>'+taskStatusIcon(t.status)+' '+esc(t.title)+'</h3><button class="x" onclick="closeModal()" aria-label="'+esc(tz('Închide'))+'">×</button></div><div class="modal-body">'
+    +meta
+    +(t.description?'<div style="font-size:.86rem;margin-top:.6rem;white-space:pre-wrap;word-break:break-word">'+esc(t.description)+'</div>':'')
+    +linkHtml
+    +'<div style="display:flex;gap:.9rem;flex-wrap:wrap;margin-top:.9rem;font-size:.86rem">'+actions+manage+'</div>'
+    +evHtml
+    +'</div></div></div>';
+}
+function taskEditForm(){
+  const t=window._tkDetail; if(!t) return;
+  const asg=window._taskAsg||[];
+  const me=state.session.user.id;
+  const opts='<option value="">'+esc(tz('Neatribuit'))+'</option>'+asg.map(a=>'<option value="'+a.user_id+'" '+(t.assignee===a.user_id?'selected':'')+'>'+esc(a.user_id===me?tz('Eu'):a.label)+'</option>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px" role="dialog" aria-modal="true"><div class="modal-head"><h3>✏️ '+esc(tz('Editează'))+'</h3><button class="x" onclick="closeModal()" aria-label="'+esc(tz('Închide'))+'">×</button></div><div class="modal-body">'
+    +'<div style="display:grid;gap:.7rem">'
+    +vfld(tz('Ce trebuie făcut?')+' *','tke-title',t.title||'','text','')
+    +'<div><label style="font-size:.8rem;font-weight:600" for="tke-asg">'+tz('Responsabil')+'</label><select id="tke-asg" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)">'+opts+'</select></div>'
+    +'<div><label style="font-size:.8rem;font-weight:600" for="tke-due">'+tz('Termen')+'</label><input id="tke-due" type="date" value="'+esc(t.due_date||'')+'" style="width:100%;padding:.5rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem"></div>'
+    +'<div><label style="font-size:.8rem;font-weight:600" for="tke-pri">'+tz('Prioritate')+'</label><select id="tke-pri" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem;background:var(--surface)"><option value="normal" '+(t.priority==='normal'?'selected':'')+'>'+tz('Normală')+'</option><option value="high" '+(t.priority==='high'?'selected':'')+'>❗ '+tz('Înaltă')+'</option><option value="low" '+(t.priority==='low'?'selected':'')+'>'+tz('Scăzută')+'</option></select></div>'
+    +'<div><label style="font-size:.8rem;font-weight:600" for="tke-desc">'+tz('Descriere')+'</label><textarea id="tke-desc" rows="3" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:9px;margin-top:.25rem">'+esc(t.description||'')+'</textarea></div>'
+    +'<div id="tke-err" style="color:var(--red);font-size:.82rem" role="alert"></div>'
+    +'</div>'
+    +'<div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end"><button class="btn-ghost" onclick="closeModal()">'+tz('Anulează')+'</button><button class="btn" id="tke-save" onclick="taskEditSave(\''+t.id+'\')">'+tz('Salvează')+'</button></div>'
+    +'</div></div></div>';
+  setTimeout(()=>{ const e=$('tke-title'); if(e) e.focus(); },60);
+}
+async function taskEditSave(id){
+  const t=window._tkDetail; const err=$('tke-err'); if(!t) return;
+  const title=($('tke-title').value||'').trim();
+  if(!title){ if(err) err.textContent=tz('Scrie ce trebuie făcut.'); return; }
+  if(window._tkBusy) return; window._tkBusy=true;
+  const btn=$('tke-save'); if(btn) btn.disabled=true;
+  try{
+    const patch={ title, description:(($('tke-desc').value||'').trim())||null, priority:$('tke-pri').value||'normal', due_date:$('tke-due').value||'' };
+    let r=await sb.rpc('task_update',{p_task_id:id,p_patch:patch,p_expected_updated_at:t.updated_at,p_request_id:planUuid()});
+    if(r.error) throw r.error;
+    const cur=r.data;
+    const newAsg=$('tke-asg').value||null;
+    if(newAsg!==(t.assignee||null)){
+      r=await sb.rpc('task_assign',{p_task_id:id,p_assignee:newAsg,p_expected_updated_at:cur.updated_at,p_request_id:planUuid()});
+      if(r.error) throw r.error;
+    }
+    closeModal(); toast('✅ '+tz('Salvat.'));
+    if(state.view==='taskuri') renderTaskuri(); else if(state.view==='dashboard') renderDashboard();
+  }catch(e){ if(err) err.textContent=taskErrMsg(e); }
+  finally{ window._tkBusy=false; if(btn) btn.disabled=false; }
+}
+/* ── Widgetul „Taskurile mele" de pe Dashboard ── */
+async function myTasksWidget(){
+  try{
+    if(typeof canSee==='function' && !canSee('taskuri')) return '';
+    const me=state.session.user.id; const t=coToday();
+    const r=await sb.from('tasks').select('id,title,status,priority,due_date,updated_at,assignee,created_by')
+      .eq('tenant_id',state.tenant).eq('assignee',me).in('status',['todo','in_progress','waiting'])
+      .order('due_date',{ascending:true,nullsFirst:false}).limit(30);
+    if(r.error) return '';
+    const items=r.data||[]; window._tkDashRows=items;
+    const ov=items.filter(x=>x.due_date&&x.due_date<t), az=items.filter(x=>x.due_date===t), rest=items.filter(x=>!x.due_date||x.due_date>t);
+    const show=ov.concat(az,rest).slice(0,7);
+    const row=x=>{ const o=x.due_date&&x.due_date<t;
+      return '<div onclick="go(\'taskuri\')" style="display:flex;gap:.5rem;align-items:center;padding:.35rem 0;border-bottom:1px solid var(--line);cursor:pointer">'
+        +'<span aria-hidden="true">'+(o?'⚠️':taskStatusIcon(x.status))+'</span>'
+        +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.priority==='high'?'❗ ':'')+esc(x.title)+'</div>'
+        +(o?'<div style="font-size:.72rem;color:var(--red);font-weight:700">'+tz('Întârziat')+'</div>':'')+'</div>'
+        +(x.due_date?'<div style="font-size:.78rem;font-weight:700;white-space:nowrap;color:'+(o?'var(--red)':'var(--primary)')+'">'+esc(fmtDate(x.due_date))+'</div>':'')
+        +'<a onclick="taskSetStatus(\''+x.id+'\',\'done\',event)" title="'+esc(tz('Gata'))+'" style="cursor:pointer;font-weight:700;color:var(--green,#22a06b);padding:0 .2rem">✔</a>'
+        +'</div>'; };
+    const body=show.length?show.map(row).join(''):'<div style="padding:.4rem 0;color:var(--muted);font-size:.85rem">'+tz('Niciun task deschis.')+'</div>';
+    return '<div class="panel" style="margin-bottom:1.4rem"><div class="panel-head"><h3>✅ '+esc(C373t('Taskurile mele'))+'</h3>'
+      +'<div style="display:flex;gap:.6rem;align-items:center"><button class="btn-ghost" style="font-size:.8rem" onclick="openTaskForm()">＋ '+tz('Task nou')+'</button><a onclick="go(\'taskuri\')" style="cursor:pointer;font-size:.8rem;color:var(--primary);font-weight:600">'+tz('Vezi toate')+' ›</a></div></div>'
+      +'<div style="padding:.6rem 1.2rem">'+body+'</div></div>';
+  }catch(e){ return ''; }
+}
 async function renderDashboard(){
   $('content').innerHTML='<div class="loading">Se încarcă…</div>';
   const fin=FINANCE_ROLES.includes(state.role);
@@ -6003,13 +6287,14 @@ async function renderDashboard(){
   if(!state.birthdays){ try{ await loadBirthdays(); }catch(e){} }
   let bdayHtml=''; try{ bdayHtml=bdayDashWidget(); }catch(e){}
   let fupHtml=''; try{ fupHtml=await crmFollowupWidget(); }catch(e){}
+  let taskHtml=''; try{ taskHtml=await myTasksWidget(); }catch(e){}
   const kLbl={sites:TR('kSantiere'),clients:TR('kClienti'),materials:TR('kMateriale'),employees:TR('kAngajati')};
   kpis+=defs.map((d,i)=>kpiCard(kLbl[d[1]]||d[0],counts[i],d[2])).join('');
   const { data:recent } = await sb.from('sites').select('name,status,budget,progress,deadline,created_at');
   const recentSorted=sortRows(recent||[],'created_at',false).slice(0,5);
   let rows=recentSorted.map(s=>'<tr><td class="tname">'+esc(s.name)+'</td><td>'+(fin?money(s.budget):'—')+'</td><td>'+progressCell(s.progress)+'</td><td>'+dt(s.deadline)+'</td><td>'+pill(s.status)+'</td></tr>').join('');
   if(!rows) rows='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.5rem">Niciun șantier încă.</td></tr>';
-  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+fleetHtml+docsHtml+loanHtml+fupHtml+bdayHtml+cashHtml+chartHtml
+  $('content').innerHTML='<div class="kpi-row">'+kpis+'</div>'+taskHtml+fleetHtml+docsHtml+loanHtml+fupHtml+bdayHtml+cashHtml+chartHtml
     +'<div class="panel"><div class="panel-head"><h3>'+TR('ultimeleSantiere')+'</h3></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+TR('thProiect')+'</th><th>'+TR('thBuget')+'</th><th>'+TR('thProgres')+'</th><th>'+TR('thTermen')+'</th><th>'+TR('thStare')+'</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
@@ -8244,7 +8529,9 @@ async function cmdkSearch(q){ q=(q||'').trim(); const box=document.getElementByI
   const ql=q.toLowerCase();
   const mods=Object.keys(MODULES).filter(k=>!MODULES[k].hidden&&canSee(k)&&(!ql||(mt(k).title.toLowerCase().indexOf(ql)>=0||k.indexOf(ql)>=0))).slice(0,6)
     .map(k=>({icon:MODULES[k].icon,label:mt(k).title,sub:tz('Modul'),act:"go('"+k+"')"}));
-  let html=cmdkGroup(tz('Module'),mods);
+  /* TASK1-A: ＋ Task e acțiune globală — apare și în paletă */
+  const acts=(canSee('taskuri')&&(!ql||'task nou taskuri sarcina'.indexOf(ql)>=0))?[{icon:'✅',label:tz('Task nou'),sub:tz('Acțiune'),act:"openTaskForm()"}]:[];
+  let html=cmdkGroup(tz('Acțiuni'),acts)+cmdkGroup(tz('Module'),mods);
   if(ql.length<2){ box.innerHTML=html+'<div style="padding:.6rem;color:var(--muted);font-size:.8rem">'+esc(tz('Scrie cel puțin 2 litere ca să caut în date…'))+'</div>'; return; }
   box.innerHTML=html+'<div style="padding:.6rem;color:var(--muted);font-size:.82rem">'+esc(tz('Se caută…'))+'</div>';
   const like='%'+q.replace(/[%_]/g,'')+'%';

@@ -1,8 +1,7 @@
 /* Cod373 service worker — stale-while-revalidate pentru pagini (rapid), cache-first pentru resurse */
-/* v360 = UX1.1 (navigație personalizabilă), deja live. UX2 se publică peste el ⇒ v361.
-   Numărul provizoriu din checkpointul UX2 a fost înlocuit după ce s-a citit constanta
-   reală din `main`, nu presupusă. */
-const CACHE = 'cod373-v361';
+/* v361 = UX2 (formulare canonice de catalog), live. TASK1-A (motorul de taskuri,
+   migr 0136) se publică peste el ⇒ v362. */
+const CACHE = 'cod373-v362';
 const ASSETS = [
   './app.html', './mobil.html', './acces.html', './portal.html', './erp.html', './grafic.html', './deviz.html', './factura.html', './i18n.js', './catalog-form.js',
   './manifest.webmanifest', './manifest-mobil.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png'
