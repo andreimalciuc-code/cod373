@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='331';
+const APP_BUILD='332';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -324,16 +324,17 @@ const NAV={
 function render(){
   clearInterval(window._pjTimer);
   const nav=NAV[S.role]||NAV.worker;
-  /* 'taskuri' e ecran în afara barei de jos (tiparul 'chat') — pull-to-refresh îl păstrează */
-  if(!nav.find(n=>n[0]===S.view) && S.view!=='taskuri') S.view=nav[0][0];
+  /* 'taskuri' și 'scan' sunt ecrane în afara barei de jos (tiparul 'chat') — pull-to-refresh le păstrează */
+  if(!nav.find(n=>n[0]===S.view) && S.view!=='taskuri' && S.view!=='scan') S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri}[S.view];
+  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
   const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
   fn(); loadNotifCount(); maybeInstallBanner();
 }
-function goV(v){S.view=v;render();}
+/* orice navigare oprește camera: stream-ul nu rămâne pornit în fundal (SCAN1-A) */
+function goV(v){ try{ if(typeof mScanStop==='function') mScanStop(); }catch(e){} S.view=v; render(); }
 /* „📲 Instalează pe telefon" — banner discret, auto, închidabil */
 let _deferredPrompt=null;
 window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); _deferredPrompt=e; maybeInstallBanner(); });
@@ -556,7 +557,7 @@ async function scrAcasa(){
   const list=sites.map(s=>'<div class="card" onclick="openSite(\''+s.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+' ›</div><div class="s">'+esc(s.address||'fără adresă')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div></div>').join('');
   const acts=S.role==='driver'
     ? '<button class="mini-btn pr" onclick="goV(\'livrari\')">🚚 Livrări</button> <button class="mini-btn go" onclick="sendLocation()">📍 Trimite locația</button> <button class="mini-btn gh" onclick="openChat()">💬 Chat</button>'
-    : '<button class="mini-btn pr" onclick="goV(\'comanda\')">🛒 Comandă</button> <button class="mini-btn go" onclick="goV(\'poze\')">📷 Poză</button> <button class="mini-btn gh" onclick="goV(\'pontaj\')">⏱️ Pontaj</button> <button class="mini-btn gh" onclick="openChat()">💬 Chat</button> <button class="mini-btn gh" onclick="sheetDailyLog()">📓 Raport zilnic</button>';
+    : '<button class="mini-btn pr" onclick="goV(\'scan\')">📷 '+esc(mtz('Scanează / Mută'))+'</button> <button class="mini-btn go" onclick="goV(\'comanda\')">🛒 Comandă</button> <button class="mini-btn gh" onclick="goV(\'poze\')">📷 Poză</button> <button class="mini-btn gh" onclick="goV(\'pontaj\')">⏱️ Pontaj</button> <button class="mini-btn gh" onclick="openChat()">💬 Chat</button> <button class="mini-btn gh" onclick="sheetDailyLog()">📓 Raport zilnic</button>';
   $('screen').innerHTML='<div class="scr-title">Salut! 👋</div>'
     +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">'+esc(roleSub)+'</div></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
@@ -1501,6 +1502,340 @@ async function mTaskNewSave(){
     if(S.view==='taskuri') scrTaskuri(); else fillTasksHome();
   }catch(e){ toast(mTaskErr(e)); }
   finally{ window._mtkBusy=false; if(btn) btn.disabled=false; }
+}
+
+/* ══ SCANEAZĂ & MUTĂ — SCAN1-A (migr 0138/0139) ══════════════════════════════
+   Fluxul de teren: scanează obiectul → alege/scanează destinația → (cantitate) →
+   confirmă. Toate scrierile trec prin contractul unic `inventory_move`: starea
+   curentă și ledgerul se schimbă în ACEEAȘI tranzacție, server-side. Clientul nu
+   calculează stoc și nu declară niciodată succes fără confirmarea serverului. */
+const MV_ERR={
+  MOVE_FORBIDDEN:'Nu ai dreptul pentru această mișcare.',
+  MOVE_NOT_FOUND:'Obiectul nu a fost găsit.',
+  MOVE_INVALID_INPUT:'Date invalide.',
+  MOVE_INVALID_TYPE:'Tip de mișcare nepotrivit pentru acest obiect.',
+  MOVE_INVALID_QTY:'Cantitatea trebuie să fie mai mare decât zero.',
+  MOVE_INSUFFICIENT_STOCK:'Nu e destul stoc în locația sursă.',
+  MOVE_NO_STOCK:'Locația sursă nu are stoc din acest material.',
+  MOVE_STALE_SOURCE:'Obiectul a fost mutat între timp. Scanează din nou.',
+  MOVE_SAME_LOCATION:'Sursa și destinația sunt aceeași.',
+  MOVE_INVALID_LOCATION:'Locație invalidă.',
+  MOVE_DUPLICATE_REQUEST:'Operațiunea e deja în curs. Reîncearcă.',
+  MOVE_CONTRACT_REQUIRED:'Aplicația ta este o versiune veche. Închide și redeschide aplicația.',
+  SCAN_INVALID_INPUT:'Cod invalid.'};
+function mvErr(e){ const m=String((e&&(e.message||e))||'');
+  for(const k in MV_ERR){ if(m.indexOf(k)>=0) return mtz(MV_ERR[k]); }
+  if(!navigator.onLine||/load failed|failed to fetch|network/i.test(m)) return mtz('📴 Fără internet. Reîncearcă.');
+  return mtz('Eroare:')+' '+m; }
+function mvCanMaterial(){ return ['owner','admin','manager','accountant'].includes(S.memberRole||S.role); }
+function mvExternal(){ return ['client','subcontractor'].includes(S.memberRole||S.role); }
+
+/* ── Scanner: BarcodeDetector nativ când există, altfel biblioteca deja folosită
+   de `scanTool` (html5-qrcode), plus introducere manuală. Overlay-ul stă la nivel
+   de BODY, nu în #screen — care primește `transform` de la IIFE-ul de gesturi (KB#2). ── */
+function mScanSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+function mScanStop(){
+  try{ if(window._mvStream){ window._mvStream.getTracks().forEach(t=>t.stop()); window._mvStream=null; } }catch(e){}
+  try{ if(window._mvRaf){ cancelAnimationFrame(window._mvRaf); window._mvRaf=null; } }catch(e){}
+  try{ if(window._mvH5){ window._mvH5.stop().catch(()=>{}); window._mvH5=null; } }catch(e){}
+  const o=document.getElementById('mv-cam'); if(o) o.remove();
+}
+async function mScanStart(onCode){
+  mScanStop();
+  const ov=document.createElement('div'); ov.id='mv-cam';
+  ov.style.cssText='position:fixed;inset:0;z-index:100003;background:#000;display:flex;flex-direction:column';
+  ov.innerHTML='<div style="flex:1;position:relative;overflow:hidden">'
+    +'<video id="mv-vid" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>'
+    +'<div id="mv-h5" style="position:absolute;inset:0"></div>'
+    +'<div id="mv-frame" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:66vw;max-width:280px;aspect-ratio:1;border:3px solid #fff;border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)"></div></div>'
+    +'<div style="padding:.8rem;background:#0f1c33;color:#fff">'
+    +'<div id="mv-msg" style="font-size:.9rem;margin-bottom:.6rem;min-height:1.2em" role="status" aria-live="polite">'+esc(mtz('Îndreaptă camera spre cod'))+'</div>'
+    +'<div style="display:flex;gap:.5rem">'
+    +'<button class="mini-btn gh" style="flex:1" onclick="mScanStop()">'+esc(mtz('Anulează'))+'</button>'
+    +'<button class="mini-btn pr" style="flex:1" onclick="mScanManual()">'+esc(mtz('Introdu codul'))+'</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);            // BODY, nu #screen (KB#2)
+  window._mvOnCode=function(code){
+    const c=String(code||'').trim(); if(!c) return;
+    if(window._mvLast===c && Date.now()-(window._mvLastAt||0)<2500) return;   // debounce pe același cod
+    window._mvLast=c; window._mvLastAt=Date.now();
+    const m=document.getElementById('mv-msg'); if(m) m.textContent=mtz('Cod citit…');
+    mScanStop(); onCode(c);
+  };
+  if(!mScanSupported()){ mScanMsg(mtz('Camera nu e disponibilă pe acest dispozitiv.')); return; }
+  let stream=null;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+  }catch(err){
+    const nm=(err&&err.name)||'';
+    mScanMsg(/NotAllowed|Security/i.test(nm)
+      ? mtz('Acces la cameră refuzat. Poți introduce codul manual.')
+      : mtz('Camera nu a putut porni. Poți introduce codul manual.'));
+    return;
+  }
+  window._mvStream=stream;
+  const vid=document.getElementById('mv-vid'); if(!vid){ mScanStop(); return; }
+  vid.srcObject=stream; try{ await vid.play(); }catch(e){}
+  if('BarcodeDetector' in window){
+    let det; try{ det=new BarcodeDetector({formats:['qr_code','ean_13','ean_8','code_128','code_39','itf','upc_e','data_matrix']}); }
+    catch(e){ det=new BarcodeDetector(); }
+    const tick=async function(){
+      if(!window._mvStream) return;
+      try{ const b=await det.detect(vid); if(b && b.length && b[0].rawValue){ window._mvOnCode(b[0].rawValue); return; } }catch(e){}
+      window._mvRaf=requestAnimationFrame(tick);
+    };
+    window._mvRaf=requestAnimationFrame(tick);
+  } else {
+    /* fără BarcodeDetector: biblioteca folosită deja de `scanTool` (aceeași sursă, zero
+       dependență nouă). Fără internet la prima încărcare rămâne introducerea manuală. */
+    try{ vid.style.display='none'; stream.getTracks().forEach(t=>t.stop()); window._mvStream=null; }catch(e){}
+    const boot=function(){
+      try{
+        const h=new Html5Qrcode('mv-h5'); window._mvH5=h;
+        h.start({facingMode:'environment'},{fps:10,qrbox:230},function(txt){ window._mvOnCode(txt); },function(){});
+      }catch(e){ mScanMsg(mtz('Camera nu a putut porni. Poți introduce codul manual.')); }
+    };
+    if(window.Html5Qrcode) boot();
+    else { const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+      s.onload=boot; s.onerror=function(){ mScanMsg(mtz('Scanerul nu s-a încărcat. Introdu codul manual.')); };
+      document.head.appendChild(s); }
+  }
+}
+function mScanMsg(t){ const m=document.getElementById('mv-msg'); if(m) m.textContent=t; }
+function mScanManual(){
+  const cb=window._mvOnCode;
+  const v=prompt(mtz('Introdu codul de pe etichetă:'),'');
+  if(v===null) return;
+  const c=String(v).trim(); if(!c) return;
+  mScanStop(); if(cb) { window._mvLast=null; cb(c); }
+}
+
+/* ── Ecranul „Scanează / Mută" ── */
+function mvReset(){ S._mv={step:1,obj:null,from:null,dest:null,qty:null,busy:false}; }
+async function scrScanMove(){
+  if(mvExternal()){ goV('acasa'); return; }
+  S.view='scan';
+  document.querySelectorAll('#bottom button').forEach(b=>b.classList.remove('on'));
+  if(!S._mv) mvReset();
+  await ensureAu();
+  if(!S._mvLoc){
+    try{
+      const [w,si,em]=await Promise.all([
+        sb.from('warehouses').select('id,name').order('name'),
+        sb.from('sites').select('id,name,status').order('name'),
+        sb.from('employees').select('id,full_name').eq('active',true).order('full_name')]);
+      S._mvLoc={wh:w.data||[], sites:(si.data||[]).filter(x=>x.status!=='cancelled'), emp:em.data||[]};
+    }catch(e){ S._mvLoc={wh:[],sites:[],emp:[]}; }
+  }
+  mvRender();
+}
+function mvLocLabel(kind,id){
+  const L=S._mvLoc||{wh:[],sites:[],emp:[]};
+  if(kind==='warehouse'){ const x=L.wh.find(v=>v.id===id); return '🏬 '+((x&&x.name)||mtz('Depozit')); }
+  if(kind==='site'){ const x=L.sites.find(v=>v.id===id); return '🏗️ '+((x&&x.name)||mtz('Șantier')); }
+  if(kind==='employee'){ const x=L.emp.find(v=>v.id===id); return '👤 '+((x&&x.full_name)||mtz('Responsabil')); }
+  return mtz('Nealocat');
+}
+function mvRender(){
+  const M=S._mv, sc=$('screen'); if(!sc) return;
+  let h='<div class="scr-title" style="display:flex;align-items:center;gap:.6rem">📷 '+esc(mtz('Scanează / Mută'))
+      +'<button class="mini-btn gh" style="margin-left:auto" onclick="mvReset();mvRender()">'+esc(mtz('Începe din nou'))+'</button></div>';
+  /* pasul 1 — obiectul */
+  if(!M.obj){
+    h+='<div class="card"><div class="t">1. '+esc(mtz('Ce muți?'))+'</div>'
+      +'<div class="s">'+esc(mtz('Scanează eticheta materialului sau a sculei.'))+'</div>'
+      +'<button class="btn" style="margin-top:.6rem" onclick="mvScanObject()">📷 '+esc(mtz('Scanează'))+'</button></div>';
+    sc.innerHTML=h; return;
+  }
+  const isMat=M.obj.kind==='material';
+  h+='<div class="card"><div class="row"><div class="grow"><div class="t">'+(isMat?'📦 ':'🛠️ ')+esc(M.obj.label)+'</div>'
+    +'<div class="s">'+(isMat?esc(mtz('Material'))+(M.obj.unit?(' · '+esc(M.obj.unit)):''):esc(mtz('Sculă (bucată)')))
+    +' · '+esc(mtz('Acum'))+': '+esc(M.from?mvLocLabel(M.from.kind,M.from.id):mtz('Nealocat'))+'</div></div>'
+    +'<div style="display:flex;flex-direction:column;gap:.25rem">'
+    +'<button class="mini-btn gh" onclick="mvScanObject()">'+esc(mtz('Schimbă'))+'</button>'
+    +'<button class="mini-btn gh" onclick="mvHistory()">🕘 '+esc(mtz('Istoric'))+'</button></div></div>'
+    +(isMat&&M.avail!=null?'<div class="s" style="margin-top:.3rem">'+esc(mtz('Disponibil'))+': <b>'+M.avail+'</b> '+esc(M.obj.unit||'')+'</div>':'')
+    +'</div>';
+  /* pasul 1b — sursa, DOAR când e ambiguă. Când materialul are stoc în mai multe locații
+     nu ghicim (§22): utilizatorul alege explicit de unde iese. */
+  if(isMat && !M.from && M.multi && M.multi.length){
+    h+='<div class="scr-title" style="font-size:.95rem">'+esc(mtz('De unde?'))+'</div>'
+      +'<div class="card"><div class="s" style="margin-bottom:.4rem">'+esc(mtz('Materialul e în mai multe locuri. Alege sursa:'))+'</div>'
+      +M.multi.map(function(x){
+          const k=x.warehouse_id?'warehouse':(x.site_id?'site':null); const id=x.warehouse_id||x.site_id;
+          if(!k) return '';
+          return '<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetFrom(\''+k+'\',\''+id+'\','+(+x.qty)+')">'
+            +esc(mvLocLabel(k,id))+' · <b>'+(+x.qty)+'</b></button>'; }).join('')
+      +'<div style="margin-top:.5rem"><button class="mini-btn gh" onclick="S._mv.multi=null;mvRender()">'
+      +esc(mtz('Nu, e o intrare nouă'))+'</button></div></div>';
+    sc.innerHTML=h; return;
+  }
+  /* pasul 2 — destinația */
+  h+='<div class="scr-title" style="font-size:.95rem">2. '+esc(mtz('Unde?'))+'</div>';
+  if(M.dest){
+    h+='<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(mvLocLabel(M.dest.kind,M.dest.id))+'</div></div>'
+      +'<button class="mini-btn gh" onclick="S._mv.dest=null;mvRender()">'+esc(mtz('Schimbă'))+'</button></div></div>';
+  } else {
+    const L=S._mvLoc||{wh:[],sites:[],emp:[]};
+    h+='<div class="card"><button class="btn btn-soft" onclick="mvScanDest()">📷 '+esc(mtz('Scanează locația'))+'</button>'
+      +'<div class="s" style="margin:.5rem 0 .3rem">'+esc(mtz('sau alege:'))+'</div>'
+      +L.wh.map(w=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetDest(\'warehouse\',\''+w.id+'\')">🏬 '+esc(w.name)+'</button>').join('')
+      +L.sites.map(s=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetDest(\'site\',\''+s.id+'\')">🏗️ '+esc(s.name)+'</button>').join('')
+      +(!isMat?L.emp.map(e=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetDest(\'employee\',\''+e.id+'\')">👤 '+esc(e.full_name)+'</button>').join(''):'')
+      +(isMat&&M.from?'<div style="margin-top:.5rem"><button class="mini-btn gh" onclick="mvSetDest(\'consume\',\'\')">🔥 '+esc(mtz('Consum (iese din stoc)'))+'</button></div>':'')
+      +'</div>';
+    sc.innerHTML=h; return;
+  }
+  /* pasul 3 — cantitatea (doar material; pentru sculă e implicit 1) */
+  if(isMat){
+    h+='<div class="scr-title" style="font-size:.95rem">3. '+esc(mtz('Cât?'))+'</div>'
+      +'<div class="card"><div class="row" style="gap:.5rem;align-items:center">'
+      +'<input id="mv-qty" type="number" inputmode="decimal" min="0" step="any" value="'+(M.qty!=null?M.qty:'')+'" '
+      +'placeholder="0" aria-label="'+esc(mtz('Cantitate'))+'" style="flex:1;padding:.6rem;border:1px solid var(--line,#e5e9f2);border-radius:10px;font-size:1.1rem">'
+      +'<span class="s">'+esc(M.obj.unit||'')+'</span></div>'
+      +(M.avail!=null?'<button class="mini-btn gh" style="margin-top:.4rem" onclick="document.getElementById(\'mv-qty\').value='+M.avail+'">'+esc(mtz('Tot'))+' ('+M.avail+')</button>':'')
+      +'</div>';
+  }
+  /* pasul 4 — verificare + confirmare */
+  h+='<div class="scr-title" style="font-size:.95rem">'+(isMat?'4. ':'3. ')+esc(mtz('Verifică'))+'</div>'
+    +'<div class="card" style="border-color:#2f6bff"><div class="t">'+esc(M.obj.label)+'</div>'
+    +'<div class="s" style="font-size:.95rem;margin-top:.2rem">'
+    +esc(M.from?mvLocLabel(M.from.kind,M.from.id):mtz('Intrare'))+' → '
+    +esc(M.dest.kind==='consume'?mtz('Consum'):mvLocLabel(M.dest.kind,M.dest.id))+'</div>'
+    +'<div id="mv-err" style="color:#dc2626;font-size:.85rem;margin-top:.4rem" role="alert"></div>'
+    +'<button class="btn" id="mv-go" style="margin-top:.6rem" onclick="mvConfirm()">✔ '+esc(mtz('Confirmă'))+'</button></div>';
+  sc.innerHTML=h;
+}
+function mvScanObject(){ mScanStart(async function(code){ await mvResolve(code,'obj'); }); }
+function mvScanDest(){ mScanStart(async function(code){ await mvResolve(code,'dest'); }); }
+async function mvResolve(code, slot){
+  let res=null;
+  try{ const r=await sb.rpc('scan_resolve',{p_code:code}); if(r.error) throw r.error; res=r.data; }
+  catch(e){ toast(mvErr(e)); goV('scan'); return; }
+  const st=res&&res.status;
+  if(st==='unknown'){
+    toast('❓ '+mtz('Cod necunoscut.'));
+    S._mvUnknown=code; mvRender(); return;
+  }
+  if(st==='ambiguous'){ toast(mtz('Codul se potrivește cu mai multe obiecte. Alege din listă.')); mvRender(); return; }
+  if(slot==='dest'){
+    if(res.kind!=='warehouse' && res.kind!=='site'){ toast(mtz('Codul scanat nu e o locație.')); return; }
+    mvSetDest(res.kind,res.id); return;
+  }
+  /* obiect */
+  if(res.kind==='material'){
+    if(!mvCanMaterial()){ toast('🔒 '+mtz('Nu ai dreptul să miști materiale.')); return; }
+    S._mv.obj={kind:'material',id:res.id,label:res.label,unit:res.unit||''};
+    await mvLoadStock();
+  } else if(res.kind==='asset'){
+    S._mv.obj={kind:'asset',id:res.id,label:res.label};
+    await mvLoadUnit();
+  } else if(res.kind==='tool'){
+    /* sculă-tip: în SCAN1-A se mută BUCATA. Dacă are exact una, continuăm cu ea. */
+    try{
+      const u=await sb.from('tool_units').select('id,serial_no,site_id,warehouse_id,holder_employee_id,tools(name)').eq('tool_id',res.id).limit(2);
+      const rows=u.data||[];
+      if(rows.length===1){ S._mv.obj={kind:'asset',id:rows[0].id,label:((rows[0].tools&&rows[0].tools.name)||res.label)}; await mvLoadUnit(); }
+      else if(rows.length===0){ toast(mtz('Scula nu are bucăți individuale înregistrate. Mutarea pe cantitate vine în SCAN1-B.')); return; }
+      else { toast(mtz('Scula are mai multe bucăți. Scanează eticheta bucății.')); return; }
+    }catch(e){ toast(mvErr(e)); return; }
+  } else { toast(mtz('Codul scanat nu e un obiect care se poate muta.')); return; }
+  S._mv.dest=null; mvRender();
+}
+async function mvLoadStock(){
+  const M=S._mv; M.from=null; M.avail=null;
+  try{
+    const r=await sb.from('stock').select('qty,site_id,warehouse_id').eq('material_id',M.obj.id).gt('qty',0);
+    const rows=r.data||[];
+    if(rows.length===1){
+      const x=rows[0];
+      M.from = x.warehouse_id ? {kind:'warehouse',id:x.warehouse_id} : (x.site_id ? {kind:'site',id:x.site_id} : null);
+      M.avail = +x.qty;
+    } else if(rows.length>1){ M.multi=rows; }   /* ambiguu: NU ghicim sursa */
+  }catch(e){}
+}
+async function mvLoadUnit(){
+  const M=S._mv; M.from=null;
+  try{
+    const r=await sb.from('tool_units').select('site_id,warehouse_id,holder_employee_id').eq('id',M.obj.id).maybeSingle();
+    const u=r.data; if(!u) return;
+    M.from = u.warehouse_id ? {kind:'warehouse',id:u.warehouse_id}
+           : u.site_id ? {kind:'site',id:u.site_id}
+           : u.holder_employee_id ? {kind:'employee',id:u.holder_employee_id} : null;
+  }catch(e){}
+}
+function mvSetFrom(kind,id,avail){ S._mv.from={kind:kind,id:id}; S._mv.avail=avail; S._mv.multi=null; mvRender(); }
+function mvSetDest(kind,id){
+  if(kind==='consume'){ S._mv.dest={kind:'consume',id:null}; }
+  else S._mv.dest={kind:kind,id:id};
+  mvRender();
+  if(S._mv.obj&&S._mv.obj.kind==='material') setTimeout(()=>{ const q=$('mv-qty'); if(q) q.focus(); },80);
+}
+function mvType(){
+  const M=S._mv, isMat=M.obj.kind==='material';
+  if(M.dest.kind==='consume') return 'consumption';
+  if(!M.from) return 'receipt';
+  if(!isMat && M.dest.kind==='employee') return 'assign';
+  if(!isMat && M.from.kind==='employee') return 'return';
+  return 'transfer';
+}
+/* Istoricul mișcărilor — LAZY, doar la cerere, limitat pe server (D23) */
+/* „În reparație", nu „Reparație": cheia scurtă e deja folosită ca TIP DE LUCRARE
+   (i18n: de='Renovierung') — un text-sursă identic ar suprascrie acea traducere (KB#6). */
+const MV_TYPE={receipt:'Intrare',transfer:'Transfer',assign:'Predat',return:'Retur',consumption:'Consum',
+  inventory_adjustment:'Corecție',damaged:'Deteriorat',lost:'Pierdut',repair:'În reparație',decommission:'Scos din uz'};
+async function mvHistory(){
+  const M=S._mv; if(!M||!M.obj) return;
+  openSheet('🕘 '+mtz('Istoric mișcări'), '<div class="loading">'+esc(mtz('Se încarcă…'))+'</div>');
+  let rows=[];
+  try{
+    let q=sb.from('inventory_movements')
+      .select('movement_type,qty,unit,from_kind,from_id,to_kind,to_id,created_at')
+      .order('created_at',{ascending:false}).limit(20);
+    q = M.obj.kind==='material' ? q.eq('material_id',M.obj.id) : q.eq('unit_id',M.obj.id);
+    const r=await q; if(r.error) throw r.error; rows=r.data||[];
+  }catch(e){ openSheet('🕘 '+mtz('Istoric mișcări'),'<div class="s">'+esc(mvErr(e))+'</div>'); return; }
+  const html = rows.length ? rows.map(function(x){
+    const when=String(x.created_at||'').slice(0,16).replace('T',' ');
+    const path=(x.from_kind?mvLocLabel(x.from_kind,x.from_id):mtz('Intrare'))+' → '+(x.to_kind?mvLocLabel(x.to_kind,x.to_id):mtz('Consum'));
+    return '<div class="card" style="margin:0 0 .5rem;padding:.6rem"><div class="row"><div class="grow">'
+      +'<b>'+esc(mtz(MV_TYPE[x.movement_type]||x.movement_type))+'</b>'
+      +(x.qty!=null?(' · '+(+x.qty)+' '+esc(x.unit||'')):'')
+      +'<div class="s">'+esc(path)+'</div></div>'
+      +'<div class="s" style="white-space:nowrap;font-size:.7rem">'+esc(when)+'</div></div></div>'; }).join('')
+    : '<div class="empty"><div class="ei">🕘</div>'+esc(mtz('Nicio mișcare încă.'))+'</div>';
+  openSheet('🕘 '+mtz('Istoric mișcări'), html);
+}
+async function mvConfirm(){
+  const M=S._mv, err=$('mv-err'); if(!M||!M.obj||!M.dest) return;
+  if(M.busy) return;                                   // gardă „în zbor" (D29)
+  const isMat=M.obj.kind==='material';
+  let qty=null;
+  if(isMat){
+    qty=parseFloat(($('mv-qty')&&$('mv-qty').value)||'');
+    if(!(qty>0)){ if(err) err.textContent=mtz('Cantitatea trebuie să fie mai mare decât zero.'); return; }
+  }
+  if(isMat && !M.from && M.dest.kind==='consume'){ if(err) err.textContent=mtz('Nu ai de unde consuma.'); return; }
+  const payload={kind:M.obj.kind, type:mvType()};
+  if(isMat){ payload.material_id=M.obj.id; payload.qty=qty; } else payload.unit_id=M.obj.id;
+  if(M.from) payload.from={kind:M.from.kind,id:M.from.id};
+  if(M.dest.kind!=='consume') payload.to={kind:M.dest.kind,id:M.dest.id};
+  /* request_id STABIL pe încercare: un retry după eroare de rețea refolosește același id,
+     deci serverul face replay în loc de a doua mișcare (pregătit și pentru OFFLINE1). */
+  if(!M.rq) M.rq=mUuid();
+  M.busy=true; const btn=$('mv-go'); if(btn) btn.disabled=true; if(err) err.textContent='';
+  try{
+    const r=await sb.rpc('inventory_move',{p_tenant_id:S.tenant,p_payload:payload,p_request_id:M.rq});
+    if(r.error) throw r.error;
+    const dest=M.dest.kind==='consume'?mtz('Consum'):mvLocLabel(M.dest.kind,M.dest.id);
+    toast('✅ '+esc(M.obj.label)+' → '+esc(dest));
+    mvReset(); mvRender();
+  }catch(e){
+    /* succesul se anunță DOAR după confirmarea serverului; la eroare păstrăm tot
+       contextul (obiect, destinație, cantitate, request_id) ca retry-ul să fie sigur */
+    if(err) err.textContent=mvErr(e);
+  }
+  finally{ M.busy=false; if(btn) btn.disabled=false; }
 }
 
 /* NOTIFICĂRI */

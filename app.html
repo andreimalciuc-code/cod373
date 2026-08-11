@@ -835,7 +835,7 @@ const MODULES = {
 
   instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, locFilter:true, toolStockForm:true, bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
-    select:'id,name,photo_url,qty,default_rent,default_deposit,tool_locations(qty,site_id,store_id,warehouse_id,holder,loan_type,sites(name),stores(name),warehouses(name)),tool_units(id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,photo_url,site_id,warehouse_id,holder,loan_type,sites(name),warehouses(name))',
+    select:'id,name,code,photo_url,qty,default_rent,default_deposit,tool_locations(qty,site_id,store_id,warehouse_id,holder,loan_type,sites(name),stores(name),warehouses(name)),tool_units(id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,photo_url,site_id,warehouse_id,holder,loan_type,sites(name),warehouses(name))',
     columns:[
       {label:'Foto',get:r=>{ const u=(r.tool_units||[]).find(x=>x.photo_url); const p=(u&&u.photo_url)||r.photo_url; return p?'<img class="lazimg" data-p="'+encodeURIComponent(p)+'" onclick="event.stopPropagation();openImg(\''+encodeURIComponent(p)+'\')" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:var(--bg)">':'<span style="color:var(--muted)">—</span>'; }},
       {label:'Denumire',get:r=>'<span class="tname">'+esc(r.name)+'</span>'},
@@ -3445,6 +3445,35 @@ async function toolHistory(id){
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data / ora</th><th>Mișcare</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div></div>';
 }
 function toolLink(id){ const m=location.href.split('?')[0].replace(/\/[^/]*$/,'/'); return m+'mobil.html?tool='+id; }
+/* ── SCAN1-A: eticheta scanabilă a unei LOCAȚII (depozit / șantier).
+   Codul vine de la server (`scan_code_ensure`) și e OPAC: „C373" + 12 hex, fără nume de
+   firmă, de persoană sau de locație. Cunoașterea lui nu acordă acces — rezoluția trece
+   prin RLS. Generarea în masă și tipărirea pe coli rămân în SCAN1-B. ── */
+async function locQR(kind, id, name){
+  let code=null;
+  try{
+    const r=await sb.rpc('scan_code_ensure',{p_tenant_id:state.tenant,p_kind:kind,p_id:id});
+    if(r.error) throw r.error; code=r.data&&r.data.code;
+  }catch(e){ toast(tz('Eroare:')+' '+esc(String((e&&e.message)||e))); return; }
+  if(!code) return;
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:360px">'
+    +'<div class="modal-head"><h3>🏷️ '+esc(tz('Etichetă QR'))+'</h3><button class="x" onclick="closeModal()" aria-label="'+esc(tz('Închide'))+'">×</button></div>'
+    +'<div class="modal-body" style="text-align:center">'
+    +'<div style="font-weight:700;margin-bottom:.2rem">'+(kind==='warehouse'?'🏬 ':'🏗️ ')+esc(name||'')+'</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.6rem">'+esc(code)+'</div>'
+    +'<div id="qrbox" style="display:flex;justify-content:center;min-height:200px;align-items:center">'+esc(tz('Se încarcă…'))+'</div>'
+    +'<div style="font-size:.8rem;color:var(--muted);margin-top:.6rem">'+esc(tz('Lipește eticheta la intrare. Se scanează din aplicația de teren.'))+'</div>'
+    +'<div style="margin-top:.8rem;display:flex;gap:.5rem;justify-content:center">'
+    +'<button class="btn-ghost" onclick="toolQRPrint(\''+jsArg(name||'')+'\',\''+jsArg(code)+'\')">🖨️ '+esc(tz('Tipărește'))+'</button>'
+    +'<button class="btn-primary" onclick="closeModal()">'+esc(tz('Închide'))+'</button></div>'
+    +'</div></div></div>';
+  const draw=function(){ const b=$('qrbox'); if(!b) return; b.innerHTML='';
+    new QRCode(b,{text:code,width:200,height:200,correctLevel:QRCode.CorrectLevel.M}); };
+  if(window.QRCode){ draw(); }
+  else { const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js';
+    s.onload=draw; s.onerror=function(){ const b=$('qrbox'); if(b) b.textContent=tz('Codul nu s-a putut încărca (verifică internetul).'); };
+    document.head.appendChild(s); }
+}
 function toolQR(id,name,code){
   const link=toolLink(id);
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:360px">'
@@ -8784,6 +8813,9 @@ function rowActions(key,m,r){
   if(m.siteHub) a.push({i:'📦',l:'Ce se află aici (instrumente + materiale)',f:"siteContents('"+id+"','"+jsArg(r.name)+"')"});
   if(m.siteHub) a.push({i:'🖨️',l:tz('Fișă PDF șantier'),f:"sitePdf('"+id+"')"});
   if(m.warehouseHub) a.push({i:'📦',l:'Ce se află în depozit (instrumente, materiale, flotă)',f:"warehouseContents('"+id+"','"+jsArg(r.name)+"')"});
+  /* SCAN1-A: eticheta scanabilă a locației (depozit / șantier) */
+  if(m.warehouseHub) a.push({i:'🏷️',l:tz('Etichetă QR (de lipit la intrare)'),f:"locQR('warehouse','"+id+"','"+jsArg(r.name)+"')"});
+  if(m.siteHub)      a.push({i:'🏷️',l:tz('Etichetă QR (de lipit la intrare)'),f:"locQR('site','"+id+"','"+jsArg(r.name)+"')"});
   if(m.scheduler){ a.push({i:'📅',l:'Grafic lucrări (filă nouă)',f:"window.open('grafic.html?site="+id+"','_blank')"}); a.push({i:'📊',l:'Rezumat rapid (marjă & etape)',f:"openSiteDetail('"+id+"')"}); }
   if(m.teamable) a.push({i:'👥',l:'Acces / echipă',f:"siteTeam('"+id+"')"});
   if(m.portalable) a.push({i:'🔗',l:'Link portal client',f:"genPortal('"+id+"')"});
