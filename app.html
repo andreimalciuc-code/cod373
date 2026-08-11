@@ -594,7 +594,7 @@ async function doLogin(){
   if(error){ showMsg('login-msg',error.message); return; }
   await boot();
 }
-async function doLogout(){ const m=(typeof isDemo==='function'&&isDemo())?'Ești în cont demo — după ieșire nu te mai poți întoarce la aceste date. Continui?':'Sigur vrei să ieși din cont?'; if(!confirm(window.C373t?C373t(m):m)) return; try{ localStorage.removeItem('c373_sessOnly'); }catch(e){} try{ mediaCacheReset(); }catch(e){} await sb.auth.signOut(); location.reload(); }
+async function doLogout(){ const m=(typeof isDemo==='function'&&isDemo())?'Ești în cont demo — după ieșire nu te mai poți întoarce la aceste date. Continui?':'Sigur vrei să ieși din cont?'; if(!confirm(window.C373t?C373t(m):m)) return; try{ localStorage.removeItem('c373_sessOnly'); }catch(e){} try{ mediaCacheReset(); }catch(e){} window._c373selfOut=1; await sb.auth.signOut(); location.reload(); }
 /* „Ține-mă minte" — implicit DA (sesiunea persistă). Dacă e debifat → delogare la închiderea browserului. */
 function rememberFlag(){ try{ const c=$('login-remember'); const remember=c?c.checked:true; if(remember){ localStorage.removeItem('c373_sessOnly'); } else { localStorage.setItem('c373_sessOnly','1'); } sessionStorage.setItem('c373_sessAlive','1'); }catch(e){} }
 async function sessGuard(){ try{
@@ -1758,6 +1758,7 @@ async function subActivate(){
 async function demoToReal(){
   if(!confirm(tz('Îți vei crea un cont real cu email și parolă. Datele din demo nu se transferă (deocamdată), iar sesiunea demo se închide. Continui?'))) return;
   try{ localStorage.removeItem('c373_sessOnly'); }catch(e){}
+  window._c373selfOut=1;
   try{ await sb.auth.signOut(); }catch(e){}
   location.hash='signup'; location.reload();
 }
@@ -4123,6 +4124,7 @@ function siteHub(siteId, siteName){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px">'
     +'<div class="modal-head"><h3>📂 '+esc(siteName||'Șantier')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><p style="color:var(--muted);font-size:.85rem;margin-top:0">Tot ce ține de acest șantier:</p>'
+    +(canSee('taskuri')?'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="closeModal();taskFromCtx(\'site\',\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">✅</span> '+esc(C373t('＋ Task pe acest șantier'))+'</button>':'')
     +'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteContents(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📦</span> Ce se află aici (instrumente + materiale)</button>'
     +'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteLocation(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📍</span> '+esc(C373t('Locație / Navigare (GPS)'))+'</button>'
     +btns+'</div></div></div>';
@@ -5033,7 +5035,9 @@ async function clientHub(id){ window._chId=id;
     +(c.value!=null?'<div style="margin:.3rem 0;font-weight:700;color:var(--green)">💰 '+money(c.value)+'</div>':'')
     +(function(){ const base=c.stage_since||(c.created_at?String(c.created_at).slice(0,10):null); if(!base||c.stage==='won'||c.stage==='lost'||c.stage==='finalizat') return ''; const d=Math.round((new Date(coToday()+'T12:00:00')-new Date(base+'T12:00:00'))/86400000); return '<div style="font-size:.78rem;color:'+(d>=14?'var(--red)':'var(--muted)')+'">🕒 '+d+' '+esc(C373t('zile în etapă'))+(d>=14?(' · <b>'+esc(C373t('blocat'))+'</b>'):'')+'</div>'; })()
     +'<div style="display:flex;gap:.4rem;align-items:center;margin:.45rem 0;flex-wrap:wrap"><span style="font-size:.8rem;color:var(--muted)">'+esc(C373t('Temperatură'))+':</span>'+Object.keys(CRM_TEMP).map(k=>'<button class="btn-ghost" style="padding:.2rem .5rem'+(c.temperature===k?';background:var(--primary-soft);border-color:var(--primary)':'')+'" onclick="chSetTemp(\''+id+'\',\''+k+'\')">'+CRM_TEMP[k]+' '+esc(C373t(k==='hot'?'Fierbinte':k==='warm'?'Cald':'Rece'))+'</button>').join('')+'</div>'
-    +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.6rem 0"><button class="btn-ghost" onclick="editRecord(\'clienti\',\''+id+'\')">✏️ '+esc(C373t('Editează'))+'</button>'+(c.email?'<button class="btn-ghost" onclick="closeModal();emailCompose({client_id:\''+id+'\',to:\''+esc(c.email)+'\',name:\''+jsArg(c.name)+'\'})">✉️ '+esc(C373t('Email'))+'</button>':'')
+    +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.6rem 0"><button class="btn-ghost" onclick="editRecord(\'clienti\',\''+id+'\')">✏️ '+esc(C373t('Editează'))+'</button>'
+      +(canSee('taskuri')?'<button class="btn-ghost" onclick="closeModal();taskFromCtx(\'client\',\''+id+'\',\''+jsArg(c.name)+'\')">✅ '+esc(C373t('＋ Task'))+'</button>':'')
+      +(c.email?'<button class="btn-ghost" onclick="closeModal();emailCompose({client_id:\''+id+'\',to:\''+esc(c.email)+'\',name:\''+jsArg(c.name)+'\'})">✉️ '+esc(C373t('Email'))+'</button>':'')
       +(c.archived_at?'<button class="btn-ghost" onclick="crmUnarchive(\''+id+'\')">↩️ '+esc(C373t('Reactivează'))+'</button>':'<button class="btn-ghost" onclick="crmArchive(\''+id+'\')" title="'+esc(C373t('Scoate din pâlnia activă (lucrare încheiată) — istoricul rămâne'))+'">🗄️ '+esc(C373t('Arhivează'))+'</button>')
       +'<button class="btn-ghost" onclick="clientPdf(\''+id+'\')">🖨️ '+esc(C373t('PDF / Printează'))+'</button></div>'
     +'<div style="font-weight:700;font-size:.84rem;margin:.4rem 0 .2rem">👥 '+esc(C373t('Persoane de contact'))+'</div>'+ccH
@@ -6007,6 +6011,8 @@ function taskErrMsg(e){
     TASK_LINK_INVALID:'Legătură invalidă.',
     TASK_NOT_FOUND:'Taskul nu a fost găsit.',
     TASK_CONFLICT:'Taskul a fost modificat între timp. Reîncarcă lista.',
+    TASK_ATTACH_LIMIT:'Maximum 8 atașamente per task.',
+    TASK_ATTACH_INVALID:'Fișier neacceptat (tip sau mărime).',
     TASK_FORBIDDEN:'Nu ai dreptul pentru această acțiune.' };
   for(const k in map){ if(m.indexOf(k)>=0) return tz(map[k]); }
   return tz('Eroare:')+' '+m;
@@ -6042,7 +6048,9 @@ async function openTaskForm(preset){
     +'<div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end"><button class="btn-ghost" onclick="closeModal()">'+tz('Anulează')+'</button><button class="btn" id="tk-save" onclick="taskQuickSave()">'+tz('Salvează')+'</button></div>'
     +'</div></div></div>';
   window._tkLink = preset.link||null;
-  setTimeout(()=>{ const e=$('tk-title'); if(e) e.focus(); },60);
+  /* titlul sugerat din context e doar un punct de pornire: selectat integral, ca
+     tastarea să-l înlocuiască dintr-o mișcare */
+  setTimeout(()=>{ const e=$('tk-title'); if(e){ e.focus(); if(preset.titleSuggested) e.select(); } },60);
 }
 function taskDuePick(btn){ const i=$('tk-due'); if(i) i.value=btn.dataset.d||'';
   document.querySelectorAll('.tk-due').forEach(b=>b.style.borderColor=''); btn.style.borderColor='var(--primary)'; }
@@ -6143,26 +6151,55 @@ async function taskSetStatus(id, st, ev){ if(ev){ ev.stopPropagation(); }
   }catch(e){ toast(taskErrMsg(e));
     if(String(e&&e.message||'').indexOf('TASK_CONFLICT')>=0){ if(state.view==='taskuri') renderTaskuri(); } }
 }
-const TASK_EV_LBL={created:'creat',assigned:'atribuit',reassigned:'reatribuit',status_changed:'stare schimbată',completed:'finalizat',reopened:'redeschis',cancelled:'anulat',due_changed:'termen schimbat',priority_changed:'prioritate schimbată',updated:'modificat'};
+const TASK_EV_LBL={created:'creat',assigned:'atribuit',reassigned:'reatribuit',status_changed:'stare schimbată',completed:'finalizat',reopened:'redeschis',cancelled:'anulat',due_changed:'termen schimbat',priority_changed:'prioritate schimbată',updated:'modificat',attachment_added:'atașament adăugat',attachment_removed:'atașament eliminat'};
 const TASK_LINK_MOD={client:'clienti',site:'santiere',estimate:'devize',invoice:'facturi',material:'materiale',service:'servicii',supplier:'furnizori',subcontractor:'subcontractori',employee:'angajati',tool:'instrumente',vehicle:'flota',document:'documente',material_order:'comenzi'};
+/* ── ＋Task contextual (TASK1-B): modulul-gazdă → tipul din lista albă 0136 + eticheta rândului.
+   Linkul se validează ORICUM pe server sub RLS-ul apelantului; aici doar precompletăm. ── */
+const TASK_CTX={ clienti:['client',r=>r.name], santiere:['site',r=>r.name],
+  devize:['estimate',r=>r.number], facturi:['invoice',r=>r.number],
+  materiale:['material',r=>r.name], servicii:['service',r=>r.name],
+  furnizori:['supplier',r=>r.name], subcontractori:['subcontractor',r=>r.name],
+  angajati:['employee',r=>r.full_name], instrumente:['tool',r=>r.name],
+  flota:['vehicle',r=>r.label], comenzi:['material_order',r=>r.number] };
+const TASK_CTX_LBL={client:'Client',site:'Șantier',estimate:'Deviz/Ofertă',invoice:'Factură',material:'Material',service:'Serviciu',supplier:'Furnizor',subcontractor:'Subcontractor',employee:'Angajat',tool:'Instrument',vehicle:'Vehicul',document:'Document',material_order:'Comandă'};
+function taskFromCtx(type, id, label){
+  const lbl=String(label||'').slice(0,200);
+  openTaskForm({ title:(tz(TASK_CTX_LBL[type]||'')+' '+lbl).trim(), titleSuggested:true,
+    link:{ entity_type:type, entity_id:id, label:lbl } });
+}
+function taskFromRow(key, id){
+  const cfg=TASK_CTX[key]; if(!cfg) return;
+  const r=(listState.rows||[]).find(x=>x.id===id); if(!r) return;
+  taskFromCtx(cfg[0], id, cfg[1](r)||'');
+}
 function taskOpenLink(type,id){
   const m=TASK_LINK_MOD[type];
-  /* Link ≠ permisiune (0136): obiectul se deschide DOAR prin permisiunile existente */
+  /* Link ≠ permisiune (0136): obiectul se deschide DOAR prin permisiunile existente.
+     Mesaj uman, fără divulgare — nu spunem dacă înregistrarea există. */
   if(!m||!canSee(m)){ toast('🔒 '+tz('Nu ai acces la această înregistrare.')); return; }
   closeModal();
   if(type==='client'&&id){ clientHub(id); return; }
+  if(type==='site'&&id){ sb.from('sites').select('name').eq('id',id).maybeSingle()
+    .then(r=>{ if(r.data) siteHub(id, r.data.name||'Șantier'); else { toast('🔒 '+tz('Nu ai acces la această înregistrare.')); } }); return; }
+  const pe=MODULES[m]&&MODULES[m].pageEditor;
+  if(pe&&id){ window.open(pe+'?id='+id,'_blank'); return; }
   go(m);
+  /* modul generic: după navigare deschidem previzualizarea înregistrării țintă */
+  if(id&&MODULES[m]&&MODULES[m].fields){ setTimeout(function(){ try{ recordPreview(m,id); }catch(e){} },450); }
 }
 async function taskDetail(id){
-  let t=null, evs=[], links=[];
+  let t=null, evs=[], links=[], cms=[], atts=[];
   try{
-    const [tr,er,lr]=await Promise.all([
+    /* detaliul se încarcă LAZY, doar aici — listele nu numără comentarii/atașamente (zero N+1) */
+    const [tr,er,lr,cr,ar]=await Promise.all([
       sb.from('tasks').select('*').eq('id',id).single(),
       sb.from('task_events').select('event,detail,actor,created_at').eq('task_id',id).order('created_at',{ascending:false}).limit(40),
-      sb.from('task_links').select('entity_type,entity_id,label').eq('task_id',id)
+      sb.from('task_links').select('entity_type,entity_id,label').eq('task_id',id),
+      sb.from('task_comments').select('id,body,author,created_at').eq('task_id',id).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(300),
+      sb.from('task_attachments').select('id,file_path,file_name,mime,size_bytes,uploaded_by,created_at').eq('task_id',id).order('created_at',{ascending:true}).limit(20)
     ]);
     if(tr.error) throw tr.error;
-    t=tr.data; evs=er.data||[]; links=lr.data||[];
+    t=tr.data; evs=er.data||[]; links=lr.data||[]; cms=cr.data||[]; atts=ar.data||[];
   }catch(e){ toast(taskErrMsg(e)); return; }
   window._tkDetail=t;
   const ov=taskOverdue(t);
@@ -6174,8 +6211,32 @@ async function taskDetail(id){
     [tz('Prioritate'), t.priority==='high'?('❗ '+tz('Înaltă')):(t.priority==='low'?tz('Scăzută'):tz('Normală'))],
     (t.completed_at?[tz('Finalizat la'), fmtDT(t.completed_at)]:null)
   ].filter(Boolean).map(x=>'<div style="display:flex;gap:.6rem;font-size:.85rem;padding:.2rem 0"><span style="min-width:110px;color:var(--muted)">'+esc(x[0])+'</span><span style="font-weight:600">'+esc(x[1])+'</span></div>').join('');
-  const linkHtml=links.length?('<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:.7rem 0 .25rem">🔗 '+esc(tz('Legături'))+'</div>'
-    +links.map(l=>'<a onclick="taskOpenLink(\''+esc(l.entity_type)+'\',\''+(l.entity_id||'')+'\')" style="cursor:pointer;color:var(--primary);display:inline-block;margin-right:.7rem">🔗 '+esc(l.label||tz(l.entity_type)||l.entity_type)+'</a>').join('')):'';
+  const linkHtml=links.length?('<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:.7rem 0 .25rem">🔗 '+esc(tz('Legat de'))+'</div>'
+    +links.map(l=>'<a onclick="taskOpenLink(\''+esc(l.entity_type)+'\',\''+(l.entity_id||'')+'\')" style="cursor:pointer;color:var(--primary);display:inline-block;margin-right:.7rem">'
+      +esc(tz(TASK_CTX_LBL[l.entity_type]||l.entity_type))+(l.label?(': '+esc(l.label)):'')+' ›</a>').join('')):'';
+  const me=state.session.user.id;
+  const attHtml='<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:.9rem 0 .25rem">📎 '+esc(tz('Atașamente'))+' ('+atts.length+'/8)</div>'
+    +atts.map(a=>{ const img=(a.mime||'').indexOf('image/')===0;
+      const rm=(a.uploaded_by===me||t.created_by===me||taskIsMgmt())
+        ?'<a onclick="taskAttachRemove(\''+a.id+'\',\''+t.id+'\')" title="'+esc(tz('Elimină atașamentul'))+'" aria-label="'+esc(tz('Elimină atașamentul'))+'" style="cursor:pointer;color:var(--red);font-weight:700;padding:0 .3rem">×</a>':'';
+      return '<div style="display:flex;gap:.5rem;align-items:center;padding:.25rem 0;border-bottom:1px solid var(--line);font-size:.84rem">'
+        +'<span aria-hidden="true">'+(img?'🖼️':'📄')+'</span>'
+        +'<a onclick="openDoc(\''+encodeURIComponent(a.file_path)+'\')" style="cursor:pointer;color:var(--primary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.file_name)+'</a>'
+        +(a.size_bytes?'<span style="color:var(--muted);font-size:.74rem;white-space:nowrap">'+fmtSize(a.size_bytes)+'</span>':'')
+        +'<a onclick="downloadDoc(\''+encodeURIComponent(a.file_path)+'\',\''+encodeURIComponent(a.file_name||'')+'\')" title="'+esc(tz('Descarcă'))+'" aria-label="'+esc(tz('Descarcă'))+'" style="cursor:pointer;color:var(--primary)">⬇</a>'
+        +rm+'</div>'; }).join('')
+    +(atts.length<8?('<label class="btn-ghost" style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;font-size:.8rem;padding:.35rem .7rem;margin-top:.4rem">'
+      +'<input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" style="display:none" onchange="taskAttachPick(this,\''+t.id+'\')" aria-label="'+esc(tz('Atașează fișier'))+'">📎 '+esc(tz('Atașează fișier'))+'</label>'
+      +'<span id="tka-prog" style="font-size:.74rem;color:var(--muted);margin-left:.4rem" role="status"></span>'):'');
+  const cmHtml='<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:.9rem 0 .25rem">💬 '+esc(tz('Comentarii'))+' ('+cms.length+')</div>'
+    +(cms.length?cms.map(c=>'<div style="padding:.35rem 0;border-bottom:1px solid var(--line)">'
+      +'<div style="font-size:.74rem;color:var(--muted)"><b>'+esc(taskAsgLabel(c.author))+'</b> · '+esc(fmtDT(c.created_at))+'</div>'
+      +'<div style="font-size:.86rem;white-space:pre-wrap;word-break:break-word">'+esc(c.body)+'</div></div>').join('')
+      :'<div style="color:var(--muted);font-size:.82rem">'+esc(tz('Niciun comentariu încă.'))+'</div>')
+    +'<div style="display:flex;gap:.4rem;margin-top:.5rem;align-items:flex-end">'
+      +'<textarea id="tkc-body" rows="2" placeholder="'+esc(tz('Scrie un comentariu…'))+'" aria-label="'+esc(tz('Scrie un comentariu…'))+'" style="flex:1;padding:.45rem;border:1px solid var(--line);border-radius:9px;font-size:.85rem"></textarea>'
+      +'<button class="btn" id="tkc-send" onclick="taskCommentSend(\''+t.id+'\')">'+esc(tz('Trimite'))+'</button></div>'
+    +'<div id="tkc-err" style="color:var(--red);font-size:.8rem" role="alert"></div>';
   const evHtml=evs.length?('<div style="font-weight:700;font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:.9rem 0 .25rem">🕘 '+esc(tz('Istoric'))+'</div>'
     +evs.map(ev=>'<div style="font-size:.78rem;color:var(--muted);padding:.18rem 0">'+esc(fmtDT(ev.created_at))+' · <b>'+esc(tz(TASK_EV_LBL[ev.event]||ev.event))+'</b> · '+esc(taskAsgLabel(ev.actor))+'</div>').join('')):'';
   const actions=taskActionsHtml(t);
@@ -6188,8 +6249,73 @@ async function taskDetail(id){
     +(t.description?'<div style="font-size:.86rem;margin-top:.6rem;white-space:pre-wrap;word-break:break-word">'+esc(t.description)+'</div>':'')
     +linkHtml
     +'<div style="display:flex;gap:.9rem;flex-wrap:wrap;margin-top:.9rem;font-size:.86rem">'+actions+manage+'</div>'
+    +cmHtml
+    +attHtml
     +evHtml
     +'</div></div></div>';
+}
+/* ── Comentarii (TASK1-B/0137): append-only, prin contractul task_comment_add ── */
+async function taskCommentSend(taskId){
+  const ta=$('tkc-body'), err=$('tkc-err');
+  const body=(ta&&ta.value||'').trim();
+  if(!body){ if(err) err.textContent=tz('Scrie un comentariu…'); return; }
+  if(window._tkcBusy) return; window._tkcBusy=true;               // gardă „în zbor" (D29)
+  const btn=$('tkc-send'); if(btn) btn.disabled=true;
+  try{
+    const r=await sb.rpc('task_comment_add',{p_task_id:taskId,p_body:body,p_request_id:planUuid()});
+    if(r.error) throw r.error;
+    /* ciorna se golește DOAR după confirmarea serverului — o eroare de rețea o păstrează */
+    taskDetail(taskId);
+  }catch(e){ if(err) err.textContent=taskErrMsg(e); }
+  finally{ window._tkcBusy=false; if(btn) btn.disabled=false; }
+}
+/* ── Atașamente (TASK1-B/0137): upload → RPC; disciplina KB#60 la erori ── */
+const TASK_ATT_MIME=['image/jpeg','image/png','image/webp','image/gif','image/heic','image/heif',
+  'application/pdf','text/plain','application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+async function taskAttachPick(input, taskId){
+  const f=input.files&&input.files[0]; input.value=''; if(!f) return;
+  const prog=$('tka-prog');
+  if(f.size>25*1024*1024){ toast(tz('Fișierul depășește 25 MB.')); return; }
+  const mime=f.type||'application/octet-stream';
+  if(TASK_ATT_MIME.indexOf(mime)<0){ toast(tz('Fișier neacceptat (tip sau mărime).')); return; }
+  if(window._tkaBusy) return; window._tkaBusy=true;
+  if(prog) prog.textContent=tz('Se încarcă…');
+  try{
+    let up=f;
+    if(/^image\/(jpeg|png|webp)$/.test(mime)){ try{ up=await compressImage(f,1600,0.72); }catch(e){ up=f; } }
+    const safe=(f.name||'fisier').replace(/[^a-zA-Z0-9._-]/g,'_');
+    /* cale unică: timestamp + component aleator (KB#57 — niciodată doar numele fișierului) */
+    const path=state.tenant+'/tasks/tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
+    const r=await sb.storage.from('docs').upload(path,up,{contentType:up.type||mime});
+    if(r.error) throw r.error;
+    try{
+      const res=await sb.rpc('task_attachment_add',{p_task_id:taskId,
+        p_file:{file_path:path,file_name:(f.name||safe).slice(0,200),mime:up.type||mime,size_bytes:up.size||f.size},
+        p_request_id:planUuid()});
+      if(res.error) throw res.error;
+      taskDetail(taskId);
+    }catch(e){
+      /* KB#60: obiectul se curăță DOAR la refuz EXPLICIT al serverului (cod TASK_*).
+         La eroare de rețea NU — cererea poate fi ajuns; un orfan e recuperabil. */
+      if(/TASK_[A-Z_]+/.test(String(e&&e.message||''))){ try{ await sb.storage.from('docs').remove([path]); }catch(_){}}
+      toast(taskErrMsg(e));
+    }
+  }catch(e){ toast(tz('Eroare:')+' '+esc(String(e&&e.message||e))); }
+  finally{ window._tkaBusy=false; if(prog) prog.textContent=''; }
+}
+async function taskAttachRemove(attId, taskId){
+  if(!confirm(tz('Elimini acest atașament?'))) return;
+  if(window._tkaBusy) return; window._tkaBusy=true;
+  try{
+    const r=await sb.rpc('task_attachment_remove',{p_attachment_id:attId,p_request_id:planUuid()});
+    if(r.error){ toast(taskErrMsg(r.error)); return; }
+    /* serverul a confirmat eliminarea metadatei ⇒ obiectul se șterge best-effort;
+       la eșec rămâne orfan recuperabil (KB#61), niciodată referință ruptă */
+    try{ const p=r.data&&r.data.file_path; if(p) await sb.storage.from('docs').remove([p]); }catch(e){}
+    toast('✅ '+tz('Atașament eliminat.')); taskDetail(taskId);
+  } finally{ window._tkaBusy=false; }
 }
 function taskEditForm(){
   const t=window._tkDetail; if(!t) return;
@@ -7382,7 +7508,7 @@ async function deleteFirm(){
   }catch(e){}
   const { error }=await sb.rpc('delete_my_tenant');
   if(error){ toast('Eroare: '+esc(error.message)); return; }
-  await sb.auth.signOut(); alert('Datele firmei au fost șterse definitiv.'); location.reload();
+  window._c373selfOut=1; await sb.auth.signOut(); alert('Datele firmei au fost șterse definitiv.'); location.reload();
 }
 /* ── Editor conturi bancare (structurat → automations.bank_list) ── */
 function bankRowHtml(a){ a=a||{}; return '<div class="bank-row" style="border:1px solid var(--line);border-radius:8px;padding:.5rem;margin-bottom:.5rem">'
@@ -8212,14 +8338,15 @@ async function docValiditySave(id,clear){
 let docsList=[];
 function docOptions(id){
   const r=(docsList||[]).find(x=>x.id===id); if(!r) return; const ver=r.version||1; const ep=encodeURIComponent(r.file_url);
-  actionsSheet(r.name||'Fișier',[
+  actionsSheet(r.name||'Fișier',[].concat(
+    (canSee('taskuri')?[{i:'✅',l:tz('＋ Task legat de acest document'),f:"taskFromCtx('document','"+r.id+"','"+jsArg(r.name||'document')+"')"}]:[]),[
     {i:'📅',l:'Termen de valabilitate',f:"docValidity('"+r.id+"')"},
     {i:'👁',l:'Deschide',f:"openDoc('"+ep+"')"},
     {i:'⬇',l:'Descarcă',f:"downloadDoc('"+ep+"','"+encodeURIComponent(r.name||'')+"')"},
     {i:'📦',l:tz('Mută în mapă'),f:"docMove('"+r.id+"')"},
     {i:'🔄',l:'Versiune nouă',f:"newDocVersion('"+r.id+"',"+ver+")"},
     {i:'🗑',l:'Șterge',f:"delDoc('"+r.id+"','"+ep+"')",d:true}
-  ]);
+  ]));
 }
 let membersList=[];
 function memberOptions(uid){
@@ -8648,6 +8775,8 @@ function rowActions(key,m,r){
   if(m.orderItems) a.push({i:'👁',l:tz('Previzualizare comandă'),f:"orderItemsView('"+id+"')"});
   if(m.geoLoc) a.push({i:'📍',l:'Locație pe hartă',f:"geoSet('"+m.table+"','"+id+"','"+jsArg(r.name||r.label||'')+"')"});
   if(m.fields && !m.pageEditor && !m.orderItems) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
+  /* ＋Task contextual (TASK1-B): o singură acțiune coerentă, doar pe tipurile din lista albă */
+  if(TASK_CTX[key]&&canSee('taskuri')) a.push({i:'✅',l:tz('＋ Task legat de această înregistrare'),f:"taskFromRow('"+key+"','"+id+"')"});
   if(m.invitable&&ADMIN_ROLES.includes(state.role)){ a.push({i:'📩',l:'Invită în aplicație (trimite link)',f:"inviteEntity('"+m.invitable+"','"+id+"')"});
     if(m.invitable==='employee') a.push({i:'🔗',l:'Leagă de un cont existent',f:"empLinkAccount('"+id+"','"+jsArg(r.full_name)+"')"}); }
   if(m.siteHub) a.push({i:'📂',l:'Detalii șantier (jurnal, etape, stoc, situații, RFI…)',f:"siteHub('"+id+"','"+jsArg(r.name)+"')"});
@@ -11221,6 +11350,15 @@ async function printDoc(key,id){
   // daca sesiunea soseste dupa load (ex. magic link din email), pornim boot-ul
   sb.auth.onAuthStateChange((evt, sess)=>{
     if(evt==='PASSWORD_RECOVERY'){ showResetPasswordForm(); return; }
+    /* KB#63: cât timp aplicația e bootată, o sesiune care DISPARE sau trece pe ALT
+       utilizator (ex. „Încearcă demo" pornit în alt tab al aceleiași origini) nu se
+       adoptă tăcut — state ar păstra firma veche iar cererile ar pleca cu jetonul nou
+       (stare-himeră). Reboot imediat: reload-ul repornește boot() pe sesiunea reală.
+       _c373selfOut marchează delogările proprii (doLogout/demoToReal/deleteFirm), care
+       își gestionează singure reload-ul și hash-ul. */
+    if(evt==='SIGNED_OUT' && state.tenant && !window._c373selfOut){ location.reload(); return; }
+    if(sess && sess.user && state.tenant && state.session && state.session.user
+       && sess.user.id!==state.session.user.id){ location.reload(); return; }
     if(evt==='SIGNED_IN' && !state.tenant){ boot(); return; }
     // schimbare de email confirmată (sau token reîmprospătat) cât timp ești deja în aplicație → actualizăm sesiunea + emailul afișat
     if(sess && state.tenant && (evt==='USER_UPDATED'||evt==='TOKEN_REFRESHED'||evt==='SIGNED_IN')){

@@ -136,6 +136,10 @@ async function doForgot(){ const id=($('a-id')&&$('a-id').value||'').trim(); if(
 async function doDemo(){
   const b=$('a-demo'); if(b&&b.disabled) return; if(b) b.disabled=true;
   msg('Se pregătește contul demo…','ok');
+  /* KB#63: sesiunea existentă se închide EXPLICIT înainte de demo — altfel un tab deschis
+     pe app rămâne cu firma veche în state și jetonul demo nou în storage (stare-himeră).
+     scope:'local' — celelalte dispozitive ale utilizatorului rămân conectate. */
+  try{ const { data:{ session:_s } }=await sb.auth.getSession(); if(_s) await sb.auth.signOut({ scope:'local' }); }catch(e){}
   const r=await sb.auth.signInAnonymously();
   if(r.error){ if(b) b.disabled=false;
     msg(/anonymous|disabled|not enabled/i.test(r.error.message||'')?'Demo indisponibil momentan. Încearcă mai târziu sau creează un cont.':r.error.message); return; }
