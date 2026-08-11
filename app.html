@@ -3797,23 +3797,28 @@ async function vehDriversSave(vid, vlabel){
 }
 /* stoc instrument pe locații (șantier / depozit) */
 /* ── instrumente serializate: vederea pe bucăți/serii ── */
-function tuLocOptsSel(cur){ const sites=window._tuSites||[], whs=window._tuWhs||[]; const o=(v,l)=>'<option value="'+v+'"'+(cur===v?' selected':'')+'>'+l+'</option>'; return o('','📦 Nealocat')+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>o('wh:'+w.id,'🏬 '+esc(w.name))).join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>o('site:'+s.id,'🏗️ '+esc(s.name))).join('')+'</optgroup>':'')+'<optgroup label="În afară">'+o('loan:lent','🤝 Împrumutat')+o('loan:rented','💶 În chirie')+'</optgroup>'; }
+function tuLocOptsSel(cur){ const sites=window._tuSites||[], whs=window._tuWhs||[], emps=window._tuEmps||[]; const o=(v,l)=>'<option value="'+v+'"'+(cur===v?' selected':'')+'>'+l+'</option>'; return o('','📦 Nealocat')+(whs.length?'<optgroup label="Depozite">'+whs.map(w=>o('wh:'+w.id,'🏬 '+esc(w.name))).join('')+'</optgroup>':'')+(sites.length?'<optgroup label="Șantiere">'+sites.map(s=>o('site:'+s.id,'🏗️ '+esc(s.name))).join('')+'</optgroup>':'')+(emps.length?'<optgroup label="La angajat">'+emps.map(e=>o('emp:'+e.id,'👤 '+esc(e.full_name))).join('')+'</optgroup>':'')+'<optgroup label="În afară">'+o('loan:lent','🤝 Împrumutat')+o('loan:rented','💶 În chirie')+'</optgroup>'; }
 function tuCurLoc(u){ return u.site_id?('site:'+u.site_id):(u.warehouse_id?('wh:'+u.warehouse_id):(u.holder_employee_id?('emp:'+u.holder_employee_id):(u.loan_type?('loan:'+u.loan_type):''))); }
 async function toolUnits(tid, tname){
   window._tuTid=tid; window._tuTname=tname;
-  const [uR,siteR,whR,legR]=await Promise.all([
+  const [uR,siteR,whR,legR,empR]=await Promise.all([
     /* SCAN1-A.1: `holder_employee_id` + numele angajatului — fără ele, o bucată aflată în
        custodia cuiva din firmă se afișa „nealocat", iar `tuCurLoc` nu putea deriva sursa. */
     sb.from('tool_units').select('id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,photo_url,site_id,warehouse_id,holder_employee_id,holder,loan_type,loan_from,loan_due,rent_amount,rent_total,deposit_amount,id_photo_url,signature_url,sites(name),warehouses(name),employees!holder_employee_id(full_name)').eq('tool_id',tid),
     sb.from('sites').select('id,name,status'),
     sb.from('warehouses').select('id,name'),
-    sb.from('tool_locations').select('qty,site_id,warehouse_id,store_id,holder,loan_type,sites(name),warehouses(name),stores(name)').eq('tool_id',tid)
+    sb.from('tool_locations').select('qty,site_id,warehouse_id,store_id,holder,loan_type,sites(name),warehouses(name),stores(name)').eq('tool_id',tid),
+    sb.from('employees').select('id,full_name').eq('active',true)
   ]);
   const units=uR.data||[];
   const legacy=(legR&&legR.data||[]).filter(x=>+x.qty>0);
   const legBanner=legacy.length?('<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .7rem;margin-bottom:.7rem;font-size:.82rem">📦 <b>Stoc vechi pe cantități</b> (model anterior): '+legacy.map(x=>toolWhereSummary({tool_locations:[x]})).join(' · ')+'. Adaugă serii mai jos pentru evidență pe bucată, sau <a onclick="toolStockLegacy(window._tuTid,window._tuTname)" style="cursor:pointer;color:var(--primary);font-weight:700">gestionează stocul vechi →</a></div>'):'';
   window._tuSites=(siteR.data||[]).filter(s=>s.status!=='cancelled').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   window._tuWhs=(whR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  /* SCAN1-A.1-V: fără lista de angajați, selectorul „Unde e" nu putea oferi custodie
+     INTERNĂ deloc — contractul (inventory_move type=assign) exista, dar nicio cale de UI
+     nu-l putea atinge. Descoperit la smoke-ul de acceptanță, reparat aici. */
+  window._tuEmps=((empR&&empR.data)||[]).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
   const canU=canDo('instrumente','u'), canD=canDo('instrumente','d');
   const totVal=units.reduce((s,u)=>s+(+u.value||0),0), remVal=units.reduce((s,u)=>s+toolUnitRemaining(u),0);
   const rows=units.length?units.map(u=>{ const dep=Math.round(depPct(u.acq_date,u.useful_life_years)); const rem=toolUnitRemaining(u);
@@ -3830,7 +3835,7 @@ async function toolUnits(tid, tname){
     +'</div></div></div>';
 }
 function tuActor(){ try{ return (typeof tcName==='function'&&tcName())||(state.session&&state.session.user&&state.session.user.email)||'—'; }catch(e){ return '—'; } }
-function tuLabelFromVal(val, holder){ const p=(val||'').split(':'); if(p[0]==='wh'){ const w=(window._tuWhs||[]).find(x=>x.id===p[1]); return '🏬 '+((w&&w.name)||'depozit'); } if(p[0]==='site'){ const s=(window._tuSites||[]).find(x=>x.id===p[1]); return '🏗️ '+((s&&s.name)||'șantier'); } if(p[0]==='loan'){ return (p[1]==='rented'?'💶 chirie: ':'🤝 împrumut: ')+(holder||''); } return '📦 nealocat'; }
+function tuLabelFromVal(val, holder){ const p=(val||'').split(':'); if(p[0]==='wh'){ const w=(window._tuWhs||[]).find(x=>x.id===p[1]); return '🏬 '+((w&&w.name)||'depozit'); } if(p[0]==='site'){ const s=(window._tuSites||[]).find(x=>x.id===p[1]); return '🏗️ '+((s&&s.name)||'șantier'); } if(p[0]==='emp'){ const e=(window._tuEmps||[]).find(x=>x.id===p[1]); return '👤 '+((e&&e.full_name)||'angajat'); } if(p[0]==='loan'){ return (p[1]==='rented'?'💶 chirie: ':'🤝 împrumut: ')+(holder||''); } return '📦 nealocat'; }
 async function toolUnitHist(unitId){
   const { data }=await sb.from('tool_unit_logs').select('action,from_label,to_label,by_name,note,created_at').eq('unit_id',unitId).order('created_at',{ascending:false}).limit(80);
   const logs=data||[];
@@ -3902,7 +3907,7 @@ async function toolUnitAddSave(){
   const btn=$('tua-go'); if(btn) btn.disabled=true;
   let photo=null; const pf=$('tua-photo'); if(pf&&pf.files&&pf.files[0]){ const f=pf.files[0]; const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=state.tenant+'/tools/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(!up.error) photo=path; }
   const u={tenant_id:state.tenant,tool_id:window._tuTid,serial_no:serial,inventory_no:g('tua-inv').trim()||null,value:g('tua-value')!==''?+g('tua-value'):null,acq_condition:g('tua-cond')||'nou',acq_date:g('tua-date')||null,useful_life_years:g('tua-life')!==''?+g('tua-life'):null,photo_url:photo};
-  const p=(g('tua-loc')||'').split(':'); if(p[0]==='wh') u.warehouse_id=p[1]; else if(p[0]==='site') u.site_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?')||''; u.holder=h.trim()||null; u.loan_type=(p[1]==='rented'?'rented':'lent'); }
+  const p=(g('tua-loc')||'').split(':'); if(p[0]==='wh') u.warehouse_id=p[1]; else if(p[0]==='site') u.site_id=p[1]; else if(p[0]==='emp') u.holder_employee_id=p[1]; else if(p[0]==='loan'){ const h=prompt('Către cine (persoană/firmă)?')||''; u.holder=h.trim()||null; u.loan_type=(p[1]==='rented'?'rented':'lent'); }
   const r=await sbRetry(()=>sb.from('tool_units').insert(u).select('id').single()); if(r.error){ if(btn)btn.disabled=false; showMsg('tua-msg','Eroare: '+esc(r.error.message)); return; }
   try{ if(r.data&&r.data.id) await sb.from('tool_unit_logs').insert({tenant_id:state.tenant,unit_id:r.data.id,tool_id:window._tuTid,action:'create',to_label:tuLabelFromVal(g('tua-loc'),u.holder),by_name:tuActor()}); }catch(e){}
   try{ const c=await sb.from('tool_units').select('id',{count:'exact',head:true}).eq('tool_id',window._tuTid); await sb.from('tools').update({qty:c.count||0}).eq('id',window._tuTid); }catch(e){}
