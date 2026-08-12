@@ -2095,6 +2095,10 @@
          'Anulează'          = Cancel (renunță la acțiunea curentă) — modale, scanner;
          'Anulează acțiunea' = Undo   (revocă ce tocmai s-a întâmplat) — toastul de undo. */
     'Anulează acțiunea':{ru:'Отменить действие',de:'Rückgängig machen',en:'Undo'},
+    /* ── INVITE1-B.1: adevărul despre livrarea invitației (SMTP propriu lipsește) ── */
+    'Trimiterea automată pe email nu e încă activată. Copiază linkul de mai jos și trimite-l persoanei.':{ru:'Автоматическая отправка по эл. почте пока не включена. Скопируйте ссылку ниже и отправьте её человеку.',de:'Der automatische E-Mail-Versand ist noch nicht aktiviert. Kopieren Sie den Link unten und senden Sie ihn der Person.',en:'Automatic email sending is not enabled yet. Copy the link below and send it to the person.'},
+    'Linkul de activare a fost copiat. Trimite-l persoanei.':{ru:'Ссылка активации скопирована. Отправьте её человеку.',de:'Der Aktivierungslink wurde kopiert. Senden Sie ihn der Person.',en:'The activation link was copied. Send it to the person.'},
+    'Copiază linkul de activare (trimiterea pe email nu e activată)':{ru:'Скопировать ссылку активации (отправка по эл. почте не включена)',de:'Aktivierungslink kopieren (E-Mail-Versand nicht aktiviert)',en:'Copy activation link (email sending not enabled)'},
     /* ── INVITE1/0146: motivele DISTINCTE de refuz la consumarea unei invitații ── */
     'Invitația e pentru altă adresă de email. Ieși din cont și intră cu adresa pe care ai primit invitația.':{ru:'Приглашение выписано на другой адрес эл. почты. Выйдите из аккаунта и войдите с тем адресом, на который получили приглашение.',de:'Die Einladung gilt für eine andere E-Mail-Adresse. Melden Sie sich ab und mit der eingeladenen Adresse wieder an.',en:'The invitation is for a different email address. Sign out and sign in with the address it was sent to.'},
     'Invitația a expirat. Cere una nouă.':{ru:'Срок приглашения истёк. Попросите новое.',de:'Die Einladung ist abgelaufen. Bitten Sie um eine neue.',en:'The invitation has expired. Ask for a new one.'},

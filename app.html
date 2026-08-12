@@ -3462,7 +3462,9 @@ async function toolHistory(id){
     +'<div class="modal-body"><div style="margin-bottom:.6rem">📍 <b>'+esc(t&&t.holder_label||'—')+'</b> · '+toolCondBadge(t&&t.condition,t&&t.condition_note)+'</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data / ora</th><th>Mișcare</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div></div>';
 }
-function toolLink(id){ const m=location.href.split('?')[0].replace(/\/[^/]*$/,'/'); return m+'mobil.html?tool='+id; }
+/* Aceeași clasă de defect ca `inviteLink` (hash-ul nu era tăiat) — eticheta QR a sculei ducea în
+   `…/app.html#/resurse/mobil.html?tool=ID`, deci nu deschidea niciodată aplicația de teren. */
+function toolLink(id){ return appBase()+'mobil.html?tool='+encodeURIComponent(id); }
 /* ── SCAN1-A: eticheta scanabilă a unei LOCAȚII (depozit / șantier).
    Codul vine de la server (`scan_code_ensure`) și e OPAC: „C373" + 12 hex, fără nume de
    firmă, de persoană sau de locație. Cunoașterea lui nu acordă acces — rezoluția trece
@@ -7756,10 +7758,16 @@ async function renderInvites(){
   const body=list.map(i=>{ const link=inviteLink(i.token);
     return '<tr><td class="tname">'+esc(ROLE_LABELS[i.role]||i.role)+(i.entity_type?' <small style="color:var(--muted)">· '+esc(i.entity_type)+'</small>':'')+'</td>'
     +'<td>'+esc(i.email||'—')+'</td><td>'+(stp[i.status]||esc(i.status))+'</td>'
-    +'<td><div class="rowact">'+(i.status==='pending'?((i.email?'<button class="iconbtn" title="Trimite linkul din nou pe email" onclick="resendInvite(\''+i.token+'\',\''+jsArg(i.email)+'\')">📧</button>':'')+'<button class="iconbtn" title="Copiază linkul" onclick="copyInvite(\''+i.token+'\')">📋</button><button class="iconbtn danger" title="Anulează" onclick="revokeInvite(\''+i.id+'\')">🚫</button>'):'')+'</div></td></tr>'; }).join('');
+    +'<td><div class="rowact">'+(i.status==='pending'?((i.email?'<button class="iconbtn" title="Copiază linkul de activare (trimiterea pe email nu e activată)" onclick="resendInvite(\''+i.token+'\',\''+jsArg(i.email)+'\')">📋</button>':'')+'<button class="iconbtn" title="Copiază linkul" onclick="copyInvite(\''+i.token+'\')">📋</button><button class="iconbtn danger" title="Anulează" onclick="revokeInvite(\''+i.id+'\')">🚫</button>'):'')+'</div></td></tr>'; }).join('');
   $('inv-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Rol</th><th>Email</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
-function inviteLink(token){ const m=location.href.split('?')[0].replace(/\/[^/]*$/,'/'); return m+'acces.html?invite='+token; }
+/* INVITE1-B.1: construcția trebuie să pornească din `appBase()`, care taie ȘI hash-ul.
+   Varianta veche (`location.href.split('?')[0].replace(/\/[^/]*$/,'/')`) nu tăia `#`, iar de la
+   UX1 încoace ruta e `#/spațiu/modul` — deci regexul tăia ultimul segment din HASH, nu numele
+   fișierului. Din `…/app.html#/admin/utilizatori` ieșea
+   `…/app.html#/admin/acces.html?invite=TOKEN`: linkul deschidea shell-ul ERP, iar `?invite=`
+   ajungea DUPĂ `#`, deci `location.search` era gol și tokenul nu era citit niciodată. */
+function inviteLink(token){ return appBase()+'acces.html?invite='+encodeURIComponent(token); }
 function copyInvite(token){ const l=inviteLink(token); navigator.clipboard.writeText(l).then(()=>toast('✅ Link copiat: '+l)).catch(()=>prompt('Copiază linkul:',l)); }
 async function revokeInvite(id){ if(!confirm('Anulezi această invitație? Linkul nu va mai funcționa.')) return; const { error }=await sb.rpc('revoke_invite',{p_id:id}); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Invitație anulată.'); renderInvites(); }
 
@@ -7882,14 +7890,16 @@ async function genInvite(entityType, entityId){
   $('inv-gen').disabled=false;
   if(error){ showMsg('inv-msg','Eroare: '+esc(error.message)); return; }
   const link=inviteLink(data);
-  // trimite automat un email cu magic link care duce la linkul de invitatie (intra fara parola)
-  let emailStatus='';
-  if(email){
-    try{ const { error:oerr }=await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: link, shouldCreateUser:true } });
-      emailStatus = oerr ? ('<p style="font-size:.82rem;color:var(--red)">⚠️ Emailul nu a putut fi trimis ('+esc(oerr.message)+'). Folosește linkul de mai jos.</p>')
-        : ('<p style="font-size:.85rem;color:var(--green,#16a34a)">📧 Email trimis la <b>'+esc(email)+'</b> — persoana dă click și intră direct (fără parolă).</p>');
-    }catch(e){ emailStatus='<p style="font-size:.82rem;color:var(--red)">⚠️ Emailul nu a putut fi trimis. Folosește linkul de mai jos.</p>'; }
-  }
+  /* INVITE1-B.1: NU mai trimitem magic link.
+     `signInWithOtp({shouldCreateUser:true})` crea un cont FĂRĂ PAROLĂ și deschidea o sesiune
+     înainte de activare — persoana sărea complet peste „Bun venit → parolă → telefon → Activează"
+     și intra passwordless. Exact opusul fluxului cerut. În plus, SMTP-ul propriu nu e configurat,
+     deci emailul pleca cu șablonul generic englezesc al Supabase, pe un expeditor de test
+     limitat la câteva mesaje/oră (INVITE1-C, dependență de owner).
+     Până la SMTP propriu spunem ADEVĂRUL: invitația e creată, linkul se copiază și se trimite. */
+  const emailStatus = email
+    ? '<p style="font-size:.85rem;color:var(--muted)">'+esc(tz('Trimiterea automată pe email nu e încă activată. Copiază linkul de mai jos și trimite-l persoanei.'))+'</p>'
+    : '';
   const _ph=(window._invPhone||'').replace(/[^0-9]/g,''); const _waTxt=encodeURIComponent('Salut! Ai acces la aplicația firmei. Deschide linkul, pune-ți o parolă și intri: '+link);
   const _wa='https://wa.me/'+_ph+'?text='+_waTxt;
   $('modal-mount').querySelector('.modal-body').innerHTML='<p style="color:var(--green,#16a34a);font-weight:600">✅ Acces creat!</p>'
@@ -8482,12 +8492,12 @@ function sendResetLink(email){
     .then(({error})=>{ if(error) toast('Eroare: '+esc(error.message)); else toast('✅ Link de resetare parolă trimis la '+esc(email)+'.'); })
     .catch(e=>toast('Eroare: '+esc(e.message||e)));
 }
+/* INVITE1-B.1: „Retrimite" nu mai trimite un magic link (crea cont fără parolă și sărea peste
+   activare — vezi `genInvite`). Până la SMTP propriu, retrimiterea reală înseamnă: copiezi
+   linkul de activare și îl trimiți. Nu pretindem că am trimis un email pe care nu-l trimitem. */
 function resendInvite(token, email){
-  if(!email){ toast('Această invitație nu are email salvat — folosește 📋 ca să copiezi linkul.'); return; }
-  toast('📧 Se retrimite invitația…');
-  sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: inviteLink(token), shouldCreateUser:true } })
-    .then(({error})=>{ if(error) toast('Eroare: '+esc(error.message)); else toast('✅ Invitație retrimisă pe email la '+esc(email)+'.'); })
-    .catch(e=>toast('Eroare: '+esc(e.message||e)));
+  copyInvite(token);
+  toast('📋 '+tz('Linkul de activare a fost copiat. Trimite-l persoanei.'));
 }
 async function uploadDoc(input){ const files=input&&input.files; if(files&&files.length) await uploadDocFiles(files); }
 async function uploadDocFiles(files, targetFolder){
