@@ -115,7 +115,12 @@ const AT={
   'Contul tău este activ.':    {ru:'Ваш аккаунт активен.',de:'Ihr Konto ist aktiv.',en:'Your account is active.'},
   'Expiră':                    {ru:'Истекает',de:'Läuft ab am',en:'Expires'},
   'Această invitație este destinată altui cont.':
-    {ru:'Это приглашение предназначено другому аккаунту.',de:'Diese Einladung ist für ein anderes Konto bestimmt.',en:'This invitation is for a different account.'}
+    {ru:'Это приглашение предназначено другому аккаунту.',de:'Diese Einladung ist für ein anderes Konto bestimmt.',en:'This invitation is for a different account.'},
+  'Acceptă invitația':{ru:'Принять приглашение',de:'Einladung annehmen',en:'Accept invitation'},
+  'Invitația este pentru':{ru:'Приглашение для',de:'Die Einladung gilt für',en:'The invitation is for'},
+  'Ești autentificat ca':{ru:'Вы вошли как',de:'Sie sind angemeldet als',en:'You are signed in as'},
+  'Ieși și intră cu contul invitat':
+    {ru:'Выйти и войти с приглашённым аккаунтом',de:'Abmelden und mit dem eingeladenen Konto anmelden',en:'Sign out and sign in with the invited account'}
 };
 function t(s){ if(AL==='ro') return s; const e=AT[s]; return (e&&e[AL])||s; }
 /* eticheta rolului, în limba firmei */
@@ -142,16 +147,35 @@ async function init(){
   let session=null;
   try{ const r=await sb.auth.getSession(); session=r.data&&r.data.session; }catch(e){}
 
-  if(session){
-    /* logat DEJA: dacă are invitația altcuiva, `finish()` o refuză cu WRONGEMAIL și explică;
-       dacă e contul potrivit, o acceptă fără să-i mai cerem nimic. */
-    return finish();
-  }
+  /* INVITE1-B.1: TOKENUL are prioritate față de sesiune.
+     Înainte, `if(session) return finish()` era PRIMUL, deci oricine ajungea pe link cu o sesiune
+     deja deschisă — adminul care tocmai a creat invitația în același browser, sau cineva venit
+     prin magic link — sărea complet peste ecranul de activare: fără „Bun venit", fără parolă,
+     fără telefon. Activarea trebuie să fie ecranul pe care îl vezi când ai un link de invitație,
+     indiferent ce sesiune ai în browser. */
   if(token){
-    if(inf && inf.status==='pending') return renderActivate(inf);
-    if(inf) return renderInviteDead(inf.status);      /* expirat/revocat/folosit: doar motivul */
-    return renderInviteDead(null);                    /* token inexistent: zero divulgare */
+    if(!inf) return renderInviteDead(null);                       /* inexistent: zero divulgare */
+    if(inf.status!=='pending') return renderInviteDead(inf.status);
+    if(session){
+      /* Contul din browser e cel invitat? Comparăm cu emailul REAL al sesiunii, nu cu ce
+         pretinde formularul. Dacă da, nu-i mai cerem parolă — doar acceptarea. Dacă nu,
+         NU consumăm invitația (0146 ar refuza oricum) și o spunem pe șleau. */
+      let cur=null, anon=false;
+      try{ const u=await sb.auth.getUser(); const uu=(u.data&&u.data.user)||{};
+           cur=uu.email||null; anon=!!uu.is_anonymous; }catch(e){}
+      /* O sesiune DEMO (anonimă) nu e un cont: 0146 o refuză oricum cu `ANON`. N-are rost s-o
+         punem pe ecranul de acceptare ca să eșueze după clic — o tratăm ca „fără sesiune" și
+         omul își face contul real aici. */
+      if(anon) return renderActivate(inf);
+      const invited=String(inf.email||'').trim().toLowerCase();
+      if(invited && cur && cur.trim().toLowerCase()===invited) return renderAcceptSignedIn(inf);
+      if(invited && cur) return renderWrongAccount(inf, cur);
+      /* invitație fără email (linkul E credențiala): contul curent o poate accepta */
+      return renderAcceptSignedIn(inf);
+    }
+    return renderActivate(inf);
   }
+  if(session) return finish();
   renderLogin();
 }
 
@@ -212,6 +236,41 @@ function renderInviteDead(status){
   renderLoginBelow();
 }
 function renderLoginBelow(){ const d=document.createElement('div'); d.innerHTML='<p class="alt"><a onclick="renderLogin()">'+esc(t('Ai deja cont? Autentifică-te'))+'</a></p>'; $('box').appendChild(d); }
+
+/* ── deja autentificat CU CONTUL INVITAT: nu-i cerem parolă, doar confirmarea ── */
+function renderAcceptSignedIn(inf){
+  INF=inf; AL=inf.lang||'ro';
+  try{ document.documentElement.lang=AL; }catch(e){}
+  const nm=firstName(inf.display_name);
+  $('box').innerHTML='<div class="wel">'
+    +'<h1>'+esc(t('Bun venit'))+(nm?(', '+esc(nm)):'')+'</h1>'
+    +'<p class="co"><b>'+esc(inf.tenant_name||'')+'</b> '+esc(t('te-a invitat în Cod373'))+'</p>'
+    +'<span class="chip">'+esc(t('Rol'))+': '+esc(roleLabel(inf.role))+'</span></div>'
+    +'<div id="acc-msg"></div>'
+    +(inf.phone_prefill!==undefined?'<label for="a-phone">'+esc(t('Telefon'))+'</label>'
+      +'<input id="a-phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="069 123 456" value="'+esc(inf.phone_prefill||'')+'"/>'
+      +'<div class="hint">'+esc(t('Îl folosim pentru contact. Recuperarea parolei rămâne pe email.'))+'</div>':'')
+    +'<button class="btn" id="a-btn" onclick="doAcceptSignedIn()">'+esc(t('Acceptă invitația'))+'</button>';
+}
+async function doAcceptSignedIn(){
+  if(_activating) return; _activating=true; $('a-btn').disabled=true; msg(t('Se activează…'),'ok');
+  await saveProfileBits((($('a-phone')&&$('a-phone').value)||'').trim());
+  finish();
+}
+/* ── autentificat cu ALT cont: NU consumăm invitația ── */
+function renderWrongAccount(inf, currentEmail){
+  INF=inf; AL=inf.lang||'ro';
+  try{ document.documentElement.lang=AL; }catch(e){}
+  $('box').innerHTML='<div class="wel"><h1>'+esc(t('Această invitație este destinată altui cont.'))+'</h1></div>'
+    +'<div id="acc-msg"></div>'
+    +'<div class="ro"><span class="k">'+esc(t('Invitația este pentru'))+'</span>'+esc(inf.email||'')+'</div>'
+    +'<div class="ro" style="margin-top:.5rem"><span class="k">'+esc(t('Ești autentificat ca'))+'</span>'+esc(currentEmail)+'</div>'
+    +'<button class="btn" onclick="switchAccountForInvite()">'+esc(t('Ieși și intră cu contul invitat'))+'</button>';
+}
+async function switchAccountForInvite(){
+  try{ await sb.auth.signOut({ scope:'local' }); }catch(e){}
+  location.reload();   /* revine pe același link, acum fără sesiune ⇒ ecranul de activare */
+}
 
 /* păstrat pentru compatibilitate cu apeluri vechi (ex. reInvite) */
 function renderInvite(inf){ return renderActivate(inf); }
