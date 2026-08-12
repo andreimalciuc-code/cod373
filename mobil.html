@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='335';
+const APP_BUILD='336';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -1552,6 +1552,22 @@ async function mTaskNewSave(){
    curentă și ledgerul se schimbă în ACEEAȘI tranzacție, server-side. Clientul nu
    calculează stoc și nu declară niciodată succes fără confirmarea serverului. */
 const MV_ERR={
+  /* Codurile de INVENTARIERE stau ÎNAINTEA celor de lot și de mișcare, din același motiv
+     pentru care cele de lot stau înaintea celor individuale: `mvErr` întoarce PRIMA cheie
+     conținută în mesaj, iar `INVENTORY_STOCK_CHANGED` nu trebuie citit ca o eroare de
+     mișcare. Mesajele spun ce s-a întâmplat ȘI ce urmează (SCAN1-B.2). */
+  INVENTORY_STOCK_CHANGED:'Stocul s-a modificat în timpul inventarierii. Apasă „Reîncarcă starea", verifică diferențele și confirmă din nou.',
+  INVENTORY_SESSION_ACTIVE:'Există deja o inventariere în curs pentru locația asta.',
+  INVENTORY_SESSION_CLOSED:'Inventarierea e deja închisă.',
+  INVENTORY_ALREADY_SCANNED:'Bucata asta a fost deja scanată.',
+  INVENTORY_LINE_CONFLICT:'Cineva a modificat numărătoarea între timp. Reîncarcă starea.',
+  INVENTORY_CONFLICT:'Inventarierea s-a schimbat între timp. Reîncarcă starea.',
+  INVENTORY_FORBIDDEN:'Nu ai dreptul pentru această operațiune.',
+  INVENTORY_NOT_FOUND:'Nu am găsit obiectul sau locația.',
+  INVENTORY_INVALID_INPUT:'Date invalide.',
+  INVENTORY_CONTRACT_REQUIRED:'Aplicația ta este o versiune veche. Închide și redeschide aplicația.',
+  ADJ_FORBIDDEN:'Nu ai dreptul să corectezi stocul. Cere unui responsabil să finalizeze.',
+  ADJ_STALE_QTY:'Stocul s-a modificat în timpul inventarierii. Reîncarcă starea și confirmă din nou.',
   /* codurile de LOT stau primele: `mvErr` întoarce prima cheie conținută în mesaj, iar un
      cod de lot nu trebuie să fie confundat cu unul de mișcare individuală (SCAN1-B.1) */
   BATCH_FORBIDDEN:'Nu ai dreptul pentru această mișcare.',
@@ -2025,17 +2041,259 @@ function mvbTouch(){ const B=S._mvB; if(B){ B.rq=null; B.items.forEach(x=>x.err=
 function mvbFind(kind,id){ return (S._mvB.items||[]).findIndex(x=>x.kind===kind && x.id===id); }
 
 function mvHead(){
-  const b=(S._mvMode==='batch');
+  const m=S._mvMode;
+  const btn=(k,t)=>'<button class="'+(m===k?'on':'')+'" onclick="mvMode(\''+k+'\')">'+esc(mtz(t))+'</button>';
   return '<div class="scr-title" style="display:flex;align-items:center;gap:.6rem">📷 '+esc(mtz('Scanează / Mută'))
-    +'<button class="mini-btn gh" style="margin-left:auto" onclick="mvRestart()">'+esc(mtz('Începe din nou'))+'</button></div>'
-    +'<div class="roles" style="padding:0;border:none;margin-bottom:.7rem;background:none">'
-    +'<button class="'+(b?'':'on')+'" onclick="mvMode(\'one\')">'+esc(mtz('Un obiect'))+'</button>'
-    +'<button class="'+(b?'on':'')+'" onclick="mvMode(\'batch\')">'+esc(mtz('Mută mai multe'))+'</button>'
+    +(m==='inv'?'':'<button class="mini-btn gh" style="margin-left:auto" onclick="mvRestart()">'+esc(mtz('Începe din nou'))+'</button>')
+    +'</div>'
+    /* trei moduri nu încap comod pe 320 px cu etichete lungi ⇒ se pot înfășura */
+    +'<div class="roles" style="padding:0;border:none;margin-bottom:.7rem;background:none;flex-wrap:wrap">'
+    +btn('one','Un obiect')+btn('batch','Mută mai multe')+btn('inv','Inventariere')
     +'</div>';
 }
-function mvMode(m){ S._mvMode=(m==='batch'?'batch':'one'); try{ localStorage.setItem('c373_mv_mode',S._mvMode); }catch(e){} mvScreen(); }
-function mvScreen(){ if(S._mvMode==='batch') mvbRender(); else mvRender(); }
-function mvRestart(){ if(S._mvMode==='batch'){ mvbClear(); mvbReset(); } else mvReset(); mvScreen(); }
+function mvMode(m){ S._mvMode=(m==='batch'||m==='inv')?m:'one'; try{ localStorage.setItem('c373_mv_mode',S._mvMode); }catch(e){} mvScreen(); }
+function mvScreen(){ if(S._mvMode==='batch') mvbRender(); else if(S._mvMode==='inv') miScreen(); else mvRender(); }
+function mvRestart(){ if(S._mvMode==='batch'){ mvbClear(); mvbReset(); } else if(S._mvMode!=='inv') mvReset(); mvScreen(); }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   INVENTARIERE (SCAN1-B.2). Măsurare + reconciliere, NU scriere: nicio scanare de aici nu
+   atinge `stock` sau `tool_units`. Totul trece prin contractele din 0145, iar numărătoarea
+   trăiește pe SERVER — un reload, o eroare de rețea sau un telefon rămas fără baterie nu o
+   pierd. NU există un al doilea scanner: refolosim `mScanStart(..., {keepOpen:true})`, exact
+   cel reparat în acest lot.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+function miReset(){ S._mi={ sid:null, st:null, busy:false, pick:false }; }
+function miCanFinalize(){ return ['owner','admin','manager','accountant'].includes(S.memberRole||S.role); }
+async function miScreen(){
+  if(!S._mi) miReset();
+  if(!S._mi.sid && !S._mi.busy) await miFindActive();
+  miRender();
+}
+/* La deschidere căutăm o inventariere DEJA în curs: pe teren omul închide aplicația și revine. */
+async function miFindActive(){
+  S._mi.busy=true;
+  try{
+    const r=await sb.from('inventory_sessions').select('id,location_kind,location_id,started_at')
+      .eq('status','in_progress').order('started_at',{ascending:false}).limit(1);
+    const row=(r.data||[])[0];
+    if(row){ S._mi.sid=row.id; await miLoad(); }
+  }catch(e){}
+  S._mi.busy=false;
+}
+async function miLoad(){
+  if(!S._mi.sid) return;
+  try{
+    const r=await sb.rpc('inventory_session_state',{p_tenant_id:S.tenant, p_session_id:S._mi.sid});
+    if(r.error) throw r.error;
+    S._mi.st=r.data;
+  }catch(e){ toast(mvErr(e)); }
+}
+async function miStart(kind,id){
+  if(S._mi.busy) return; S._mi.busy=true; miRender();
+  try{
+    const r=await sb.rpc('inventory_session_start',{p_tenant_id:S.tenant,
+      p_payload:{location:{kind:kind,id:id}}, p_request_id:mUuid()});
+    if(r.error) throw r.error;
+    S._mi.sid=r.data.session_id; S._mi.pick=false;
+    await miLoad();
+    toast('📋 '+mtz('Inventariere pornită.'));
+  }catch(e){ toast(mvErr(e)); }
+  S._mi.busy=false; miRender();
+}
+/* ── scanare CONTINUĂ, același motor ca „Mută mai multe" ── */
+function miStartScan(){ mScanStart(miOnCode,{keepOpen:true}); setTimeout(miHud,60); }
+function miCancelScan(){ mScanStop(); miRender(); }
+function miDoneScan(){ mScanStop(); miRender(); }
+function miHud(){
+  const st=S._mi&&S._mi.st; if(!st) return;
+  const d=document.getElementById('mv-done');
+  const n=(st.materials||[]).filter(x=>x.counted).length+(st.assets||[]).filter(x=>x.counted_here).length;
+  if(d) d.textContent=mtz('Gata')+(n?' ('+n+')':'');
+  const el=document.getElementById('mv-hud'); if(!el) return;
+  const L=S._mi._last;
+  el.innerHTML='<b>'+n+' '+esc(mtz('numărate'))+'</b>'
+    +(L?(' · <span style="opacity:.85">'+esc(L)+'</span>'):'');
+}
+async function miOnCode(code){
+  const mi=S._mi; if(!mi||!mi.sid) return;
+  let res=null;
+  try{ const r=await sb.rpc('scan_resolve',{p_code:code}); if(r.error) throw r.error; res=r.data; }
+  catch(e){ mScanMsg(mvErr(e)); return; }
+  const st=res&&res.status;
+  if(st==='unknown'){ mi._last='❓ '+mtz('Cod necunoscut'); miHud(); mScanMsg(mtz('Cod necunoscut.')); return; }
+  if(st==='ambiguous'){ mScanMsg(mtz('Codul se potrivește cu mai multe obiecte. Alege din listă.')); return; }
+  let payload=null;
+  if(res.kind==='material') payload={kind:'material', material_id:res.id, mode:'scan', qty:1};
+  else if(res.kind==='asset') payload={kind:'asset', unit_id:res.id, mode:'scan'};
+  else { mScanMsg(mtz('Codul scanat nu e un obiect care se poate număra.')); return; }
+  payload.session_id=mi.sid;
+  try{
+    const r=await sb.rpc('inventory_session_count',{p_tenant_id:S.tenant, p_payload:payload, p_request_id:mUuid()});
+    if(r.error) throw r.error;
+    const d=r.data;
+    mi._last=(res.kind==='material'?'📦 ':'🛠️ ')+res.label
+      +(res.kind==='material'?(' × '+(+d.counted_qty)):'');
+    mvFeedback();
+    await miLoad(); miHud();
+  }catch(e){
+    /* „Deja scanat" nu e o eroare de flux — e răspunsul corect la o a doua trecere */
+    const msg=mvErr(e); mi._last='⚠️ '+res.label; miHud(); mScanMsg(msg);
+  }
+}
+async function miSet(lineId, kind, objId){
+  const st=S._mi&&S._mi.st; if(!st) return;
+  const row=(kind==='material'?(st.materials||[]).find(x=>x.line_id===lineId):null);
+  const cur=row&&row.counted_qty!=null?(+row.counted_qty):'';
+  const v=prompt(mtz('Cantitatea numărată')+(row?(' — '+row.name+(row.unit?(' ('+row.unit+')'):'')):''), String(cur));
+  if(v===null) return;
+  const s=String(v).trim();
+  const payload={session_id:S._mi.sid, kind:'material', material_id:objId,
+                 mode:(s===''?'clear':'set'), expected_version:row?row.version:null};
+  if(s!==''){ const n=Number(s.replace(',','.')); if(!isFinite(n)||n<0){ toast(mtz('Cantitate invalidă.')); return; } payload.qty=n; }
+  try{
+    const r=await sb.rpc('inventory_session_count',{p_tenant_id:S.tenant, p_payload:payload, p_request_id:mUuid()});
+    if(r.error) throw r.error;
+    await miLoad(); miRender();
+  }catch(e){ toast(mvErr(e)); }
+}
+async function miReconcile(){
+  if(S._mi.busy) return; S._mi.busy=true; miRender();
+  try{
+    const r=await sb.rpc('inventory_session_reconcile',{p_tenant_id:S.tenant,
+      p_payload:{session_id:S._mi.sid, expected_version:S._mi.st&&S._mi.st.session?S._mi.st.session.version:null}});
+    if(r.error) throw r.error;
+    await miLoad();
+    /* NU finalizăm automat după reîncărcare: reconfirmarea rămâne un act deliberat. */
+    toast('🔄 '+mtz('Stare reîncărcată. Verifică diferențele și confirmă.'));
+  }catch(e){ toast(mvErr(e)); }
+  S._mi.busy=false; miRender();
+}
+async function miCancel(){
+  if(!confirm(mtz('Anulezi inventarierea? Numărătoarea se păstrează în istoric, dar nu mai poate fi finalizată.'))) return;
+  try{
+    const r=await sb.rpc('inventory_session_cancel',{p_tenant_id:S.tenant,
+      p_payload:{session_id:S._mi.sid, expected_version:S._mi.st&&S._mi.st.session?S._mi.st.session.version:null}});
+    if(r.error) throw r.error;
+    miReset(); toast(mtz('Inventariere anulată.')); miScreen();
+  }catch(e){ toast(mvErr(e)); }
+}
+async function miFinalize(){
+  const st=S._mi&&S._mi.st; if(!st) return;
+  const mats=st.materials||[];
+  const dif=mats.filter(x=>x.counted && (+x.difference)!==0);
+  const unc=mats.filter(x=>!x.counted).length;
+  const as=st.assets||[];
+  const miss=as.filter(x=>x.class==='missing').length, unexp=as.filter(x=>x.class==='unexpected').length;
+  let msg=mtz('Finalizezi inventarierea?')+'\n\n'
+    +dif.length+' '+mtz('poziții cu diferență → se corectează stocul')+'\n';
+  if(unc) msg+=unc+' '+mtz('poziții NENUMĂRATE → rămân neatinse')+'\n';
+  if(miss||unexp) msg+=(miss+unexp)+' '+mtz('discrepanțe la scule → se păstrează ca observație, fără mutare')+'\n';
+  if(!confirm(msg)) return;
+  /* `request_id` se păstrează pe TOATĂ încercarea, inclusiv după o eroare de rețea: un retry
+     trebuie să fie replay, nu o a doua finalizare (tiparul SCAN1-A/B.1). */
+  if(!S._mi._rq) S._mi._rq=mUuid();
+  S._mi.busy=true; miRender();
+  try{
+    const r=await sb.rpc('inventory_session_finalize',{p_tenant_id:S.tenant,
+      p_payload:{session_id:S._mi.sid, expected_version:st.session?st.session.version:null},
+      p_request_id:S._mi._rq});
+    if(r.error) throw r.error;
+    const d=r.data||{};
+    toast('✅ '+mtz('Inventariere finalizată.')+' '+(d.adjusted||0)+' '+mtz('corecții'));
+    miReset(); S._mi.busy=false; miScreen(); return;
+  }catch(e){
+    S._mi.busy=false;
+    const m=String((e&&(e.message||e))||'');
+    if(m.indexOf('INVENTORY_STOCK_CHANGED')>=0 || m.indexOf('ADJ_STALE_QTY')>=0){
+      /* conflictul consumă jetonul: următoarea încercare e o operație NOUĂ, pe altă bază */
+      S._mi._rq=null; await miLoad();
+    }
+    toast(mvErr(e)); miRender();
+  }
+}
+function miRender(){
+  const sc=$('screen'); if(!sc) return;
+  const mi=S._mi||{}; let h=mvHead();
+  if(mi.busy && !mi.st){ sc.innerHTML=h+'<div class="card"><div class="s">'+esc(mtz('Se încarcă…'))+'</div></div>'; return; }
+
+  /* ── fără sesiune: alege locația ── */
+  if(!mi.sid){
+    const L=S._mvLoc||{wh:[],sites:[]};
+    h+='<div class="card"><div class="t">'+esc(mtz('Ce inventariezi?'))+'</div>'
+      +'<div class="s">'+esc(mtz('Alege locația, apoi scanează ce găsești fizic. Nimic nu se modifică până la finalizare.'))+'</div></div>';
+    const row=(kind,x,ic)=>'<button class="card" style="width:100%;text-align:left;display:block" onclick="miStart(\''+kind+'\',\''+x.id+'\')">'
+      +'<div class="t">'+ic+' '+esc(x.name)+'</div></button>';
+    if(!L.wh.length && !L.sites.length) h+='<div class="card"><div class="s">'+esc(mtz('Nicio locație disponibilă.'))+'</div></div>';
+    h+=L.wh.map(x=>row('warehouse',x,'🏬')).join('')+L.sites.map(x=>row('site',x,'🏗️')).join('');
+    sc.innerHTML=h; return;
+  }
+
+  const st=mi.st||{}, S1=st.session||{}, mats=st.materials||[], as=st.assets||[];
+  const conflicts=mats.filter(x=>x.changed);
+  const counted=mats.filter(x=>x.counted).length, unc=mats.length-counted;
+  const dif=mats.filter(x=>x.counted && (+x.difference)!==0).length;
+
+  h+='<div class="card"><div class="row"><div class="grow">'
+    +'<div class="t">'+esc(mvLocLabel(S1.location&&S1.location.kind, S1.location&&S1.location.id))+'</div>'
+    +'<div class="s">'+esc(mtz('Numărate'))+': <b>'+counted+'/'+mats.length+'</b>'
+    +(dif?(' · '+esc(mtz('diferențe'))+': <b>'+dif+'</b>'):'')
+    +(unc?(' · '+esc(mtz('nenumărate'))+': '+unc):'')+'</div></div>'
+    +'<button class="mini-btn gh" onclick="miLoad().then(miRender)">🔄</button></div>'
+    +'<button class="btn" style="margin-top:.6rem" onclick="miStartScan()">📷 '+esc(mtz('Scanează'))+'</button></div>';
+
+  /* Conflictul NU e semnalat doar prin culoare: are pictogramă, titlu și explicație. */
+  if(conflicts.length){
+    h+='<div class="card" style="border-left:4px solid #d9480f"><div class="t">⚠️ '+esc(mtz('Stocul s-a modificat în timpul inventarierii'))+'</div>'
+      +'<div class="s">'+esc(mtz('Cineva a mișcat marfă cât timp numărai. Numărătoarea ta e păstrată. Reîncarcă starea, verifică diferențele și confirmă din nou.'))+'</div>'
+      +conflicts.map(x=>'<div class="s" style="margin-top:.35rem">• <b>'+esc(x.name)+'</b>: '
+        +esc(mtz('la start'))+' '+(+x.expected_qty)+' → '+esc(mtz('acum'))+' <b>'+(+x.current_qty)+'</b>'
+        +(x.counted?(' · '+esc(mtz('numărat'))+' '+(+x.counted_qty)):'')+'</div>').join('')
+      +'<button class="btn" style="margin-top:.6rem" onclick="miReconcile()">🔄 '+esc(mtz('Reîncarcă starea'))+'</button></div>';
+  }
+
+  /* ── MATERIALE: În sistem / Numărat / Diferență ── */
+  h+='<div class="scr-title" style="margin-top:.8rem">📦 '+esc(mtz('Materiale'))+'</div>';
+  if(!mats.length) h+='<div class="card"><div class="s">'+esc(mtz('Nimic în sistem la locația asta. Scanează ce găsești.'))+'</div></div>';
+  h+=mats.map(function(x){
+    const d=x.counted?(+x.difference):null;
+    const mark=!x.counted?'○':(d===0?'✓':(d>0?'▲':'▼'));
+    const col=!x.counted?'var(--muted)':(d===0?'#2b8a3e':(d>0?'#1971c2':'#d9480f'));
+    return '<button class="card" style="width:100%;text-align:left;display:block" onclick="miSet(\''+x.line_id+'\',\'material\',\''+x.material_id+'\')">'
+      +'<div class="row"><div class="grow"><div class="t">'+esc(x.name)+'</div>'
+      +'<div class="s">'+esc(mtz('În sistem'))+': '+(+x.expected_qty)+' '+esc(x.unit||'')
+      +' · '+esc(mtz('Numărat'))+': '+(x.counted?('<b>'+(+x.counted_qty)+'</b>'):esc(mtz('—')))+'</div></div>'
+      /* starea NU e transmisă doar prin culoare: simbolul o spune singur */
+      +'<div style="text-align:right;min-width:4.2rem"><div style="font-size:1.1rem;color:'+col+'">'+mark+'</div>'
+      +(d!==null&&d!==0?('<div class="s" style="color:'+col+'"><b>'+(d>0?'+':'')+d+'</b></div>'):'')+'</div></div></button>';
+  }).join('');
+
+  /* ── SCULE: găsit / lipsă / neașteptat — se CONSTATĂ, nu se corectează ── */
+  if(as.length){
+    const ic={found:'✓',missing:'✗',unexpected:'＋'};
+    const lb={found:'Găsit',missing:'Lipsă',unexpected:'Neașteptat aici'};
+    const cl={found:'#2b8a3e',missing:'#d9480f',unexpected:'#1971c2'};
+    h+='<div class="scr-title" style="margin-top:.8rem">🛠️ '+esc(mtz('Scule'))+'</div>'
+      +'<div class="card"><div class="s">'+esc(mtz('Discrepanțele se păstrează ca observație. Nimic nu se mută automat și nimic nu devine „pierdut".'))+'</div></div>'
+      +as.map(function(x){
+        return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(x.label)+'</div>'
+          +'<div class="s">'+esc(mtz(lb[x.class]||''))
+          +(x.moved_since_start?(' · '+esc(mtz('mutată în timpul inventarierii'))):'')+'</div></div>'
+          +'<div style="font-size:1.1rem;color:'+(cl[x.class]||'var(--muted)')+'">'+(ic[x.class]||'')+'</div></div></div>';
+      }).join('');
+  }
+
+  /* ── acțiuni ── */
+  h+='<div class="card" style="margin-top:.8rem">';
+  if(miCanFinalize()){
+    h+='<button class="btn" onclick="miFinalize()"'+(mi.busy?' disabled':'')+'>✅ '+esc(mtz('Finalizează inventarierea'))+'</button>'
+      +'<div class="s" style="margin-top:.4rem">'+esc(mtz('Abia acum se corectează stocul. Pozițiile nenumărate rămân neatinse.'))+'</div>';
+  } else {
+    /* worker: poate număra, nu poate finaliza — mesaj explicit, nu buton mort */
+    h+='<div class="s">🔒 '+esc(mtz('Numărătoarea ta e salvată. Finalizarea o face un responsabil.'))+'</div>';
+  }
+  h+='<button class="mini-btn gh" style="margin-top:.6rem;width:100%" onclick="miCancel()">'+esc(mtz('Anulează inventarierea'))+'</button></div>';
+  sc.innerHTML=h;
+}
 
 /* ── scanarea continuă ── */
 function mvbStartScan(){ mScanStart(mvbOnCode,{keepOpen:true}); setTimeout(mvbHud,60); }
