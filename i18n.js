@@ -1938,7 +1938,6 @@
     'Ce s-a discutat / de făcut… (poți lipi/trage poze)':{ru:'Что обсудили / что сделать… (можно вставить/перетащить фото)',de:'Was wurde besprochen / zu tun… (Fotos einfügen/ziehen möglich)',en:'What was discussed / to do… (you can paste/drag photos)'},
     'Adaugă, trage sau lipește (Ctrl+V) poze și clipuri — fiecare se încarcă pe loc.':{ru:'Добавьте, перетащите или вставьте (Ctrl+V) фото и клипы — каждый загружается сразу.',de:'Fotos und Clips hinzufügen, ziehen oder einfügen (Strg+V) — jedes wird sofort hochgeladen.',en:'Add, drag or paste (Ctrl+V) photos and clips — each uploads instantly.'},
     // ── undo + chat atașamente ──
-    'Anulează':{ru:'Отменить',de:'Rückgängig',en:'Undo'},
     'Restaurat.':{ru:'Восстановлено.',de:'Wiederhergestellt.',en:'Restored.'},
     'restaurate.':{ru:'восстановлено.',de:'wiederhergestellt.',en:'restored.'},
     'Nu am putut anula:':{ru:'Не удалось отменить:',de:'Rückgängig machen fehlgeschlagen:',en:'Could not undo:'},
@@ -2090,6 +2089,12 @@
     'Salvează':{ru:'Сохранить',de:'Speichern',en:'Save'},
     'Salvează setările':{ru:'Сохранить настройки',de:'Einstellungen speichern',en:'Save settings'},
     'Anulează':{ru:'Отмена',de:'Abbrechen',en:'Cancel'},
+    /* KB#68: „Anulează" avea DOUĂ intrări divergente (Undo vs Cancel) în același obiect,
+       deci JavaScript o păstra pe ultima — orice buton „Undo" era tradus „Cancel". Sensurile
+       se separă prin texte-sursă RO DISTINCTE, nu prin ordinea din dicționar:
+         'Anulează'          = Cancel (renunță la acțiunea curentă) — modale, scanner;
+         'Anulează acțiunea' = Undo   (revocă ce tocmai s-a întâmplat) — toastul de undo. */
+    'Anulează acțiunea':{ru:'Отменить действие',de:'Rückgängig machen',en:'Undo'},
     'Închide':{ru:'Закрыть',de:'Schließen',en:'Close'},
     'Editează':{ru:'Редактировать',de:'Bearbeiten',en:'Edit'},
     'Șterge':{ru:'Удалить',de:'Löschen',en:'Delete'},

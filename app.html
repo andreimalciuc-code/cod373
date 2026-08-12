@@ -467,7 +467,7 @@ function showMsg(el,t,type='err'){ $(el).innerHTML = t ? '<div class="msg '+type
 function toast(m){ const t=$('toast'); $('toast-msg').innerHTML=m; t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),4000); }
 /* toast cu buton „Anulează" (undo) — câteva secunde */
 function toastUndo(msg, undoFn, secs){ window._undoFn=undoFn; const t=$('toast'); if(!t) return;
-  $('toast-msg').innerHTML=esc(msg)+' <button onclick="doUndo()" style="margin-left:.6rem;background:none;border:1px solid currentColor;border-radius:6px;color:inherit;padding:.1rem .55rem;cursor:pointer;font-weight:700">↩︎ '+esc((window.C373t?C373t('Anulează'):'Anulează'))+'</button>';
+  $('toast-msg').innerHTML=esc(msg)+' <button onclick="doUndo()" style="margin-left:.6rem;background:none;border:1px solid currentColor;border-radius:6px;color:inherit;padding:.1rem .55rem;cursor:pointer;font-weight:700">↩︎ '+esc((window.C373t?C373t('Anulează acțiunea'):'Anulează acțiunea'))+'</button>';
   t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(function(){ t.classList.remove('show'); window._undoFn=null; }, (secs||7)*1000); }
 function doUndo(){ const f=window._undoFn; window._undoFn=null; const t=$('toast'); if(t) t.classList.remove('show'); clearTimeout(window._tt); if(f) f(); }
 /* Prinde erorile JS necapturate (ex. pe telefonul unui coleg) și le arată — ca să nu mai „înghețe" tăcut.

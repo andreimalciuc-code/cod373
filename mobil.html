@@ -174,7 +174,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='334';
+const APP_BUILD='335';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -1624,17 +1624,51 @@ async function mScanStart(onCode, opts){
   mScanStop();
   const keep=!!(opts&&opts.keepOpen);
   window._mvKeep=keep; window._mvSeen=new Map();
+  /* ══ Geometria overlay-ului (SCAN1-B.2) ══════════════════════════════════════════════
+     Pe iPhone NU există `BarcodeDetector`, deci Safari cade ÎNTOTDEAUNA pe html5-qrcode.
+     Biblioteca își desenează PROPRIUL cadru („shaded region") — dar numai dacă primește
+     `qrbox`. Din sursa ei: `isShadedBoxEnabled(){ return !isNullOrUndefined(this.qrbox) }`,
+     iar `getShadedRegionBounds` îl centrează pe VIDEOUL EI. Cadrul nostru era centrat pe
+     STAGE. Cum videoul ocupa doar partea de sus, ieșeau DOUĂ cadre, în locuri diferite
+     (măsurat: 99–239 px decalaj) plus o bandă neagră de 45–60% din stage, jos.
+     Reparația: NU mai trimitem `qrbox` ⇒ biblioteca nu mai desenează nimic și decodează
+     tot cadrul; rămâne UN SINGUR cadru, al nostru, identic pe iPhone și pe Android.
+     Videoul se CENTREAZĂ în stage (nu mai e lipit sus), deci nu mai există bandă neagră
+     asimetrică înainte de bara de acțiuni. Nu întindem videoul cu `object-fit:cover` pe
+     ramura bibliotecii: canvas-ul ei se dimensionează din `clientWidth/clientHeight`, iar
+     o întindere ar deforma cadrul trimis la decodare. Bara respectă safe-area iOS. */
+  if(!document.getElementById('mv-cam-css')){
+    const st=document.createElement('style'); st.id='mv-cam-css';
+    /* `!important` pe position/inset NU e cosmetic — e singurul lucru care ține containerul viu.
+       html5-qrcode scrie INLINE `position:relative` pe elementul ei gazdă (`#mv-h5`) în `start()`.
+       Un stil inline bate o regulă de foaie fără `!important`, deci `position:absolute` cădea, iar
+       `#mv-h5` redevenea COPIL DE FLEX al lui `#mv-stage`. Un flex item fără lățime intrinsecă se
+       strânge la 0 ⇒ biblioteca citea `clientWidth === 0` și își scria singură `width:0px` pe
+       propriul `<video>`: pe iPhone rămâneau ecran negru + cadrul alb, fără imagine.
+       Cu `!important`, `#mv-h5` rămâne absolut ⇒ iese complet din fluxul flex (un copil absolut
+       NU e flex item) și umple `#mv-stage`, deci `clientWidth` e lățimea reală la `h.start()`.
+       `max-height` completează `max-width`: videoul bibliotecii primește lățimea containerului și
+       înălțimea din raportul de aspect — pe un stage înalt trebuie plafonat, nu întins. */
+    st.textContent='#mv-h5{position:absolute!important;inset:0!important;display:flex;align-items:center;justify-content:center}'
+      +'#mv-h5 video{max-width:100%;max-height:100%;display:block}'
+      +'#mv-h5 canvas{display:none!important}'   /* canvas-ul de decodare nu e interfață */
+      +'#mv-h5 img{display:none!important}';     /* butonul „scanner paused" al bibliotecii */
+    document.head.appendChild(st);
+  }
   const ov=document.createElement('div'); ov.id='mv-cam';
-  ov.style.cssText='position:fixed;inset:0;z-index:100003;background:#000;display:flex;flex-direction:column';
-  ov.innerHTML='<div style="flex:1;position:relative;overflow:hidden">'
+  ov.style.cssText='position:fixed;inset:0;z-index:100003;background:#000;display:flex;flex-direction:column;'
+    +'padding-top:env(safe-area-inset-top,0px)';
+  ov.innerHTML='<div id="mv-stage" style="flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center">'
     +'<video id="mv-vid" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>'
-    +'<div id="mv-h5" style="position:absolute;inset:0"></div>'
-    +'<div id="mv-frame" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:66vw;max-width:280px;aspect-ratio:1;border:3px solid #fff;border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)"></div></div>'
-    +'<div style="padding:.8rem;background:#0f1c33;color:#fff">'
+    +'<div id="mv-h5"></div>'
+    +'<div id="mv-frame" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:66vw;max-width:280px;aspect-ratio:1;border:3px solid #fff;border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45);pointer-events:none"></div></div>'
+    +'<div style="padding:.8rem;padding-bottom:calc(.8rem + env(safe-area-inset-bottom,0px));background:#0f1c33;color:#fff;flex:0 0 auto">'
     +'<div id="mv-msg" style="font-size:.9rem;margin-bottom:.6rem;min-height:1.2em" role="status" aria-live="polite">'+esc(mtz('Îndreaptă camera spre cod'))+'</div>'
     /* HUD-ul de lot stă ÎN overlay, nu în toast: `#toast` e la z-index 60, iar `#mv-cam`
        la 100003 — un toast ridicat cu camera deschisă e complet invizibil. */
-    +(keep?'<div id="mv-hud" style="font-size:.85rem;margin-bottom:.6rem;min-height:2.4em;line-height:1.35"></div>':'')
+    /* HUD pe UN rând: bara de acțiuni fura 131 px din înălțime, adică exact spațiul care
+       lipsea previzualizării. Două rânduri rezervate permanent nu se justifică. */
+    +(keep?'<div id="mv-hud" style="font-size:.85rem;margin-bottom:.5rem;min-height:1.25em;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>':'')
     +'<div style="display:flex;gap:.5rem">'
     +'<button class="mini-btn gh" style="flex:1" onclick="'+(keep?'mvbCancelScan()':'mScanStop()')+'">'+esc(mtz('Anulează'))+'</button>'
     +'<button class="mini-btn gh" style="flex:1" onclick="mScanManual()">'+esc(mtz('Introdu codul'))+'</button>'
@@ -1688,7 +1722,11 @@ async function mScanStart(onCode, opts){
     const boot=function(){
       try{
         const h=new Html5Qrcode('mv-h5'); window._mvH5=h;
-        h.start({facingMode:'environment'},{fps:10,qrbox:230},function(txt){ window._mvOnCode(txt); },function(){});
+        /* FĂRĂ `qrbox`: altfel biblioteca își desenează propriul cadru peste al nostru
+           (al doilea cadru de pe iPhone) și restrânge decodarea la un pătrat centrat pe
+           videoul EI. Fără el, decodează tot cadrul — mai iertător — iar singurul cadru
+           vizibil rămâne `#mv-frame`, care e reper de ochire, nu graniță de decodare. */
+        h.start({facingMode:'environment'},{fps:10},function(txt){ window._mvOnCode(txt); },function(){});
       }catch(e){ mScanMsg(mtz('Camera nu a putut porni. Poți introduce codul manual.')); }
     };
     if(window.Html5Qrcode) boot();
@@ -2009,10 +2047,10 @@ function mvbHud(){
   if(d) d.textContent=mtz('Gata')+(n?' ('+n+')':'');
   const el=document.getElementById('mv-hud'); if(!el) return;
   const last=B.items[n-1];
+  /* un singur rând: contor + ultimul obiect scanat, separate prin „·" */
   el.innerHTML='<b>'+n+' '+esc(mtz('scanate'))+'</b>'
-    +(B.dest?(' → '+esc(B.dest.kind==='consume'?mtz('Consum'):mvLocLabel(B.dest.kind,B.dest.id))):'')
-    +(last?('<div style="opacity:.85">'+(last.kind==='material'?'📦 ':'🛠️ ')+esc(last.label)
-       +(last.kind==='material'?(' × '+(last.moveAll?esc(mtz('Tot')):(+last.qty))):'')+'</div>'):'');
+    +(last?(' · <span style="opacity:.85">'+(last.kind==='material'?'📦 ':'🛠️ ')+esc(last.label)
+       +(last.kind==='material'?(' × '+(last.moveAll?esc(mtz('Tot')):(+last.qty))):'')+'</span>'):'');
 }
 async function mvbOnCode(code){
   const B=S._mvB; if(!B) return;
