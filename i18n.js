@@ -3167,6 +3167,42 @@
     'Se schimbă din lista „Unde e" de pe rândul bucății — mutarea rămâne în istoric.':{ru:'Меняется в списке «Где находится» в строке единицы — перемещение остаётся в истории.',de:'Wird in der Liste „Wo ist es“ in der Zeile des Stücks geändert — die Bewegung bleibt in der Historie.',en:'Changed from the "Where is it" list on the item\'s row — the movement stays in the history.'},
     'Locație actualizată.':{ru:'Местоположение обновлено.',de:'Standort aktualisiert.',en:'Location updated.'},
     'Către cine (persoană/firmă)?':{ru:'Кому (лицо/фирма)?',de:'An wen (Person/Firma)?',en:'To whom (person/company)?'},
+    /* ── SCAN1-B.1: „Mută mai multe" — lot de obiecte către o destinație comună (migr 0144) ── */
+    'Un obiect':{ru:'Один объект',de:'Ein Gegenstand',en:'One object'},
+    'Mută mai multe':{ru:'Переместить несколько',de:'Mehrere bewegen',en:'Move several'},
+    'Alege destinația o singură dată, apoi scanează toate obiectele.':{ru:'Выберите место назначения один раз, затем сканируйте все объекты.',de:'Wähle das Ziel einmal aus und scanne dann alle Gegenstände.',en:'Pick the destination once, then scan every object.'},
+    'Scanează obiectele':{ru:'Сканируйте объекты',de:'Gegenstände scannen',en:'Scan the objects'},
+    'Continuă scanarea':{ru:'Продолжить сканирование',de:'Weiter scannen',en:'Keep scanning'},
+    'Nimic scanat încă.':{ru:'Пока ничего не отсканировано.',de:'Noch nichts gescannt.',en:'Nothing scanned yet.'},
+    'Deja scanat':{ru:'Уже отсканировано',de:'Bereits gescannt',en:'Already scanned'},
+    'Renunță la tot':{ru:'Отменить всё',de:'Alles verwerfen',en:'Discard everything'},
+    'Ștergi tot lotul scanat?':{ru:'Удалить всю отсканированную партию?',de:'Den gesamten gescannten Stapel löschen?',en:'Delete the entire scanned batch?'},
+    'Destinația a fost setată.':{ru:'Место назначения выбрано.',de:'Ziel wurde gesetzt.',en:'Destination set.'},
+    'Destinația e deja aleasă.':{ru:'Место назначения уже выбрано.',de:'Das Ziel ist bereits gewählt.',en:'The destination is already chosen.'},
+    'Alege întâi destinația.':{ru:'Сначала выберите место назначения.',de:'Wähle zuerst das Ziel.',en:'Choose the destination first.'},
+    'Alege sursa':{ru:'Выберите источник',de:'Quelle wählen',en:'Choose the source'},
+    'Alege sursa pentru materialele marcate.':{ru:'Выберите источник для отмеченных материалов.',de:'Wähle die Quelle für die markierten Materialien.',en:'Choose the source for the highlighted materials.'},
+    'Intrare nouă':{ru:'Новое поступление',de:'Neuzugang',en:'New entry'},
+    'La un terț':{ru:'У третьего лица',de:'Bei einem Dritten',en:'With a third party'},
+    'Materialele nu se pot preda unui angajat.':{ru:'Материалы нельзя передать сотруднику.',de:'Material kann nicht an eine Person übergeben werden.',en:'Materials cannot be handed over to an employee.'},
+    'Sculele nu se consumă.':{ru:'Инструмент не расходуется.',de:'Werkzeuge werden nicht verbraucht.',en:'Tools are not consumed.'},
+    'Linia e pe „Tot" — schimbă cantitatea din listă.':{ru:'Строка стоит на «Всё» — измените количество в списке.',de:'Die Zeile steht auf „Alles" — ändere die Menge in der Liste.',en:'This line is set to "All" — change the quantity in the list.'},
+    /* Numărul stă ÎN AFARA textului tradus (i18n nu are motor de plural): fragmentele de mai
+       jos se compun ca „<verb> N <substantiv>". De aceea DE/RU folosesc forme care rămân
+       corecte lângă o cifră, nu traduceri literale ale românei. */
+    'Mutate':{ru:'Перемещено',de:'Bewegt',en:'Moved'},
+    'obiecte':{ru:'объектов',de:'Gegenstände',en:'objects'},
+    'materiale':{ru:'материалов',de:'Materialien',en:'materials'},
+    'scule':{ru:'инструментов',de:'Werkzeuge',en:'tools'},
+    'scanate':{ru:'отсканировано',de:'gescannt',en:'scanned'},
+    'Am scos din listă':{ru:'Убрано:',de:'Entfernt:',en:'Removed:'},
+    'obiecte care nu se potrivesc cu destinația.':{ru:'объектов, не подходящих для места назначения.',de:'Gegenstände, die nicht zum Ziel passen.',en:'objects that do not fit the destination.'},
+    'Lotul e gol.':{ru:'Партия пуста.',de:'Der Stapel ist leer.',en:'The batch is empty.'},
+    'Lotul conține date invalide.':{ru:'Партия содержит неверные данные.',de:'Der Stapel enthält ungültige Daten.',en:'The batch contains invalid data.'},
+    'Prea multe obiecte într-un singur lot. Împarte-l în două.':{ru:'Слишком много объектов в одной партии. Разделите её на две.',de:'Zu viele Gegenstände in einem Stapel. Teile ihn in zwei.',en:'Too many objects in one batch. Split it in two.'},
+    'Același obiect apare de două ori în lot.':{ru:'Один и тот же объект встречается в партии дважды.',de:'Derselbe Gegenstand kommt im Stapel zweimal vor.',en:'The same object appears twice in the batch.'},
+    'Lista s-a schimbat după prima trimitere. Confirmă din nou.':{ru:'Список изменился после первой отправки. Подтвердите ещё раз.',de:'Die Liste hat sich nach dem ersten Senden geändert. Bitte erneut bestätigen.',en:'The list changed after the first send. Confirm again.'},
+    'Nu mai e nimic de mutat din locația aleasă.':{ru:'Из выбранного места больше нечего перемещать.',de:'Am gewählten Ort gibt es nichts mehr zu bewegen.',en:'There is nothing left to move from the chosen location.'},
   };
 
   function hasLetter(x){ return /[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(x); }
