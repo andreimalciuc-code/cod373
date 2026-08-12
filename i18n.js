@@ -2095,6 +2095,12 @@
          'Anulează'          = Cancel (renunță la acțiunea curentă) — modale, scanner;
          'Anulează acțiunea' = Undo   (revocă ce tocmai s-a întâmplat) — toastul de undo. */
     'Anulează acțiunea':{ru:'Отменить действие',de:'Rückgängig machen',en:'Undo'},
+    /* ── INVITE1/0146: motivele DISTINCTE de refuz la consumarea unei invitații ── */
+    'Invitația e pentru altă adresă de email. Ieși din cont și intră cu adresa pe care ai primit invitația.':{ru:'Приглашение выписано на другой адрес эл. почты. Выйдите из аккаунта и войдите с тем адресом, на который получили приглашение.',de:'Die Einladung gilt für eine andere E-Mail-Adresse. Melden Sie sich ab und mit der eingeladenen Adresse wieder an.',en:'The invitation is for a different email address. Sign out and sign in with the address it was sent to.'},
+    'Invitația a expirat. Cere una nouă.':{ru:'Срок приглашения истёк. Попросите новое.',de:'Die Einladung ist abgelaufen. Bitten Sie um eine neue.',en:'The invitation has expired. Ask for a new one.'},
+    'Invitația a fost anulată.':{ru:'Приглашение отменено.',de:'Die Einladung wurde storniert.',en:'The invitation was cancelled.'},
+    'Fișa e deja legată de alt cont. Anunță responsabilul.':{ru:'Карточка уже привязана к другому аккаунту. Сообщите ответственному.',de:'Der Datensatz ist bereits mit einem anderen Konto verknüpft. Informieren Sie die verantwortliche Person.',en:'The record is already linked to another account. Tell the responsible person.'},
+    'Ești într-un cont demo. Ieși din demo și intră cu contul tău.':{ru:'Вы в демо-аккаунте. Выйдите из демо и войдите со своим аккаунтом.',de:'Sie sind in einem Demo-Konto. Verlassen Sie die Demo und melden Sie sich mit Ihrem Konto an.',en:'You are in a demo account. Leave the demo and sign in with your own account.'},
     /* ── SCAN1-B.2: inventariere (sesiuni, reconciliere, finalizare) ─────────────────
        KB#68: fiecare cheie de mai jos e DECLARATĂ O SINGURĂ DATĂ în tot dicționarul.
        Verificat programatic la inserare — nu adăuga o a doua intrare pentru vreuna. */
