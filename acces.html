@@ -148,10 +148,41 @@ async function doDemo(){
   location.replace('app.html');
 }
 
+/* INVITE1/0146: motivele de refuz sunt DISTINCTE și se spun omului. Înainte, rezultatul lui
+   `redeem_invite` era ignorat complet (`try{...}catch{}`), deci o invitație pentru altcineva
+   ducea tăcut în aplicație fără acces — părea că produsul e stricat. */
+const REDEEM_MSG={
+  WRONGEMAIL:'Invitația e pentru altă adresă de email. Intră cu adresa la care ai primit invitația.',
+  EXPIRED:'Invitația a expirat. Cere una nouă responsabilului.',
+  REVOKED:'Invitația a fost anulată.',
+  USED:'Invitația a fost deja folosită.',
+  NOTFOUND:'Link de invitație invalid.',
+  ENTITY_TAKEN:'Fișa e deja legată de alt cont. Anunță responsabilul.',
+  ANON:'Ești într-un cont demo. Ieși din demo și intră cu contul tău.'
+};
 async function finish(){
-  if(token){ try{ await sb.rpc('redeem_invite',{p_token:token}); }catch(e){} }
+  if(token){
+    let res=null;
+    try{ const { data }=await sb.rpc('redeem_invite',{p_token:token}); res=data; }catch(e){}
+    /* Refuzul NU mai trimite mai departe: omul rămâne aici, cu explicația și cu opțiunea
+       de a se autentifica cu contul corect. */
+    if(res && res!=='OK' && REDEEM_MSG[res]){
+      /* Pe email greșit ieșim LOCAL din contul curent: altfel omul rămâne logat cu contul
+         nepotrivit și reîncearcă la nesfârșit același link. Celelalte dispozitive rămân conectate. */
+      if(res==='WRONGEMAIL'||res==='ANON'){ try{ await sb.auth.signOut({ scope:'local' }); }catch(e){} }
+      renderLogin();                 // reconstruiește #box (deci și #acc-msg gol)…
+      msg(REDEEM_MSG[res]);          // …abia apoi scriem mesajul, altfel l-ar șterge
+      return;
+    }
+  }
   let role=null;
-  try{ const { data:mem }=await sb.from('memberships').select('role').eq('active',true).limit(1).maybeSingle(); role=mem&&mem.role; }catch(e){}
+  try{
+    /* rolul CEL MAI ÎNALT, ca în boot-ul din app.html — `limit(1)` fără ordonare lua un rând
+       oarecare, deci cineva cu două apartenențe putea fi rutat după rolul greșit. */
+    const { data:mem }=await sb.from('memberships').select('role').eq('active',true);
+    const rank=r=>{ const i=['owner','admin','manager','accountant','driver','worker','subcontractor','client'].indexOf(r); return i<0?999:i; };
+    role=((mem||[]).slice().sort((a,b)=>rank(a.role)-rank(b.role))[0]||{}).role||null;
+  }catch(e){}
   location.replace(FIELD.includes(role)?'mobil.html':'app.html');
 }
 
