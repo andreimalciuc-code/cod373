@@ -87,6 +87,10 @@
   .loading{text-align:center;color:var(--muted);padding:2rem}
   .mini-btn{border:none;border-radius:10px;padding:.55rem .8rem;font-weight:700;font-size:.82rem;cursor:pointer}
   .mini-btn.go{background:var(--green);color:#fff}.mini-btn.pr{background:var(--primary);color:#fff}.mini-btn.gh{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  /* FLEET2-B: „Trimite locația" e acțiunea PRINCIPALĂ de teren a cardului „Vehiculul meu" —
+     se apasă din mașină, uneori cu mănuși. `.mini-btn` global rămâne la 35 px (îl folosește tot
+     mobilul, iar schimbarea lui ar fi o modificare de primitivă); mărim DOAR aici, la 44 px. */
+  #myveh-block .mini-btn{min-height:44px}
 
   /* BOTTOM NAV */
   .bottom{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);display:flex;max-width:460px;margin:0 auto;z-index:20}
@@ -174,9 +178,14 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='336';
+const APP_BUILD='337';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
+/* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
+   firmelor în care e membru; premisa „un utilizator = o singură firmă" nu e impusă nicăieri.
+   Măsurat: „Șantierele tale" lista șantierele altei firme. `S.tenant` null ⇒ zero rânduri,
+   adică eșec în siguranță, nu scurgere. */
+function mSel(tbl, cols){ return sb.from(tbl).select(cols).eq('tenant_id', S.tenant); }
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
 function money(n){return n==null||n===''?'—':Number(n).toLocaleString('ro-RO')+' '+(CURSYM[CUR]||CUR);}
@@ -199,7 +208,7 @@ async function doLogin(){
 }
 /* La delogare schița de lot se șterge ÎNAINTE de `signOut`: pe un telefon de șantier folosit
    de doi oameni, al doilea nu trebuie să găsească lotul scanat de primul (SCAN1-B.1). */
-async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}await sb.auth.signOut();location.reload();}
+async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}try{mNotifLiveStop();}catch(e){}await sb.auth.signOut();location.reload();}
 function mBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 async function mForgot(){ const email=($('l-email').value||'').trim(); if(!email){ lmsg('Scrie întâi emailul.'); return; } lmsg('Se trimite…','ok');
   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:mBase()+'mobil.html'}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de resetare a parolei. Deschide emailul.','ok'); }
@@ -240,9 +249,14 @@ async function boot(){
   document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
   $('login').classList.add('hidden');$('app').classList.remove('hidden');
   render(); hideSplash();
+  mNotifLiveStart();                 // TASK2-A.2: taskul nou apare fără refresh
   setTimeout(mPushAutoInit, 1200);   // notificări pornite implicit (cu opțiune de oprire)
   // scanare QR: link de forma mobil.html?tool=ID deschide direct scula
   try{ const sp=new URLSearchParams(location.search); const up=sp.get('unit'); if(up){ history.replaceState(null,'',location.pathname); openUnitById(up); } else { const tp=sp.get('tool'); if(tp){ history.replaceState(null,'',location.pathname); openToolById(tp); } } }catch(e){}
+  /* TASK2-A.2: deep-link din Web Push (`?task=<id>`) — atingerea notificării deschide
+     EXACT taskul, nu doar aplicația. */
+  try{ const _t=new URLSearchParams(location.search).get('task');
+    if(_t && !mTaskExternal()){ history.replaceState(null,'',location.pathname); setTimeout(()=>{ try{ mTaskSheet(_t); }catch(e){} },250); } }catch(e){}
 }
 async function openToolById(idOrCode){
   let t=null;
@@ -261,7 +275,7 @@ async function openUnitById(unitId){
 function uLabelFromVal(val,holder){ const p=(val||'').split(':'); if(p[0]==='wh'){ const w=(window._usWhs||[]).find(x=>x.id===p[1]); return '🏬 '+((w&&w.name)||'depozit'); } if(p[0]==='site'){ const s=(window._usSites||[]).find(x=>x.id===p[1]); return '🏗️ '+((s&&s.name)||'șantier'); } if(p[0]==='loan'){ return (p[1]==='rented'?'💶 chirie: ':'🤝 împrumut: ')+(holder||''); } return '📦 nealocat'; }
 function uWhereLbl(u){ return u.site_id?('🏗️ '+((u.sites&&u.sites.name)||'șantier')):(u.warehouse_id?('🏬 '+((u.warehouses&&u.warehouses.name)||'depozit')):(u.holder_employee_id?('👤 '+((u.employees&&u.employees.full_name)||'angajat')):(u.holder?((u.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+u.holder):'📦 nealocat'))); }
 async function unitSheet(u){
-  let sites=[],whs=[],logs=[]; try{ const [sr,wr,lr]=await Promise.all([sb.from('sites').select('id,name,status'), sb.from('warehouses').select('id,name'), sb.from('tool_unit_logs').select('action,from_label,to_label,by_name,created_at').eq('unit_id',u.id).order('created_at',{ascending:false}).limit(20)]); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'); whs=wr.data||[]; logs=lr.data||[]; }catch(e){}
+  let sites=[],whs=[],logs=[]; try{ const [sr,wr,lr]=await Promise.all([mSel('sites','id,name,status'), sb.from('warehouses').select('id,name'), sb.from('tool_unit_logs').select('action,from_label,to_label,by_name,created_at').eq('unit_id',u.id).order('created_at',{ascending:false}).limit(20)]); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'); whs=wr.data||[]; logs=lr.data||[]; }catch(e){}
   window._usU=u; window._usSites=sites; window._usWhs=whs;
   const cur=u.site_id?('site:'+u.site_id):(u.warehouse_id?('wh:'+u.warehouse_id):(u.holder_employee_id?('emp:'+u.holder_employee_id):(u.loan_type?('loan:'+u.loan_type):'')));
   const where=u.site_id?('🏗️ '+esc((u.sites&&u.sites.name)||'șantier')):(u.warehouse_id?('🏬 '+esc((u.warehouses&&u.warehouses.name)||'depozit')):(u.holder?((u.loan_type==='rented'?'💶 chirie: ':'🤝 împrumut: ')+esc(u.holder)):'📦 nealocat'));
@@ -487,7 +501,7 @@ async function scrClientHome(){
     +'<div id="ch" style="margin-top:1rem"><div class="loading">Se încarcă…</div></div>';
   const ids=await myClientSiteIds();
   if(!ids.length){ $('ch').innerHTML='<div class="empty"><div class="ei">📁</div>Nu ai încă proiecte atribuite. Firma îți va acorda acces în curând.</div>'; return; }
-  const {data}=await sb.from('sites').select('id,name,address,status,progress,deadline');
+  const {data}=await mSel('sites','id,name,address,status,progress,deadline');
   S.sites=data||[]; const mine=(data||[]).filter(s=>ids.includes(s.id));
   $('ch').innerHTML=mine.map(s=>'<div class="card" onclick="openSite(\''+s.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+' ›</div><div class="s">'+esc(s.address||'')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div><div class="s" style="margin-top:.4rem">Progres: '+(s.progress||0)+'%</div></div>').join('')||'<div class="empty">Niciun proiect.</div>';
 }
@@ -554,7 +568,7 @@ async function scrSubHome(){
   const me=S.session.user.id;
   const [subsR, sitesR, scR, stagesR]=await Promise.all([
     sb.from('subcontractors').select('id,name,specialties').eq('user_id',me),
-    sb.from('sites').select('id,name,address,status,progress,deadline'),
+    mSel('sites','id,name,address,status,progress,deadline'),
     sb.from('subcontracts').select('id,title,amount,status,start_date,end_date,site_id'),
     sb.from('site_stages').select('id,name,status,progress,start_date,end_date,site_id,executor_id,executor_kind')
   ]);
@@ -591,7 +605,7 @@ async function scrAcasa(){
   if(S.role==='client') return scrClientHome();
   if(S.role==='subcontractor') return scrSubHome();
   $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
-  const {data:all}=await sb.from('sites').select('id,name,address,status,progress,deadline');
+  const {data:all}=await mSel('sites','id,name,address,status,progress,deadline');
   S.sites=all||[];
   let mySpec=''; if(S.role!=='manager'){ try{ const _e=await sb.from('employees').select('specialty,position').eq('user_id',S.session.user.id).maybeSingle(); if(_e.data) mySpec=String(_e.data.specialty||_e.data.position||'').trim(); }catch(e){} }
   const roleSub=mySpec||({worker:'Lucrător',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator');
@@ -604,10 +618,12 @@ async function scrAcasa(){
     +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">'+esc(roleSub)+'</div></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
     +(mTaskExternal()?'':'<div id="tk-block"></div>')
+    +(S.role==='driver'?'<div id="myveh-block"></div>':'')
     +(S.role==='worker'?'<div id="azi-block"></div>':'')
     +'<div class="scr-title" style="font-size:.95rem">Șantierele tale</div>'
     +(list||'<div class="empty"><div class="ei">🏗️</div>Niciun șantier activ.</div>');
   if(S.role==='worker') fillAzi();
+  if(S.role==='driver') fillMyVehicle();
   if(!mTaskExternal()) fillTasksHome();
 }
 /* „📌 Azi" — șantierul planificat azi + pașii de lucru deschiși, pe pagina principală a lucrătorului */
@@ -632,7 +648,7 @@ async function scrProgram(){
   S.progWeek=S.progWeek||0; const wk=weekRange(S.progWeek);
   const fd=d=>{ const p=String(d).slice(0,10).split('-'); return p[2]+'.'+p[1]; };
   const isMgr=['manager','owner','admin'].includes(S.role);
-  const {data:allSites}=await sb.from('sites').select('id,name,address,status'); S.sites=allSites||[];
+  const {data:allSites}=await mSel('sites','id,name,address,status'); S.sites=allSites||[];
   const siteName={}; (allSites||[]).forEach(s=>siteName[s.id]=s.name);
   let siteIds=(allSites||[]).filter(s=>s.status!=='cancelled').map(s=>s.id);
   let myEmp=null; try{ const e=await sb.from('employees').select('id').eq('user_id',S.session.user.id).maybeSingle(); myEmp=e.data&&e.data.id; }catch(e){}
@@ -665,7 +681,7 @@ async function scrProgram(){
 
 /* RAPORT ZILNIC (jurnal de șantier) */
 async function sheetDailyLog(){
-  const {data:sites}=await sb.from('sites').select('id,name');
+  const {data:sites}=await mSel('sites','id,name');
   const so=(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
   openSheet('📓 Raport zilnic',
     '<div id="dlg-msg"></div>'
@@ -700,15 +716,63 @@ async function saveDailyLog(){
   closeSheet(); toast('✅ Raport zilnic salvat.');
 }
 
-/* ȘOFER — trimite locația GPS */
-async function sendLocation(){
+/* ════ FLEET2-B — „Vehiculul meu": autoritatea custodiei, citită de pe teren ════
+   Aici era defectul: `vehicles.driver_id` (coloană din 0003) e MOARTĂ — zero scriitori în tot
+   codul și, măsurat pe producție, 0 valori non-NULL. Deci întrebarea „care e mașina mea"
+   returna mereu gol, iar șoferul primea ÎNTOTDEAUNA „Nu ai un vehicul atribuit".
+
+   Autoritatea reală e ultimul eveniment din `vehicle_handovers` (FLEET2-A). Dar acea tabelă —
+   ca și `vehicle_drivers` — e OFFICE la citire, deci o interogare directă de pe telefon ar
+   întoarce tot zero rânduri, doar mai derutant. Răspunsul vine printr-un contract DEFINER care
+   spune EXCLUSIV ce ține utilizatorul curent: `my_vehicles()` (0156).
+
+   Cache-ul e per-ecran, nu global: intrarea în Acasă reîntreabă, deci o predare făcută la birou
+   se vede fără repornirea aplicației. */
+async function mMyVehicles(force){
+  if(!force && S._myVeh!==undefined) return S._myVeh;
+  let out={rows:[], err:null};
+  try{
+    const {data,error}=await sb.rpc('my_vehicles',{p_tenant_id:S.tenant});
+    if(error) out.err=error; else out.rows=data||[];
+  }catch(e){ out.err=e; }
+  S._myVeh=out; return out;
+}
+/* Cardul de pe Acasă. Spune adevărul despre PROVENIENȚĂ: „în custodia ta" (predare
+   înregistrată) vs „atribuit" (vehicul vechi, fără istoric) — nu le amestecă. */
+async function fillMyVehicle(){
+  const host=$('myveh-block'); if(!host) return;
+  const mv=await mMyVehicles(true);
+  if(mv.err){ host.innerHTML='<div class="card"><div class="t">🚐 '+esc(mtz('Vehiculul meu'))+'</div><div class="s">'+esc(mtz('Nu am putut verifica ce vehicul ai. Trage în jos pentru reîncercare.'))+'</div></div>'; return; }
+  const rows=mv.rows||[];
+  if(!rows.length){ host.innerHTML='<div class="card"><div class="t">🚐 '+esc(mtz('Niciun vehicul în custodie'))+'</div><div class="s">'+esc(mtz('Biroul ți-l predă din fișa mașinii.'))+'</div></div>'; return; }
+  host.innerHTML='<div class="scr-title" style="font-size:.95rem">'+esc(mtz('Vehiculul meu'))+'</div>'
+    +rows.map(function(v){
+      const km=(v.km_current!=null)?((+v.km_current).toLocaleString('ro-RO')+' km'):'';
+      const src=(v.source==='assignment')?mtz('atribuit (fără predare înregistrată)'):mtz('în custodia ta');
+      return '<div class="card"><div class="row"><div class="grow">'
+        +'<div class="t">🚐 '+esc(v.label||mtz('Vehicul'))+(v.plate?(' · '+esc(v.plate)):'')+'</div>'
+        +'<div class="s">'+esc([km,src].filter(Boolean).join(' · '))+'</div></div></div>'
+        +'<div style="margin-top:.6rem;text-align:right"><button class="mini-btn go" onclick="sendLocation(\''+v.vehicle_id+'\')">📍 '+esc(mtz('Trimite locația'))+'</button></div></div>';
+    }).join('');
+}
+/* ȘOFER — trimite locația GPS. `vid` explicit din card; fără el, se rezolvă din autoritate.
+   Rezolvarea se face ÎNAINTE de a cere permisiunea GPS: n-are rost să deranjăm utilizatorul
+   pentru o poziție pe care n-avem unde s-o punem. */
+async function sendLocation(vid){
   if(!navigator.geolocation){ toast('Telefonul nu permite localizarea.'); return; }
+  let target=vid;
+  if(!target){
+    const mv=await mMyVehicles(true);
+    if(mv.err){ toast('⚠️ '+mtz('Nu am putut verifica ce vehicul ai. Încearcă din nou.')); return; }
+    const rows=mv.rows||[];
+    if(!rows.length){ toast(mtz('Nu ai niciun vehicul în custodie. Biroul ți-l predă din fișa mașinii.')); return; }
+    /* Mai multe vehicule e o situație LEGITIMĂ (două predări) — nu ghicim care, întrebăm. */
+    if(rows.length>1){ toast(mtz('Ai mai multe vehicule. Alege unul din „Vehiculul meu".')); if(S.view==='acasa') fillMyVehicle(); return; }
+    target=rows[0].vehicle_id;
+  }
   toast('📍 Se obține locația…');
   navigator.geolocation.getCurrentPosition(async pos=>{
-    const lat=pos.coords.latitude, lng=pos.coords.longitude;
-    const { data:veh } = await sb.from('vehicles').select('id').eq('driver_id',S.session.user.id).limit(1);
-    if(!veh||!veh.length){ toast('Nu ai un vehicul atribuit. Cere biroului să te lege de un vehicul.'); return; }
-    const { error } = await sb.from('vehicles').update({last_lat:lat,last_lng:lng,last_seen_at:new Date().toISOString(),status:'en_route'}).eq('id',veh[0].id);
+    const { error } = await sb.from('vehicles').update({last_lat:pos.coords.latitude,last_lng:pos.coords.longitude,last_seen_at:new Date().toISOString(),status:'en_route'}).eq('id',target);
     if(error){ toast('Eroare: '+esc(error.message)); return; }
     toast('📍 Locație trimisă. Apari pe harta firmei.');
   }, err=>{ toast('Nu am putut obține locația ('+esc(err.message)+').'); }, {enableHighAccuracy:true,timeout:10000});
@@ -863,7 +927,7 @@ async function scrPontaj(){
   if(!myEmp){ $('pj').innerHTML='<div class="empty"><div class="ei">⏱️</div>Contul tău nu e legat de un angajat. Roagă biroul să te adauge ca angajat ca să poți ponta.</div>'; return; }
   let plannedSite=null,plannedName=''; try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ plannedSite=cp.data.site_id; plannedName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){}
   let ts=null; try{ const r=await sb.from('timesheets').select('id,start_time,end_time,break_min,hours,site_id,updated_at,approved,sites(name)').eq('employee_id',myEmp).eq('work_date',d).maybeSingle(); ts=r.data||null; }catch(e){}
-  let sites=[]; try{ const sr=await sb.from('sites').select('id,name,status').order('name'); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'&&s.status!=='done'); }catch(e){}
+  let sites=[]; try{ const sr=await mSel('sites','id,name,status').order('name'); sites=(sr.data||[]).filter(s=>s.status!=='cancelled'&&s.status!=='done'); }catch(e){}
   S._pj={ emp:myEmp, name:myName, date:d, plannedSite, plannedName, ts, sites };
   renderPontajWorker();
   // ultimele zile (rezumat)
@@ -948,7 +1012,7 @@ async function scrPontajMgr(){
 async function sheetPontaj(){
   const [emp,sites]=await Promise.all([
     sb.from('employees').select('id,full_name').eq('active',true).order('full_name'),
-    sb.from('sites').select('id,name').order('name')
+    mSel('sites','id,name').order('name')
   ]);
   const eo=(emp.data||[]).map(e=>'<option value="'+e.id+'">'+esc(e.full_name)+'</option>').join('');
   const so=(sites.data||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
@@ -999,7 +1063,7 @@ async function setDeliv(id,status){
 /* SANTIERE (manager) */
 async function scrSantiere(){
   $('screen').innerHTML='<div class="scr-title">Șantiere</div><div id="ss"><div class="loading">Se încarcă…</div></div>';
-  const {data}=await sb.from('sites').select('id,name,address,status,progress,deadline').order('created_at',{ascending:false});
+  const {data}=await mSel('sites','id,name,address,status,progress,deadline').order('created_at',{ascending:false});
   if(!data||!data.length){$('ss').innerHTML='<div class="empty"><div class="ei">🏗️</div>Niciun șantier.</div>';return;}
   $('ss').innerHTML=data.map(s=>'<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+'</div><div class="s">'+esc(s.address||'—')+(s.deadline?(' · termen '+esc(s.deadline)):'')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div></div>').join('');
 }
@@ -1015,7 +1079,7 @@ async function scrDefecte(){
   $('df').innerHTML=rows.map(r=>{const s=st[r.status]||['—','grey'];return '<div class="card"><div class="row"><div class="grow"><div class="t">'+(r.photo_url?'📷 ':'')+esc(r.title)+'</div><div class="s">'+esc(r.site_id?(sm[r.site_id]||'—'):'—')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div></div>';}).join('');
 }
 async function sheetDefect(){
-  const {data:sites}=await sb.from('sites').select('id,name').order('name');
+  const {data:sites}=await mSel('sites','id,name').order('name');
   const so=(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
   openSheet('Raportează un defect',
     '<div id="smsg"></div>'
@@ -1049,7 +1113,7 @@ async function scrComanda(){
     +'<div class="roles" style="padding:0;border:none;margin-bottom:.6rem;background:none"><button id="ot-m" class="on" onclick="setOrdKind(\'m\')">📦 Materiale</button><button id="ot-t" onclick="setOrdKind(\'t\')">🛠️ Instrumente</button></div>'
     +'<input id="o-q" placeholder="🔍 caută…" oninput="filterMats(this.value)" style="width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;margin-bottom:.8rem;font-size:1rem;outline:none"/>'
     +'<div id="mat-list"><div class="loading">Se încarcă…</div></div>';
-  const {data:sites}=await sb.from('sites').select('id,name');
+  const {data:sites}=await mSel('sites','id,name');
   $('o-site').innerHTML='<option value="">— alege —</option>'+(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
   const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit,photo_url,purchase_price,last_price,store_price'), sb.from('tools').select('id,name,photo_url,unit_value') ]);
   S.mats=mr.data||[]; S.tools=(tr.data||[]).map(t=>({id:t.id,name:t.name,unit:'buc',photo_url:t.photo_url,price:t.unit_value}));
@@ -1262,7 +1326,7 @@ async function scrPoze(){
     +'<div class="card"><div class="fld" style="margin:0"><label>Șantier</label><select id="ph-site" onchange="loadPhotos()"><option value="">— alege —</option></select></div></div>'
     +(isClient?'':'<label class="btn" style="cursor:pointer"><input id="ph-file" type="file" accept="image/*,video/*" multiple style="display:none" onchange="uploadSitePhoto()"/>📷 Adaugă poze / video</label>')
     +'<div id="photo-grid" style="margin-top:1rem"></div>';
-  let {data:sites}=await sb.from('sites').select('id,name');
+  let {data:sites}=await mSel('sites','id,name');
   sites=sites||[];
   if(isClient){ const ids=await myClientSiteIds(); sites=sites.filter(s=>ids.includes(s.id)); }
   $('ph-site').innerHTML='<option value="">— alege —</option>'+sites.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
@@ -1285,6 +1349,24 @@ async function loadPhotos(){
 function mIsVid(p){ return /\.(mp4|mov|webm|m4v|avi|mkv|3gp|ogv)$/i.test(p||''); }
 function mVidPlay(url){ if(!url) return; const ov=document.createElement('div'); ov.style.cssText='position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.95);display:flex;align-items:center;justify-content:center'; ov.onclick=function(e){ if(e.target===ov) ov.remove(); }; ov.innerHTML='<button onclick="this.parentNode.remove()" style="position:absolute;top:.6rem;right:.9rem;background:none;border:none;color:#fff;font-size:2rem">×</button><video src="'+esc(url)+'" controls autoplay playsinline style="max-width:96vw;max-height:88vh;border-radius:12px;background:#000"></video>'; document.body.appendChild(ov); }
 async function mVidOpen(encPath){ const path=decodeURIComponent(encPath); let url=''; try{ const s=await sb.storage.from('docs').createSignedUrl(path,3600); url=(s.data&&s.data.signedUrl)||''; }catch(e){} if(!url){ toast('Nu am putut deschide videoul.'); return; } mVidPlay(url); }
+/* ►► FLEET1-B.V — `openDoc` LIPSEA din `mobil.html`, deși era apelat în două locuri
+   (`:283` „vezi buletinul atașat", `:284` „vezi semnătura salvată"). Aplicația de teren nu
+   încarcă `app.html`, iar `i18n.js` nu o definește — deci ambele linkuri aruncau
+   `ReferenceError: openDoc is not defined`. Defect PREEXISTENT, nu introdus de FLEET1-B, dar
+   ambele sunt call-site-uri ale funcției pe care lotul a schimbat-o, deci se închid aici.
+   Ambele căi reale sunt IMAGINI, deci merg în vizualizatorul intern care există deja
+   (`openLightbox`) — IN-APP FIRST, fără filă nouă și fără un al doilea vizualizator. */
+async function openDoc(encPath){
+  const path=decodeURIComponent(encPath||''); if(!path) return;
+  let url=''; try{ const s=await sb.storage.from('docs').createSignedUrl(path,300); url=(s.data&&s.data.signedUrl)||''; }catch(e){}
+  if(!url){ toast(mtz('Nu am putut deschide documentul.')); return; }
+  if(/\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i.test(path)){ openLightbox([url],0); return; }
+  if(/\.(mp4|webm|mov|m4v|ogg)$/i.test(path)){ mVidPlay(url); return; }
+  /* PDF/alt format: terenul nu are vizualizator propriu, iar construirea unuia ar fi
+     funcționalitate nouă. Ieșire controlată, anunțată — fallback, nu implicit. */
+  toast(mtz('Se deschide în afara aplicației…'));
+  try{ window.open(url,'_blank'); }catch(e){}
+}
 async function uploadSitePhoto(){
   const f=$('ph-file'); const site=$('ph-site').value;
   if(!site){ toast('Alege întâi șantierul.'); return; }
@@ -1331,6 +1413,30 @@ async function mTaskAsg(){ if(S._tkAsg) return S._tkAsg;
   catch(e){ S._tkAsg=[]; } return S._tkAsg; }
 function mAsgLbl(uid){ if(!uid) return mtz('Neatribuit'); if(S.session&&uid===S.session.user.id) return mtz('Eu');
   const a=(S._tkAsg||[]).find(x=>x.user_id===uid); return a?a.label:'…'; }
+/* Acceptarea responsabilității — derivarea canonică e pe server (public.task_acceptance,
+   migr 0148). Oglindită aici pentru afișare; vezi „ACC-MIRROR" din app.html — cele trei
+   locuri se schimbă împreună sau deloc. */
+function mTaskAcc(t){                                            /* ACC-MIRROR (0148) */
+  if(!t||!t.assignee) return 'unassigned';
+  if(t.declined_at && (!t.accepted_at || t.declined_at>t.accepted_at)) return 'declined';
+  if(t.accepted_at) return 'accepted';
+  return 'pending';
+}
+/* „așteaptă răspunsul MEU" — singura excepție care merită să întrerupă omul pe șantier */
+function mTaskMine(t){ return !!(S.session && t.assignee===S.session.user.id); }
+function mTaskNeedsMe(t){ return mTaskMine(t) && mTaskAcc(t)==='pending'
+  && !['done','cancelled'].includes(t.status); }
+const MT_ACC={pending:['⏳','Așteaptă acceptare','amber'],accepted:['🤝','Acceptat','green'],
+  declined:['🚫','Nu poate prelua','red'],unassigned:['👥','Fără responsabil','grey']};
+function mAccPill(t){ const a=mTaskAcc(t), x=MT_ACC[a];
+  return '<span class="pill '+x[2]+'">'+x[0]+' '+esc(mtz(x[1]))+'</span>'; }
+const MT_PRI={low:['▽','Scăzută','grey'],normal:['◇','Normală','blue'],high:['▲','Ridicată','red']};
+function mPriPill(p){ const x=MT_PRI[p]||MT_PRI.normal;
+  return '<span class="pill '+x[2]+'">'+x[0]+' '+esc(mtz(x[1]))+'</span>'; }
+const MT_ST={todo:['📥','De făcut','grey'],in_progress:['▶️','În lucru','blue'],
+  waiting:['⏸️','Așteaptă','amber'],done:['✅','Gata','green'],cancelled:['🚫','Anulat','grey']};
+function mStPill(s){ const x=MT_ST[s]||MT_ST.todo;
+  return '<span class="pill '+x[2]+'">'+x[0]+' '+esc(mtz(x[1]))+'</span>'; }
 function mTaskActions(t){
   const b=[];
   if(t.status==='todo'||t.status==='waiting') b.push(['in_progress','▶ '+mtz('Începe'),'gh']);
@@ -1339,14 +1445,38 @@ function mTaskActions(t){
   if(t.status==='done') b.push(['todo','↩ '+mtz('Redeschide'),'gh']);
   return b.map(x=>'<button class="mini-btn '+x[2]+'" onclick="event.stopPropagation();mTaskStatus(\''+t.id+'\',\''+x[0]+'\')">'+esc(x[1])+'</button>').join(' ');
 }
+function mSiteOf(x){ return ((S._tkLinks||{})[x.id]||[]).find(l=>l.entity_type==='site')||null; }
 function mTaskCard(x){
   const td=mToday(); const ov=x.due_date&&x.due_date<td&&['todo','in_progress','waiting'].includes(x.status);
-  const lk=((S._tkLinks||{})[x.id]||[])[0];
-  return '<div class="card" onclick="mTaskSheet(\''+x.id+'\')" style="cursor:pointer;margin:.35rem 0;padding:.7rem">'
-    +'<div class="row"><div class="grow"><b>'+(x.priority==='high'?'❗ ':'')+esc(x.title)+'</b>'
+  const st=mSiteOf(x); const lk=((S._tkLinks||{})[x.id]||[]).find(l=>l.entity_type!=='site');
+  const acc=mTaskAcc(x);
+  return '<div class="card" onclick="mTaskSheet(\''+x.id+'\')" style="cursor:pointer;margin:.35rem 0;padding:.7rem'
+      +(acc==='declined'?';border-left:3px solid var(--red)':'')+'">'
+    +'<div class="row"><div class="grow"><b>'+esc(x.title)+'</b>'
+    +(st?'<div class="s">🏗 '+esc(st.label||mtz('Șantier'))+'</div>':'')
     +(lk?'<div class="s">🔗 '+esc(mtz(MT_CTX[lk.entity_type]||lk.entity_type)+(lk.label?(': '+lk.label):''))+'</div>':'')
     +'</div>'+(x.due_date?'<span class="pill '+(ov?'amber':'blue')+'" style="white-space:nowrap">'+(ov?'⚠️ ':'')+esc(x.due_date.split('-').reverse().join('.'))+'</span>':'')+'</div>'
+    +'<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.4rem">'+mStPill(x.status)+mPriPill(x.priority)
+      +(mTaskMine(x)?'':'<span class="pill grey">👤 '+esc(mAsgLbl(x.assignee))+'</span>')
+      +(acc!=='accepted'?mAccPill(x):'')+'</div>'
+    +(acc==='declined'&&x.decline_reason?'<div class="s" style="color:var(--red);margin-top:.25rem">„'+esc(x.decline_reason)+'"</div>':'')
     +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.45rem">'+mTaskActions(x)+'</div></div>';
+}
+/* Cardul de PRELUARE: mare, cu o singură atingere pentru cazul normal. Omul de pe
+   schelă nu trebuie să deschidă taskul ca să spună „îl iau". */
+function mTaskAcceptCard(x){
+  const st=mSiteOf(x), td=mToday();
+  const ov=x.due_date&&x.due_date<td;
+  return '<div class="card" style="margin:.4rem 0;padding:.85rem;border:1px solid var(--primary);border-left:4px solid var(--primary)">'
+    +'<div style="font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--primary)">'+esc(mtz('Task nou'))+'</div>'
+    +(st?'<div class="s" style="margin-top:.2rem">🏗 '+esc(st.label||mtz('Șantier'))+'</div>':'')
+    +'<div style="font-weight:700;margin-top:.2rem;overflow-wrap:anywhere" onclick="mTaskSheet(\''+x.id+'\')">'+esc(x.title)+'</div>'
+    +'<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.4rem">'
+      +(x.due_date?'<span class="pill '+(ov?'amber':'blue')+'">'+(ov?'⚠️ ':'📅 ')+esc(x.due_date.split('-').reverse().join('.'))+'</span>':'')
+      +mPriPill(x.priority)+'</div>'
+    +'<button class="btn" style="margin-top:.7rem" onclick="event.stopPropagation();mTaskAccept(\''+x.id+'\')">🤝 '+esc(mtz('Acceptă și începe'))+'</button>'
+    +'<button class="btn-line" style="margin-top:.45rem;width:100%" onclick="event.stopPropagation();mTaskDeclineSheet(\''+x.id+'\')">🚫 '+esc(mtz('Nu pot prelua'))+'</button>'
+    +'</div>';
 }
 async function scrTaskuri(){
   if(mTaskExternal()){ goV('acasa'); return; }
@@ -1358,11 +1488,12 @@ async function scrTaskuri(){
   let open=[], done=[];
   try{
     /* ordonare + limită PE SERVER (plafonul tăcut PostgREST 1000 — D23) */
-    const r=await sb.from('tasks').select('id,title,status,priority,due_date,assignee,created_by,updated_at')
+    const COLS='id,title,status,priority,due_date,assignee,created_by,updated_at,assigned_at,accepted_at,declined_at,decline_reason';
+    const r=await sb.from('tasks').select(COLS)
       .in('status',['todo','in_progress','waiting'])
       .order('due_date',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false}).limit(200);
     if(r.error) throw r.error; open=r.data||[];
-    const d=await sb.from('tasks').select('id,title,status,priority,due_date,assignee,created_by,updated_at,completed_at')
+    const d=await sb.from('tasks').select(COLS+',completed_at')
       .eq('status','done').order('completed_at',{ascending:false}).limit(5);
     done=(d.data||[]);
   }catch(e){ $('screen').innerHTML='<div class="empty"><div class="ei">⚠️</div>'+esc(mTaskErr(e))+'</div>'; return; }
@@ -1371,14 +1502,158 @@ async function scrTaskuri(){
   const ids=S._tkRows.map(x=>x.id);
   if(ids.length){ try{ const lr=await sb.from('task_links').select('task_id,entity_type,entity_id,label').in('task_id',ids);
     (lr.data||[]).forEach(l=>{ (S._tkLinks[l.task_id]=S._tkLinks[l.task_id]||[]).push(l); }); }catch(e){} }
-  const late=open.filter(x=>x.due_date&&x.due_date<td), azi=open.filter(x=>x.due_date===td),
-        next=open.filter(x=>!x.due_date||x.due_date>td);
+  /* Terenul e o unealtă personală: implicit se văd DOAR taskurile mele. RLS oprește
+     oricum lucrătorul la ale lui; filtrul ăsta îl împiedică pe MANAGER să primească pe
+     telefon lista întregii firme, unde n-are ce face. Comutatorul apare doar la MGMT. */
+  const mgmt=['owner','admin','manager'].includes(S.memberRole||S.role);
+  if(S._tkScope===undefined) S._tkScope='mine';
+  const me=S.session?S.session.user.id:null;
+  const scope=a=>(S._tkScope==='all'&&mgmt)?a:a.filter(x=>x.assignee===me||x.created_by===me);
+  open=scope(open); done=scope(done);
+  const needs=open.filter(mTaskNeedsMe);
+  const rest=open.filter(x=>!mTaskNeedsMe(x));
+  const late=rest.filter(x=>x.due_date&&x.due_date<td), azi=rest.filter(x=>x.due_date===td),
+        next=rest.filter(x=>!x.due_date||x.due_date>td);
   const sec=(icon,tt,arr,empty)=>'<div class="scr-title" style="font-size:.95rem;margin-top:.6rem">'+icon+' '+esc(mtz(tt))+(arr.length?' ('+arr.length+')':'')+'</div>'+(arr.length?arr.map(mTaskCard).join(''):'<div class="s" style="margin:.1rem 0 .4rem">'+esc(mtz(empty))+'</div>');
+  const segBtn=(k,l)=>'<button class="mini-btn '+(S._tkScope===k?'pr':'gh')+'" onclick="S._tkScope=\''+k+'\';scrTaskuri()">'+esc(mtz(l))+'</button>';
   $('screen').innerHTML='<div class="scr-title" style="display:flex;align-items:center;gap:.6rem">✅ '+esc(mtz('Taskurile mele'))+' <button class="mini-btn pr" style="margin-left:auto" onclick="mTaskNew()">'+esc(mtz('＋ Task'))+'</button></div>'
+    +(mgmt?'<div style="display:flex;gap:.4rem;margin:.2rem 0 .5rem">'+segBtn('mine','Ale mele')+segBtn('all','Toate')+'</div>':'')
+    /* preluarea e PRIMA: e singurul lucru care așteaptă un răspuns de la om */
+    +(needs.length?('<div class="scr-title" style="font-size:.95rem;margin-top:.4rem">🤝 '+esc(mtz('Așteaptă răspunsul tău'))+' ('+needs.length+')</div>'+needs.map(mTaskAcceptCard).join('')):'')
     +sec('⚠️','Restante',late,'Nimic restant. 💪')
     +sec('📌','Azi',azi,'Nimic scadent azi.')
     +sec('📋','Următoarele',next,'Nimic planificat.')
     +sec('✔️','Gata recent',done,'—');
+}
+/* Reîmprospătarea ecranului rescrie `#screen`, deci pierde derularea. Pe teren omul e
+   de obicei jos în listă când apasă „Gata" — să-l arunci sus e o mică pedeapsă la fiecare
+   acțiune. Salvăm poziția și o punem la loc. (Sheet-ul, în schimb, se închide FĂRĂ
+   re-randare — vezi closeSheet — deci acolo nu e nimic de păstrat.) */
+async function mKeepScroll(fn){
+  const sc=$('screen'); const y=sc?sc.scrollTop:0;
+  await fn();
+  if(sc) requestAnimationFrame(function(){ try{ sc.scrollTop=y; }catch(e){} });
+}
+/* ── „Acceptă și începe" / „Nu pot prelua" (contract 0148) ───────────────────────── */
+/* vezi nota din app.html: lista încărcată NU e sursa de adevăr. Bannerul live poate fi
+   despre un task dintr-o altă firmă a utilizatorului sau din afara celor 200 de rânduri;
+   fără asta, butonul din banner se închidea și nu făcea NIMIC, tăcut. */
+async function mTaskRow(id){
+  const t=(S._tkRows||[]).find(x=>x.id===id)||((S._tkCur&&S._tkCur.id===id)?S._tkCur:null);
+  if(t) return t;
+  try{ const r=await sb.from('tasks').select('*').eq('id',id).single();
+       if(!r.error && r.data) return r.data; }catch(e){}
+  return null;
+}
+async function mTaskAccept(id){
+  const t=await mTaskRow(id);
+  if(!t){ toast('⚠️ '+mtz('Taskul nu a fost găsit.')); return; }
+  if(window._mtkBusy) return; window._mtkBusy=true;        /* dublu-tap ⇒ o singură scriere */
+  try{
+    const r=await sb.rpc('task_accept',{p_task_id:id,p_expected_updated_at:t.updated_at,p_request_id:mUuid()});
+    if(r.error) throw r.error;
+    toast('🤝 '+mtz('Ai preluat taskul.'));
+    if(S.view==='taskuri') mKeepScroll(scrTaskuri); else if(typeof fillTasksHome==='function') fillTasksHome();
+    if(S._tkCur&&S._tkCur.id===id) mTaskSheet(id);
+  }catch(e){ const m=String((e&&(e.message||e))||'');
+    toast('⚠️ '+(m.indexOf('TASK_NOT_ASSIGNEE')>=0?mtz('Taskul e atribuit altcuiva acum.')
+      :(m.indexOf('TASK_CLOSED')>=0?mtz('Taskul e deja închis.'):mTaskErr(e))));
+  } finally{ window._mtkBusy=false; }
+}
+/* ════ NOTIFICĂRI LIVE (TASK2-A.2, migr 0149) ═══════════════════════════════════════
+   Subscripție Realtime targetată pe notificările MELE. Filtrul e economie de trafic;
+   bariera reală e RLS-ul lui `notifications` (p_sel, 0102), evaluat per abonat.
+   Bannerul stă la nivel de BODY, nu în `#screen` — IIFE-ul de gesturi deține `transform`
+   pe `#screen`, iar un `position:fixed` acolo devine netappabil (KB#2). */
+function mNotifLiveStart(){
+  if(!sb||!S.session||!S.tenant||window._mnlChan) return;
+  const uid=S.session.user.id;
+  try{
+    window._mnlChan=sb.channel('c373m-notif-'+uid)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+uid},
+          p=>{ try{ mNotifLiveIncoming(p.new); }catch(e){} })
+      .subscribe();
+  }catch(e){ window._mnlChan=null; }
+}
+function mNotifLiveStop(){ try{ if(window._mnlChan) sb.removeChannel(window._mnlChan); }catch(e){} window._mnlChan=null; }
+function mNotifLiveIncoming(n){
+  if(!n||!n.id) return;
+  window._mnlSeen=window._mnlSeen||{};
+  if(window._mnlSeen[n.id]) return;          /* același eveniment pe alt canal ⇒ un banner */
+  window._mnlSeen[n.id]=1;
+  try{ loadNotifCount(); }catch(e){}
+  if(n.entity_type==='task'&&n.entity_id){
+    /* dacă omul e chiar pe lista de taskuri, ea trebuie să reflecte evenimentul —
+       fără să-i pierdem locul (Gate 6, varianta de teren) */
+    if(S.view==='taskuri') mKeepScroll(scrTaskuri);
+    else if(typeof fillTasksHome==='function') fillTasksHome();
+    mTaskLiveBanner(n);
+  } else mNotifBanner(n,null,null);
+}
+async function mTaskLiveBanner(n){
+  let t=null,site=null;
+  try{ const r=await sb.from('tasks').select('*').eq('id',n.entity_id).single();
+       if(!r.error) t=r.data;
+       if(t){ const l=await sb.from('task_links').select('entity_id,label').eq('task_id',t.id).eq('entity_type','site').maybeSingle();
+              if(l&&l.data) site=l.data; } }catch(e){}
+  mNotifBanner(n,t,site);
+}
+function mNotifBanner(n,t,site){
+  const id='mnl-'+n.id; if($(id)) return;
+  const canAct=!!(t&&mTaskNeedsMe(t));
+  const b=document.createElement('div'); b.id=id; b.setAttribute('role','status');
+  b.style.cssText='position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:70;'
+    +'background:var(--surface);border:1px solid var(--primary);border-left:4px solid var(--primary);border-radius:14px;'
+    +'box-shadow:0 12px 28px rgba(0,0,0,.22);padding:.8rem .85rem;max-width:444px;margin:0 auto';
+  b.innerHTML='<div style="display:flex;gap:.5rem;align-items:flex-start">'
+      +'<div style="flex:1;min-width:0" onclick="mNotifBannerOpen(\''+id+'\',\''+((t&&t.id)||n.entity_id||'')+'\')">'
+        +'<div style="font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--primary)">'+esc(mtz(t?'Task nou':'Notificare'))+'</div>'
+        +(site?'<div class="s" style="margin-top:.15rem">🏗 '+esc(site.label||mtz('Șantier'))+'</div>':'')
+        +'<div style="font-weight:700;margin-top:.15rem;overflow-wrap:anywhere">'+esc((t&&t.title)||n.title||'')+'</div>'
+        +(t&&t.due_date?'<div class="s" style="margin-top:.15rem">📅 '+esc(t.due_date.split('-').reverse().join('.'))+'</div>':'')
+      +'</div>'
+      +'<button class="mini-btn gh" style="padding:.25rem .5rem" aria-label="'+esc(mtz('Închide'))+'" onclick="mNotifBannerClose(\''+id+'\')">×</button>'
+    +'</div>'
+    +(canAct?('<button class="btn" style="margin-top:.6rem" onclick="mNotifBannerClose(\''+id+'\');mTaskAccept(\''+t.id+'\')">🤝 '+esc(mtz('Acceptă și începe'))+'</button>'
+      +'<div style="display:flex;gap:.4rem;margin-top:.4rem">'
+      +'<button class="mini-btn gh" style="flex:1" onclick="mNotifBannerClose(\''+id+'\')">'+esc(mtz('Mai târziu'))+'</button>'
+      +'<button class="mini-btn gh" style="flex:1" onclick="mNotifBannerClose(\''+id+'\');mTaskDeclineSheet(\''+t.id+'\')">🚫 '+esc(mtz('Nu pot prelua'))+'</button>'
+      +'</div>'):'');
+  document.body.appendChild(b);                       /* BODY, nu #screen (KB#2) */
+  /* un task care așteaptă răspuns NU se auto-închide: e o cerere, nu o confirmare */
+  if(!canAct) setTimeout(()=>mNotifBannerClose(id), 10000);
+}
+function mNotifBannerClose(id){ const e=$(id); if(e&&e.parentNode) e.parentNode.removeChild(e); }
+function mNotifBannerOpen(id,taskId){ mNotifBannerClose(id); if(taskId) mTaskSheet(taskId); }
+
+const MT_DECLINE=['Sunt pe alt șantier','Nu am materialele','Am nevoie de clarificare','Alt motiv'];
+async function mTaskDeclineSheet(id){
+  const t=await mTaskRow(id);
+  if(!t){ toast('⚠️ '+mtz('Taskul nu a fost găsit.')); return; }
+  openSheet('🚫 '+mtz('Nu pot prelua'),
+    '<div class="s" style="margin-bottom:.6rem">'+esc(t.title)+'</div>'
+    +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.6rem">'
+    +MT_DECLINE.map(p=>'<button class="mini-btn gh" data-p="'+esc(mtz(p))+'" onclick="document.getElementById(\'mtd-r\').value=this.dataset.p">'+esc(mtz(p))+'</button>').join('')
+    +'</div>'
+    +'<div class="fld"><label for="mtd-r">'+esc(mtz('Motivul (opțional)'))+'</label>'
+    +'<textarea id="mtd-r" rows="2" style="width:100%"></textarea></div>'
+    +'<div class="s" style="margin:.4rem 0 .7rem">'+esc(mtz('Taskul NU se anulează. Rămâne al tău, marcat ca refuzat, iar managerul decide.'))+'</div>'
+    +'<button class="btn" id="mtd-save" onclick="mTaskDeclineSave(\''+id+'\')">'+esc(mtz('Trimite'))+'</button>');
+}
+async function mTaskDeclineSave(id){
+  const t=await mTaskRow(id);
+  if(!t){ toast('⚠️ '+mtz('Taskul nu a fost găsit.')); return; }
+  if(window._mtkBusy) return; window._mtkBusy=true;
+  const b=$('mtd-save'); if(b) b.disabled=true;
+  try{
+    const r=await sb.rpc('task_decline',{p_task_id:id,
+      p_reason:(($('mtd-r')&&$('mtd-r').value)||'').trim()||null,
+      p_expected_updated_at:t.updated_at,p_request_id:mUuid()});
+    if(r.error) throw r.error;
+    closeSheet(); toast('🚫 '+mtz('Am anunțat că nu poți prelua.'));
+    if(S.view==='taskuri') mKeepScroll(scrTaskuri); else if(typeof fillTasksHome==='function') fillTasksHome();
+  }catch(e){ toast('⚠️ '+mTaskErr(e)); if(b) b.disabled=false; }
+  finally{ window._mtkBusy=false; }
 }
 async function fillTasksHome(){
   const host=$('tk-block'); if(!host) return;
@@ -1401,7 +1676,7 @@ async function mTaskStatus(id, st){
     const r=await sb.rpc('task_set_status',{p_task_id:id,p_status:st,p_expected_updated_at:x.updated_at,p_request_id:mUuid()});
     if(r.error) throw r.error;
     toast('✅ '+(window.C373t?C373t('Actualizat.'):'Actualizat.')); closeSheet();
-    if(S.view==='taskuri') scrTaskuri(); else fillTasksHome();
+    if(S.view==='taskuri') mKeepScroll(scrTaskuri); else fillTasksHome();
   }catch(e){ toast(mTaskErr(e));
     if(String(e&&e.message||'').indexOf('TASK_CONFLICT')>=0&&S.view==='taskuri') scrTaskuri(); }
   finally{ window._mtkBusy=false; }
@@ -1439,12 +1714,22 @@ async function mTaskSheet(id){
       return '<div class="row" style="gap:.45rem;padding:.25rem 0;border-bottom:1px solid var(--line,#e5e9f2)">'
         +'<span aria-hidden="true">'+(img?'🖼️':'📄')+'</span>'
         +'<a onclick="mTaskAttOpen(\''+encodeURIComponent(a.file_path)+'\')" class="grow" style="color:#2f6bff;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.file_name)+'</a>'+rm+'</div>'; }).join('');
+  const _site=(links||[]).find(l=>l.entity_type==='site');
+  const _acc=mTaskAcc(t);
+  const _needs=mTaskNeedsMe(t);
   openSheet('✅ '+t.title,
-    '<div class="s">'+esc(stTxt)+' · 👤 '+esc(mAsgLbl(t.assignee))
-      +(t.due_date?(' · '+(ov?'⚠️ ':'')+esc(t.due_date.split('-').reverse().join('.'))):'')
-      +(t.priority==='high'?(' · ❗ '+esc(mtz('Prioritate înaltă'))):'')+'</div>'
+    '<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.35rem">'+mStPill(t.status)+mPriPill(t.priority)+mAccPill(t)+'</div>'
+    +(_site?'<div class="s">🏗 '+esc(_site.label||mtz('Șantier'))+'</div>':'')
+    +'<div class="s">👤 '+esc(mAsgLbl(t.assignee))
+      +(t.due_date?(' · '+(ov?'⚠️ ':'📅 ')+esc(t.due_date.split('-').reverse().join('.'))):'')+'</div>'
+    +(_acc==='accepted'&&t.accepted_at?'<div class="s">🤝 '+esc(mtz('Acceptat la'))+' '+esc(fmtDT(t.accepted_at))+'</div>':'')
+    +(_acc==='declined'&&t.declined_at?'<div class="s" style="color:var(--red)">🚫 '+esc(mtz('Refuzat la'))+' '+esc(fmtDT(t.declined_at))+(t.decline_reason?(' · „'+esc(t.decline_reason)+'"'):'')+'</div>':'')
     +(t.description?'<div style="font-size:.9rem;margin:.35rem 0;white-space:pre-wrap;word-break:break-word">'+esc(t.description)+'</div>':'')
     +lkH
+    /* preluarea, dacă mă privește, stă ÎNAINTEA acțiunilor de stare: e întrebarea la
+       care omul trebuie să răspundă întâi */
+    +(_needs?('<button class="btn" style="margin-top:.55rem" onclick="mTaskAccept(\''+t.id+'\')">🤝 '+esc(mtz('Acceptă și începe'))+'</button>'
+      +'<button class="btn-line" style="margin-top:.4rem;width:100%" onclick="mTaskDeclineSheet(\''+t.id+'\')">🚫 '+esc(mtz('Nu pot prelua'))+'</button>'):'')
     +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0">'+mTaskActions(t)+'</div>'
     +'<div class="scr-title" style="font-size:.85rem;margin:.6rem 0 .2rem">💬 '+esc(mtz('Comentarii'))+' ('+cms.length+')</div>'+cmH
     +'<div style="display:flex;gap:.4rem;margin-top:.45rem;align-items:flex-end">'
@@ -1781,8 +2066,12 @@ async function scrScanMove(){
     try{
       const [w,si,em]=await Promise.all([
         sb.from('warehouses').select('id,name').order('name'),
-        sb.from('sites').select('id,name,status').order('name'),
-        sb.from('employees').select('id,full_name').eq('active',true).order('full_name')]);
+        mSel('sites','id,name,status').order('name'),
+        /* ►► EMP1 §8 — TOȚI angajații. `S._mvLoc.emp` e „BOTH": alimentează butoanele de
+           DESTINAȚIE (operațional, filtrate mai jos) ȘI `mvLocLabel` (eticheta din istoricul
+           de mișcări). Filtrat la sursă, o mișcare veche „la un angajat" acum concediat s-ar
+           fi afișat „👤 Responsabil", fără nume — istoric mutilat. */
+        sb.from('employees').select('id,full_name,active,terminated_on').order('full_name')]);
       S._mvLoc={wh:w.data||[], sites:(si.data||[]).filter(x=>x.status!=='cancelled'), emp:em.data||[]};
     }catch(e){ S._mvLoc={wh:[],sites:[],emp:[]}; }
   }
@@ -1792,7 +2081,8 @@ function mvLocLabel(kind,id){
   const L=S._mvLoc||{wh:[],sites:[],emp:[]};
   if(kind==='warehouse'){ const x=L.wh.find(v=>v.id===id); return '🏬 '+((x&&x.name)||mtz('Depozit')); }
   if(kind==='site'){ const x=L.sites.find(v=>v.id===id); return '🏗️ '+((x&&x.name)||mtz('Șantier')); }
-  if(kind==='employee'){ const x=L.emp.find(v=>v.id===id); return '👤 '+((x&&x.full_name)||mtz('Responsabil')); }
+  /* EMP1 §8 — numele rămâne uman în istoricul de mișcări, chiar dacă omul a plecat. */
+  if(kind==='employee'){ const x=L.emp.find(v=>v.id===id); return '👤 '+((x&&x.full_name)||mtz('Responsabil'))+((x&&x.active===false)?' ('+mtz('concediat')+')':''); }
   return mtz('Nealocat');
 }
 function mvRender(){
@@ -1839,7 +2129,8 @@ function mvRender(){
       +'<div class="s" style="margin:.5rem 0 .3rem">'+esc(mtz('sau alege:'))+'</div>'
       +L.wh.map(w=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetDest(\'warehouse\',\''+w.id+'\')">🏬 '+esc(w.name)+'</button>').join('')
       +L.sites.map(s=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetDest(\'site\',\''+s.id+'\')">🏗️ '+esc(s.name)+'</button>').join('')
-      +(!isMat?L.emp.map(e=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetDest(\'employee\',\''+e.id+'\')">👤 '+esc(e.full_name)+'</button>').join(''):'')
+      /* EMP1 §8 — DESTINAȚIE = predare NOUĂ ⇒ concediații nu se oferă. */
+      +(!isMat?L.emp.filter(e=>e.active!==false).map(e=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvSetDest(\'employee\',\''+e.id+'\')">👤 '+esc(e.full_name)+'</button>').join(''):'')
       +(isMat&&M.from?'<div style="margin-top:.5rem"><button class="mini-btn gh" onclick="mvSetDest(\'consume\',\'\')">🔥 '+esc(mtz('Consum (iese din stoc)'))+'</button></div>':'')
       +'</div>';
     sc.innerHTML=h; return;
@@ -2464,7 +2755,8 @@ function mvbRender(){
       +'<div class="s" style="margin:.5rem 0 .3rem">'+esc(mtz('sau alege:'))+'</div>'
       +L.wh.map(w=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvbSetDest(\'warehouse\',\''+w.id+'\')">🏬 '+esc(w.name)+'</button>').join('')
       +L.sites.map(s=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvbSetDest(\'site\',\''+s.id+'\')">🏗️ '+esc(s.name)+'</button>').join('')
-      +L.emp.map(e=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvbSetDest(\'employee\',\''+e.id+'\')">👤 '+esc(e.full_name)+'</button>').join('')
+      /* EMP1 §8 — idem pentru lotul de mișcări. */
+      +L.emp.filter(e=>e.active!==false).map(e=>'<button class="mini-btn gh" style="margin:.15rem" onclick="mvbSetDest(\'employee\',\''+e.id+'\')">👤 '+esc(e.full_name)+'</button>').join('')
       +(mvCanMaterial()?'<div style="margin-top:.5rem"><button class="mini-btn gh" onclick="mvbSetDest(\'consume\',\'\')">🔥 '+esc(mtz('Consum (iese din stoc)'))+'</button></div>':'')
       +'</div>';
     sc.innerHTML=h; return;

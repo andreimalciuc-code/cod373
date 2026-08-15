@@ -1,7 +1,9 @@
 /* Cod373 service worker — stale-while-revalidate pentru pagini (rapid), cache-first pentru resurse */
-/* v361 = UX2 (formulare canonice de catalog), live. TASK1-A (motorul de taskuri,
-   migr 0136) se publică peste el ⇒ v362. */
-const CACHE = 'cod373-v372';
+/* Versiunea LIVE curentă e constanta CACHE de mai jos — ea e sursa de adevăr, nu
+   comentariul și nu numărul din mesajul de commit. v372 = INVITE1-B.1 (linkul de
+   invitație duce la ecranul de activare). v373 = TASK2-A.2 (Task Center Pro,
+   acceptarea responsabilității, notificări live). */
+const CACHE = 'cod373-v373';
 const ASSETS = [
   './app.html', './mobil.html', './acces.html', './portal.html', './erp.html', './grafic.html', './deviz.html', './factura.html', './i18n.js', './catalog-form.js',
   './manifest.webmanifest', './manifest-mobil.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png'
@@ -33,16 +35,28 @@ self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { title: 'Cod373', body: e.data ? e.data.text() : '' }; }
   const title = d.title || 'Cod373';
-  const opts = { body: d.body || '', icon: './icon-192.png', badge: './icon-192.png', data: { url: d.url || './app.html' }, tag: d.tag || 'cod373', requireInteraction: true, renotify: true };
+  // TASK2-A.2: payload-ul poartă DOUĂ ținte — una de teren, una de birou. Alegerea se face
+  // la clic, după fereastra care e deschisă, nu aici.
+  const opts = { body: d.body || '', icon: './icon-192.png', badge: './icon-192.png',
+    data: { url: d.url || './app.html', appUrl: d.app_url || '' },
+    tag: d.tag || 'cod373', requireInteraction: true, renotify: true };
   e.waitUntil(self.registration.showNotification(title, opts));
 });
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const target = (e.notification.data && e.notification.data.url) || './app.html';
+  const dt = e.notification.data || {};
+  const target = dt.url || './app.html';
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(ws => {
-      for (const w of ws) { if ('focus' in w) { w.focus(); if ('navigate' in w) { try { w.navigate(target); } catch (_) {} } return; } }
+      for (const w of ws) {
+        if ('focus' in w) {
+          // Cine lucrează la birou nu vrea să fie aruncat în aplicația de teren doar
+          // pentru că a atins o notificare — și invers.
+          const t = (dt.appUrl && String(w.url || '').indexOf('app.html') >= 0) ? dt.appUrl : target;
+          w.focus(); if ('navigate' in w) { try { w.navigate(t); } catch (_) {} } return;
+        }
+      }
       if (self.clients.openWindow) return self.clients.openWindow(target);
     })
   );

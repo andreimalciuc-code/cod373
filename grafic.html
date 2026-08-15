@@ -149,7 +149,12 @@ async function loadAll(){
     sb.from('site_stages').select('id,name,position,status,progress,start_date,end_date,qty,unit,norm_id,executor_kind,executor_id,executor_name,specialty,est_cost,description,photo_urls,depends_on,is_milestone,baseline_start,baseline_end').eq('site_id',STATE.siteId),
     sb.from('material_orders').select('total,status').eq('site_id',STATE.siteId),
     sb.from('subcontracts').select('amount,status').eq('site_id',STATE.siteId),
-    sb.from('employees').select('id,full_name,specialty').eq('active',true),
+    /* ►► EMP1 §7 — se aduc TOȚI angajații. `STATE.execs` e și DICȚIONAR (filtrul „Toți
+       executanții", :276) și SELECTOR de atribuire (:432). Filtrat la sursă, un executant
+       concediat lipsea din `<select>`-ul etapei, care cădea pe „— neatribuit —", iar salvarea
+       (:467 citește `STATE.execs[index]`) îi ȘTERGEA executantul.
+       Istoricul afișat nu depinde de asta: etapele păstrează `executor_name` ca snapshot. */
+    sb.from('employees').select('id,full_name,specialty,active,terminated_on'),
     sb.from('subcontractors').select('id,name,specialties'),
     sb.from('norms').select('id,code,name,unit,category,unit_price,daily_output'),
     sb.from('norm_materials').select('norm_code,material_name,unit,qty_per_unit,kind'),
@@ -158,7 +163,7 @@ async function loadAll(){
   if(siteR.error){ $('root').innerHTML='<div class="center">Eroare: '+esc(siteR.error.message)+'</div>'; return; }
   STATE.site=siteR.data;
   STATE.stages=(stagesR.data||[]).slice().sort((a,b)=>(a.position||0)-(b.position||0));
-  STATE.execs=[].concat((empR.data||[]).map(x=>({kind:'angajat',id:x.id,name:x.full_name,specialty:x.specialty||''})),
+  STATE.execs=[].concat((empR.data||[]).map(x=>({kind:'angajat',id:x.id,name:x.full_name,specialty:x.specialty||'',term:(x.active===false&&!!x.terminated_on)})),
                         (subcR.data||[]).map(x=>({kind:'subcontractant',id:x.id,name:x.name,specialty:x.specialties||''})));
   STATE.norms=normR.data||[]; STATE.services=svcR.data||[]; STATE.normMat={}; (nmR.data||[]).forEach(x=>{ (STATE.normMat[x.norm_code]=STATE.normMat[x.norm_code]||[]).push(x); });
   STATE._cost = ((ordR.data||[]).filter(o=>o.status!=='cancelled').reduce((t,o)=>t+(+o.total||0),0))
@@ -429,7 +434,13 @@ function openStage(id, asMilestone){
   const depOpts=STATE.stages.filter(x=>String(x.id)!==String(st.id)).map(x=>'<option value="'+x.id+'" '+((st.depends_on||[]).map(String).includes(String(x.id))?'selected':'')+'>'+(x.is_milestone?'◆ ':'')+esc(x.name)+'</option>').join('');
   const normOpts='<option value="">— lucrare liberă —</option>'+STATE.norms.map(n=>'<option value="'+n.id+'" '+(st.norm_id===n.id?'selected':'')+'>'+esc(n.name)+' ('+esc(n.unit)+')</option>').join('');
   const svcOpts='<option value="">— alege serviciu —</option>'+(STATE.services||[]).map((s,i)=>'<option value="'+i+'">'+esc(s.name)+' ('+esc(s.unit||'')+')</option>').join('');
-  const exOpts='<option value="">— neatribuit —</option>'+STATE.execs.map((x,i)=>'<option value="'+i+'" '+(st.executor_id===x.id?'selected':'')+'>'+(x.kind==='angajat'?'👷':'🏢')+' '+esc(x.name)+(x.specialty?' · '+esc(x.specialty):'')+'</option>').join('');
+  /* ►► EMP1 §7 — atribuire NOUĂ ⇒ fără concediați, DAR executantul deja legat pe etapă rămâne
+     în listă. Indexul trimis la salvare (:467) e poziția în `STATE.execs`, deci filtrăm cu
+     `map` + `filter` PĂSTRÂND indexul original — altfel salvarea ar nimeri alt executant. */
+  const exOpts='<option value="">— neatribuit —</option>'+STATE.execs
+    .map((x,i)=>({x:x,i:i}))
+    .filter(p=>!p.x.term || st.executor_id===p.x.id)
+    .map(p=>'<option value="'+p.i+'" '+(st.executor_id===p.x.id?'selected':'')+'>'+(p.x.kind==='angajat'?'👷':'🏢')+' '+esc(p.x.name)+(p.x.specialty?' · '+esc(p.x.specialty):'')+(p.x.term?' (concediat)':'')+'</option>').join('');
   const statusOpts=Object.keys(STATUS).map(k=>'<option value="'+k+'" '+((st.status||'plan')===k?'selected':'')+'>'+STATUS[k]+'</option>').join('');
   const photos=(st.photo_urls||[]).map((p,i)=>'<a onclick="openPhoto(\''+encodeURIComponent(p)+'\')" style="cursor:pointer;color:var(--primary);font-size:.78rem;margin-right:.5rem">🖼️ poza '+(i+1)+'</a>').join('');
   $('root').insertAdjacentHTML('beforeend',
