@@ -178,7 +178,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='337';
+const APP_BUILD='338';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -618,12 +618,18 @@ async function scrAcasa(){
     +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">'+esc(roleSub)+'</div></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
     +(mTaskExternal()?'':'<div id="tk-block"></div>')
-    +(S.role==='driver'?'<div id="myveh-block"></div>':'')
+    /* ►► KB#90 / D62 — gazda cardului „Vehiculul meu" NU mai depinde de rol.
+       Custodia se derivă din `vehicle_handovers` (D60) și se citește prin `my_vehicles()` (D61);
+       niciuna nu întreabă ce rol are utilizatorul. Măsurat pe producție în RELEASE1: un vehicul
+       predat unui angajat cu membership `worker` era invizibil EXACT pentru cel care-l ținea —
+       iar în firma reală nu există niciun cont `driver`, deci cardul nu s-ar fi afișat nimănui.
+       Gazda e goală: `fillMyVehicle` decide ce apare, după FAPTE, nu după rol. */
+    +'<div id="myveh-block"></div>'
     +(S.role==='worker'?'<div id="azi-block"></div>':'')
     +'<div class="scr-title" style="font-size:.95rem">Șantierele tale</div>'
     +(list||'<div class="empty"><div class="ei">🏗️</div>Niciun șantier activ.</div>');
   if(S.role==='worker') fillAzi();
-  if(S.role==='driver') fillMyVehicle();
+  fillMyVehicle();                       /* KB#90/D62: custodia decide, nu rolul */
   if(!mTaskExternal()) fillTasksHome();
 }
 /* „📌 Azi" — șantierul planificat azi + pașii de lucru deschiși, pe pagina principală a lucrătorului */
@@ -742,9 +748,27 @@ async function mMyVehicles(force){
 async function fillMyVehicle(){
   const host=$('myveh-block'); if(!host) return;
   const mv=await mMyVehicles(true);
-  if(mv.err){ host.innerHTML='<div class="card"><div class="t">🚐 '+esc(mtz('Vehiculul meu'))+'</div><div class="s">'+esc(mtz('Nu am putut verifica ce vehicul ai. Trage în jos pentru reîncercare.'))+'</div></div>'; return; }
+  /* KB#90/D62 — cine vede SUPRAFAȚA când nu există niciun vehicul.
+     Rolul `driver` păstrează starea goală existentă: pentru el ecranul e despre mașină, iar
+     absența ei e o informație. Pentru ceilalți NU desenăm nimic — cardul apare fiindcă AU
+     CUSTODIE, nu fiindcă sunt lucrători (§4). `_myVehEver` reține că utilizatorul a avut măcar
+     o dată un vehicul în sesiune: altfel o eroare de rețea l-ar lăsa pe cel care CHIAR ține
+     mașina fără niciun semn, iar tăcerea la eroare e exact defectul pe care nu-l vrem. */
+  const showSurface=(S.role==='driver')||S._myVehEver===true;
+  if(mv.err){
+    host.innerHTML=showSurface
+      ?'<div class="card"><div class="t">🚐 '+esc(mtz('Vehiculul meu'))+'</div><div class="s">'+esc(mtz('Nu am putut verifica ce vehicul ai. Trage în jos pentru reîncercare.'))+'</div></div>'
+      :'';
+    return;
+  }
   const rows=mv.rows||[];
-  if(!rows.length){ host.innerHTML='<div class="card"><div class="t">🚐 '+esc(mtz('Niciun vehicul în custodie'))+'</div><div class="s">'+esc(mtz('Biroul ți-l predă din fișa mașinii.'))+'</div></div>'; return; }
+  if(rows.length) S._myVehEver=true;
+  if(!rows.length){
+    host.innerHTML=showSurface
+      ?'<div class="card"><div class="t">🚐 '+esc(mtz('Niciun vehicul în custodie'))+'</div><div class="s">'+esc(mtz('Biroul ți-l predă din fișa mașinii.'))+'</div></div>'
+      :'';
+    return;
+  }
   host.innerHTML='<div class="scr-title" style="font-size:.95rem">'+esc(mtz('Vehiculul meu'))+'</div>'
     +rows.map(function(v){
       const km=(v.km_current!=null)?((+v.km_current).toLocaleString('ro-RO')+' km'):'';
@@ -755,9 +779,11 @@ async function fillMyVehicle(){
         +'<div style="margin-top:.6rem;text-align:right"><button class="mini-btn go" onclick="sendLocation(\''+v.vehicle_id+'\')">📍 '+esc(mtz('Trimite locația'))+'</button></div></div>';
     }).join('');
 }
-/* ȘOFER — trimite locația GPS. `vid` explicit din card; fără el, se rezolvă din autoritate.
+/* CUSTODIE — trimite locația GPS. `vid` explicit din card; fără el, se rezolvă din autoritate.
    Rezolvarea se face ÎNAINTE de a cere permisiunea GPS: n-are rost să deranjăm utilizatorul
-   pentru o poziție pe care n-avem unde s-o punem. */
+   pentru o poziție pe care n-avem unde s-o punem.
+   KB#90/D62: capabilitatea ține de CUSTODIE, nu de rol — funcția n-a avut niciodată vreo gardă
+   de rol, doar butonul care o chema stătea într-o ramură `S.role==='driver'`. */
 async function sendLocation(vid){
   if(!navigator.geolocation){ toast('Telefonul nu permite localizarea.'); return; }
   let target=vid;
@@ -772,10 +798,30 @@ async function sendLocation(vid){
   }
   toast('📍 Se obține locația…');
   navigator.geolocation.getCurrentPosition(async pos=>{
-    const { error } = await sb.from('vehicles').update({last_lat:pos.coords.latitude,last_lng:pos.coords.longitude,last_seen_at:new Date().toISOString(),status:'en_route'}).eq('id',target);
-    if(error){ toast('Eroare: '+esc(error.message)); return; }
+    /* ►► D62 — scrierea trece prin CONTRACT self-scoped (0158), nu prin UPDATE direct.
+       Motivul e măsurat, nu teoretic: `p_upd` pe `vehicles` e `has_role(tenant_id, STAFF)`
+       (0019 prin `app.harden`, relărgită în 0125:129), deci un UPDATE direct e permis oricărui
+       membru al personalului pe ORICE vehicul al firmei și pe ORICE coloană — `plate`,
+       `km_current`, `itp_until`. Acum că suprafața nu mai e limitată la rolul `driver`, ar fi
+       fost exact momentul în care acel model larg s-ar fi operaționalizat. Contractul verifică
+       server-side membership + custodie și scrie DOAR poziția. Îngustarea politicii la OFFICE
+       e faza 2 (lot separat): live-ul vechi încă scrie direct și nu trebuie rupt. */
+    const { error } = await sb.rpc('vehicle_location_report',{
+      p_tenant_id:S.tenant, p_vehicle_id:target,
+      p_lat:pos.coords.latitude, p_lng:pos.coords.longitude
+    });
+    if(error){ toast('⚠️ '+esc(mLocErr(error))); return; }
     toast('📍 Locație trimisă. Apari pe harta firmei.');
   }, err=>{ toast('Nu am putut obține locația ('+esc(err.message)+').'); }, {enableHighAccuracy:true,timeout:10000});
+}
+/* Mesaje umane pentru refuzurile contractului 0158 — utilizatorul află ce s-a întâmplat și ce
+   urmează, fără să vadă un cod. Necunoscutele cad pe mesajul serverului. */
+function mLocErr(e){
+  const m=String((e&&(e.message||e.details))||'');
+  if(/LOCATION_NOT_IN_CUSTODY/.test(m)) return mtz('Vehiculul nu mai este în custodia ta. Trage în jos pentru reîmprospătare.');
+  if(/LOCATION_FORBIDDEN/.test(m))      return mtz('Nu ai dreptul să trimiți locația pentru acest vehicul.');
+  if(/LOCATION_INVALID/.test(m))        return mtz('Coordonatele primite de la telefon nu sunt valide.');
+  return m||mtz('Nu am putut trimite locația. Încearcă din nou.');
 }
 
 /* DETALIU ȘANTIER */

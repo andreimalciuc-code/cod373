@@ -77,6 +77,11 @@
     'Nu am putut verifica ce vehicul ai. Încearcă din nou.':{ru:'Не удалось проверить ваш автомобиль. Попробуйте ещё раз.',de:'Dein Fahrzeug konnte nicht geprüft werden. Bitte erneut versuchen.',en:'Could not check your vehicle. Please try again.'},
     'Nu ai niciun vehicul în custodie. Biroul ți-l predă din fișa mașinii.':{ru:'У вас нет автомобиля на руках. Офис передаёт его из карточки автомобиля.',de:'Du hast kein Fahrzeug in Obhut. Das Büro übergibt es über die Fahrzeugakte.',en:'You have no vehicle in custody. The office hands it over from the vehicle sheet.'},
     'Ai mai multe vehicule. Alege unul din „Vehiculul meu".':{ru:'У вас несколько автомобилей. Выберите один в разделе «Мой автомобиль».',de:'Du hast mehrere Fahrzeuge. Wähle eines unter „Mein Fahrzeug".',en:'You have several vehicles. Pick one under "My vehicle".'},
+    // ── HOTFIX1 / KB#90: refuzurile contractului de raportare a poziției (0158) ──
+    'Vehiculul nu mai este în custodia ta. Trage în jos pentru reîmprospătare.':{ru:'Автомобиль больше не у вас на руках. Потяните вниз, чтобы обновить.',de:'Das Fahrzeug ist nicht mehr in deiner Obhut. Zum Aktualisieren nach unten ziehen.',en:'The vehicle is no longer in your custody. Pull down to refresh.'},
+    'Nu ai dreptul să trimiți locația pentru acest vehicul.':{ru:'У вас нет права отправлять местоположение для этого автомобиля.',de:'Du darfst für dieses Fahrzeug keinen Standort senden.',en:'You are not allowed to send the location for this vehicle.'},
+    'Coordonatele primite de la telefon nu sunt valide.':{ru:'Координаты, полученные от телефона, недействительны.',de:'Die vom Telefon gelieferten Koordinaten sind ungültig.',en:'The coordinates received from the phone are not valid.'},
+    'Nu am putut trimite locația. Încearcă din nou.':{ru:'Не удалось отправить местоположение. Попробуйте ещё раз.',de:'Standort konnte nicht gesendet werden. Bitte erneut versuchen.',en:'Could not send the location. Please try again.'},
     // ── FLEET2-A: predarea / returul automobilului ──
     // Verificate contra dicționarului înainte de adăugare: 'Predat', 'Returnat', 'Kilometraj',
     // 'Adaugă poze', 'Observații', 'Data', 'Nicio poză', 'Renunță', 'Eroare' EXISTAU deja și NU
