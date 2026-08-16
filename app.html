@@ -158,20 +158,48 @@
   .nav-row:hover .nav-fav,.nav-fav:focus-visible{opacity:1}
   .nav-fav.on{opacity:1;color:#f5b544}
   .nav-fav:hover{color:#f5b544}
-  .ws{margin:.1rem 0}
-  .ws-head{width:100%;display:flex;align-items:center;gap:.6rem;padding:.55rem .9rem;margin:.1rem .6rem;
+  /* ════ NAV2 — „Module clare, submodule liniștite." ════
+     Ierarhia era INVERSATĂ: antetul spațiului era .72rem/MAJUSCULE/#8e9ab5, iar copiii lui
+     .9rem/#aeb9d2 — copilul se citea mai TARE decât părintele. În plus submodulele nu erau
+     indentate deloc, iar spațiul dintre grupuri era identic cu cel din grup (.1rem peste tot),
+     deci ochiul vedea o listă continuă de rânduri egale. Mai mult spațiu ÎNTRE module,
+     mai puțin ÎNTRE submodulele aceluiași modul. */
+  .ws{margin:.5rem 0 .15rem}
+  .ws:first-of-type{margin-top:.15rem}
+  .ws-head{width:100%;display:flex;align-items:center;gap:.6rem;padding:.58rem .9rem;margin:.1rem .6rem;
            width:calc(100% - 1.2rem);background:none;border:none;border-radius:9px;cursor:pointer;
-           font-family:inherit;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-           color:#8e9ab5;transition:background .15s,color .15s}
-  .ws-head:hover{background:var(--sidebar-hover);color:#dbe3f2}
-  .ws-cur>.ws-head{color:#dbe3f2}
-  .ws-ic{font-size:.95rem;flex-shrink:0}
+           position:relative;
+           font-family:inherit;font-size:.9rem;font-weight:600;letter-spacing:0;text-transform:none;
+           color:#b7c2d8;transition:background .15s,color .15s}
+  .ws-head:hover{background:var(--sidebar-hover);color:#fff}
+  /* `.ws-cur>.ws-head` era o regulă MOARTĂ: DOM-ul real e `.ws > .ws-hrow > .ws-head`,
+     deci evidențierea părintelui n-a funcționat niciodată de la UX1 încoace. */
+  .ws-open>.ws-hrow .ws-head,.ws-cur>.ws-hrow .ws-head{color:#fff}
+  .ws-ic{font-size:1.02rem;flex-shrink:0;width:20px;text-align:center}
   .ws-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
   .ws-n{font-size:.66rem;font-weight:600;letter-spacing:0;color:#6f7c99;background:var(--sidebar-hover);
         border-radius:20px;padding:.05rem .38rem;flex-shrink:0}
-  .ws-chev{font-size:.7rem;opacity:.75;flex-shrink:0}
-  .ws-cur{box-shadow:inset 2px 0 0 var(--primary)}
-  .ws-panel{padding-bottom:.25rem}
+  .ws-chev{font-size:.78rem;opacity:.5;flex-shrink:0;transition:opacity .15s}
+  .ws-head:hover .ws-chev,.ws-open>.ws-hrow .ws-chev{opacity:.95}
+  /* Părintele rămâne marcat cât timp copilul lui e activ — inclusiv cu grupul ÎNCHIS. */
+  .ws-cur>.ws-hrow .ws-head::before{content:"";position:absolute;left:-.3rem;top:.4rem;bottom:.4rem;
+        width:3px;border-radius:0 2px 2px 0;background:var(--primary)}
+  .ws-cur{box-shadow:none}
+  /* Submodulele: indentate REAL, sub o singură șină verticală fină, compacte între ele.
+     Regulile sunt SCOPATE la `.ws-panel` — Favorite / Recente / Dashboard sunt liste de
+     nivel 1, nu submodule, și rămân neatinse. */
+  .ws-panel{margin:.05rem 0 .1rem 1.05rem;padding:0 0 .15rem .15rem;
+        border-left:1px solid rgba(255,255,255,.12)}
+  .ws-panel .nav-item{position:relative;margin:.02rem .45rem .02rem .2rem;padding:.42rem .5rem;
+        font-size:.845rem;font-weight:500;color:#9aa7c2}
+  .ws-panel .nav-item .ic{font-size:.94rem;width:18px}
+  .ws-panel .nav-item:hover{color:#fff}
+  .ws-panel .nav-item.active{font-weight:700;color:#fff}
+  /* elementul activ își colorează segmentul din șină: semnal STRUCTURAL, nu doar culoare */
+  .ws-panel .nav-item.active::before{content:"";position:absolute;left:-.2rem;top:0;bottom:0;
+        width:2px;background:var(--primary)}
+  /* Dashboard e destinație de NIVEL 1 ⇒ poartă greutatea unui modul principal. */
+  .nav-solo .nav-item{font-weight:600;font-size:.88rem;color:#c3cde0}
   .nav-search{width:calc(100% - 1.2rem);margin:.3rem .6rem .5rem;padding:.55rem .7rem;border:1px solid var(--sidebar-hover);
               border-radius:9px;background:none;color:#aeb9d2;cursor:pointer;display:flex;align-items:center;gap:.5rem;
               font-size:.85rem;font-family:inherit}
@@ -229,6 +257,19 @@
   .iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:7px;width:30px;height:30px;cursor:pointer;font-size:.85rem;display:inline-flex;align-items:center;justify-content:center}
   .iconbtn:hover{background:var(--bg)}
   .iconbtn.danger:hover{background:var(--red-soft);border-color:var(--red)}
+  /* ►► KB#88 — banda de acțiuni a unui rând ajungea la 14 butoane (≈1639 px de tabel), iar pe
+     telefon „⛔ Concediază" cădea la ~800 px în afara ecranului, în spatele unei derulări
+     orizontale pe care nimic n-o sugera. Pe ecran îngust păstrăm primele 3 acțiuni și mutăm
+     restul în „⋯", care deschide EXACT panoul de opțiuni existent (`rowOptions`) — aceeași
+     listă la care ducea deja apăsarea pe rând, dar acum cu o pistă vizibilă.
+     Pe desktop `⋯` e ascuns ⇒ banda rămâne neschimbată. */
+  .rowact-more{display:none}
+  @media(max-width:880px){
+    .rowact>.iconbtn:nth-child(n+4):not(.rowact-more){display:none}
+    .rowact>.rowact-more{display:inline-flex}
+    .rowact .iconbtn{width:38px;height:38px;font-size:1rem}   /* țintă de atingere confortabilă */
+    .rowact{gap:.3rem}
+  }
   .pill{display:inline-block;padding:.18rem .6rem;border-radius:20px;font-size:.72rem;font-weight:600;white-space:nowrap}
   .pill.active{background:var(--green-soft);color:#067647}
   .pill.plan{background:var(--primary-soft);color:#1d4ed8}
@@ -409,6 +450,8 @@
   body.dens-compact .tbl td{padding:.4rem .7rem}
   body.dens-compact .card{padding:.7rem .9rem}
   body.dens-compact .nav-item{padding:.4rem .8rem}
+  body.dens-compact .ws-panel .nav-item{padding:.3rem .55rem}
+  body.dens-compact .ws-head{padding:.44rem .8rem}
   body.txt-large{font-size:15.5px}
   body.txt-large.dens-compact{font-size:14.5px}
   body.txt-xl{font-size:17px}
@@ -2063,7 +2106,7 @@ function wsBreadcrumb(key){
 /* Clic pe spațiul de lucru din breadcrumb: îl deschide în meniu și mută focusul acolo.
    Nu „navighează" nicăieri — un spațiu de lucru e un container, nu o destinație. */
 function wsFocus(id){
-  const p=czPrefs(); const m=wsOpenMap(); m[id]=true; p.navOpen=m; czSave(p);
+  wsSetOpen(id,true);                          // NAV2: acordeon — deschiderea ÎNCHIDE celelalte
   buildNav(); openNav();
   const b=document.querySelector('.ws-head[data-ws="'+id+'"]');
   if(b){ try{ b.scrollIntoView({block:'nearest'}); }catch(e){} b.focus(); }
@@ -2072,20 +2115,35 @@ function wsFocus(id){
 /* ── UX1: starea de deschidere a spațiilor de lucru (aceeași cheie localStorage
       `c373_prefs` care ține deja favs/hidden/order — zero plumbing nou, zero migrare) ── */
 function wsOpenMap(){ const p=czPrefs(); return (p.navOpen&&typeof p.navOpen==='object')?p.navOpen:{}; }
-function wsIsOpen(id){
-  const m=wsOpenMap();
-  if(Object.prototype.hasOwnProperty.call(m,id)) return !!m[id];
-  return id===wsOfUser(curModuleKey());    // implicit: doar spațiul curent (cel VIZUAL) e deschis
+/* ►► NAV2 — ACORDEON: cel mult UN spațiu deschis.
+   Cu mai multe grupuri deschise bara devenea o listă lungă, imposibil de scanat — exact
+   observația Product Ownerului. Forma stocată rămâne harta `navOpen` din `c373_prefs`
+   (ZERO migrare, ZERO setare nouă); de acum e scrisă cu cel mult o valoare `true`.
+   Hărțile VECHI, cu mai multe spații deschise, nu se rescriu — se interpretează la CITIRE,
+   iar câștigătorul e spațiul rutei active. `{}` (utilizator nou) înseamnă „implicit: spațiul
+   rutei"; o hartă plină de `false` înseamnă „utilizatorul a închis TOT" și se respectă. */
+function wsOpenId(){
+  const m=wsOpenMap(), on=Object.keys(m).filter(k=>!!m[k]);
+  if(on.length===1) return on[0];
+  if(on.length>1){ const cur=wsOfUser(curModuleKey()); return on.indexOf(cur)>=0?cur:on[0]; }
+  return Object.keys(m).length?null:wsOfUser(curModuleKey());
+}
+function wsIsOpen(id){ return wsOpenId()===id; }
+function wsSetOpen(id,open){
+  const p=czPrefs(), m={};
+  WORKSPACES.forEach(w=>{ m[w.id]=false; });   // starea completă, ca `wsIsOpen` să nu mai cadă pe implicit
+  if(open&&id) m[id]=true;
+  p.navOpen=m; czSave(p);
 }
 function wsToggle(id){
-  const p=czPrefs(); const m=wsOpenMap(); m[id]=!wsIsOpen(id); p.navOpen=m; czSave(p);
+  wsSetOpen(id,!wsIsOpen(id));                 // click pe un spațiu DESCHIS îl închide
   buildNav();
   const btn=document.querySelector('.ws-head[data-ws="'+id+'"]'); if(btn) btn.focus();
 }
 /* deschide workspace-ul care conține modulul deschis, ca submodulul activ să fie vizibil */
 function wsOpenFor(key){
   const id=wsOfUser(key); if(wsIsOpen(id)) return;
-  const p=czPrefs(); const m=wsOpenMap(); m[id]=true; p.navOpen=m; czSave(p);
+  wsSetOpen(id,true);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2194,9 +2252,9 @@ function buildNav(){
     if(!keys.length) return;
     const isCur=(w.id===wsOfUser(cur));
     const open=wsIsOpen(w.id);
-    html+='<section class="ws'+(isCur?' ws-cur':'')+'" data-wssec="'+w.id+'">'
+    html+='<section class="ws'+(isCur?' ws-cur':'')+(open?' ws-open':'')+'" data-wssec="'+w.id+'">'
       +'<div class="ws-hrow" ondragover="wsDragOver(event,this)" ondragleave="wsDragLeave(this)" ondrop="wsDrop(event,\''+w.id+'\')">'
-        +'<button type="button" class="ws-head" data-ws="'+w.id+'" aria-expanded="'+(open?'true':'false')+'" aria-controls="ws-p-'+w.id+'" onclick="wsToggle(\''+w.id+'\')">'
+        +'<button type="button" class="ws-head" data-ws="'+w.id+'" title="'+esc(tz(w.title))+'" aria-expanded="'+(open?'true':'false')+'" aria-controls="ws-p-'+w.id+'" onclick="wsToggle(\''+w.id+'\')">'
           +'<span class="ws-ic" aria-hidden="true">'+w.icon+'</span>'
           +'<span class="ws-t">'+esc(tz(w.title))+'</span>'
           +'<span class="ws-n" aria-hidden="true">'+keys.length+'</span>'
@@ -2250,6 +2308,19 @@ function socialLinksBar(){
    „am mutat fără să vreau" care a produs raportul. Mânerul e acum un `<button>` real,
    deci are focus și etichetă, iar săgețile sus/jos mută elementul fără mouse.
    Favoritele și Recentele NU se glisează (`nodrag`): sunt liste derivate, nu structură. */
+/* ►► NAV2 — aduce în vedere submodulul activ, DOAR dacă a ieșit din fereastra barei.
+   Deliberat NU folosim `scrollIntoView`: acela poate derula și strămoșii (deci pagina).
+   Aici se mișcă exclusiv `#nav`, cu o marjă mică, și numai când e nevoie — fără salturi
+   la fiecare navigare, exact cerința „discret". */
+function navRevealActive(){
+  const nv=$('nav'); if(!nv||!nv.clientHeight) return;      // bara ascunsă (sertar mobil închis)
+  const el=nv.querySelector('.ws-panel .nav-item.active')||nv.querySelector('.nav-item.active');
+  if(!el) return;
+  const r=el.getBoundingClientRect(), c=nv.getBoundingClientRect();
+  if(r.height===0) return;
+  if(r.top<c.top)          nv.scrollTop+=(r.top-c.top)-8;
+  else if(r.bottom>c.bottom) nv.scrollTop+=(r.bottom-c.bottom)+8;
+}
 function navItemHTML(k,m,o){
   o=o||{};
   const t=esc(mt(k).title);
@@ -3303,6 +3374,7 @@ function go(key){
   const _navEl=$('nav'); const _navScroll=_navEl?_navEl.scrollTop:0;
   buildNav();
   if(_navEl) _navEl.scrollTop=_navScroll;
+  navRevealActive();                                // NAV2: acordeonul poate muta rândul activ sub linia de plutire
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
   if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, taskuri:renderTaskuri, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash, calitate:renderCalitate}[key]||renderDashboard)(); }
   else renderModule(key);
@@ -10223,14 +10295,34 @@ function empErrMsg(e){
    planificări decât se șterg de fapt, exact în ecranul unei decizii distructive.
    Măsurat: ultima zi 18.08 ⇒ contractul întoarce `future_plans=2`, panoul afișa `3`.
    Serverul recalcula corect la salvare; mințea DOAR previzualizarea. */
+/* ►► KB#89 — panoul de impact lipea un număr de un substantiv la plural FIX, deci scria
+   „1 vehicule asociate". NU construim un motor general de pluralizare: alegem, dintre trei
+   variante ROMÂNEȘTI scrise explicit, pe cea cerută de regula limbii AFIȘATE, iar `C373t` o
+   traduce ca pe orice alt text. Ce face schema corectă în toate patru limbile: RO și RU au
+   amândouă TREI forme, dar cu praguri DIFERITE (RO: 1 / 2–19 / 20+ cu „de"; RU: 1 / 2–4 / 5+).
+   Fiindcă slotul se calculează cu regula limbii curente, iar cheia e doar varianta RO a acelui
+   slot, fiecare limbă primește forma ei. DE/EN au două forme și nu ating niciodată slotul 3.
+   Schimbarea limbii face `location.reload()`, deci slotul nu poate rămâne desincronizat. */
+function plSlot(n){
+  n=Math.abs(+n||0);
+  const l=(typeof C373lang==='function')?C373lang():'ro';
+  if(l==='ru'){ const d=n%10, c=n%100;
+    if(d===1&&c!==11) return 0;
+    if(d>=2&&d<=4&&!(c>=12&&c<=14)) return 1;
+    return 2; }
+  if(l==='ro'){ if(n===1) return 0;
+    const c=n%100; return (n===0||(c>=1&&c<=19))?1:2; }   // 20 ⇒ „20 DE vehicule"
+  return n===1?0:1;                                       // de/en: singular vs plural
+}
+function plT(n,f){ return C373t(f[plSlot(n)]||f[1]); }
 function empTermImpactHtml(imp){
   const rows=[
-    [imp.future_plans, '📅', C373t('planificări viitoare — vor fi scoase din Plantafel')],
-    [imp.open_tasks,   '✅', C373t('taskuri active — rămân, dar cer reasignare')],
-    [imp.equipment+imp.tool_units, '🧰', C373t('bunuri/scule în custodie — NU se mută automat')],
-    [imp.vehicles,     '🚗', C373t('vehicule asociate — legătura rămâne')],
-    [imp.site_teams,   '🏗️', C373t('echipe de șantier')]
-  ].filter(x=>x[0]>0).map(x=>'<li style="margin:.2rem 0">'+x[1]+' <b>'+x[0]+'</b> '+esc(x[2])+'</li>').join('');
+    [imp.future_plans, '📅', ['planificare viitoare — va fi scoasă din Plantafel','planificări viitoare — vor fi scoase din Plantafel','de planificări viitoare — vor fi scoase din Plantafel']],
+    [imp.open_tasks,   '✅', ['task activ — rămâne, dar cere reasignare','taskuri active — rămân, dar cer reasignare','de taskuri active — rămân, dar cer reasignare']],
+    [imp.equipment+imp.tool_units, '🧰', ['bun/sculă în custodie — NU se mută automat','bunuri/scule în custodie — NU se mută automat','de bunuri/scule în custodie — NU se mută automat']],
+    [imp.vehicles,     '🚗', ['vehicul asociat — legătura rămâne','vehicule asociate — legătura rămâne','de vehicule asociate — legătura rămâne']],
+    [imp.site_teams,   '🏗️', ['echipă de șantier','echipe de șantier','de echipe de șantier']]
+  ].filter(x=>x[0]>0).map(x=>'<li style="margin:.2rem 0">'+x[1]+' <b>'+x[0]+'</b> '+esc(plT(x[0],x[2]))+'</li>').join('');
   return rows
     ? '<div style="margin-top:.9rem;padding:.6rem .8rem;background:var(--amber-soft,#fef3c7);border-radius:9px"><div style="font-weight:700;font-size:.82rem;color:#92400e;margin-bottom:.25rem">'+esc(C373t('Ce se schimbă'))+'</div><ul style="margin:0;padding-left:1.1rem;font-size:.82rem;color:#92400e">'+rows+'</ul></div>'
     : '<div style="margin-top:.9rem;font-size:.82rem;color:var(--muted)">'+esc(C373t('Nicio planificare, sarcină sau custodie deschisă.'))+'</div>';
@@ -10542,7 +10634,9 @@ function renderList(){
   const body=data.map((r,idx)=>{ const acts=rowActions(key,m,r);
     const cb=bulk?'<td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" class="bulk-cb" '+(_bulkSel[r.id]?'checked':'')+' onclick="event.stopPropagation();bulkToggle(\''+r.id+'\',this.checked)"></td>':'';
     return '<tr onclick="rowOptions(\''+key+'\',\''+r.id+'\')" style="cursor:pointer">'+cb+'<td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">'+(idx+1)+'</td>'+cols.map(c=>'<td>'+c.get(r)+'</td>').join('')
-      +'<td><div class="rowact">'+acts.map(a=>'<button class="iconbtn'+(a.d?' danger':'')+'" title="'+esc(a.l)+'" onclick="event.stopPropagation();'+a.f+'">'+a.i+'</button>').join('')+'</div></td></tr>';
+      +'<td><div class="rowact">'+acts.map(a=>'<button class="iconbtn'+(a.d?' danger':'')+'" title="'+esc(a.l)+'" onclick="event.stopPropagation();'+a.f+'">'+a.i+'</button>').join('')
+      +(acts.length>3?('<button class="iconbtn rowact-more" aria-haspopup="dialog" title="'+esc(tz('Mai multe opțiuni'))+'" aria-label="'+esc(tz('Mai multe opțiuni'))+'" onclick="event.stopPropagation();rowOptions(\''+key+'\',\''+r.id+'\')">⋯</button>'):'')
+      +'</div></td></tr>';
   }).join('');
   const hint=m.bulkOrder?'👉 Bifează poziții și apasă „🛒 '+esc(m.bulkOrder.label||'Creează comandă')+'" sus, sau apasă pe un rând pentru opțiuni.':'👉 Apasă pe un rând pentru opțiuni · bifează pentru acțiuni în masă.';
   $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">'+hint+'</div><div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
