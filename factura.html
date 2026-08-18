@@ -99,6 +99,60 @@ function goBack(){ if(history.length>1) history.back(); else location.href='app.
 function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 
 const STATUS={draft:'Ciornă',sent:'Trimisă',paid:'Plătită',overdue:'Restantă',cancelled:'Anulată'};
+/* ►► FIN2/D64 — lifecycle-ul documentului și starea de plată sunt DOUĂ semnale.
+   `paid`/`overdue` rămân în hartă doar ca să putem CITI cele 5 facturi istorice;
+   ca lifecycle ele se prezintă drept „Trimisă", iar plata se derivă din registru. */
+const LIFE={draft:'Ciornă',sent:'Trimisă',cancelled:'Anulată'};
+const ST_ICON={draft:'✎',sent:'➤',cancelled:'⊘'};
+function lifeKey(){ const k=S.inv.status||'draft'; return (k==='paid'||k==='overdue')?'sent':k; }
+function lifePillHtml(){ const k=lifeKey(); return '<span class="pill '+k+'">'+(ST_ICON[k]||'')+' '+T(LIFE[k]||k)+'</span>'; }
+/* Starea de plată vine din instantaneul fiscal (invoice_snapshot → payment/outstanding),
+   adică din registrul canonic — niciodată dintr-un câmp editabil. */
+function payPillHtml(){
+  const sn=S._snap; if(!sn||!sn.payment) return '';
+  const paid=+(sn.payment.paid_to_date||0), tot=+((sn.stored&&sn.stored.total)||S.inv.total||0);
+  const st = paid<=0.005 ? ['○','Neachitată','draft'] : (paid+0.005>=tot ? ['●','Achitată','paid'] : ['◐','Parțial achitată','sent']);
+  let h='<span class="pill '+st[2]+'" style="margin-left:.35rem">'+st[0]+' '+T(st[1])+'</span>';
+  const out=Math.round((tot-paid)*100)/100;
+  if(S.inv.due_date && out>0.005 && lifeKey()!=='cancelled'
+     && String(S.inv.due_date).slice(0,10) < (typeof coToday==='function'?coToday():new Date().toISOString().slice(0,10))){
+    h+='<span class="pill overdue" style="margin-left:.35rem">⚠ '+T('Restantă')+'</span>';
+  }
+  return h;
+}
+const ST_ERR={ DOC_CONFLICT:'Documentul a fost modificat în altă parte. Reîncarcă-l.',
+  STATUS_FORBIDDEN:'Nu ai dreptul să schimbi starea acestui document.',
+  STATUS_DERIVED:'Starea de plată se derivă din încasări, nu se alege manual.',
+  INVOICE_HAS_PAYMENTS:'Factura are încasări. Stornează întâi plata.',
+  PAYMENT_CONTRACT_REQUIRED:'Factura e achitată; starea se schimbă prin stornarea încasării.',
+  STATUS_INVALID:'Stare necunoscută.', DOC_NOT_FOUND:'Documentul nu a fost găsit.' };
+function stActions(){
+  if(!S.canEdit || !S.id) return '';
+  const k=lifeKey(); if(S.inv.status==='paid') return '';
+  const btn=(a,l,x)=>'<button class="btn" style="padding:.2rem .55rem;font-size:.75rem;margin-left:.35rem'+(x||'')+'" onclick="stSet(\''+a+'\')">'+T(l)+'</button>';
+  if(k==='draft') return btn('sent','Marchează ca trimisă');
+  if(k==='sent')  return btn('cancelled','Anulează factura',';color:#dc2626');
+  return '';
+}
+/* Starea de plată se citește o dată la încărcare și după fiecare încasare.
+   Eșecul e NEBLOCANT: fără instantaneu se afișează doar lifecycle-ul, nu o
+   presupunere despre bani. */
+async function refreshSnap(){
+  if(!S.id) { S._snap=null; return; }
+  try{ const r=await sb.rpc('invoice_snapshot',{p_invoice:S.id});
+       S._snap = r.error ? null : (r.data||null); }
+  catch(e){ S._snap=null; }
+  const el=$('hd-status'); if(el) el.innerHTML=lifePillHtml()+payPillHtml()+stActions();
+}
+async function stSet(st){
+  if(!S.id){ toast('Salvează documentul întâi.'); return; }
+  const {data,error}=await sb.rpc('invoice_set_status',
+    {p_invoice_id:S.id, p_status:st, p_expected_updated_at:S._updatedAt||null});
+  if(error){ const c=String(error.message||'').split(':')[0].trim();
+    toast('⛔ '+(ST_ERR[c]||error.message)); return; }
+  S.inv.status=data.status; S._updatedAt=data.updated_at;
+  toast('✅ '+T('Stare actualizată')); render(); refreshSnap();
+}
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
         inv:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),due_date:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null,inv_type:'normal',contract_total:null,retention_pct:null,site_id:null,bank_choice:'',amount_paid:null},
@@ -166,7 +220,7 @@ async function loadCatalog(){
 async function loadInvoice(id){
   const e=await sb.from('invoices').select('*').eq('id',id).single();
   if(e.error){ toast('Eroare: '+e.error.message); return; }
-  S.id=id; S._updatedAt=e.data.updated_at; S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
+  S.id=id; S._updatedAt=e.data.updated_at; setTimeout(refreshSnap,0); S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
     disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:e.data.bank_choice||'', amount_paid:(e.data.amount_paid!=null?+e.data.amount_paid:null), plan_url:e.data.plan_url||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
@@ -310,7 +364,7 @@ function render(){
   if(!S._sitesLoaded){ S._sitesLoaded=true; sb.from('sites').select('id,name').then(r=>{ S.sitesList=(r.data||[]); if(S.inv.inv_type!=='normal') render(); }); }
   $('hd-num').textContent=S.inv.number||'';
   if($('btn-dup')) $('btn-dup').style.display=S.id?'':'none';
-  $('hd-status').innerHTML='<span class="pill '+(S.inv.status||'draft')+'">'+(STATUS[S.inv.status]||'')+'</span>';
+  $('hd-status').innerHTML=lifePillHtml()+payPillHtml()+stActions();
   const clientOpts='<option value="">— alege client —</option>'+S.clients.map(c=>'<option value="'+c.id+'" '+(S.inv.client_id===c.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
   $('root').innerHTML=(S._restored?'<div style="max-width:1240px;margin:0 auto;padding:.5rem 1.1rem 0"><div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .8rem;font-size:.84rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><a onclick="clearDraftDz();location.href=\'factura.html\'" style="cursor:pointer;text-decoration:underline">Începe gol</a></div></div>':'')+'<div class="wrap"><div class="left">'
     +'<div class="panel"><h3>Detalii factură</h3>'
@@ -322,7 +376,9 @@ function render(){
          ascundem ca operatorul să nu întâlnească o eroare pentru o alegere care
          arată legitimă. Rămâne vizibilă pe facturile deja plătite, ca istoricul
          să se poată reafișa. */
-      +'<div class="field"><label>Stare</label><select id="f-status" onchange="S.inv.status=this.value;render()">'+Object.keys(STATUS).filter(k=>k!=='paid'||S.inv.status==='paid').map(k=>'<option value="'+k+'" '+(S.inv.status===k?'selected':'')+'>'+STATUS[k]+'</option>').join('')+'</select></div></div>'
+      /* FIN2 — fără dropdown de stare: „Plătită" și „Restantă" sunt DERIVATE, iar
+         lifecycle-ul trece prin `invoice_set_status`, care refuză explicit ambele. */
+      +'<div class="field"><label>Stare</label><div style="padding:.45rem 0">'+lifePillHtml()+payPillHtml()+'</div></div></div>'
       +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.inv.issue_date||'')+'" oninput="S.inv.issue_date=this.value"/></div>'
       +'<div class="field"><label>Scadență</label><input type="date" id="f-due" value="'+esc(S.inv.due_date||'')+'" oninput="S.inv.due_date=this.value"/></div></div>'
       +(firmBankAccounts().length?(
@@ -1087,7 +1143,7 @@ async function payApply(){
   if(c.error||!c.data||!c.data.updated_at){ docStale(T('Încasarea a fost înregistrată.')); return; }
   S._updatedAt=c.data.updated_at;
   toast('✅ '+T('Încasare înregistrată.')+' '+T('Sold rămas:')+' '+money(s.outstanding));
-  render(); historyReset();
+  render(); refreshSnap(); historyReset();
 }
 
 async function pdf(inPlace){

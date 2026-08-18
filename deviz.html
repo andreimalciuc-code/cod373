@@ -108,6 +108,41 @@ function goBack(){ if(history.length>1) history.back(); else location.href='app.
 function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 
 const STATUS={draft:'Ciornă',sent:'Trimisă',accepted:'Acceptată',rejected:'Respinsă'};
+const ST_ICON={draft:'✎',sent:'➤',accepted:'✓',rejected:'✕'};
+/* Expirarea e o proprietate a DATEI, nu o stare pe care o alege cineva. */
+function estIsExpired(){ return (S.est.status==='sent') && S.est.valid_until
+  && String(S.est.valid_until).slice(0,10) < (typeof coToday==='function'?coToday():new Date().toISOString().slice(0,10)); }
+function stPill(){
+  if(estIsExpired()) return '<span class="pill sent" title="Valabilitatea a trecut">⏳ '+T('Expirată')+'</span>';
+  const k=S.est.status||'draft';
+  return '<span class="pill '+k+'">'+(ST_ICON[k]||'')+' '+T(STATUS[k]||'')+'</span>';
+}
+/* Doar tranzițiile care au sens din starea curentă. Nu umplem antetul cu butoane. */
+function stActions(){
+  if(!S.canEdit || !S.id) return '';
+  const k=S.est.status||'draft'; let b='';
+  const btn=(act,lab,st)=>'<button class="btn" style="padding:.2rem .55rem;font-size:.75rem;margin-left:.35rem'+(st||'')+'" onclick="stSet(\''+act+'\')">'+T(lab)+'</button>';
+  if(k==='draft')  b+=btn('sent','Marchează ca trimisă');
+  if(k==='sent'){  b+=btn('accepted','Acceptată',';color:var(--green)')+btn('rejected','Refuzată',';color:#dc2626'); }
+  return b;
+}
+/* Schimbarea trece prin contractul server-side, cu jetonul CAS. La succes
+   RESINCRONIZĂM `S._updatedAt` — altfel următoarea salvare pică pe DOC_CONFLICT
+   (capcana documentată în factura.html după înregistrarea unei încasări). */
+const ST_ERR={ DOC_CONFLICT:'Documentul a fost modificat în altă parte. Reîncarcă-l.',
+  STATUS_FORBIDDEN:'Nu ai dreptul să schimbi starea acestui document.',
+  ESTIMATE_ACCEPTED_LOCKED:'Oferta a generat deja un șantier; starea nu se mai poate schimba.',
+  STATUS_INVALID:'Stare necunoscută.', DOC_NOT_FOUND:'Documentul nu a fost găsit.' };
+async function stSet(st){
+  if(!S.id){ toast('Salvează documentul întâi.'); return; }
+  const {data,error}=await sb.rpc('estimate_set_status',
+    {p_estimate_id:S.id, p_status:st, p_expected_updated_at:S._updatedAt||null});
+  if(error){ const c=String(error.message||'').split(':')[0].trim();
+    toast('⛔ '+(ST_ERR[c]||error.message)); return; }
+  S.est.status=data.status; S._updatedAt=data.updated_at;
+  S.est.sent_at=data.sent_at; S.est.accepted_at=data.accepted_at; S.est.rejected_at=data.rejected_at;
+  toast('✅ '+T('Stare actualizată')); render();
+}
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null},
         lines:[], groups:[], clients:[], catalog:[], normMat:{}, _activeDD:null, lineThumbs:{} };
@@ -338,14 +373,20 @@ function render(){
   const t=totals();
   $('hd-num').textContent=S.est.number||'';
   if($('btn-dup')) $('btn-dup').style.display=S.id?'':'none';
-  $('hd-status').innerHTML='<span class="pill '+(S.est.status||'draft')+'">'+(STATUS[S.est.status]||'')+'</span>';
+  /* ►► FIN2 — starea stă lângă identitatea documentului, cu PICTOGRAMĂ (culoarea nu
+     e singurul semnal), iar „Expirată" e DERIVATĂ din `valid_until`, nu o a cincea
+     valoare stocată. */
+  $('hd-status').innerHTML=stPill()+stActions();
   const clientOpts='<option value="">— alege client —</option>'+S.clients.map(c=>'<option value="'+c.id+'" '+(S.est.client_id===c.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
   $('root').innerHTML=(S._restored?'<div style="max-width:1240px;margin:0 auto;padding:.5rem 1.1rem 0"><div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .8rem;font-size:.84rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><a onclick="clearDraftDz();location.href=\'deviz.html\'" style="cursor:pointer;text-decoration:underline">Începe gol</a></div></div>':'')+'<div class="wrap"><div class="left">'
     +'<div class="panel"><h3>Detalii ofertă</h3>'
       +'<div class="field"><label>Client</label><div style="display:flex;gap:.4rem"><select id="f-client" style="flex:1" onchange="S.est.client_id=this.value">'+clientOpts+'</select><button class="btn" onclick="newClient()">＋ nou</button></div></div>'
       +'<div class="field"><label>Titlu / ce lucrări (apare în listă)</label><input id="f-title" value="'+esc(S.est.title||'')+'" placeholder="Ex: Manoperă gard vecin" oninput="S.est.title=this.value"/></div>'
       +'<div class="row2"><div class="field"><label>Număr</label><input id="f-num" value="'+esc(S.est.number)+'" oninput="S.est.number=this.value"/></div>'
-      +'<div class="field"><label>Stare</label><select id="f-status" onchange="S.est.status=this.value;render()">'+Object.keys(STATUS).map(k=>'<option value="'+k+'" '+(S.est.status===k?'selected':'')+'>'+STATUS[k]+'</option>').join('')+'</select></div></div>'
+      /* FIN2 — nu mai există dropdown liber de stare: `accepted → draft` era o salvare
+         legală. Starea se schimbă doar din acțiunile contextuale ale antetului, prin
+         `estimate_set_status`, care validează tranziția și marchează timestampul. */
+      +'<div class="field"><label>Stare</label><div style="padding:.45rem 0">'+stPill()+'</div></div></div>'
       +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.est.issue_date||'')+'" oninput="S.est.issue_date=this.value"/></div>'
       +'<div class="field"><label>Valabil până la</label><input type="date" id="f-valid" value="'+esc(S.est.valid_until||'')+'" oninput="S.est.valid_until=this.value"/></div></div>'
     +'</div>'

@@ -736,7 +736,25 @@ const STATUS = {
   approved:['Aprobat','active'], invoiced:['Facturat','done'], answered:['Răspuns','active'], closed:['Închis','done'],
   plan:['Planificat','plan'], delayed:['Întârziat','delay']
 };
-function pill(v){ if(v==null||v==='') return '—'; const s=STATUS[v]; const lab=(typeof LANG!=='undefined'&&LANG==='ru'&&STATUS_RU[v])?STATUS_RU[v]:(s?s[0]:v); return '<span class="pill '+(s?s[1]:'plan')+'">'+esc(lab)+'</span>'; }
+/* ►► FIN2 — pastilele poartă PICTOGRAMĂ + text. Regula proiectului (respectată de
+   pastilele TASK2, dar nu și aici) e că **culoarea nu e niciodată singurul semnal**:
+   în dark mode sau pentru un daltonist, „Acceptat" verde și „Respins" roșu arătau la fel. */
+const STATUS_ICON={ draft:'✎', sent:'➤', accepted:'✓', rejected:'✕', cancelled:'⊘', paid:'●', overdue:'⚠' };
+function pill(v){ if(v==null||v==='') return '—'; const s=STATUS[v]; const ic=STATUS_ICON[v]; const lab=(typeof LANG!=='undefined'&&LANG==='ru'&&STATUS_RU[v])?STATUS_RU[v]:(s?s[0]:v); return '<span class="pill '+(s?s[1]:'plan')+'">'+(ic?ic+' ':'')+esc(lab)+'</span>'; }
+
+/* ►► FIN2/D64 — starea de PLATĂ e un al doilea semnal, separat de lifecycle.
+   Vine DERIVATĂ de la server (`invoice_payment_states`), niciodată dintr-un câmp editabil. */
+const PAY_PILL={ unpaid:['○','Neachitată','plan'], partial:['◐','Parțial achitată','paused'], paid:['●','Achitată','active'] };
+function payPill(p){ if(!p||!p.pay_state) return ''; const s=PAY_PILL[p.pay_state]||PAY_PILL.unpaid;
+  return '<span class="pill '+s[2]+'">'+s[0]+' '+esc(C373t(s[1]))+'</span>'; }
+function overduePill(p){ return (p&&p.overdue)?'<span class="pill delay">⚠ '+esc(C373t('Restantă'))+'</span>':''; }
+/* Maparea istorică, făcută la AFIȘARE, fără să rescriem niciun rând: cele 5 facturi cu
+   `status='paid'` sunt, ca lifecycle, documente emise. */
+function lifePill(r){ const st=(r.status==='paid'||r.status==='overdue')?'sent':r.status; return pill(st); }
+/* O ofertă „Trimisă" a cărei valabilitate a trecut e EXPIRATĂ — derivată din `valid_until`
+   în fusul firmei, nu o a cincea valoare stocată. */
+function estExpired(r){ return r.status==='sent' && r.valid_until && String(r.valid_until).slice(0,10) < coToday(); }
+function estPill(r){ return estExpired(r) ? '<span class="pill paused">⏳ '+esc(C373t('Expirată'))+'</span>' : pill(r.status); }
 function opts(values){ return values.map(v=>({value:v,label:STATUS[v]?STATUS[v][0]:v})); }
 function progressCell(p){ p=p||0; return '<div class="progress"><span style="width:'+p+'%"></span></div> <small>'+p+'%</small>'; }
 
@@ -1162,7 +1180,7 @@ const MODULES = {
     newLabel:'Deviz nou', printable:'DEVIZ / OFERTĂ', convertible:true, toSite:true, normsPicker:true, bomFromNorms:true, pageEditor:'deviz.html', acceptReject:true, orderBy:{col:'created_at',asc:false},
     duplicable:{rpc:'duplicate_estimate',label:'Duplică oferta',confirm:'Se va crea o ofertă nouă, în ciornă, cu aceleași poziții și date comerciale (număr nou, data de azi). Originalul rămâne neschimbat. Continui?',done:'Oferta a fost duplicată'},
     dateFilter:{field:'created_at'}, chipsReplaceStatus:true,
-    quickChips:[ {key:'',label:'Toate'}, {key:'draft',label:'Ciornă',test:r=>r.status==='draft'}, {key:'sent',label:'Trimise',test:r=>r.status==='sent'}, {key:'accepted',label:'Acceptate',test:r=>r.status==='accepted'}, {key:'rejected',label:'Respinse',test:r=>r.status==='rejected'} ],
+    quickChips:[ {key:'',label:'Toate'}, {key:'draft',label:'Ciornă',test:r=>r.status==='draft'}, {key:'sent',label:'Trimise',test:r=>r.status==='sent'&&!estExpired(r)}, {key:'accepted',label:'Acceptate',test:r=>r.status==='accepted'}, {key:'rejected',label:'Respinse',test:r=>r.status==='rejected'}, {key:'expired',label:'Expirate',test:r=>estExpired(r)} ],
     select:'id,number,title,status,subtotal,vat_total,total,valid_until,clients!client_id(name,idno),sites!site_id(name)',
     columns:[
       {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
@@ -1170,7 +1188,7 @@ const MODULES = {
       {label:'Șantier',get:r=>esc(r.sites?r.sites.name:'—')},
       {label:'Total',get:r=>money(r.total)},
       {label:'Valabil până',get:r=>dt(r.valid_until)},
-      {label:'Stare',get:r=>pill(r.status)} ],
+      {label:'Stare',get:r=>estPill(r)} ],
     fields:[
       {key:'number',label:'Număr deviz',type:'text'},
       {key:'client_id',label:'Client',type:'ref',ref:'clients'},
@@ -1186,7 +1204,14 @@ const MODULES = {
     duplicable:{rpc:'duplicate_invoice',label:'Duplică factura',confirm:'Se va crea o factură nouă, în ciornă, neplătită, cu aceleași poziții și date comerciale (număr nou, data de azi, fără plăți). Originalul rămâne neschimbat. Continui?',done:'Factura a fost duplicată'},
     enumFilter:{key:'inv_type', all:'Toate tipurile', map:{normal:'Normală',abschlag:'Abschlag',schluss:'Schluss'}},
     dateFilter:{field:'issue_date'},
-    quickChips:[ {key:'',label:'Toate'}, {key:'unpaid',label:'Neplătite',test:r=>r.status!=='paid'&&r.status!=='cancelled'}, {key:'overdue',label:'Restante',test:r=>r.status==='overdue'||(r.due_date&&r.status!=='paid'&&r.status!=='cancelled'&&String(r.due_date).slice(0,10)<coToday())}, {key:'paid',label:'Plătite',test:r=>r.status==='paid'} ],
+    payStates:true, chipsReplaceStatus:true,
+    /* FIN2 — chipsurile filtrează pe starea DERIVATĂ, nu pe `status`. Înainte „Restante"
+       căuta `status==='overdue'`, valoare pe care nimic din proiect n-a scris vreodată. */
+    quickChips:[ {key:'',label:'Toate'},
+      {key:'unpaid', label:'Neachitate',       test:r=>r._pay&&r._pay.pay_state==='unpaid'&&r.status!=='cancelled'},
+      {key:'partial',label:'Parțial achitate', test:r=>r._pay&&r._pay.pay_state==='partial'},
+      {key:'paid',   label:'Achitate',         test:r=>r._pay&&r._pay.pay_state==='paid'},
+      {key:'overdue',label:'Restante',         test:r=>r._pay&&r._pay.overdue} ],
     select:'id,number,title,status,total,issue_date,due_date,efactura_status,inv_type,clients(name,idno)',
     columns:[
       {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
@@ -1195,7 +1220,7 @@ const MODULES = {
       {label:'Total',get:r=>money(r.total)},
       {label:'Emisă',get:r=>dt(r.issue_date)},
       {label:'Scadență',get:r=>dt(r.due_date)},
-      {label:'Stare',get:r=>pill(r.status)} ],
+      {label:'Stare',get:r=>lifePill(r)+' '+payPill(r._pay)+' '+overduePill(r._pay)} ],
     fields:[
       {key:'number',label:'Număr factură',type:'text',required:true},
       {key:'client_id',label:'Client',type:'ref',ref:'clients'},
@@ -10464,6 +10489,15 @@ async function renderModule(key){
   const { data, error } = await sb.from(m.table).select(sel).eq('tenant_id', state.tenant);
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   let rows=data||[];
+  /* ►► FIN2/D64 — starea de plată nu se citește dintr-o coloană, se CERE serverului.
+     Un singur apel pentru tot ecranul; la eroare lista rămâne funcțională fără pastila
+     de plată (degradare, nu ecran gol). */
+  if(m.payStates && rows.length){
+    try{ const pr=await sb.rpc('invoice_payment_states',{p_tenant_id:state.tenant});
+         const mp={}; (pr.data||[]).forEach(x=>{ mp[x.invoice_id]=x; });
+         rows.forEach(r=>{ r._pay=mp[r.id]||null; });
+    }catch(e){ }
+  }
   if(m.orderBy) rows=sortRows(rows,m.orderBy.col,m.orderBy.asc);
   /* `scope` supraviețuiește re-randării: `onListScope` reintră prin `renderModule`, iar o
      resetare aici ar readuce mereu implicitul și butonul apăsat n-ar avea niciun efect. */
@@ -12830,11 +12864,25 @@ async function dupDoc(key,id){
   }
   finally{ _dupBusy=false; }
 }
+/* ►► FIN2 — schimbarea stării trece prin contractul server-side, nu prin UPDATE direct.
+   Motivele: (1) contractul validează tranziția și marchează timestampul; (2) un UPDATE
+   blocat de RLS întoarce 0 rânduri FĂRĂ eroare, deci vechea cale putea raporta succes
+   fără să schimbe nimic — exact defectul găsit pe butonul de pe mobil.
+   CAS: citim `updated_at` al rândului chiar înainte, ca să trimitem jetonul corect. */
+const EST_ST_ERR={ DOC_CONFLICT:'Oferta a fost modificată între timp. Reîncarcă lista.',
+  STATUS_FORBIDDEN:'Nu ai dreptul să schimbi starea acestei oferte.',
+  ESTIMATE_ACCEPTED_LOCKED:'Oferta a generat deja un șantier; starea nu se mai poate schimba.',
+  STATUS_INVALID:'Stare necunoscută.', DOC_NOT_FOUND:'Oferta nu a fost găsită.' };
 async function estimateStatus(estId,status){
   const lbl=status==='accepted'?'acceptată':'respinsă';
   if(!confirm('Marchezi oferta ca '+lbl+'?')) return;
-  const r=await sbRetry(()=>sb.from('estimates').update({status}).eq('id',estId));
-  if(r.error){ toast(isNetErr(r.error)?netMsg():('Eroare: '+esc(r.error.message))); return; }
+  const cur=await sbRetry(()=>sb.from('estimates').select('updated_at').eq('id',estId).maybeSingle());
+  if(cur.error){ toast(isNetErr(cur.error)?netMsg():('Eroare: '+esc(cur.error.message))); return; }
+  if(!cur.data){ toast('⛔ '+C373t(EST_ST_ERR.DOC_NOT_FOUND)); return; }
+  const r=await sbRetry(()=>sb.rpc('estimate_set_status',
+    {p_estimate_id:estId, p_status:status, p_expected_updated_at:cur.data.updated_at}));
+  if(r.error){ const c=String(r.error.message||'').split(':')[0].trim();
+    toast(isNetErr(r.error)?netMsg():('⛔ '+C373t(EST_ST_ERR[c]||r.error.message))); return; }
   toast(status==='accepted'?'✅ Ofertă acceptată.':'✖️ Ofertă respinsă.');
   if(status==='accepted'){
     await runAutomations(estId);

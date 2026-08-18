@@ -178,7 +178,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='338';
+const APP_BUILD='339';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -509,18 +509,38 @@ async function scrClientHome(){
 async function scrClientOferte(){
   $('screen').innerHTML='<div class="scr-title">📄 Ofertele mele</div><div id="co"><div class="loading">Se încarcă…</div></div>';
   const ids=await myClientSiteIds();
-  const {data}=await sb.from('estimates').select('id,number,total,status,valid_until,site_id');
+  const {data}=await sb.from('estimates').select('id,number,total,status,valid_until,site_id,updated_at');
   const mine=(data||[]).filter(e=>ids.includes(e.site_id)).sort((a,b)=>(a.number<b.number?1:-1));
   if(!mine.length){ $('co').innerHTML='<div class="empty"><div class="ei">📄</div>Nu ai oferte încă.</div>'; return; }
   const st={draft:['Ciornă','grey'],sent:['Primită','blue'],accepted:['Acceptată','green'],rejected:['Respinsă','red']};
   $('co').innerHTML=mine.map(e=>{ const s=st[e.status]||['—','grey'];
     return '<div class="card"><div class="row"><div class="grow"><div class="t">Ofertă '+esc(e.number||'—')+'</div><div class="s">'+(e.valid_until?'Valabilă până '+esc(e.valid_until):'')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div><div class="row" style="margin-top:.5rem"><div class="grow s">Total</div><b>'+money(e.total)+'</b></div>'
-    +(e.status==='sent'?'<div class="row" style="gap:.5rem;margin-top:.6rem"><button class="mini-btn go" onclick="respondOferta(\''+e.id+'\',\'accepted\')">Accept</button><button class="mini-btn gh" onclick="respondOferta(\''+e.id+'\',\'rejected\')">Refuz</button></div>':'')
+    +(e.status==='sent'?'<div class="row" style="gap:.5rem;margin-top:.6rem"><button class="mini-btn go" onclick="respondOferta(\''+e.id+'\',\'accepted\',\''+(e.updated_at||'')+'\')">Accept</button><button class="mini-btn gh" onclick="respondOferta(\''+e.id+'\',\'rejected\',\''+(e.updated_at||'')+'\')">Refuz</button></div>':'')
     +'</div>'; }).join('');
 }
-async function respondOferta(id,status){
-  const {error}=await sb.from('estimates').update({status}).eq('id',id);
-  if(error){ toast('Eroare: '+esc(error.message)); return; }
+/* ►► FIN2 — BUTONUL NU MAI MINTE.
+   Înainte: `sb.from('estimates').update({status})` + verificare DOAR pe `error`.
+   Scrierea pe `estimates` e OFFICE (0019); contul de client nu e OFFICE, deci RLS
+   bloca UPDATE-ul, care întorcea **0 rânduri fără eroare**. Butonul anunța
+   „Ofertă acceptată" și nu se schimba absolut nimic.
+   Acum trece prin `estimate_client_respond` (0161): contract îngust, self-scoped,
+   care verifică proprietatea prin `clients.user_id`, membership-ul activ, CAS-ul și
+   faptul că oferta e chiar „trimisă". Orice refuz ajunge la utilizator ca refuz. */
+const RESP_ERR={
+  DOC_NOT_FOUND:'Oferta nu mai e disponibilă pentru contul tău.',
+  DOC_CONFLICT:'Oferta s-a schimbat între timp. Reîncarcă lista și încearcă din nou.',
+  ESTIMATE_NOT_OPEN:'Ai răspuns deja la această ofertă.',
+  STATUS_INVALID:'Acțiune necunoscută.',
+  CLIENT_FORBIDDEN:'Trebuie să fii autentificat.'
+};
+async function respondOferta(id,status,upd){
+  const {data,error}=await sb.rpc('estimate_client_respond',
+    {p_estimate_id:id, p_action:status, p_expected_updated_at:upd||null});
+  if(error){
+    const code=String(error.message||'').split(':')[0].trim();
+    toast('⛔ '+(RESP_ERR[code]||error.message)); scrClientOferte(); return;
+  }
+  if(data && data.noop){ toast('Oferta era deja în această stare.'); scrClientOferte(); return; }
   toast(status==='accepted'?'✅ Ofertă acceptată.':'Ofertă refuzată.'); scrClientOferte();
 }
 
