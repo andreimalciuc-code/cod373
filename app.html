@@ -474,6 +474,19 @@
     --primary-soft:#17263f; --green-soft:#12271c; --amber-soft:#2c2206; --red-soft:#2e1616;
     --text:#e7ecf6; --muted:#95a2bc; --line:#2a3648; --chip:#212c3d;
   }
+  /* RENT1-A — pastilele de stare ale chiriei. Acelasi tipar ca la taskuri: culoare de text
+     fixa pe tema DESCHISA, rescrisa explicit pe tema INCHISA, unde rosul/albastrul saturat
+     coboara sub pragul de contrast. */
+  .rt-pill{display:inline-flex;align-items:center;gap:.25rem;padding:.1rem .45rem;border-radius:999px;
+    font-size:.75rem;font-weight:700;border:1px solid transparent}
+  .rt-reserved {color:#1d4ed8;border-color:#1d4ed833;background:#1d4ed814}
+  .rt-active   {color:#047857;border-color:#04785733;background:#04785714}
+  .rt-returned {color:#4b5563;border-color:#4b556333;background:#4b556314}
+  .rt-cancelled{color:#b91c1c;border-color:#b91c1c33;background:#b91c1c14}
+  body.theme-dark .rt-reserved {color:#8fb4ff;border-color:#8fb4ff33;background:#212c3d}
+  body.theme-dark .rt-active   {color:#5cd39a;border-color:#5cd39a33;background:#212c3d}
+  body.theme-dark .rt-returned {color:#8592ad;border-color:#8592ad33;background:#212c3d}
+  body.theme-dark .rt-cancelled{color:#f5a3a3;border-color:#f5a3a333;background:#212c3d}
   /* Pastilele de task: fundalul se schimbă singur prin variabile, dar textul e fix
      (culori WCAG pe fundal DESCHIS) — pe temă închisă ar deveni ilizibil. Se rescrie. */
   body.theme-dark .pill.tk-todo{background:#212c3d;color:#aebbd4}
@@ -11711,8 +11724,8 @@ async function openForm(key,row,preset){
    nesuprapunerea e impusă STRUCTURAL de `rental_items_no_overlap` (0164). Aici NU se decide
    nimic de business — nu filtrăm unități în JS și nu calculăm bani.
    „Împrumut extern" (tool_units.loan_type) rămâne un concept DIFERIT, neatins de acest modul (D66). */
-const RT_STATUS={ reserved:{l:'Rezervată',i:'📌',c:'#2563eb'}, active:{l:'În chirie',i:'🔑',c:'#059669'},
-                  returned:{l:'Returnată',i:'✅',c:'#6b7280'}, cancelled:{l:'Anulată',i:'🚫',c:'#dc2626'} };
+const RT_STATUS={ reserved:{l:'Rezervată',i:'📌'}, active:{l:'În chirie',i:'🔑'},
+                  returned:{l:'Returnată',i:'✅'}, cancelled:{l:'Anulată',i:'🚫'} };
 const RT_RATE={ day:'Pe zi', week:'Pe săptămână', month:'Pe lună' };
 /* motivele de indisponibilitate vin de la server ca simboluri stabile; traducerea e a clientului */
 const RT_BLOCK={ out_of_service:'Scoasă din uz', service_required:'Necesită service',
@@ -11721,10 +11734,12 @@ const RT_BLOCK={ out_of_service:'Scoasă din uz', service_required:'Necesită se
 function rtUuid(){ try{ return crypto.randomUUID(); }catch(e){
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
     var r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16); }); } }
-function rtBadge(s){ const m=RT_STATUS[s]||{l:s,i:'•',c:'var(--muted)'};
-  return '<span style="display:inline-flex;align-items:center;gap:.25rem;padding:.1rem .45rem;border-radius:999px;'
-    +'font-size:.75rem;font-weight:700;color:'+m.c+';border:1px solid '+m.c+'33;background:'+m.c+'14">'
-    +'<span aria-hidden="true">'+m.i+'</span>'+esc(tz(m.l))+'</span>'; }
+/* Culorile stau în CSS, nu inline, fiindcă tema închisă are nevoie de variante proprii:
+   roșul WCAG pe fundal DESCHIS (#dc2626) dă ~3:1 pe #0e1622 — exact defectul deja reparat
+   pentru pastilele de task. Culoarea nu e niciodată singurul semnal: fiecare pastilă poartă
+   pictogramă ȘI text. */
+function rtBadge(s){ const m=RT_STATUS[s]||{l:s,i:'•'};
+  return '<span class="rt-pill rt-'+esc(s)+'"><span aria-hidden="true">'+m.i+'</span>'+esc(tz(m.l))+'</span>'; }
 
 /* ── Traducerea erorilor de server în limbaj de om ──────────────────────────────────────────
    Lecția lotului precedent: motivul de business NU e în mesaj, ci în `PG_EXCEPTION_DETAIL`,
