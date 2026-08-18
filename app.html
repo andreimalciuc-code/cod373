@@ -487,6 +487,13 @@
   body.theme-dark .rt-active   {color:#5cd39a;border-color:#5cd39a33;background:#212c3d}
   body.theme-dark .rt-returned {color:#8592ad;border-color:#8592ad33;background:#212c3d}
   body.theme-dark .rt-cancelled{color:#f5a3a3;border-color:#f5a3a333;background:#212c3d}
+  /* RENT1-B — intarziere si avertisment operational. Aceeasi disciplina: pereche de culori
+     pentru fiecare tema, iar culoarea NU e niciodata singurul semnal (fiecare pastila are
+     pictograma + text). */
+  .rt-late     {color:#b45309;border-color:#b4530933;background:#b4530914}
+  .rt-warn     {color:#92400e;border-color:#92400e33;background:#92400e14}
+  body.theme-dark .rt-late     {color:#f0b866;border-color:#f0b86633;background:#2c2718}
+  body.theme-dark .rt-warn     {color:#e8c07d;border-color:#e8c07d33;background:#2c2718}
   /* Pastilele de task: fundalul se schimbă singur prin variabile, dar textul e fix
      (culori WCAG pe fundal DESCHIS) — pe temă închisă ar deveni ilizibil. Se rescrie. */
   body.theme-dark .pill.tk-todo{background:#212c3d;color:#aebbd4}
@@ -3731,10 +3738,13 @@ function tuLoanInfo(u){ if(!u.loan_type) return ''; const fmtDT=s=>{ if(!s) retu
    Nu are legătură cu ocuparea comercială: aceea trăiește în contractul de chirie (D66). */
 function tuOpBadge(u){
   const st=u.status||'available'; if(st==='available') return '';
-  const m={service_required:['Necesită service','#fef9c3','#854d0e','🔧'],
-           out_of_service:['Scoasă din uz','#fee2e2','#b91c1c','⛔']}[st]; if(!m) return '';
-  return '<div><span class="pill" style="background:'+m[1]+';color:'+m[2]+';font-size:.7rem" title="'+esc(u.status_note||'')+'">'
-    +m[3]+' '+esc(tz(m[0]))+'</span></div>';
+  /* RENT1-B: culorile stau in CSS, cu pereche pentru tema inchisa. Varianta inline de dinainte
+     era calculata pentru fundal DESCHIS si cobora sub pragul de contrast pe tema inchisa —
+     exact defectul reparat la v382 pentru pastilele de contract. */
+  const m={service_required:['Necesită service','rt-warn','🔧'],
+           out_of_service:['Scoasă din uz','rt-cancelled','⛔']}[st]; if(!m) return '';
+  return '<div><span class="rt-pill '+m[1]+'" title="'+esc(u.status_note||'')+'">'
+    +m[2]+' '+esc(tz(m[0]))+'</span></div>';
 }
 function toolWhereSummary(r){ const u=r.tool_units||[]; if(u.length){ const m={}; u.forEach(x=>{ const k=tuWhereLabel(x); m[k]=(m[k]||0)+1; }); return Object.keys(m).map(k=>esc(k)+': <b>'+m[k]+'</b>').join(' · '); }
   const ls=(r.tool_locations||[]).filter(x=>+x.qty>0); if(!ls.length) return '<span style="color:var(--muted)">— (apasă → 📍 Unde se află)</span>';
@@ -3746,9 +3756,17 @@ function toolCondBadge(c,note){ c=c||'ok';
 async function toolHistory(id){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-body"><div class="loading">Se încarcă…</div></div></div></div>';
   const t=(await sb.from('tools').select('name,code,holder_label,condition,condition_note,last_move_at').eq('id',id).single()).data;
-  const { data:logs }=await sb.from('tool_logs').select('action,holder_label,from_label,condition,note,created_at').eq('tool_id',id).order('created_at',{ascending:false}).limit(60);
+  /* KB#100: ledgerul canonic ÎNTÂI, arhiva veche după. */
+  const [mvq,lgq]=await Promise.all([
+    sb.from('inventory_movements').select('*').eq('tool_id',id).order('created_at',{ascending:false}).limit(60),
+    sb.from('tool_logs').select('action,holder_label,from_label,condition,note,created_at').eq('tool_id',id).order('created_at',{ascending:false}).limit(60)]);
+  const mv=mvq.data||[], logs=lgq.data||[];
+  const names=await mvNames(), rentOf=await mvRentalCtx(mv.map(m=>m.id));
   const AL={receive:'✅ Primit',warehouse:'🏬 În depozit',defect:'🛠 Defect',repaired:'✔️ Reparat',clean:'✔️ Curățat',handover:'➡️ Predat'};
-  const rows=(logs||[]).length?logs.map(l=>'<tr><td style="white-space:nowrap;color:var(--muted);font-size:.8rem">'+esc((l.created_at||'').slice(0,16).replace('T',' '))+'</td><td><b>'+(AL[l.action]||esc(l.action))+'</b>'+(l.holder_label?' · '+esc(l.holder_label):'')+(l.note?'<div style="color:var(--muted);font-size:.82rem">„'+esc(l.note)+'"</div>':'')+'</td></tr>').join(''):'<tr><td colspan="2" style="color:var(--muted);padding:1rem">Nicio mișcare încă.</td></tr>';
+  const mvr=mv.map(m=>'<tr><td style="white-space:nowrap;color:var(--muted);font-size:.8rem">'+esc(fmtDT(m.created_at))+'</td>'
+      +'<td>'+mvRow(m,names,rentOf).replace(/^<div[^>]*>/,'').replace(/<\/div>$/,'')+'</td></tr>').join('');
+  const lgr=logs.map(l=>'<tr style="opacity:.85"><td style="white-space:nowrap;color:var(--muted);font-size:.8rem">'+esc(fmtDT(l.created_at))+'</td><td><b>'+(AL[l.action]||esc(l.action))+'</b>'+(l.holder_label?' · '+esc(l.holder_label):'')+(l.note?'<div style="color:var(--muted);font-size:.82rem">„'+esc(l.note)+'"</div>':'')+'<div style="font-size:.72rem;color:var(--muted)">🗄 '+esc(tz('din arhiva veche'))+'</div></td></tr>').join('');
+  const rows=(mvr+lgr)||'<tr><td colspan="2" style="color:var(--muted);padding:1rem">'+esc(tz('Nicio mișcare încă.'))+'</td></tr>';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'
     +'<div class="modal-head"><h3>🕘 Istoric — '+esc(t?t.name:'Sculă')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div style="margin-bottom:.6rem">📍 <b>'+esc(t&&t.holder_label||'—')+'</b> · '+toolCondBadge(t&&t.condition,t&&t.condition_note)+'</div>'
@@ -4797,11 +4815,98 @@ async function toolUnits(tid, tname){
 }
 function tuActor(){ try{ return (typeof tcName==='function'&&tcName())||(state.session&&state.session.user&&state.session.user.email)||'—'; }catch(e){ return '—'; } }
 function tuLabelFromVal(val, holder){ const p=(val||'').split(':'); if(p[0]==='wh'){ const w=(window._tuWhs||[]).find(x=>x.id===p[1]); return '🏬 '+((w&&w.name)||'depozit'); } if(p[0]==='site'){ const s=(window._tuSites||[]).find(x=>x.id===p[1]); return '🏗️ '+((s&&s.name)||'șantier'); } if(p[0]==='emp'){ const e=(window._tuEmps||[]).find(x=>x.id===p[1]); /* EMP1: numele rămâne uman și după concediere, cu marcaj */ return '👤 '+((e&&e.full_name)||'angajat')+((e&&e.active===false)?' ('+C373t('concediat')+')':''); } if(p[0]==='loan'){ return (p[1]==='rented'?'💶 chirie: ':'🤝 împrumut: ')+(holder||''); } return '📦 nealocat'; }
+/* ══ KB#100 — ISTORICUL MIȘCĂRILOR, DINTR-O SINGURĂ SURSĂ ══════════════════════════════════
+   DEFECTUL, măsurat: cele două ecrane de „Istoric mișcări" citeau jurnale LEGACY pe care
+   fluxurile moderne nu le mai scriu de la SCAN1-A. Producția avea `tool_logs`=3 rânduri,
+   `tool_unit_logs`=**0**, iar `inventory_movements` — ledgerul canonic, scris de fiecare
+   mutare, predare și retur — nu era citit NICĂIERI în `app.html`. Ecranul per-serie era gol
+   întotdeauna, prin construcție.
+
+   REPARAȚIA: `inventory_movements` devine autoritatea PRINCIPALĂ; jurnalele vechi rămân
+   afișate (istoricul lor e real și nu se șterge), dar marcate ca provenind din arhivă. Nu se
+   face backfill și nu se scrie nimic — sursele sunt disjuncte în timp, deci nu apar duplicate:
+   scrierea în `tool_unit_logs` a încetat exact când a început `inventory_movements`. */
+/* pictograma separat de text, ca textul să poată fi TRADUS (cheia i18n e string-ul RO curat) */
+const MV_TYPE={ receipt:['📦','Recepție'], transfer:['↦','Transfer'], assign:['➡️','Predare'],
+                return:['⬅️','Retur'], consumption:['🔻','Consum'], opening_balance:['🧾','Sold inițial'],
+                inventory_adjustment:['⚖️','Ajustare inventar'], damaged:['💥','Deteriorare'],
+                lost:['❓','Pierdere'], repair:['🛠','Reparație'], decommission:['⛔','Scoatere din uz'] };
+function mvEnd(kind,label,names){
+  if(!kind) return '';
+  if(kind==='external') return '🌍 '+esc(label||'—');
+  return esc((names&&names[kind+':'+label])||tz({warehouse:'Depozit',site:'Șantier',employee:'Angajat'}[kind]||kind));
+}
+/* Un rând de ledger + eventualul lui context COMERCIAL (D67: legătura stă pe contract). */
+function mvRow(m, names, rentOf){
+  const mt=MV_TYPE[m.movement_type];
+  const t=mt?(mt[0]+' '+esc(tz(mt[1]))):esc(m.movement_type);
+  const from=mvEnd(m.from_kind, m.from_id||m.from_label, names) || (m.from_label?('🌍 '+esc(m.from_label)):'');
+  const to  =mvEnd(m.to_kind,   m.to_id  ||m.to_label,   names) || (m.to_label?('🌍 '+esc(m.to_label)):'');
+  const rc=rentOf&&rentOf[m.id];
+  return '<div style="padding:.5rem 0;border-bottom:1px solid var(--line)">'
+    +'<div style="font-weight:600">'+t
+      +(from?(' · '+esc(tz('din'))+' '+from):'')+(to?(' → '+to):'')+'</div>'
+    +(m.qty!=null?('<div style="font-size:.8rem">'+esc(String(m.qty))+' '+esc(m.unit||'')+'</div>'):'')
+    +(m.note?('<div style="font-size:.82rem;color:var(--muted)">„'+esc(m.note)+'"</div>'):'')
+    +(rc?('<div style="font-size:.78rem"><span class="rt-pill rt-active">🔑 '+esc(tz('Chirie'))+'</span> '+esc(rc)+'</div>'):'')
+    +'<div style="font-size:.78rem;color:var(--muted)">'+esc(fmtDT(m.created_at))+'</div>'
+  +'</div>';
+}
+function mvLegacy(html){ return '<div style="padding:.5rem 0;border-bottom:1px solid var(--line);opacity:.85">'
+  +html+'<div style="font-size:.72rem;color:var(--muted)">🗄 '+esc(tz('din arhiva veche'))+'</div></div>'; }
+/* Numele locațiilor pentru capetele cu UUID — o singură dată, nu per rând. */
+async function mvNames(){
+  if(window._mvNames) return window._mvNames;
+  const n={};
+  try{
+    const [w,si,e]=await Promise.all([
+      sb.from('warehouses').select('id,name').eq('tenant_id',state.tenant),
+      sb.from('sites').select('id,name').eq('tenant_id',state.tenant),
+      sb.from('employees').select('id,full_name').eq('tenant_id',state.tenant)]);
+    (w.data||[]).forEach(x=>n['warehouse:'+x.id]='🏬 '+x.name);
+    (si.data||[]).forEach(x=>n['site:'+x.id]='🏗️ '+x.name);
+    (e.data||[]).forEach(x=>n['employee:'+x.id]='👤 '+x.full_name);
+  }catch(err){}
+  window._mvNames=n; return n;
+}
+/* Contextul comercial al unei mișcări. Doar OFFICE îl poate citi (RLS pe `rentals`), deci
+   pentru un lucrător lipsește pur și simplu — fără divulgare și fără eroare. */
+async function mvRentalCtx(movIds){
+  const out={}; if(!movIds.length || !FINANCE_ROLES.includes(state.role)) return out;
+  try{
+    const q=await sb.from('rental_items')
+      .select('handover_movement_id,return_movement_id,rentals(start_date,end_date,clients(name))')
+      .or('handover_movement_id.in.('+movIds.join(',')+'),return_movement_id.in.('+movIds.join(',')+')');
+    (q.data||[]).forEach(ri=>{
+      const r=ri.rentals||{}, nm=(r.clients&&r.clients.name)||'';
+      const lbl=nm+(r.start_date?(' · '+fmtDate(r.start_date)+' – '+fmtDate(r.end_date)):'');
+      if(ri.handover_movement_id) out[ri.handover_movement_id]=lbl;
+      if(ri.return_movement_id)   out[ri.return_movement_id]=lbl;
+    });
+  }catch(e){}
+  return out;
+}
 async function toolUnitHist(unitId){
-  const { data }=await sb.from('tool_unit_logs').select('action,from_label,to_label,by_name,note,created_at').eq('unit_id',unitId).order('created_at',{ascending:false}).limit(80);
-  const logs=data||[];
-  const rows=logs.length?logs.map(l=>'<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div style="font-weight:600">'+(l.action==='create'?'➕ Adăugat':'↦ Mutat')+(l.from_label?(' · din '+esc(l.from_label)):'')+(l.to_label?(' → '+esc(l.to_label)):'')+'</div><div style="font-size:.78rem;color:var(--muted)">👤 '+esc(l.by_name||'—')+' · '+esc((l.created_at||'').slice(0,16).replace("T"," "))+'</div></div>').join(''):'<div class="empty" style="color:var(--muted);padding:1rem">Nicio mișcare înregistrată încă.</div>';
-  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()"><div class="modal" style="max-width:460px"><div class="modal-head"><h3>🕘 Istoric mișcări serie</h3><button class="x" onclick="closeSub()">×</button></div><div class="modal-body">'+rows+'</div></div></div>';
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()">'
+    +'<div class="modal" style="max-width:520px"><div class="modal-body"><div class="loading">'+esc(tz('Se încarcă…'))+'</div></div></div></div>';
+  let mv=[], lg=[], names={}, rentOf={};
+  try{
+    const [a,b]=await Promise.all([
+      sb.from('inventory_movements').select('*').eq('unit_id',unitId).order('created_at',{ascending:false}).limit(80),
+      sb.from('tool_unit_logs').select('action,from_label,to_label,by_name,note,created_at').eq('unit_id',unitId).order('created_at',{ascending:false}).limit(80)]);
+    mv=a.data||[]; lg=b.data||[];
+    names=await mvNames();
+    rentOf=await mvRentalCtx(mv.map(m=>m.id));
+  }catch(e){}
+  const rows=(mv.map(m=>mvRow(m,names,rentOf)).join(''))
+    + lg.map(l=>mvLegacy('<div style="font-weight:600">'+(l.action==='create'?'➕ '+esc(tz('Adăugat')):'↦ '+esc(tz('Mutat')))
+        +(l.from_label?(' · '+esc(tz('din'))+' '+esc(l.from_label)):'')+(l.to_label?(' → '+esc(l.to_label)):'')+'</div>'
+        +'<div style="font-size:.78rem;color:var(--muted)">👤 '+esc(l.by_name||'—')+' · '+esc(fmtDT(l.created_at))+'</div>')).join('');
+  $('picker-mount').innerHTML='<div class="modal-overlay" style="z-index:80" onclick="if(event.target===this)closeSub()">'
+    +'<div class="modal" style="max-width:520px"><div class="modal-head"><h3>🕘 '+esc(tz('Istoric mișcări serie'))+'</h3>'
+    +'<button class="x" onclick="closeSub()">×</button></div><div class="modal-body">'
+    +(rows||'<div class="empty" style="color:var(--muted);padding:1rem">'+esc(tz('Nicio mișcare înregistrată încă.'))+'</div>')
+    +'</div></div></div>';
 }
 /* Capătul „de unde" se DERIVĂ din rândul citit acum, niciodată din interfață: contractul îl
    compară cu starea reală și refuză cu MOVE_STALE_SOURCE dacă altcineva a mutat bucata între
@@ -11766,7 +11871,24 @@ function rtErr(e){
     RENTAL_BAD_STATUS:'Stare operațională necunoscută.',
     RENTAL_NOT_FOUND:'Contractul nu a fost găsit.',
     RENTAL_FORBIDDEN:'Nu ai dreptul să faci asta.',
-    RENTAL_NOAUTH:'Sesiune expirată. Autentifică-te din nou.' };
+    RENTAL_NOAUTH:'Sesiune expirată. Autentifică-te din nou.',
+    /* RENT1-B — predare/retur. Codurile MOVE_* vin din stratul de mișcare REFOLOSIT
+       (inventory_asset_lend / inventory_move): le traducem aici, nu le lăsăm brute. */
+    RENTAL_ITEM_NOT_FOUND:'Poziția nu aparține acestui contract.',
+    RENTAL_ITEM_NOT_OUT:'Unitatea nu a fost predată, deci nu poate fi returnată.',
+    RENTAL_BAD_DESTINATION:'Alege depozitul sau șantierul în care se întoarce unitatea.',
+    RENTAL_BAD_OUTCOME:'Rezultat de retur necunoscut.',
+    RENTAL_BAD_CONDITION:'Stare necunoscută.',
+    RENTAL_BAD_PHOTO_PATH:'Poza nu aparține acestei firme.',
+    RENTAL_BAD_EXTRA:'Tip de cost suplimentar necunoscut.',
+    RENTAL_TOO_MANY_PHOTOS:'Cel mult 8 poze pe unitate.',
+    RENTAL_TOO_MANY_ACCESSORIES:'Prea multe accesorii.',
+    RENTAL_NOTE_TOO_LONG:'Observația e prea lungă.',
+    MOVE_STALE_SOURCE:'Unitatea a fost mutată între timp. Reîmprospătează și încearcă din nou.',
+    MOVE_SAME_LOCATION:'Unitatea e deja acolo.',
+    MOVE_INVALID_LOCATION:'Locația aleasă nu mai există.',
+    MOVE_NOT_FOUND:'Unitatea nu a fost găsită.',
+    MOVE_FORBIDDEN:'Nu ai dreptul să muți această unitate.' };
   for(const k in M){ if(msg.indexOf(k)>=0) return tz(M[k]); }
   return tz('Eroare:')+' '+esc(msg||tz('necunoscută'));
 }
@@ -11798,6 +11920,11 @@ function rtFiltered(){
   let r=(window._rtRows||[]).slice();
   if(f.tab==='reserved')  r=r.filter(x=>x.status==='reserved');
   else if(f.tab==='future') r=r.filter(x=>x.status==='reserved' && x.start_date>td);
+  /* „De returnat azi" și „Întârziate" sunt DERIVATE din perioadă, nu stări manuale (§20). */
+  else if(f.tab==='active') r=r.filter(x=>x.status==='active');
+  else if(f.tab==='due')  r=r.filter(x=>x.status==='active' && x.end_date===td);
+  else if(f.tab==='late') r=r.filter(x=>x.status==='active' && x.end_date<td);
+  else if(f.tab==='returned') r=r.filter(x=>x.status==='returned');
   else if(f.tab==='cancelled') r=r.filter(x=>x.status==='cancelled');
   const q=(f.q||'').trim().toLowerCase();
   if(q){ const cn={}; (window._rtClients||[]).forEach(c=>cn[c.id]=(c.name||'').toLowerCase());
@@ -11810,6 +11937,10 @@ function rtShell(){
   const f=window._rtF, td=coToday(), all=(window._rtRows||[]);
   const cnt={ all:all.length, reserved:all.filter(x=>x.status==='reserved').length,
               future:all.filter(x=>x.status==='reserved'&&x.start_date>td).length,
+              active:all.filter(x=>x.status==='active').length,
+              due:all.filter(x=>x.status==='active'&&x.end_date===td).length,
+              late:all.filter(x=>x.status==='active'&&x.end_date<td).length,
+              returned:all.filter(x=>x.status==='returned').length,
               cancelled:all.filter(x=>x.status==='cancelled').length };
   const tab=(k,l)=>'<button class="btn-ghost" onclick="rtSet(\'tab\',\''+k+'\')" aria-pressed="'+(f.tab===k)+'"'
     +' style="font-size:.8rem'+(f.tab===k?';border-color:var(--primary);color:var(--primary);font-weight:700':'')+'">'
@@ -11822,10 +11953,13 @@ function rtShell(){
       +'<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">'
         +'<b style="flex:1;min-width:140px">'+esc(rtClientName(r.client_id))+'</b>'
         +rtBadge(r.status)
+        +(rtLateDays(r)?('<span class="rt-pill rt-late">⏰ '+esc(tz('Întârziată'))+'</span>'):'')
       +'</div>'
       +'<div style="color:var(--muted);font-size:.85rem;margin-top:.25rem">'
         +'📅 '+esc(fmtDate(r.start_date))+' – '+esc(fmtDate(r.end_date))
         +' · 🔧 '+its.length+' '+esc(tz(its.length===1?'unitate':'unități'))
+        +(its.some(i=>i.handed_over_at)
+            ?(' · ↩️ '+esc(tz('Returnate'))+' '+rtBack(its).length+'/'+its.filter(i=>i.handed_over_at).length):'')
         +(r.deposit_amount!=null?(' · 🔒 '+esc(tz('Gaj'))+' '+money(r.deposit_amount)):'')
       +'</div>'
       +(terms?('<div style="color:var(--muted);font-size:.8rem;margin-top:.2rem">'+terms+'</div>'):'')
@@ -11839,7 +11973,9 @@ function rtShell(){
       +'<button class="btn-ghost" onclick="renderChirii()" title="'+esc(tz('Reîmprospătează'))+'" aria-label="'+esc(tz('Reîmprospătează'))+'">⟳</button>'
     +'</div>'
     +'<div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.7rem" role="group" aria-label="'+esc(tz('Filtru'))+'">'
-      +tab('all','Toate')+tab('reserved','Rezervate')+tab('future','Viitoare')+tab('cancelled','Anulate')+'</div>'
+      +tab('reserved','Rezervate')+tab('active','În chirie')+tab('due','De returnat azi')
+      +tab('late','Întârziate')+tab('returned','Returnate')+tab('future','Viitoare')
+      +tab('cancelled','Anulate')+tab('all','Toate')+'</div>'
     +body;
   const q=$('rt-q'); if(q && f.q){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); }
 }
@@ -11976,27 +12112,64 @@ async function rtSave(){
 }
 
 /* ── DETALIU ───────────────────────────────────────────────────────────────────────────────── */
-function rtOpen(id){
+/* Fișa contractului. Acțiunile depind STRICT de stare: nu se oferă „Predă" pe un contract
+   anulat și nici „Retur" pe unul în care nu mai e nimic afară — regula e aceeași și în bază
+   (RENTAL_BAD_TRANSITION), aici doar nu punem butoane care ar eșua. */
+async function rtOpen(id){
   const r=(window._rtRows||[]).find(x=>x.id===id); if(!r) return;
   const its=window._rtItems[id]||[];
   const canU=canDo('chirii','u');
+  const out=rtOut(its), back=rtBack(its), handed=its.filter(i=>i.handed_over_at);
+  const late=rtLateDays(r);
+  const st=i=>{
+    if(i.returned_at) return '<span class="rt-pill rt-returned">✅ '+esc(tz('Returnată'))+'</span>'
+      +(i.return_outcome&&i.return_outcome!=='ok'
+        ?(' <span class="rt-pill rt-warn">🔧 '+esc(tz(RT_OUTC[i.return_outcome]||i.return_outcome))+'</span>'):'');
+    if(i.handed_over_at) return '<span class="rt-pill rt-active">🔑 '+esc(tz('La client'))+'</span>';
+    return '<span class="rt-pill rt-reserved">📌 '+esc(tz('Nepredată'))+'</span>';
+  };
+  const cnd=(o)=>o&&o.condition?esc(tz(RT_COND[o.condition]||o.condition)):'—';
   const lines=its.map(i=>'<tr><td>'+esc(i.tool_name||'—')+'</td><td>'+esc(i.serial_no||'—')+'</td>'
-    +'<td>'+esc(tz(RT_RATE[i.rate_type]||i.rate_type))+'</td><td style="text-align:right">'+money(i.rate_amount)+'</td></tr>').join('');
+    +'<td>'+st(i)+'</td>'
+    +'<td style="font-size:.8rem;color:var(--muted)">'+cnd(i.out_state)+' → '+cnd(i.in_state)+'</td>'
+    +'<td>'+esc(tz(RT_RATE[i.rate_type]||i.rate_type))+'</td>'
+    +'<td style="text-align:right">'+money(i.rate_amount)+'</td></tr>').join('');
+  let xr='';
+  try{
+    const x=await sb.from('rental_extras').select('*').eq('rental_id',id).order('created_at');
+    xr=(x.data||[]).map(e=>'<tr><td>'+esc(tz(RT_XKIND[e.kind]||e.kind))+'</td>'
+      +'<td>'+esc(e.description||'—')+'</td>'
+      +'<td style="text-align:right">'+(e.amount!=null?money(e.amount):('<span style="color:var(--muted)">'+esc(tz('de stabilit'))+'</span>'))+'</td></tr>').join('');
+  }catch(e){}
+  const acts=[];
+  if(canU && r.status==='reserved'){
+    acts.push('<button class="btn" onclick="closeModal();rtHandover(\''+r.id+'\')">📤 '+esc(tz('Predă'))+'</button>');
+    acts.push('<button class="btn-ghost" onclick="closeModal();rtNew(window._rtRows.find(x=>x.id===\''+r.id+'\'))">✏️ '+esc(tz('Editează'))+'</button>');
+    acts.push('<button class="btn-ghost" style="color:var(--red,#dc2626)" onclick="rtCancel(\''+r.id+'\')">🚫 '+esc(tz('Anulează rezervarea'))+'</button>');
+  } else if(canU && r.status==='active'){
+    if(out.length) acts.push('<button class="btn" onclick="closeModal();rtReturn(\''+r.id+'\')">📥 '+esc(tz('Retur'))+'</button>');
+    if(its.some(i=>!i.handed_over_at))
+      acts.push('<button class="btn-ghost" onclick="closeModal();rtHandover(\''+r.id+'\')">📤 '+esc(tz('Predă'))+'</button>');
+  }
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()">'
-    +'<div class="modal" style="max-width:640px">'
+    +'<div class="modal" style="max-width:760px">'
     +'<div class="modal-head"><h3>🔑 '+esc(rtClientName(r.client_id))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body">'
-      +'<div style="margin-bottom:.5rem">'+rtBadge(r.status)+'</div>'
+      +'<div style="margin-bottom:.5rem;display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">'+rtBadge(r.status)
+        +(late?('<span class="rt-pill rt-late">⏰ '+esc(tz('Întârziată cu'))+' '+late+' '+rtLateLabel(late)+'</span>'):'')
+        +(handed.length?('<span style="color:var(--muted);font-size:.85rem">↩️ '+esc(tz('Returnate'))+' '
+            +back.length+' '+esc(tz('din'))+' '+handed.length+'</span>'):'')
+      +'</div>'
       +'<div style="color:var(--muted);margin-bottom:.6rem">📅 '+esc(fmtDate(r.start_date))+' – '+esc(fmtDate(r.end_date))
         +(r.deposit_amount!=null?(' · 🔒 '+esc(tz('Gaj'))+' '+money(r.deposit_amount)):'')+'</div>'
       +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(tz('Sculă'))+'</th><th>'+esc(tz('Serie'))+'</th>'
+        +'<th>'+esc(tz('Stare'))+'</th><th>'+esc(tz('Stare la predare'))+' → '+esc(tz('Stare la retur'))+'</th>'
         +'<th>'+esc(tz('Tarif'))+'</th><th style="text-align:right">'+esc(tz('Sumă'))+'</th></tr></thead>'
-        +'<tbody>'+(lines||'<tr><td colspan="4" style="color:var(--muted)">—</td></tr>')+'</tbody></table></div>'
+        +'<tbody>'+(lines||'<tr><td colspan="6" style="color:var(--muted)">—</td></tr>')+'</tbody></table></div>'
+      +(xr?('<div style="margin-top:.7rem"><b>'+esc(tz('Cost suplimentar'))+'</b>'
+        +'<div class="tbl-wrap"><table class="tbl"><tbody>'+xr+'</tbody></table></div></div>'):'')
       +(r.notes?('<div style="margin-top:.6rem;color:var(--muted)">'+esc(r.notes)+'</div>'):'')
-      +(r.status==='reserved'&&canU?('<div style="display:flex;gap:.5rem;margin-top:.9rem;flex-wrap:wrap">'
-          +'<button class="btn-ghost" onclick="closeModal();rtNew(window._rtRows.find(x=>x.id===\''+r.id+'\'))">✏️ '+esc(tz('Editează'))+'</button>'
-          +'<button class="btn-ghost" style="color:var(--red,#dc2626)" onclick="rtCancel(\''+r.id+'\')">🚫 '+esc(tz('Anulează rezervarea'))+'</button>'
-        +'</div>'):'')
+      +(acts.length?('<div style="display:flex;gap:.5rem;margin-top:.9rem;flex-wrap:wrap">'+acts.join('')+'</div>'):'')
     +'</div></div></div>';
 }
 async function rtCancel(id){
@@ -12008,6 +12181,266 @@ async function rtCancel(id){
   }catch(e){ toast('⚠️ '+rtErr(e)); return; }
   closeModal(); toast('✅ '+tz('Rezervare anulată.')); await renderChirii();
 }
+
+
+/* ══ RENT1-B — PREDARE / CHIRIE ACTIVĂ / RETUR ═════════════════════════════════════════════
+   Serverul rămâne autoritatea: `rental_handover` și `rental_return` sunt atomice cu ledgerul
+   fizic (`inventory_movements`), derivă starea antetului și aplică starea operațională a
+   piesei. Aici NU se decide nimic — nu calculăm întârzieri în bani, nu alegem disponibilitate
+   și nu scriem direct în nicio tabelă. „Întârziată" și „X din Y returnate" sunt DERIVĂRI de
+   afișare (D69), nu stări stocate. */
+const RT_COND={ good:'Bună', wear:'Uzură existentă', minor_defect:'Defect minor', other:'Altă observație' };
+const RT_OUTC={ ok:'În regulă', service_required:'Necesită service', out_of_service:'Scoasă din uz' };
+const RT_XKIND={ damage:'Daună', missing:'Lipsă', cleaning:'Curățare', service:'Service',
+                 late:'Întârziere', other:'Altele' };
+
+/* Derivări de listă — una singură, folosită de taburi, de rânduri și de fișă. */
+function rtOut(its){ return (its||[]).filter(i=>i.handed_over_at && !i.returned_at); }
+function rtBack(its){ return (its||[]).filter(i=>i.returned_at); }
+function rtLateDays(r){
+  if(!r || r.status!=='active') return 0;
+  const td=coToday(); if(!r.end_date || r.end_date>=td) return 0;
+  return Math.round((Date.parse(td+'T00:00:00Z')-Date.parse(r.end_date+'T00:00:00Z'))/86400000);
+}
+/* „Întârziată cu N zile" — RO/RU au TREI forme cu praguri diferite (KB#89, plSlot). */
+function rtLateLabel(n){ return esc(tz(plSlot(n)===0?'zi':(plSlot(n)===1?'zile':'de zile'))); }
+
+/* ── PREDAREA ─────────────────────────────────────────────────────────────────────────────── */
+function rtHandover(id){
+  const r=(window._rtRows||[]).find(x=>x.id===id); if(!r) return;
+  if(!canDo('chirii','u')){ toast('🔒 '+tz('Nu ai dreptul să faci asta.')); return; }
+  const todo=(window._rtItems[id]||[]).filter(i=>!i.handed_over_at);
+  if(!todo.length){ toast('ℹ️ '+tz('Toate unitățile sunt deja predate.')); return; }
+  /* Contractul e deja cunoscut: client, perioadă, serie, tarif NU se mai cer o dată (principiul
+     „minimum de muncă"). Operatorul confirmă piesele fizice și starea lor. */
+  window._rtHO={ id:id, updated_at:r.updated_at, sel:{}, busy:false, up:[] };
+  todo.forEach(i=>{ window._rtHO.sel[i.id]={on:true, condition:'good', note:'', acc:'', photos:[]}; });
+  rtHOPaint();
+}
+function rtHOSet(iid,k,v){ const S=window._rtHO; if(!S||!S.sel[iid]) return; S.sel[iid][k]=v; if(k==='on') rtHOPaint(); }
+function rtHOPaint(){
+  const S=window._rtHO; if(!S) return;
+  const r=(window._rtRows||[]).find(x=>x.id===S.id)||{};
+  const todo=(window._rtItems[S.id]||[]).filter(i=>!i.handed_over_at);
+  const n=todo.filter(i=>S.sel[i.id]&&S.sel[i.id].on).length;
+  const rows=todo.map(i=>{ const s=S.sel[i.id]||{};
+    return '<div style="border:1px solid var(--line);border-radius:9px;padding:.55rem .7rem;margin-bottom:.45rem">'
+      +'<label style="display:flex;gap:.5rem;align-items:center;cursor:pointer">'
+        +'<input type="checkbox" '+(s.on?'checked':'')+' onchange="rtHOSet(\''+i.id+'\',\'on\',this.checked)">'
+        +'<b>'+esc(i.tool_name||'—')+'</b>'
+        +'<span style="color:var(--muted)">'+esc(i.serial_no||'')+'</span>'
+      +'</label>'
+      +(s.on?('<div style="margin-top:.45rem;display:grid;gap:.4rem">'
+        +'<div style="display:flex;gap:.4rem;flex-wrap:wrap">'
+          +'<select onchange="rtHOSet(\''+i.id+'\',\'condition\',this.value)" style="flex:1;min-width:140px">'
+          +Object.keys(RT_COND).map(k=>'<option value="'+k+'"'+(s.condition===k?' selected':'')+'>'+esc(tz(RT_COND[k]))+'</option>').join('')
+          +'</select>'
+          +'<input type="text" value="'+esc(s.acc||'')+'" oninput="rtHOSet(\''+i.id+'\',\'acc\',this.value)"'
+            +' placeholder="'+esc(tz('Accesorii (separate prin virgulă)'))+'" style="flex:2;min-width:170px">'
+        +'</div>'
+        +'<input type="text" value="'+esc(s.note||'')+'" oninput="rtHOSet(\''+i.id+'\',\'note\',this.value)"'
+          +' placeholder="'+esc(tz('Observație la predare'))+'">'
+        +'<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+          +'<label class="btn-ghost" style="font-size:.8rem;cursor:pointer">📷 '+esc(tz('Poze predare'))
+            +'<input type="file" accept="image/*" multiple style="display:none" onchange="rtPhotoPick(this,\'ho\',\''+i.id+'\')"></label>'
+          +'<span style="color:var(--muted);font-size:.8rem">'+(s.photos||[]).length+'</span>'
+        +'</div>'
+      +'</div>'):'')
+    +'</div>'; }).join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="modal" style="max-width:640px">'
+    +'<div class="modal-head"><h3>📤 '+esc(tz('Predă'))+' — '+esc(rtClientName(r.client_id))+'</h3>'
+      +'<button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="rt-homsg"></div>'
+      +'<div style="color:var(--muted);margin-bottom:.6rem">📅 '+esc(fmtDate(r.start_date))+' – '+esc(fmtDate(r.end_date))+'</div>'
+      +rows
+      +'<button class="btn" id="rt-hosave" onclick="rtHOSave()"'+(n?'':' disabled')+'>📤 '
+        +esc(tz('Predă'))+' '+n+'/'+todo.length+'</button>'
+    +'</div></div></div>';
+}
+async function rtHOSave(){
+  const S=window._rtHO; if(!S||S.busy) return;
+  const todo=(window._rtItems[S.id]||[]).filter(i=>!i.handed_over_at && S.sel[i.id] && S.sel[i.id].on);
+  if(!todo.length){ rtMsg2('rt-homsg', esc(tz('Alege cel puțin o unitate.'))); return; }
+  S.busy=true; const b=$('rt-hosave'); if(b) b.disabled=true;
+  rtMsg2('rt-homsg', esc(tz('Se salvează…')),'ok');
+  const items=todo.map(i=>{ const s=S.sel[i.id];
+    return { item_id:i.id, condition:s.condition, note:s.note||null,
+             accessories:rtAccParse(s.acc), photos:s.photos||[] }; });
+  try{
+    const q=await sb.rpc('rental_handover',{p_tenant_id:state.tenant,p_rental_id:S.id,
+              p_payload:{items:items}, p_expected_updated:S.updated_at});
+    if(q.error) throw q.error;
+  }catch(e){
+    S.busy=false; if(b) b.disabled=false;
+    /* KB#60: obiectele urcate se curăță DOAR la refuz EXPLICIT al serverului. La o eroare de
+       rețea nu putem ști dacă scrierea a ajuns, iar un obiect orfan e recuperabil. */
+    rtCleanupPhotos(e, S);
+    rtMsg2('rt-homsg', rtErr(e)); return;
+  }
+  window._rtHO=null; closeModal(); toast('✅ '+tz('Unități predate. Chiria e activă.')); await renderChirii();
+}
+
+/* ── RETURUL (parțial sau final) ──────────────────────────────────────────────────────────── */
+async function rtReturn(id){
+  const r=(window._rtRows||[]).find(x=>x.id===id); if(!r) return;
+  if(!canDo('chirii','u')){ toast('🔒 '+tz('Nu ai dreptul să faci asta.')); return; }
+  const out=rtOut(window._rtItems[id]);
+  if(!out.length){ toast('ℹ️ '+tz('Nicio unitate nu e în afara firmei.')); return; }
+  window._rtRT={ id:id, updated_at:r.updated_at, sel:{}, extras:[], busy:false, dest:[], up:[] };
+  try{
+    const [wh,si]=await Promise.all([
+      sb.from('warehouses').select('id,name').eq('tenant_id',state.tenant).order('name'),
+      sb.from('sites').select('id,name').eq('tenant_id',state.tenant).order('name')]);
+    (wh.data||[]).forEach(x=>window._rtRT.dest.push({k:'warehouse',id:x.id,n:'🏬 '+x.name}));
+    (si.data||[]).forEach(x=>window._rtRT.dest.push({k:'site',id:x.id,n:'🏗️ '+x.name}));
+    /* Precompletăm locul de UNDE a plecat piesa — sistemul îl ȘTIE deja din ledger, deci nu-l
+       mai cerem (principiul „nu întrebăm de două ori"). */
+    const mids=out.map(i=>i.handover_movement_id).filter(Boolean);
+    if(mids.length){
+      const mv=await sb.from('inventory_movements').select('id,from_kind,from_id').in('id',mids);
+      (mv.data||[]).forEach(m=>{ window._rtRT.srcOf=window._rtRT.srcOf||{};
+        if(m.from_kind==='warehouse'||m.from_kind==='site') window._rtRT.srcOf[m.id]=m.from_kind+':'+m.from_id; });
+    }
+  }catch(e){ /* fără precompletare: operatorul alege manual */ }
+  const d0=(window._rtRT.dest[0]||{});
+  out.forEach(i=>{ const s=(window._rtRT.srcOf||{})[i.handover_movement_id];
+    window._rtRT.sel[i.id]={on:true, condition:'good', note:'', outcome:'ok',
+      dest:(s|| (d0.k?(d0.k+':'+d0.id):'')), acc:rtAccOf(i), photos:[]}; });
+  rtRTPaint();
+}
+function rtRTSet(iid,k,v){ const S=window._rtRT; if(!S||!S.sel[iid]) return; S.sel[iid][k]=v; if(k==='on'||k==='outcome') rtRTPaint(); }
+function rtXAdd(){ const S=window._rtRT; if(!S) return; S.extras.push({kind:'damage',description:'',amount:''}); rtRTPaint(); }
+function rtXSet(i,k,v){ const S=window._rtRT; if(!S||!S.extras[i]) return; S.extras[i][k]=v; }
+function rtXDel(i){ const S=window._rtRT; if(!S) return; S.extras.splice(i,1); rtRTPaint(); }
+function rtRTPaint(){
+  const S=window._rtRT; if(!S) return;
+  const r=(window._rtRows||[]).find(x=>x.id===S.id)||{};
+  const out=rtOut(window._rtItems[S.id]);
+  const n=out.filter(i=>S.sel[i.id]&&S.sel[i.id].on).length;
+  const late=rtLateDays(r);
+  const dopt=(cur)=>S.dest.map(d=>{ const v=d.k+':'+d.id;
+    return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(d.n)+'</option>'; }).join('');
+  const rows=out.map(i=>{ const s=S.sel[i.id]||{};
+    return '<div style="border:1px solid var(--line);border-radius:9px;padding:.55rem .7rem;margin-bottom:.45rem">'
+      +'<label style="display:flex;gap:.5rem;align-items:center;cursor:pointer">'
+        +'<input type="checkbox" '+(s.on?'checked':'')+' onchange="rtRTSet(\''+i.id+'\',\'on\',this.checked)">'
+        +'<b>'+esc(i.tool_name||'—')+'</b><span style="color:var(--muted)">'+esc(i.serial_no||'')+'</span>'
+        +(i.out_state&&i.out_state.condition?('<span style="color:var(--muted);font-size:.78rem">'
+            +esc(tz('La predare'))+': '+esc(tz(RT_COND[i.out_state.condition]||i.out_state.condition))+'</span>'):'')
+      +'</label>'
+      +(s.on?('<div style="margin-top:.45rem;display:grid;gap:.4rem">'
+        +'<div style="display:flex;gap:.4rem;flex-wrap:wrap">'
+          +'<select onchange="rtRTSet(\''+i.id+'\',\'condition\',this.value)" style="flex:1;min-width:140px">'
+          +Object.keys(RT_COND).map(k=>'<option value="'+k+'"'+(s.condition===k?' selected':'')+'>'+esc(tz(RT_COND[k]))+'</option>').join('')
+          +'</select>'
+          +'<select onchange="rtRTSet(\''+i.id+'\',\'outcome\',this.value)" style="flex:1;min-width:140px">'
+          +Object.keys(RT_OUTC).map(k=>'<option value="'+k+'"'+(s.outcome===k?' selected':'')+'>'+esc(tz(RT_OUTC[k]))+'</option>').join('')
+          +'</select>'
+        +'</div>'
+        +'<select onchange="rtRTSet(\''+i.id+'\',\'dest\',this.value)">'+dopt(s.dest)+'</select>'
+        +(s.outcome!=='ok'?('<div style="font-size:.78rem;color:var(--muted)">⚠️ '
+            +esc(tz('Unitatea nu va fi disponibilă pentru rezervări noi.'))+'</div>'):'')
+        +(s.acc?('<div style="font-size:.8rem">'+esc(tz('Accesorii'))+': '+esc(s.acc)+'</div>'):'')
+        +'<input type="text" value="'+esc(s.note||'')+'" oninput="rtRTSet(\''+i.id+'\',\'note\',this.value)"'
+          +' placeholder="'+esc(tz('Observație la retur'))+'">'
+        +'<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+          +'<label class="btn-ghost" style="font-size:.8rem;cursor:pointer">📷 '+esc(tz('Poze retur'))
+            +'<input type="file" accept="image/*" multiple style="display:none" onchange="rtPhotoPick(this,\'rt\',\''+i.id+'\')"></label>'
+          +'<span style="color:var(--muted);font-size:.8rem">'+(s.photos||[]).length+'</span>'
+        +'</div>'
+      +'</div>'):'')
+    +'</div>'; }).join('');
+  const xrows=S.extras.map((x,ix)=>'<div style="display:flex;gap:.35rem;margin-bottom:.35rem;flex-wrap:wrap">'
+    +'<select onchange="rtXSet('+ix+',\'kind\',this.value)" style="min-width:120px">'
+    +Object.keys(RT_XKIND).map(k=>'<option value="'+k+'"'+(x.kind===k?' selected':'')+'>'+esc(tz(RT_XKIND[k]))+'</option>').join('')
+    +'</select>'
+    +'<input type="text" value="'+esc(x.description||'')+'" oninput="rtXSet('+ix+',\'description\',this.value)"'
+      +' placeholder="'+esc(tz('Descriere'))+'" style="flex:2;min-width:140px">'
+    +'<input type="number" step="0.01" min="0" value="'+esc(x.amount||'')+'" oninput="rtXSet('+ix+',\'amount\',this.value)"'
+      +' placeholder="'+esc(tz('Sumă (opțional)'))+'" style="flex:1;min-width:110px">'
+    +'<button class="iconbtn danger" onclick="rtXDel('+ix+')" aria-label="'+esc(tz('Șterge'))+'">🗑</button></div>').join('');
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="modal" style="max-width:660px">'
+    +'<div class="modal-head"><h3>📥 '+esc(tz('Retur'))+' — '+esc(rtClientName(r.client_id))+'</h3>'
+      +'<button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div id="rt-rtmsg"></div>'
+      +'<div style="color:var(--muted);margin-bottom:.6rem">📅 '+esc(fmtDate(r.start_date))+' – '+esc(fmtDate(r.end_date))
+        +(late?(' · <span class="rt-pill rt-late">⏰ '+esc(tz('Întârziată cu'))+' '+late+' '+rtLateLabel(late)+'</span>'):'')+'</div>'
+      +rows
+      +'<div style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.6rem">'
+        +'<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem">'
+          +'<b style="flex:1">'+esc(tz('Cost suplimentar'))+'</b>'
+          +'<button class="btn-ghost" style="font-size:.8rem" onclick="rtXAdd()">＋ '+esc(tz('Adaugă'))+'</button></div>'
+        +xrows
+        +'<div style="font-size:.75rem;color:var(--muted)">'+esc(tz('Se consemnează doar faptul. Facturarea vine separat.'))+'</div>'
+      +'</div>'
+      +'<button class="btn" id="rt-rtsave" style="margin-top:.8rem" onclick="rtRTSave()"'+(n?'':' disabled')+'>📥 '
+        +esc(tz('Înregistrează returul'))+' '+n+'/'+out.length+'</button>'
+    +'</div></div></div>';
+}
+async function rtRTSave(){
+  const S=window._rtRT; if(!S||S.busy) return;
+  const out=rtOut(window._rtItems[S.id]).filter(i=>S.sel[i.id]&&S.sel[i.id].on);
+  if(!out.length){ rtMsg2('rt-rtmsg', esc(tz('Alege cel puțin o unitate.'))); return; }
+  for(const i of out){ if(!S.sel[i.id].dest){
+    rtMsg2('rt-rtmsg', esc(tz('Alege depozitul sau șantierul în care se întoarce unitatea.'))); return; } }
+  S.busy=true; const b=$('rt-rtsave'); if(b) b.disabled=true;
+  rtMsg2('rt-rtmsg', esc(tz('Se salvează…')),'ok');
+  const items=out.map(i=>{ const s=S.sel[i.id], d=(s.dest||'').split(':');
+    return { item_id:i.id, condition:s.condition, note:s.note||null, outcome:s.outcome,
+             accessories:rtAccParse(s.acc), photos:s.photos||[],
+             to:{kind:d[0], id:d[1]} }; });
+  const extras=S.extras.filter(x=>x.kind).map(x=>({kind:x.kind,
+    description:(x.description||'').trim()||null, amount:(x.amount===''||x.amount==null)?null:String(x.amount)}));
+  try{
+    const q=await sb.rpc('rental_return',{p_tenant_id:state.tenant,p_rental_id:S.id,
+              p_payload:{items:items, extras:extras}, p_expected_updated:S.updated_at});
+    if(q.error) throw q.error;
+    var res=q.data||{};
+  }catch(e){
+    S.busy=false; if(b) b.disabled=false; rtCleanupPhotos(e,S);
+    rtMsg2('rt-rtmsg', rtErr(e)); return;
+  }
+  window._rtRT=null; closeModal();
+  toast('✅ '+tz(res.status==='returned'?'Chirie încheiată. Toate unitățile s-au întors.':'Retur înregistrat.'));
+  await renderChirii();
+}
+
+/* ── Poze: tiparul KB#57 (marcaj de timp + component ALEATOR, niciodată doar numele) ───────── */
+async function rtPhotoPick(input, kind, iid){
+  const S=(kind==='ho')?window._rtHO:window._rtRT; if(!S||!S.sel[iid]) return;
+  const files=Array.from(input.files||[]); input.value='';
+  if(!files.length) return;
+  const box=S.sel[iid];
+  if((box.photos||[]).length+files.length>8){ toast('⚠️ '+tz('Cel mult 8 poze pe unitate.')); return; }
+  toast('⏳ '+tz('Se încarcă…'));
+  for(let f of files){
+    try{
+      f=await compressImage(f,1600,0.72);
+      const safe=(f.name||'poza.jpg').replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path=state.tenant+'/rentals/rt_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
+      const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'});
+      if(up.error) throw up.error;
+      box.photos.push(path); S.up.push(path);
+    }catch(e){ toast('⚠️ '+tz('Poza nu s-a încărcat')+': '+esc(String(e&&e.message||e))); }
+  }
+  if(kind==='ho') rtHOPaint(); else rtRTPaint();
+}
+/* KB#60: ștergem obiectele DOAR când serverul a refuzat EXPLICIT (un cod RENTAL_ sau MOVE_). */
+function rtCleanupPhotos(err, S){
+  const m=String((err&&err.message)||'');
+  if(!/RENTAL_[A-Z_]+|MOVE_[A-Z_]+/.test(m)) return;
+  if(!S.up||!S.up.length) return;
+  const paths=S.up.slice(); S.up=[];
+  Object.keys(S.sel||{}).forEach(k=>{ if(S.sel[k]) S.sel[k].photos=[]; });
+  try{ sb.storage.from('docs').remove(paths); }catch(e){}
+}
+function rtAccParse(s){ return String(s||'').split(',').map(x=>x.trim()).filter(Boolean)
+  .slice(0,20).map(x=>({name:x, ok:true})); }
+function rtAccOf(i){ const a=(i.out_state&&i.out_state.accessories)||[];
+  return a.map(x=>x&&x.name).filter(Boolean).join(', '); }
+function rtMsg2(id,h,k){ const el=$(id); if(el) el.innerHTML='<div class="msg '+(k==='ok'?'ok':'err')+'">'+h+'</div>'; }
 
 /* ── STAREA OPERAȚIONALĂ A UNEI BUCĂȚI ──────────────────────────────────────────────────────
    NU e management de service (în afara scopului). E strictul necesar ca disponibilitatea să
