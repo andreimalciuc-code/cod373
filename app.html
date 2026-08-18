@@ -750,7 +750,13 @@ function payPill(p){ if(!p||!p.pay_state) return ''; const s=PAY_PILL[p.pay_stat
 function overduePill(p){ return (p&&p.overdue)?'<span class="pill delay">⚠ '+esc(C373t('Restantă'))+'</span>':''; }
 /* Maparea istorică, făcută la AFIȘARE, fără să rescriem niciun rând: cele 5 facturi cu
    `status='paid'` sunt, ca lifecycle, documente emise. */
-function lifePill(r){ const st=(r.status==='paid'||r.status==='overdue')?'sent':r.status; return pill(st); }
+/* FIN2 — „factură" e substantiv FEMININ: harta partajată `STATUS` dă forme masculine
+   („Trimis"), corecte pentru comandă/livrare, greșite pentru factură. Cheile feminine
+   există deja în i18n (Ciornă/Trimisă/Anulată), deci nu adăugăm duplicate. */
+const LIFE_F={draft:['Ciornă','plan'], sent:['Trimisă','plan'], cancelled:['Anulată','cancelled']};
+function lifePill(r){ const st=(r.status==='paid'||r.status==='overdue')?'sent':(r.status||'draft');
+  const f=LIFE_F[st]; if(!f) return pill(st);
+  return '<span class="pill '+f[1]+'">'+(STATUS_ICON[st]||'')+' '+esc(C373t(f[0]))+'</span>'; }
 /* O ofertă „Trimisă" a cărei valabilitate a trecut e EXPIRATĂ — derivată din `valid_until`
    în fusul firmei, nu o a cincea valoare stocată. */
 function estExpired(r){ return r.status==='sent' && r.valid_until && String(r.valid_until).slice(0,10) < coToday(); }

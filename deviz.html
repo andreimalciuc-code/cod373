@@ -217,6 +217,9 @@ async function loadEstimate(id){
   const e=await sb.from('estimates').select('*').eq('id',id).single();
   if(e.error){ toast('Eroare: '+e.error.message); return; }
   S.id=id; S._updatedAt=e.data.updated_at; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
+    /* FIN2 — marcajele de lifecycle vin de la server; `select('*')` le aducea deja, dar
+       maparea le arunca, deci starea clientului le avea mereu null. */
+    sent_at:e.data.sent_at||null, accepted_at:e.data.accepted_at||null, rejected_at:e.data.rejected_at||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'',
     disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null),
     signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null, plan_url:e.data.plan_url||null };
@@ -1306,6 +1309,10 @@ async function save(thenPdf){
     if($('btn-dup')) $('btn-dup').style.display='';
     historyReset();   // starea salvată devine noul punct de bază: nu se poate anula peste ea
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Ofertă salvată.'+(dp>0?' Reducere '+dp+'%':''));
+    /* FIN2 — la PRIMA salvare `S.id` tocmai a apărut, dar antetul fusese randat când era
+       încă null, deci acțiunile de lifecycle lipseau până la un render ulterior.
+       Rescriem exact antetul, nu tot ecranul: nu vrem să pierdem focusul din formular. */
+    { const el=$('hd-status'); if(el) el.innerHTML=stPill()+stActions(); }
     if(thenPdf) pdf();
   }catch(e){
     $('btn-save').disabled=false; console.error('save_estimate', e);

@@ -178,7 +178,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='339';
+const APP_BUILD='340';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -508,9 +508,15 @@ async function scrClientHome(){
 /* CLIENT — Oferte (devize) */
 async function scrClientOferte(){
   $('screen').innerHTML='<div class="scr-title">📄 Ofertele mele</div><div id="co"><div class="loading">Se încarcă…</div></div>';
-  const ids=await myClientSiteIds();
-  const {data}=await sb.from('estimates').select('id,number,total,status,valid_until,site_id,updated_at');
-  const mine=(data||[]).filter(e=>ids.includes(e.site_id)).sort((a,b)=>(a.number<b.number?1:-1));
+  /* ►► D65 — contract self-scoped, nu citire directă pe `estimates`.
+     Înainte: se citea TOATĂ tabela și se filtra în JavaScript după șantier. Măsurat cu
+     JWT real de client: 23 de oferte vizibile din care 1 a lui, 42 de facturi din care 0.
+     Filtrarea în client NU e securitate. În plus, filtrul pe șantier era și funcțional
+     greșit: `site_id` se completează la ACCEPTARE, deci prima ofertă a unui client nou
+     nu putea fi văzută niciodată — 22 din 23 de oferte reale n-au șantier. */
+  const {data,error}=await sb.rpc('my_client_offers');
+  if(error){ $('co').innerHTML='<div class="empty"><div class="ei">⚠️</div>Nu am putut încărca ofertele.</div>'; return; }
+  const mine=(data||[]);
   if(!mine.length){ $('co').innerHTML='<div class="empty"><div class="ei">📄</div>Nu ai oferte încă.</div>'; return; }
   const st={draft:['Ciornă','grey'],sent:['Primită','blue'],accepted:['Acceptată','green'],rejected:['Respinsă','red']};
   $('co').innerHTML=mine.map(e=>{ const s=st[e.status]||['—','grey'];
@@ -547,9 +553,11 @@ async function respondOferta(id,status,upd){
 /* CLIENT — Facturi & plăți */
 async function scrClientFacturi(){
   $('screen').innerHTML='<div class="scr-title">💳 Facturile mele</div><div id="cf"><div class="loading">Se încarcă…</div></div>';
-  const ids=await myClientSiteIds();
-  const {data}=await sb.from('invoices').select('id,number,total,status,issue_date,due_date,site_id');
-  const mine=(data||[]).filter(i=>ids.includes(i.site_id)).sort((a,b)=>(a.number<b.number?1:-1));
+  /* ►► D65 — contractul întoarce DEJA doar facturile proprii; filtrul pe șantier
+     dispare (era și nesigur, și greșit: o factură fără șantier nu se vedea deloc). */
+  const {data,error}=await sb.rpc('my_client_invoices');
+  if(error){ $('cf').innerHTML='<div class="empty"><div class="ei">⚠️</div>Nu am putut încărca facturile.</div>'; return; }
+  const mine=(data||[]);
   if(!mine.length){ $('cf').innerHTML='<div class="empty"><div class="ei">💳</div>Nu ai facturi încă.</div>'; return; }
   const st={draft:['Ciornă','grey'],sent:['De plată','amber'],paid:['Plătită','green'],overdue:['Restantă','red'],cancelled:['Anulată','grey']};
   $('cf').innerHTML=mine.map(i=>{ const s=st[i.status]||['—','grey']; const payable=(i.status==='sent'||i.status==='overdue');
