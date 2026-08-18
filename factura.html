@@ -103,20 +103,23 @@ const STATUS={draft:'Ciornă',sent:'Trimisă',paid:'Plătită',overdue:'Restant�
    `paid`/`overdue` rămân în hartă doar ca să putem CITI cele 5 facturi istorice;
    ca lifecycle ele se prezintă drept „Trimisă", iar plata se derivă din registru. */
 const LIFE={draft:'Ciornă',sent:'Trimisă',cancelled:'Anulată'};
+/* `T` e LOCAL în fiecare funcție a acestui fișier, nu global — helperii de stare
+   rulează la nivel de modul, deci au nevoie de propriul traducător. */
+function TS(x){ return (window.C373t? window.C373t(x) : x); }
 const ST_ICON={draft:'✎',sent:'➤',cancelled:'⊘'};
 function lifeKey(){ const k=S.inv.status||'draft'; return (k==='paid'||k==='overdue')?'sent':k; }
-function lifePillHtml(){ const k=lifeKey(); return '<span class="pill '+k+'">'+(ST_ICON[k]||'')+' '+T(LIFE[k]||k)+'</span>'; }
+function lifePillHtml(){ const k=lifeKey(); return '<span class="pill '+k+'">'+(ST_ICON[k]||'')+' '+TS(LIFE[k]||k)+'</span>'; }
 /* Starea de plată vine din instantaneul fiscal (invoice_snapshot → payment/outstanding),
    adică din registrul canonic — niciodată dintr-un câmp editabil. */
 function payPillHtml(){
   const sn=S._snap; if(!sn||!sn.payment) return '';
   const paid=+(sn.payment.paid_to_date||0), tot=+((sn.stored&&sn.stored.total)||S.inv.total||0);
   const st = paid<=0.005 ? ['○','Neachitată','draft'] : (paid+0.005>=tot ? ['●','Achitată','paid'] : ['◐','Parțial achitată','sent']);
-  let h='<span class="pill '+st[2]+'" style="margin-left:.35rem">'+st[0]+' '+T(st[1])+'</span>';
+  let h='<span class="pill '+st[2]+'" style="margin-left:.35rem">'+st[0]+' '+TS(st[1])+'</span>';
   const out=Math.round((tot-paid)*100)/100;
   if(S.inv.due_date && out>0.005 && lifeKey()!=='cancelled'
      && String(S.inv.due_date).slice(0,10) < (typeof coToday==='function'?coToday():new Date().toISOString().slice(0,10))){
-    h+='<span class="pill overdue" style="margin-left:.35rem">⚠ '+T('Restantă')+'</span>';
+    h+='<span class="pill overdue" style="margin-left:.35rem">⚠ '+TS('Restantă')+'</span>';
   }
   return h;
 }
@@ -129,7 +132,7 @@ const ST_ERR={ DOC_CONFLICT:'Documentul a fost modificat în altă parte. Reînc
 function stActions(){
   if(!S.canEdit || !S.id) return '';
   const k=lifeKey(); if(S.inv.status==='paid') return '';
-  const btn=(a,l,x)=>'<button class="btn" style="padding:.2rem .55rem;font-size:.75rem;margin-left:.35rem'+(x||'')+'" onclick="stSet(\''+a+'\')">'+T(l)+'</button>';
+  const btn=(a,l,x)=>'<button class="btn" style="padding:.2rem .55rem;font-size:.75rem;margin-left:.35rem'+(x||'')+'" onclick="stSet(\''+a+'\')">'+TS(l)+'</button>';
   if(k==='draft') return btn('sent','Marchează ca trimisă');
   if(k==='sent')  return btn('cancelled','Anulează factura',';color:#dc2626');
   return '';
@@ -151,7 +154,7 @@ async function stSet(st){
   if(error){ const c=String(error.message||'').split(':')[0].trim();
     toast('⛔ '+(ST_ERR[c]||error.message)); return; }
   S.inv.status=data.status; S._updatedAt=data.updated_at;
-  toast('✅ '+T('Stare actualizată')); render(); refreshSnap();
+  toast('✅ '+TS('Stare actualizată')); render(); refreshSnap();
 }
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,

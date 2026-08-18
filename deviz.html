@@ -108,20 +108,23 @@ function goBack(){ if(history.length>1) history.back(); else location.href='app.
 function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 
 const STATUS={draft:'Ciornă',sent:'Trimisă',accepted:'Acceptată',rejected:'Respinsă'};
+/* `T` e LOCAL în fiecare funcție a acestui fișier, nu global — helperii de stare
+   rulează la nivel de modul, deci au nevoie de propriul traducător. */
+function TS(x){ return (window.C373t? window.C373t(x) : x); }
 const ST_ICON={draft:'✎',sent:'➤',accepted:'✓',rejected:'✕'};
 /* Expirarea e o proprietate a DATEI, nu o stare pe care o alege cineva. */
 function estIsExpired(){ return (S.est.status==='sent') && S.est.valid_until
   && String(S.est.valid_until).slice(0,10) < (typeof coToday==='function'?coToday():new Date().toISOString().slice(0,10)); }
 function stPill(){
-  if(estIsExpired()) return '<span class="pill sent" title="Valabilitatea a trecut">⏳ '+T('Expirată')+'</span>';
+  if(estIsExpired()) return '<span class="pill sent" title="Valabilitatea a trecut">⏳ '+TS('Expirată')+'</span>';
   const k=S.est.status||'draft';
-  return '<span class="pill '+k+'">'+(ST_ICON[k]||'')+' '+T(STATUS[k]||'')+'</span>';
+  return '<span class="pill '+k+'">'+(ST_ICON[k]||'')+' '+TS(STATUS[k]||'')+'</span>';
 }
 /* Doar tranzițiile care au sens din starea curentă. Nu umplem antetul cu butoane. */
 function stActions(){
   if(!S.canEdit || !S.id) return '';
   const k=S.est.status||'draft'; let b='';
-  const btn=(act,lab,st)=>'<button class="btn" style="padding:.2rem .55rem;font-size:.75rem;margin-left:.35rem'+(st||'')+'" onclick="stSet(\''+act+'\')">'+T(lab)+'</button>';
+  const btn=(act,lab,st)=>'<button class="btn" style="padding:.2rem .55rem;font-size:.75rem;margin-left:.35rem'+(st||'')+'" onclick="stSet(\''+act+'\')">'+TS(lab)+'</button>';
   if(k==='draft')  b+=btn('sent','Marchează ca trimisă');
   if(k==='sent'){  b+=btn('accepted','Acceptată',';color:var(--green)')+btn('rejected','Refuzată',';color:#dc2626'); }
   return b;
@@ -141,7 +144,7 @@ async function stSet(st){
     toast('⛔ '+(ST_ERR[c]||error.message)); return; }
   S.est.status=data.status; S._updatedAt=data.updated_at;
   S.est.sent_at=data.sent_at; S.est.accepted_at=data.accepted_at; S.est.rejected_at=data.rejected_at;
-  toast('✅ '+T('Stare actualizată')); render();
+  toast('✅ '+TS('Stare actualizată')); render();
 }
 const FIN=['owner','admin','manager','accountant'];
 let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null},
