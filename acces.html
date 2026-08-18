@@ -112,6 +112,11 @@ const AT={
   'Link de invitație invalid.':{ru:'Недействительная ссылка-приглашение.',de:'Ungültiger Einladungslink.',en:'Invalid invitation link.'},
   'Cere una nouă responsabilului.':{ru:'Попросите новое у ответственного.',de:'Bitten Sie die verantwortliche Person um eine neue.',en:'Ask the responsible person for a new one.'},
   'Se activează…':             {ru:'Активация…',de:'Wird aktiviert…',en:'Activating…'},
+  'Scrie un email valid.':     {ru:'Введите действительный адрес эл. почты.',de:'Bitte eine gültige E-Mail-Adresse eingeben.',en:'Enter a valid email address.'},
+  'Alege emailul cu care vei intra în Cod373. Tot pe el se face recuperarea parolei.':
+    {ru:'Выберите эл. почту для входа в Cod373. На неё же приходит восстановление пароля.',
+     de:'Wählen Sie die E-Mail-Adresse, mit der Sie sich bei Cod373 anmelden. Auch die Passwort-Wiederherstellung läuft darüber.',
+     en:'Choose the email you will sign in to Cod373 with. Password recovery also goes there.'},
   'Contul tău este activ.':    {ru:'Ваш аккаунт активен.',de:'Ihr Konto ist aktiv.',en:'Your account is active.'},
   'Expiră':                    {ru:'Истекает',de:'Läuft ab am',en:'Expires'},
   'Această invitație este destinată altui cont.':
@@ -211,10 +216,18 @@ function renderActivate(inf){
     return;
   }
 
-  /* ── CONT NOU: parolă + confirmare + telefon, un singur CTA ── */
+  /* ── CONT NOU: parolă + confirmare + telefon, un singur CTA ──
+     KB#99: invitația FĂRĂ email (fluxul „Copiază linkul" / WhatsApp) nu mai e un fund de sac.
+     CU email ⇒ câmp READ-ONLY: 0146 leagă invitația de el, deci un câmp editabil ar fi o minciună.
+     FĂRĂ email ⇒ câmp EDITABIL: userul își alege identitatea de login. Tokenul rămâne SINGURA
+     autoritate pentru firmă/rol/entitate — `redeem_invite` (0146) nici nu citește emailul
+     clientului pe ramura fără email, deci ce se scrie aici NU poate muta rolul sau fișa. */
   $('box').innerHTML=head
-    +(inf.email?('<label for="a-email">'+esc(t('Email'))+'</label>'
-      +'<input id="a-email" type="email" autocomplete="username" readonly value="'+esc(inf.email)+'"/>'):'')
+    +'<label for="a-email">'+esc(t('Email'))+'</label>'
+    +(inf.email
+      ? '<input id="a-email" type="email" autocomplete="username" readonly value="'+esc(inf.email)+'"/>'
+      : '<input id="a-email" type="email" autocomplete="username" inputmode="email" placeholder="nume@exemplu.com"/>'
+        +'<div class="hint">'+esc(t('Alege emailul cu care vei intra în Cod373. Tot pe el se face recuperarea parolei.'))+'</div>')
     +'<label for="a-pass">'+esc(t('Parolă nouă'))+'</label>'+eyeWrap('a-pass','new-password')
     +'<div class="req">'+esc(t('Minim 6 caractere.'))+'</div>'
     +'<label for="a-pass2">'+esc(t('Confirmă parola'))+'</label>'+eyeWrap('a-pass2','new-password')
@@ -225,7 +238,8 @@ function renderActivate(inf){
     +'<button class="btn" id="a-btn" onclick="doActivate()">'+esc(t('Activează contul'))+'</button>'
     +'<p class="alt"><a onclick="renderLogin()">'+esc(t('Ai deja cont? Autentifică-te'))+'</a></p>'
     +(exp?'<p class="alt">'+esc(t('Expiră'))+' '+esc(exp)+'</p>':'');
-  const p=$('a-pass'); if(p) p.focus();
+  /* invitație fără email ⇒ primul lucru de completat e emailul, nu parola */
+  const p=(!inf.email && $('a-email')) ? $('a-email') : $('a-pass'); if(p) p.focus();
 }
 
 /* invitație inutilizabilă: spunem DOAR de ce, fără firmă/email/nume (0147 nici nu ni le mai dă) */
@@ -305,17 +319,28 @@ async function saveProfileBits(phone){
 let _activating=false;
 async function doActivate(){
   if(_activating) return;                       /* dublu-click ⇒ o singură activare */
-  const email=String((INF&&INF.email)||'').trim().toLowerCase();   /* din INVITAȚIE, nu din formular */
+  /* KB#99: emailul vine din INVITAȚIE când ea are unul (0146 o leagă de el) și din FORMULAR
+     când nu are. În ambele cazuri e DOAR identitatea de login: firma, rolul și fișa vin din
+     token, iar `redeem_invite` le derivă exclusiv din rândul invitației. */
+  const typed=(INF&&INF.email) ? null : String(($('a-email')&&$('a-email').value)||'').trim().toLowerCase();
+  const email=String((INF&&INF.email)||typed||'').trim().toLowerCase();
   const pass=$('a-pass').value||'', pass2=$('a-pass2').value||'', phone=($('a-phone').value||'').trim();
+  /* emailul se validează PRIMUL: e primul câmp din formular pe ramura fără email */
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){
+    /* un email lipsă din FORMULAR nu e un link stricat — nu minți despre cauză */
+    if(typed!==null){ msg(t('Scrie un email valid.')); if($('a-email')) $('a-email').focus(); return; }
+    msg(t('Link de invitație invalid.')); return;
+  }
   if(pass.length<6){ msg(t('Minim 6 caractere.')); $('a-pass').focus(); return; }
   if(pass!==pass2){ msg(t('Parolele nu coincid.')); $('a-pass2').focus(); return; }
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ msg(t('Link de invitație invalid.')); return; }
   _activating=true; $('a-btn').disabled=true; msg(t('Se activează…'),'ok');
   const { data, error }=await sb.auth.signUp({ email, password:pass });
   if(error){
     _activating=false; $('a-btn').disabled=false;
     /* emailul are deja cont ⇒ nu-i cerem parolă nouă, îl trecem pe fluxul de autentificare */
-    if(/registered|already/i.test(error.message||'')){ INF.has_account=true; return renderActivate(INF); }
+    /* KB#99: pe invitația fără email fixăm ACUM emailul tastat în INF — altfel ecranul de
+       „cont existent" s-ar redesena cu câmpul gol și ar redeveni exact fundul de sac reparat. */
+    if(/registered|already/i.test(error.message||'')){ INF.email=INF.email||email; INF.has_account=true; return renderActivate(INF); }
     msg(error.message); return;
   }
   let session=data&&data.session;
