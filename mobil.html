@@ -175,7 +175,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='343';
+const APP_BUILD='344';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -227,7 +227,11 @@ async function doLogin(){
 }
 /* La delogare schița de lot se șterge ÎNAINTE de `signOut`: pe un telefon de șantier folosit
    de doi oameni, al doilea nu trebuie să găsească lotul scanat de primul (SCAN1-B.1). */
-async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}try{mRosterWipe();}catch(e){}try{mNotifLiveStop();}catch(e){}await sb.auth.signOut();location.reload();}
+async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}try{mRosterWipe();}catch(e){}try{mNotifLiveStop();}catch(e){}
+  /* istoricul nu supraviețuiește schimbării de utilizator: intrările rămase ar purta ecranul
+     și contextul (șantier, săptămână) ale contului anterior. */
+  try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  await sb.auth.signOut();location.reload();}
 function mBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 async function mForgot(){ const email=($('l-email').value||'').trim(); if(!email){ lmsg('Scrie întâi emailul.'); return; } lmsg('Se trimite…','ok');
   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:mBase()+'mobil.html'}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de resetare a parolei. Deschide emailul.','ok'); }
@@ -292,6 +296,10 @@ async function boot(){
      EXACT taskul, nu doar aplicația. */
   try{ const _t=new URLSearchParams(location.search).get('task');
     if(_t && !mTaskExternal()){ history.replaceState(null,'',location.pathname); setTimeout(()=>{ try{ mTaskSheet(_t); }catch(e){} },250); } }catch(e){}
+  /* F6 — rădăcina istoricului se așază LA FINAL, după deep-link-urile de mai sus: fiecare
+     dintre ele face `replaceState(null, ...)`, deci un marcaj pus mai devreme ar fi fost șters
+     exact pe traseele care vin dintr-o notificare sau dintr-un cod QR. */
+  mHistInit();
 }
 async function openToolById(idOrCode){
   let t=null;
@@ -396,7 +404,7 @@ async function unitMove(unitId){ const v=$('us-loc').value; const patch={site_id
   if(Object.keys(meta).length){ try{ await sb.from('tool_units').update(meta).eq('id',unitId); }catch(e){} }
   toast('✅ '+mtz('Locație actualizată.')); openUnitById(unitId); }
 const M_RQ={u:null,id:null};
-function setRole(r){ S.role=r; S.view='acasa'; document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===r)); render(); }
+function setRole(r){ S.role=r; document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===r)); mViewMark('acasa'); S.view='acasa'; render(); }
 
 /* ════ FIELD1-B — SUPRAFAȚA SE ADAPTEAZĂ LA CONTEXT, NU LA UN ROL FIX ═══════════
    O singură aplicație (`mobil.html`), nu una per rol. Ce se vede se derivă din:
@@ -406,9 +414,19 @@ function setRole(r){ S.role=r; S.view='acasa'; document.querySelectorAll('#roles
    `S.role` e o preferință de AFIȘARE pentru conducere; autoritatea rămâne `S.memberRole`. */
 const NAV={
   worker:[['acasa','🏠','Acasă'],['program','📋','Program'],['pontaj','⏱️','Pontaj'],['comanda','🛒','Comandă'],['poze','📷','Poze'],['defecte','🔧','Defecte']],
-  driver:[['acasa','🏠','Acasă'],['livrari','🚚','Livrări'],['scule','🔧','Scule'],['poze','📷','Poze']],
+  driver:[['acasa','🏠','Acasă'],['livrari','🚚','Livrări'],['program','📋','Program'],['scule','🔧','Scule'],['poze','📷','Poze']],
   manager:[['acasa','🏠','Acasă'],['program','📋','Program'],['santiere','🏗️','Șantiere'],['poze','📷','Poze'],['comanda','🛒','Comandă']],
-  subcontractor:[['acasa','🏗️','Lucrările mele'],['poze','📷','Poze'],['defecte','🔧','Probleme']],
+  /* Contabilul are ACUM persona lui. Până în acest lot cădea pe `manager`, iar singura
+     suprafață financiară din bară (`facturi`) era ecranul CLIENTULUI (`my_client_invoices`) —
+     pentru el, zero rânduri: un buton mort. Cheile de aici sunt DISTINCTE (`fin`/`plati`/`acte`)
+     tocmai ca să nu se mai confunde documentele firmei cu documentele unui client. */
+  accountant:[['acasa','🏠','Acasă'],['fin','🧾','Facturi'],['plati','💳','Încasări'],['acte','📁','Documente'],['taskuri','✅','Taskuri']],
+  /* ►► F4 — EXTERNUL AUTENTIFICAT. Domeniul de vizibilitate NU e impus aici, ci de politicile
+     ADITIVE din 0025 (`app.my_sub_site_ids()`): șantiere, etape, contracte, documente și
+     probleme — toate filtrate la ce i s-a ATRIBUIT. Bara de jos doar oferă drumurile; un
+     șantier neatribuit nu apare fiindcă serverul nu-l întoarce, nu fiindcă îl ascundem noi.
+     `acte` intră aici pentru că `documents` are deja politica lui scopată pe aceleași șantiere. */
+  subcontractor:[['acasa','🏗️','Lucrările mele'],['poze','📷','Poze'],['acte','📁','Documente'],['defecte','🔧','Probleme']],
   client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['poze','📷','Poze']]
 };
 function mCtx(){ return S.ctx||{}; }
@@ -416,12 +434,19 @@ function mCap(c){ const a=mCtx().caps; return !!(a && a.indexOf(c)>=0); }
 function mHasVehicle(){ return (mCtx().vehicles||0) > 0; }
 /* vederea implicită a conducerii: cea mai apropiată de meseria lui reală */
 function mFieldDefaultView(){
-  /* contabilul NU primește o persona proprie în acest lot: ecranul mobil de facturi nu există
-     încă, iar `facturi` din NAV e ecranul CLIENTULUI (`my_client_invoices`) — pentru el ar
-     întoarce zero rânduri, adică un buton mort. Primește vederea de responsabil, plus puntea
-     către birou de pe ecranul Acasă. Suprafața financiară mobilă rămâne pentru un lot următor. */
+  /* Vederea implicită = meseria reală, nu un numitor comun. Autoritatea rămâne `memberRole`;
+     asta alege doar ce ecran se deschide primul. */
+  if(S.memberRole==='accountant') return 'accountant';
   return 'manager';
 }
+/* ►► F2 — PUNTEA CĂTRE BIROU, ÎN APLICAȚIE.
+   O operație financiară complexă (emitere, storno, reconciliere) NU se rescrie în telefon —
+   se deschide ecranul canonic din `app.html`, care e aceeași aplicație instalată, același
+   origin, același scope de PWA. Deci e navigare INTERNĂ, nu „ieșire în browser".
+   Ruta lui `app.html` e `#/<spațiu>/<modul>` (UX1), iar spațiul se DERIVĂ din modul —
+   de aceea o construim aici o singură dată, nu la fiecare apel. */
+function mOffice(mod){ try{ location.href='app.html#/financiar/'+mod; }catch(e){} }
+function mOfficeDoc(kind,id){ try{ location.href=(kind==='invoice'?'factura.html?id=':'deviz.html?id=')+encodeURIComponent(id); }catch(e){} }
 /* bara de vederi se construiește din CONTEXT, nu din trei butoane fixe în markup */
 function mRolesBar(){
   const box=$('roles'); if(!box) return;
@@ -429,6 +454,10 @@ function mRolesBar(){
   if(['worker','driver','client','subcontractor'].includes(S.memberRole)){ box.classList.add('hidden'); box.innerHTML=''; return; }
   const opts=[['manager','📋','Responsabil'],['worker','👷','Lucrător']];
   if(mHasVehicle()||S.memberRole==='driver') opts.push(['driver','🚚','Șofer']);
+  /* Vederea de contabil se oferă tuturor rolurilor de birou fiindcă TOATE au deja autoritatea
+     ei pe server: `invoice_payment_states` e deschisă lui {owner,admin,manager,accountant}.
+     Comutatorul rămâne strict AFIȘARE — nu acordă niciun drept pe care rolul nu-l are deja. */
+  if(['owner','admin','manager','accountant'].includes(S.memberRole)) opts.push(['accountant','🧾','Contabil']);
   box.innerHTML=opts.map(o=>'<button data-role="'+o[0]+'"'+(S.role===o[0]?' class="on"':'')
     +' onclick="setRole(\''+o[0]+'\')">'+o[1]+' '+o[2]+'</button>').join('');
 }
@@ -472,8 +501,11 @@ async function scrAccesInactiv(){
 }
 function mNav(){
   const base=(NAV[S.role]||NAV.worker).slice();
+  /* `accountant` iese din regula asta: custodia unui vehicul nu face din contabil un om al
+     depozitului, iar intrarea în plus i-ar dilua persona exact în bara care trebuie s-o
+     exprime. Vehiculul lui rămâne vizibil pe Acasă, prin „Vehiculul meu" (D62). */
   if(mHasVehicle() && !base.find(n=>n[0]==='livrari') && S.role!=='client' && S.role!=='subcontractor'
-     && !base.find(n=>n[0]==='scule')) base.splice(2,0,['scule','🔧','Scule']);
+     && S.role!=='accountant' && !base.find(n=>n[0]==='scule')) base.splice(2,0,['scule','🔧','Scule']);
   return base.slice(0,6);   /* maximum 6 destinații simultane — restul e contextual */
 }
 function render(){
@@ -492,14 +524,75 @@ function render(){
   const OUTSIDE=['taskuri','scan','chat'];
   if(!nav.find(n=>n[0]===S.view) && OUTSIDE.indexOf(S.view)<0) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat}[S.view];
+  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
   const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
   fn(); loadNotifCount(); maybeInstallBanner();
 }
 /* orice navigare oprește camera: stream-ul nu rămâne pornit în fundal (SCAN1-A) */
-function goV(v){ try{ if(typeof mScanStop==='function') mScanStop(); }catch(e){} S.view=v; render(); }
+function goV(v){ try{ if(typeof mScanStop==='function') mScanStop(); }catch(e){} mViewMark(v); S.view=v; render(); }
+
+/* ════ F6 — NAVIGAREA INTERNĂ: butonul „înapoi" rămâne ÎN aplicație ════════════
+   `mobil.html` n-avea nicio intrare de istoric: pe Android, „înapoi" ieșea din PWA de pe
+   ORICE ecran, iar munca începută se pierdea. Nu introducem un router de bibliotecă — avem
+   deja o singură variabilă de rută (`S.view`) și un singur punct de randare (`render()`),
+   deci ne trebuie doar oglindirea lor în `history`.
+
+   Contractul (§19):
+     · rădăcina e `replaceState` — o singură intrare, deci „înapoi" de pe ecranul de start
+       iese din aplicație, cum se așteaptă utilizatorul;
+     · orice navigare ULTERIOARĂ e `pushState`, cu ecranul și contextul minim;
+     · `popstate` REDESENEAZĂ, nu împinge (`_mhLock` taie recursivitatea);
+     · reîncărcarea reconstruiește o rădăcină validă — `history.state` supraviețuiește unui
+       refresh, iar o adâncime moștenită ar minți despre câte ecrane sunt în spate.
+
+   Contextul salvat e MINIM și intenționat: șantierul ales, săptămâna din Program, persona.
+   Nu serializăm tot `S` — o intrare de istoric nu e un instantaneu al aplicației. */
+const MH='c373m';                       /* marcajul nostru în `history.state` */
+let _mhLock=false;                      /* `popstate` în curs → nu împinge înapoi */
+function mHistCtx(){ return {site:S.psite||null, week:S.progWeek||0, role:S.role||null}; }
+function mHistLockedRole(){ return ['worker','driver','client','subcontractor'].includes(S.memberRole); }
+function mHistInit(){
+  S._mhDepth=0;
+  try{ history.replaceState({[MH]:0, view:S.view, ctx:mHistCtx()},''); }catch(e){}
+}
+function mHistPush(extra){
+  try{ S._mhDepth=(S._mhDepth||0)+1;
+       history.pushState(Object.assign({[MH]:S._mhDepth, view:S.view, ctx:mHistCtx()}, extra||{}),''); }catch(e){}
+}
+/* Ecranele care își setează singure `S.view` (chat, taskuri, scanare) trec pe aici, ca să nu
+   existe o a doua cale de navigare care ocolește istoricul. Garda pe `S.view!==v` face apelul
+   inofensiv când `render()` a setat deja ruta. */
+function mViewMark(v){ if(S.view!==v) mHistPush({view:v}); }
+window.addEventListener('popstate', function(e){
+  const st=e.state;
+  if(!st || st[MH]==null) return;              /* nu e intrarea noastră → lasă browserul */
+  if(!S.session || !S.tenant) return;          /* delogat: istoricul nu reînvie datele vechi */
+  _mhLock=true;
+  try{
+    S._mhDepth=st[MH]||0;
+    const sm=$('sheet-mount');
+    const _open=!!(sm && sm.firstElementChild);
+    if(_open){ mSheetWipe(); if(st.sheet) return; }
+    /* Dacă starea spune „foaie" dar nicio foaie nu mai e deschisă (a fost închisă de o
+       navigare care a mers mai departe), NU ne oprim aici — altfel „înapoi" ar consuma o
+       intrare de istoric fără să schimbe nimic pe ecran, iar utilizatorul ar crede că butonul
+       s-a stricat. Cădem pe restaurarea ecranului, care e corectă în ambele cazuri. */
+    if(st.ctx){
+      if(st.ctx.site!=null) S.psite=st.ctx.site;
+      if(st.ctx.week!=null) S.progWeek=st.ctx.week;
+      if(st.ctx.role && st.ctx.role!==S.role && !mHistLockedRole()){
+        S.role=st.ctx.role;
+        document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
+      }
+    }
+    if(st.view && st.view!==S.view){
+      try{ if(typeof mScanStop==='function') mScanStop(); }catch(_e){}
+      window._navBack=true; S.view=st.view; render();
+    }
+  } finally { _mhLock=false; }
+});
 /* „📲 Instalează pe telefon" — banner discret, auto, închidabil */
 let _deferredPrompt=null;
 window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); _deferredPrompt=e; maybeInstallBanner(); });
@@ -521,7 +614,12 @@ function dismissInstall(){ try{ localStorage.setItem('c373_install_dismiss','1')
 /* ── Gest „înapoi": clisezi cu degetul spre dreapta din marginea stângă (ca pe Instagram) → închide foaia deschisă sau revii la Acasă ── */
 function swipeBack(){
   const sm=$('sheet-mount'); if(sm && sm.firstChild){ closeSheet(); return true; }
-  if(typeof S!=='undefined' && S.view && S.view!=='acasa'){ window._navBack=true; goV('acasa'); return true; }
+  /* F6 — gestul înseamnă acum „un pas înapoi în istoric", nu „sari la Acasă": pe un parcurs
+     Acasă → Program → pas de lucru, saltul direct pierdea contextul intermediar. */
+  if(typeof S!=='undefined' && S.view && S.view!=='acasa'){
+    window._navBack=true;
+    if((S._mhDepth||0)>0){ history.back(); } else { goV('acasa'); }
+    return true; }
   return false;
 }
 /* Paginare între tab-urile de jos (ca pe Instagram): glisezi stânga = următorul, dreapta = anteriorul.
@@ -729,11 +827,19 @@ async function scrSubHome(){
     return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+'</div><div class="s">'+esc(s.address||'')+'</div></div>'+pillSite(s.status)+'</div>'
       +(cTot?'<div class="s" style="margin-top:.4rem">📄 Contract: <b>'+money(cTot)+'</b>'+(contracts[0]&&contracts[0].end_date?(' · termen '+esc(contracts[0].end_date)):'')+'</div>':'')
       +'<h4 style="margin:.7rem 0 .2rem">Lucrările mele aici</h4>'+stHtml
-      +'<button class="btn btn-soft" style="margin-top:.6rem;width:100%" onclick="window.open(\'grafic.html?site='+s.id+'\',\'_blank\')">📅 Vezi graficul complet</button>'
+      /* IN-APP FIRST: `grafic.html` face parte din aceeași aplicație instalată (e în
+         precache-ul SW), deci se deschide prin navigare INTERNĂ. `_blank` scotea utilizatorul
+         din shell-ul PWA într-o filă de browser, de unde „înapoi" nu se mai întorcea niciodată. */
+      +'<button class="btn btn-soft" style="margin-top:.6rem;width:100%" onclick="location.href=\'grafic.html?site='+s.id+'\'">📅 '+esc(mt('Vezi graficul complet'))+'</button>'
       +'<button class="btn" style="margin-top:.4rem;width:100%" onclick="S.psite=\''+s.id+'\';goV(\'poze\')">📷 Adaugă poză</button></div>';
-  }).join('')||'<div class="empty"><div class="ei">🏗️</div>Nicio lucrare alocată încă. Biroul te va contracta pe un șantier.</div>';
-  $('screen').innerHTML='<div class="scr-title">Salut! 👋</div>'
-    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc(subName)+'</div><div class="s" style="color:#9fb0d4">Rol: Subcontractant</div></div>'
+  }).join('')||'<div class="empty"><div class="ei">🏗️</div>'+esc(mt('Nu ai lucrări atribuite. Biroul te va contracta pe un șantier.'))+'</div>';
+  $('screen').innerHTML='<div class="scr-title">'+esc(mt('Salut!'))+' 👋</div>'
+    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc(subName)+'</div><div class="s" style="color:#9fb0d4">'+esc(mt('Subcontractant'))+'</div></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'
+      +'<button class="mini-btn pr" onclick="goV(\'poze\')">📷 '+esc(mt('Poze'))+'</button> '
+      +'<button class="mini-btn go" onclick="goV(\'acte\')">📁 '+esc(mt('Documente'))+'</button> '
+      +'<button class="mini-btn gh" onclick="goV(\'defecte\')">🔧 '+esc(mt('Probleme'))+'</button>'
+    +'</div>'
     +html;
 }
 async function subSetProgress(id,cur){
@@ -744,9 +850,219 @@ async function subSetProgress(id,cur){
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   toast('✅ Progres actualizat: '+p+'%'); scrSubHome();
 }
+/* ════ F2 — PERSONA DE CONTABIL ═══════════════════════════════════════════════
+   Autoritatea e deja pe server și nu se rescrie aici: `invoice_payment_states` (0161, FIN2/D64)
+   e SINGURA regulă care spune cât s-a încasat, ce a rămas și ce e restant — DEFINER, deschisă
+   lui {owner,admin,manager,accountant}, cu „azi" în fusul FIRMEI. Ecranul doar AFIȘEAZĂ.
+   Nicio formulă financiară în `mobil.html` (lecția FIN1/RENT1-C: două implementări nu se pot
+   verifica una pe alta).
+   Un rol de teren care ar deschide aceste ecrane printr-un deep-link primește 42501 de la
+   contract — poarta e pe server, nu în bara de jos. */
+function mFinPill(st,overdue){
+  if(overdue) return '<span class="pill red">⚠ '+esc(mt('Restantă'))+'</span>';
+  if(st==='paid')    return '<span class="pill green">✓ '+esc(mt('Încasată'))+'</span>';
+  if(st==='partial') return '<span class="pill amber">◐ '+esc(mt('Parțial'))+'</span>';
+  return '<span class="pill grey">○ '+esc(mt('Neîncasată'))+'</span>';
+}
+/* Mesaje de eroare PROFESIONALE: codul brut (42501, PGRST…) rămâne în consolă, nu pe ecran. */
+function mErrMsg(e){
+  const m=((e&&(e.message||e.msg))||e||'').toString();
+  try{ console.warn('[cod373]', m); }catch(_e){}
+  if(!navigator.onLine||/load failed|failed to fetch|networkerror|timeout|aborted/i.test(m))
+    return mt('📴 Fără internet. Reconectează-te și încearcă din nou.');
+  if(/42501|permission denied|FORBIDDEN|not authorized/i.test(m))
+    return mt('Nu ai acces la această informație. Vorbește cu biroul.');
+  if(/PGRST|schema cache|does not exist/i.test(m))
+    return mt('Această funcție nu este disponibilă momentan.');
+  return mt('Ceva nu a mers. Încearcă din nou.');
+}
+async function mFinStates(force){
+  if(!force && S._finSt) return S._finSt;
+  const r=await sb.rpc('invoice_payment_states',{p_tenant_id:S.tenant});
+  if(r.error) throw r.error;
+  const m={}; (r.data||[]).forEach(x=>{ m[x.invoice_id]=x; });
+  S._finSt=m; return m;
+}
+function mFinSummary(states){
+  const out={overdue:0,overdueSum:0,openN:0,openSum:0,paidN:0};
+  Object.keys(states).forEach(k=>{ const x=states[k];
+    const out_=Number(x.outstanding||0);
+    if(x.overdue){ out.overdue++; out.overdueSum+=out_; }
+    if(x.pay_state==='paid') out.paidN++; else { out.openN++; out.openSum+=out_; }
+  });
+  return out;
+}
+async function scrAccHome(){
+  $('screen').innerHTML='<div class="loading">'+esc(mt('Se încarcă…'))+'</div>';
+  let st=null,err=null;
+  try{ st=await mFinStates(true); }catch(e){ err=e; }
+  const k=st?mFinSummary(st):null;
+  const kpi = err
+    ? '<div class="card"><div class="s">'+esc(mErrMsg(err))+'</div></div>'
+    : '<div style="display:flex;gap:.5rem;margin-bottom:.8rem">'
+      +'<div class="card" style="flex:1;margin:0;cursor:pointer" onclick="S._finTab=\'overdue\';goV(\'fin\')"><div class="s">⚠ '+esc(mt('Restante'))+'</div>'
+      +'<div class="t" style="font-size:1.25rem;color:'+(k.overdue?'var(--red)':'var(--ink,inherit)')+'">'+k.overdue+'</div>'
+      +'<div class="s">'+esc(money(k.overdueSum))+'</div></div>'
+      +'<div class="card" style="flex:1;margin:0;cursor:pointer" onclick="S._finTab=\'open\';goV(\'fin\')"><div class="s">○ '+esc(mt('De încasat'))+'</div>'
+      +'<div class="t" style="font-size:1.25rem">'+k.openN+'</div>'
+      +'<div class="s">'+esc(money(k.openSum))+'</div></div></div>';
+  $('screen').innerHTML='<div class="scr-title">'+esc(mt('Salut!'))+' 👋</div>'
+    +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">'+esc(mt('Contabil'))+'</div></div>'
+    +kpi
+    +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'
+      +'<button class="mini-btn pr" onclick="goV(\'fin\')">🧾 '+esc(mt('Facturi'))+'</button> '
+      +'<button class="mini-btn go" onclick="goV(\'plati\')">💳 '+esc(mt('Încasări'))+'</button> '
+      +'<button class="mini-btn gh" onclick="goV(\'acte\')">📁 '+esc(mt('Documente'))+'</button> '
+      +'<button class="mini-btn gh" onclick="scrTaskuri()">✅ '+esc(mt('Taskuri'))+'</button> '
+      +'<button class="mini-btn gh" onclick="mOffice(\'facturi\')">🏢 '+esc(mt('Deschide biroul'))+'</button>'
+    +'</div>'
+    +'<div id="tk-block"></div>'
+    +'<div class="scr-title" style="font-size:.95rem">⚠ '+esc(mt('Cer atenție acum'))+'</div>'
+    +'<div id="acc-top"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  fillTasksHome();
+  const host=$('acc-top'); if(!host) return;
+  if(err){ host.innerHTML='<div class="empty"><div class="ei">🧾</div>'+esc(mErrMsg(err))+'</div>'; return; }
+  const ids=Object.keys(st).filter(id=>st[id].overdue);
+  if(!ids.length){ host.innerHTML='<div class="empty"><div class="ei">✅</div>'+esc(mt('Nicio factură restantă. Totul e la zi.'))+'</div>'; return; }
+  let rows=[];
+  try{ const r=await sb.from('invoices').select('id,number,due_date,client_id,clients(name)').in('id',ids.slice(0,60));
+       rows=r.data||[]; }catch(e){}
+  rows.sort((a,b)=>String(a.due_date||'').localeCompare(String(b.due_date||'')));
+  host.innerHTML=rows.slice(0,5).map(r=>mFinCard(r,st[r.id])).join('')
+    +(rows.length>5?'<button class="mini-btn gh" style="margin-top:.3rem" onclick="S._finTab=\'overdue\';goV(\'fin\')">'+esc(mt('Vezi toate'))+' ('+rows.length+') ›</button>':'');
+}
+function mFinCard(r,x){
+  x=x||{};
+  return '<div class="card" style="cursor:pointer" onclick="mFinSheet(\''+r.id+'\')"><div class="row"><div class="grow">'
+    +'<div class="t">'+esc(r.number||'—')+' ›</div>'
+    +'<div class="s">'+esc((r.clients&&r.clients.name)||mt('Fără client'))+(r.due_date?(' · '+esc(mt('scadent'))+' '+esc(r.due_date)):'')+'</div></div>'
+    +mFinPill(x.pay_state,x.overdue)+'</div>'
+    +'<div class="row" style="margin-top:.4rem"><div class="grow s">'+esc(mt('Rest de încasat'))+'</div><b>'+esc(money(x.outstanding))+'</b></div></div>';
+}
+/* Detaliul e o FOAIE, nu un ecran: rămâne peste lista din spate, iar „înapoi" o închide pe ea.
+   Operația complexă nu se rescrie aici — se predă documentului canonic. */
+async function mFinSheet(id){
+  const st=(S._finSt||{})[id]||{};
+  let r=null;
+  try{ const q=await sb.from('invoices').select('id,number,total,issue_date,due_date,status,clients(name)').eq('id',id).maybeSingle(); r=q.data; }catch(e){}
+  if(!r){ toast(mt('Factura nu a fost găsită.')); return; }
+  openSheet('🧾 '+(r.number||mt('Factură')),
+     '<div class="row" style="margin-bottom:.5rem"><div class="grow">'+esc((r.clients&&r.clients.name)||mt('Fără client'))+'</div>'+mFinPill(st.pay_state,st.overdue)+'</div>'
+    +'<div class="row"><div class="grow s">'+esc(mt('Total'))+'</div><b>'+esc(money(r.total))+'</b></div>'
+    +'<div class="row"><div class="grow s">'+esc(mt('Încasat'))+'</div><b>'+esc(money(st.paid_to_date))+'</b></div>'
+    +'<div class="row"><div class="grow s">'+esc(mt('Rest de încasat'))+'</div><b>'+esc(money(st.outstanding))+'</b></div>'
+    +(r.due_date?'<div class="row"><div class="grow s">'+esc(mt('Scadență'))+'</div><b>'+esc(r.due_date)+'</b></div>':'')
+    +(st.verified===false?'<div class="s" style="margin-top:.5rem">ℹ️ '+esc(mt('Încasare neconfirmată bancar.'))+'</div>':'')
+    +'<button class="btn" style="margin-top:.8rem" onclick="mOfficeDoc(\'invoice\',\''+r.id+'\')">📄 '+esc(mt('Deschide factura'))+'</button>'
+    +'<button class="btn btn-soft" style="margin-top:.4rem" onclick="mOffice(\'restante\')">🏢 '+esc(mt('Restanțe în birou'))+'</button>');
+}
+async function scrFinInvoices(){
+  const tab=S._finTab||'overdue';
+  const T=(k,l)=>'<button class="mini-btn '+(tab===k?'pr':'gh')+'" onclick="S._finTab=\''+k+'\';scrFinInvoices()">'+esc(mt(l))+'</button>';
+  $('screen').innerHTML='<div class="scr-title">🧾 '+esc(mt('Facturi'))+'</div>'
+    +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.7rem">'+T('overdue','Restante')+' '+T('open','De încasat')+' '+T('paid','Încasate')+'</div>'
+    +'<div id="fin-list"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  const host=$('fin-list');
+  let st=null; try{ st=await mFinStates(); }catch(e){ host.innerHTML='<div class="empty"><div class="ei">🧾</div>'+esc(mErrMsg(e))+'</div>'; return; }
+  const ids=Object.keys(st).filter(id=>{ const x=st[id];
+    if(tab==='overdue') return !!x.overdue;
+    if(tab==='paid')    return x.pay_state==='paid';
+    return x.pay_state!=='paid'; });
+  if(!ids.length){ host.innerHTML='<div class="empty"><div class="ei">'+(tab==='overdue'?'✅':'🧾')+'</div>'
+    +esc(tab==='overdue'?mt('Nicio factură restantă. Totul e la zi.'):(tab==='paid'?mt('Nicio factură încasată încă.'):mt('Nimic de încasat.')))+'</div>'; return; }
+  let rows=[];
+  try{ const r=await sb.from('invoices').select('id,number,due_date,issue_date,clients(name)').in('id',ids.slice(0,200)); rows=r.data||[]; }
+  catch(e){ host.innerHTML='<div class="empty"><div class="ei">🧾</div>'+esc(mErrMsg(e))+'</div>'; return; }
+  rows.sort((a,b)=>String(b.issue_date||'').localeCompare(String(a.issue_date||'')));
+  if(tab==='overdue') rows.sort((a,b)=>String(a.due_date||'').localeCompare(String(b.due_date||'')));
+  host.innerHTML=rows.map(r=>mFinCard(r,st[r.id])).join('');
+}
+async function scrFinPayments(){
+  $('screen').innerHTML='<div class="scr-title">💳 '+esc(mt('Încasări'))+'</div>'
+    +'<div id="pay-list"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  const host=$('pay-list');
+  let rows=[];
+  try{ const r=await sb.from('payments').select('id,amount,paid_date,method,reference,invoice_id')
+        .order('paid_date',{ascending:false}).limit(50); if(r.error) throw r.error; rows=r.data||[]; }
+  catch(e){ host.innerHTML='<div class="empty"><div class="ei">💳</div>'+esc(mErrMsg(e))+'</div>'; return; }
+  if(!rows.length){ host.innerHTML='<div class="empty"><div class="ei">💳</div>'+esc(mt('Nicio încasare înregistrată.'))+'</div>'; return; }
+  let nm={};
+  try{ const ids=[...new Set(rows.map(r=>r.invoice_id).filter(Boolean))];
+       if(ids.length){ const q=await sb.from('invoices').select('id,number').in('id',ids); (q.data||[]).forEach(v=>{ nm[v.id]=v.number; }); } }catch(e){}
+  const tot=rows.reduce((t,r)=>t+(+r.amount||0),0);
+  const MET={transfer:'Transfer',numerar:'Numerar',card:'Card',altul:'Altul'};
+  host.innerHTML='<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="s" style="color:#9fb0d4">'+esc(mt('Ultimele 50 de încasări'))+'</div><div class="t" style="color:#fff;font-size:1.2rem">'+esc(money(tot))+'</div></div>'
+    +rows.map(r=>'<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(r.invoice_id?(nm[r.invoice_id]||mt('Factură')):mt('Fără factură'))+'</div>'
+      +'<div class="s">'+esc(r.paid_date||'—')+(r.method?(' · '+esc(mt(MET[r.method]||r.method))):'')+'</div>'
+      +(r.reference?'<div class="s">'+esc(r.reference)+'</div>':'')+'</div><b>'+esc(money(r.amount))+'</b></div></div>').join('')
+    +'<button class="mini-btn gh" style="margin-top:.4rem" onclick="mOffice(\'reconciliere\')">🏢 '+esc(mt('Reconciliere în birou'))+'</button>';
+}
+async function scrDocs(){
+  $('screen').innerHTML='<div class="scr-title">📁 '+esc(mt('Documente'))+'</div>'
+    +'<div id="doc-list"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  const host=$('doc-list');
+  let rows=[];
+  try{ const r=await sb.from('documents').select('id,name,file_url,created_at,entity_type,entity_id')
+        .order('created_at',{ascending:false}).limit(60); if(r.error) throw r.error; rows=r.data||[]; }
+  catch(e){ host.innerHTML='<div class="empty"><div class="ei">📁</div>'+esc(mErrMsg(e))+'</div>'; return; }
+  if(!rows.length){ host.innerHTML='<div class="empty"><div class="ei">📁</div>'+esc(mt('Niciun document încărcat.'))+'</div>'; return; }
+  host.innerHTML=rows.map(r=>'<div class="card" style="cursor:pointer" onclick="openDoc(\''+encodeURIComponent(r.file_url)+'\')"><div class="row"><div class="grow"><div class="t">'+esc(r.name||mt('Document'))+' ›</div>'
+    +'<div class="s">'+esc(String(r.created_at||'').slice(0,10))+'</div></div><div>📄</div></div></div>').join('');
+}
+/* ►► F2 — ACȚIUNILE DE PE ACASĂ SE DERIVĂ, NU SE ENUMERĂ FIX.
+   Înainte exista un singur `if` (șofer / restul), deci un responsabil primea „Scanează/Mută"
+   și „Pontaj" ca acțiuni principale, iar șoferul nu avea nici taskuri, nici program.
+   Regula produsului: „ce trebuie să fac eu acum?", nu „ce module există?" — de aceea lista
+   se compune din persona + custodie + context, și rămâne la 4–6 intrări. */
+function mHomeActions(){
+  const B=(cls,fn,ico,lbl)=>'<button class="mini-btn '+cls+'" onclick="'+fn+'">'+ico+' '+esc(mt(lbl))+'</button>';
+  const a=[];
+  if(S.role==='driver'){
+    a.push(B('pr',"goV('livrari')",'🚚','Livrări'));
+    /* „Trimite locația" apare din CUSTODIE (D62/KB#90), nu din rol: fără vehicul în custodie
+       `vehicle_location_report` refuză oricum, deci butonul ar fi fost mort. */
+    if(mHasVehicle()) a.push(B('go','sendLocation()','📍','Trimite locația'));
+    a.push(B('gh',"scrTaskuri()",'✅','Taskuri'));
+    a.push(B('gh',"goV('program')",'📋','Program'));
+    a.push(B('gh','openChat()','💬','Chat'));
+    return a.join(' ');
+  }
+  if(S.role==='worker'){
+    a.push(B('pr',"goV('pontaj')",'⏱️','Pontaj'));
+    a.push(B('go',"goV('comanda')",'🛒','Comandă'));
+    a.push(B('gh',"goV('poze')",'📷','Poză'));
+    a.push(B('gh',"goV('scan')",'📷','Scanează / Mută'));
+    a.push(B('gh',"scrTaskuri()",'✅','Taskuri'));
+    a.push(B('gh','openChat()','💬','Chat'));
+    return a.join(' ');
+  }
+  /* conducere (owner/admin/manager, sau contabil aflat în vederea de responsabil) */
+  a.push(B('pr',"goV('program')",'📋','Program'));
+  a.push(B('go',"goV('santiere')",'🏗️','Șantiere'));
+  a.push(B('gh',"scrTaskuri()",'✅','Taskuri'));
+  a.push(B('gh',"goV('poze')",'📷','Poze'));
+  a.push(B('gh','sheetDailyLog()','📓','Raport zilnic'));
+  if(mHasVehicle()) a.push(B('gh','sendLocation()','📍','Trimite locația'));
+  return a.join(' ');
+}
+/* Livrările active ale șoferului, pe ecranul de start: „ce am de dus acum", nu o listă goală. */
+async function fillDrvHome(){
+  const host=$('drv-block'); if(!host) return;
+  let rows=[];
+  try{ const r=await sb.from('deliveries').select('id,status,scheduled_at,site_id').limit(200); rows=r.data||[]; }catch(e){ host.innerHTML=''; return; }
+  const act=rows.filter(r=>['pending','accepted','en_route'].includes(r.status));
+  if(!act.length){ host.innerHTML='<div class="card"><div class="t">🚚 '+esc(mt('Livrări'))+'</div><div class="s">'+esc(mt('Nu ai livrări active.'))+'</div></div>'; return; }
+  const sm=await nameMap('sites','name');
+  const stat={pending:['În așteptare','amber'],accepted:['Acceptată','blue'],en_route:['Pe drum','blue']};
+  host.innerHTML='<div class="scr-title" style="font-size:.95rem">🚚 '+esc(mt('Livrări active'))+' ('+act.length+')</div>'
+    +act.slice(0,4).map(r=>{ const st=stat[r.status]||['—','grey'];
+      return '<div class="card" style="cursor:pointer;margin:.4rem 0" onclick="goV(\'livrari\')"><div class="row"><div class="grow"><div class="t">'+esc(r.site_id?(sm[r.site_id]||mt('Destinație')):mt('Destinație'))+' ›</div></div><span class="pill '+st[1]+'">'+esc(mt(st[0]))+'</span></div></div>'; }).join('')
+    +(act.length>4?'<button class="mini-btn gh" onclick="goV(\'livrari\')">'+esc(mt('Vezi toate'))+' ›</button>':'');
+}
 async function scrAcasa(){
   if(S.role==='client') return scrClientHome();
   if(S.role==='subcontractor') return scrSubHome();
+  if(S.role==='accountant') return scrAccHome();
   $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
   const {data:all}=await mSel('sites','id,name,address,status,progress,deadline');
   S.sites=all||[];
@@ -754,9 +1070,7 @@ async function scrAcasa(){
   const roleSub=mySpec||({worker:'Lucrător',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator');
   const sites=(all||[]).filter(s=>['planned','active','paused'].includes(s.status));
   const list=sites.map(s=>'<div class="card" onclick="openSite(\''+s.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+' ›</div><div class="s">'+esc(s.address||'fără adresă')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div></div>').join('');
-  const acts=S.role==='driver'
-    ? '<button class="mini-btn pr" onclick="goV(\'livrari\')">🚚 Livrări</button> <button class="mini-btn go" onclick="sendLocation()">📍 Trimite locația</button> <button class="mini-btn gh" onclick="openChat()">💬 Chat</button>'
-    : '<button class="mini-btn pr" onclick="goV(\'scan\')">📷 '+esc(mtz('Scanează / Mută'))+'</button> <button class="mini-btn go" onclick="goV(\'comanda\')">🛒 Comandă</button> <button class="mini-btn gh" onclick="goV(\'poze\')">📷 Poză</button> <button class="mini-btn gh" onclick="goV(\'pontaj\')">⏱️ Pontaj</button> <button class="mini-btn gh" onclick="openChat()">💬 Chat</button> <button class="mini-btn gh" onclick="sheetDailyLog()">📓 Raport zilnic</button>';
+  const acts=mHomeActions();
   $('screen').innerHTML='<div class="scr-title">Salut! 👋</div>'
     +'<div class="card" style="background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border:none"><div class="t" style="color:#fff">'+esc($("who-r").textContent)+'</div><div class="s" style="color:#9fb0d4">'+esc(roleSub)+'</div></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">'+acts+'</div>'
@@ -768,10 +1082,12 @@ async function scrAcasa(){
        iar în firma reală nu există niciun cont `driver`, deci cardul nu s-ar fi afișat nimănui.
        Gazda e goală: `fillMyVehicle` decide ce apare, după FAPTE, nu după rol. */
     +'<div id="myveh-block"></div>'
+    +(S.role==='driver'?'<div id="drv-block"></div>':'')
     +(S.role==='worker'?'<div id="azi-block"></div>':'')
     +'<div class="scr-title" style="font-size:.95rem">Șantierele tale</div>'
     +(list||'<div class="empty"><div class="ei">🏗️</div>Niciun șantier activ.</div>');
   if(S.role==='worker') fillAzi();
+  if(S.role==='driver') fillDrvHome();
   fillMyVehicle();                       /* KB#90/D62: custodia decide, nu rolul */
   if(!mTaskExternal()) fillTasksHome();
 }
@@ -780,14 +1096,26 @@ async function fillAzi(){
   const host=$('azi-block'); if(!host) return;
   const myEmp=S.emp;
   if(!myEmp){ host.innerHTML=''; return; }
-  const d=today();
-  let site=null,siteName=''; try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ site=cp.data.site_id; siteName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){}
+  /* ►► F3 — șantierul de azi vine din `my_field_context` (`sites_today`), care îl calculează
+     pe SERVER, în fusul FIRMEI. Interogarea de aici folosea `today()` — adică UTC — deci
+     în intervalul dintre miezul nopții local și cel UTC „📌 Azi" arăta ziua greșită.
+     Rezerva pe `crew_plan` rămâne pentru sesiunile fără context. */
+  let site=null,siteName='';
+  const _st=(mCtx().sites_today||[])[0];
+  if(_st && _st.id){ site=_st.id; siteName=_st.name||''; }
+  else { const d=mToday();
+    try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ site=cp.data.site_id; siteName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){} }
   if(!site){ host.innerHTML='<div class="card" style="background:#fff7ed;border-color:#fb923c"><div class="t">📌 Azi</div><div class="s">Nu ai un șantier planificat azi. Întreabă responsabilul, sau alege manual când pontezi.</div></div>'; return; }
   let stages=[]; try{ const sr=await sb.from('site_stages').select('*').eq('site_id',site).order('position'); stages=(sr.data||[]).filter(x=>x.status!=='done'); }catch(e){}
   S.curStages=(S.curStages||[]).filter(x=>x.site_id!==site).concat(stages);
   const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
   const items=stages.length?stages.slice(0,8).map(st=>'<div class="card" onclick="openStageMobile(\''+st.id+'\')" style="cursor:pointer;margin:.4rem 0;padding:.7rem"><div class="row"><div class="grow"><b>'+esc(st.name)+'</b>'+((st.photo_urls&&st.photo_urls.length)?' 📷':'')+(st.description?' 📝':'')+'</div><span class="pill '+(stCol[st.status]||'grey')+'">'+(st.progress||0)+'% ›</span></div></div>').join(''):'<div class="card"><div class="s">Niciun pas de lucru deschis pe acest șantier. 🎉</div></div>';
-  host.innerHTML='<div class="scr-title" style="font-size:.95rem;margin-top:.4rem">📌 Azi · 🏗️ '+esc(siteName)+'</div><div class="s" style="margin-bottom:.3rem">Ce ai de făcut — apasă un pas pentru detalii, poze și „✅ Gata".</div>'+items;
+  host.innerHTML='<div class="scr-title" style="font-size:.95rem;margin-top:.4rem">📌 Azi · 🏗️ '+esc(siteName)+'</div><div class="s" style="margin-bottom:.3rem">Ce ai de făcut — apasă un pas pentru detalii, poze și „✅ Gata".</div>'+items
+    /* contextul călătorește cu utilizatorul: comanda și poza pornesc de pe ACEST șantier */
+    +'<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">'
+      +'<button class="mini-btn go" onclick="S.psite=\''+site+'\';goV(\'comanda\')">🛒 '+esc(mt('Comandă pentru acest șantier'))+'</button>'
+      +'<button class="mini-btn gh" onclick="S.psite=\''+site+'\';goV(\'poze\')">📷 '+esc(mt('Poză'))+'</button>'
+    +'</div>';
 }
 
 /* PROGRAMUL SĂPTĂMÂNII (Bauprogramm) — pașii de lucru planificați în săptămână, per șantier */
@@ -1194,7 +1522,13 @@ async function scrPontajMgr(){
   // dintr-un subset arbitrar și puteau sări peste cele mai recente pontaje.
   const {data}=await sb.from('timesheets').select('id,work_date,hours,approved,employee_id,site_id').order('work_date',{ascending:false}).order('id',{ascending:false}).limit(20);
   const rows=(data||[]);
-  const em=await nameMap('employees','full_name'); const sm=await nameMap('sites','name');
+  /* ►► FIELD1 / D91 — `nameMap('employees', …)` era ULTIMA citire directă de `employees` din
+     acest fișier: invizibilă pentru un `grep` după `from('employees')`, fiindcă tabela ajunge
+     acolo ca PARAMETRU. Din 0173 tabela e OFFICE-only, deci pentru orice rol de teren ar fi
+     întors zero rânduri TĂCUT, iar pontajele s-ar fi afișat fără nume. Numele vin acum din
+     contractul canonic (`field_roster`, D87), care e și singura sursă folosită în restul app-ului. */
+  const _rst=await mRoster(); const em={}; (_rst||[]).forEach(r=>{ em[r.id]=r.full_name; });
+  const sm=await nameMap('sites','name');
   if(!rows.length){$('pj').innerHTML='<div class="empty"><div class="ei">⏱️</div>Niciun pontaj încă.</div>';return;}
   $('pj').innerHTML=rows.map(r=>'<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(r.employee_id?(em[r.employee_id]||'—'):'—')+' · '+esc(r.hours)+'h</div><div class="s">'+esc(r.site_id?(sm[r.site_id]||'fără șantier'):'fără șantier')+' · '+esc(r.work_date)+'</div></div>'+(r.approved?'<span class="pill green">Aprobat</span>':'<span class="pill blue">Trimis</span>')+'</div></div>').join('');
 }
@@ -1304,6 +1638,13 @@ async function scrComanda(){
     +'<div id="mat-list"><div class="loading">Se încarcă…</div></div>';
   const {data:sites}=await mSel('sites','id,name');
   $('o-site').innerHTML='<option value="">— alege —</option>'+(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  /* ►► F3 — nu cerem de două ori ce sistemul știe deja (principiul de produs).
+     Ordinea e de la cel mai specific la cel mai general: șantierul din care AM VENIT
+     (pas de lucru / fișa șantierului), apoi cel pe care sunt PLANIFICAT azi — ambele
+     calculate deja, niciunul cerut printr-o interogare nouă. `sites_today` vine din
+     `my_field_context`, deci ziua e cea a FIRMEI, nu a browserului. */
+  const _pre=S.psite || ((mCtx().sites_today||[])[0]||{}).id || '';
+  if(_pre && (sites||[]).some(x=>x.id===_pre)) $('o-site').value=_pre;
   const [mr,tr]=await Promise.all([ sb.from('materials').select('id,name,unit,photo_url,purchase_price,last_price,store_price'), sb.from('tools').select('id,name,photo_url,unit_value') ]);
   S.mats=mr.data||[]; S.tools=(tr.data||[]).map(t=>({id:t.id,name:t.name,unit:'buc',photo_url:t.photo_url,price:t.unit_value}));
   if(!S.cart)S.cart={}; if(!S.ordKind)S.ordKind='m'; _matQ=''; renderMats('');
@@ -1674,7 +2015,7 @@ function mTaskAcceptCard(x){
 }
 async function scrTaskuri(){
   if(mTaskExternal()){ goV('acasa'); return; }
-  S.view='taskuri';
+  mViewMark('taskuri'); S.view='taskuri';
   document.querySelectorAll('#bottom button').forEach(b=>b.classList.remove('on'));
   $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
   await ensureAu(); await mTaskAsg();
@@ -2247,7 +2588,7 @@ function mScanManual(){
 function mvReset(){ S._mv={step:1,obj:null,from:null,dest:null,qty:null,busy:false}; }
 async function scrScanMove(){
   if(mvExternal()){ goV('acasa'); return; }
-  S.view='scan';
+  mViewMark('scan'); S.view='scan';
   document.querySelectorAll('#bottom button').forEach(b=>b.classList.remove('on'));
   if(!S._mv) mvReset();
   if(S._mvMode===undefined){ try{ S._mvMode=localStorage.getItem('c373_mv_mode')||'one'; }catch(e){ S._mvMode='one'; } }
@@ -3049,7 +3390,7 @@ async function openNotif(){
 
 /* CHAT DE ECHIPĂ */
 async function openChat(){
-  S.view='chat';
+  mViewMark('chat'); S.view='chat';
   document.querySelectorAll('#bottom button').forEach(b=>b.classList.remove('on'));
   $('screen').innerHTML='<div class="scr-title">💬 Chat echipă</div><div id="chat-list" class="chat-list"><div class="loading">Se încarcă…</div></div>'
     +'<div class="chat-bar"><button id="chat-rec" class="btn" style="width:auto;padding:.8rem 1rem" title="Mesaj vocal — apasă ca să începi, apasă din nou ca să trimiți" onclick="chatRec()">🎤</button><input id="chat-input" placeholder="Scrie un mesaj…" onkeydown="if(event.key===\'Enter\')sendMsg()"/><button class="btn" style="width:auto;padding:.8rem 1.1rem" onclick="sendMsg()">➤</button></div>';
@@ -3201,8 +3542,16 @@ async function saveProfile(){
 /* SHEET */
 function openSheet(title,html){
   $('sheet-mount').innerHTML='<div class="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet"><h3>'+esc(title)+'<button class="x" onclick="closeSheet()">×</button></h3>'+html+'</div></div>';
+  /* F6 — o foaie e un nivel de navigare: „înapoi" o închide pe ea, nu ecranul de sub ea. */
+  if(!_mhLock) mHistPush({sheet:true});
 }
-function closeSheet(){ const m=$('sheet-mount'), bg=m&&m.firstElementChild; const after=function(){ try{ if(typeof renderCartBar==='function') renderCartBar(); }catch(e){} }; if(bg&&!bg.classList.contains('closing')){ bg.classList.add('closing'); setTimeout(()=>{ if(m) m.innerHTML=''; after(); },230); } else if(m){ m.innerHTML=''; after(); } }
+/* Închiderea are UN SINGUR executor (`mSheetWipe`) și două intrări: butonul „×" (care trece
+   prin istoric, ca să nu rămână o intrare orfană) și `popstate` (care execută direct). */
+function closeSheet(){
+  if(!_mhLock){ const st=history.state; if(st && st[MH]!=null && st.sheet){ history.back(); return; } }
+  mSheetWipe();
+}
+function mSheetWipe(){ const m=$('sheet-mount'), bg=m&&m.firstElementChild; const after=function(){ try{ if(typeof renderCartBar==='function') renderCartBar(); }catch(e){} }; if(bg&&!bg.classList.contains('closing')){ bg.classList.add('closing'); setTimeout(()=>{ if(m) m.innerHTML=''; after(); },230); } else if(m){ m.innerHTML=''; after(); } }
 
 /* ── SUPORT ── */
 function openSupport(){
