@@ -2759,6 +2759,15 @@
     'Note / condiții':{ru:'Примечания / условия',de:'Notizen / Bedingungen',en:'Notes / terms'},
     'Materiale estimate':{ru:'Оценка материалов',de:'Geschätzte Materialien',en:'Estimated materials'},
     'Se încarcă…':{ru:'Загрузка…',de:'Lädt…',en:'Loading…'},
+    // ►► FIELD1 / D92 — accesul operațional
+    'Acces':{ru:'Доступ',de:'Zugang',en:'Access'},
+    'Accesul operațional nu este activ':{ru:'Рабочий доступ не активен',de:'Der operative Zugang ist nicht aktiv',en:'Operational access is not active'},
+    'Contul tău nu e legat de o fișă de angajat.':{ru:'Ваша учётная запись не связана с карточкой сотрудника.',de:'Ihr Konto ist mit keiner Mitarbeiterakte verknüpft.',en:'Your account is not linked to an employee record.'},
+    'Contractul de muncă s-a încheiat.':{ru:'Трудовой договор завершён.',de:'Das Arbeitsverhältnis ist beendet.',en:'The employment contract has ended.'},
+    'Fișa ta de angajat nu este activă.':{ru:'Ваша карточка сотрудника неактивна.',de:'Ihre Mitarbeiterakte ist nicht aktiv.',en:'Your employee record is not active.'},
+    'Poți în continuare să îți vezi propriile ore lucrate. Pentru orice altceva, vorbește cu biroul.':{ru:'Вы по-прежнему можете видеть собственные отработанные часы. По всем остальным вопросам обратитесь в офис.',de:'Sie können weiterhin Ihre eigenen geleisteten Stunden einsehen. Für alles andere wenden Sie sich bitte ans Büro.',en:'You can still see your own hours worked. For anything else, talk to the office.'},
+    'Orele mele':{ru:'Мои часы',de:'Meine Stunden',en:'My hours'},
+    'Niciun pontaj înregistrat.':{ru:'Нет записей учёта времени.',de:'Keine Zeiterfassung vorhanden.',en:'No timesheet entries.'},
     // editor oferte/facturi
     'Ofertă / Deviz':{ru:'Смета',de:'Angebot',en:'Estimate'},
     'Factură':{ru:'Счёт',de:'Rechnung',en:'Invoice'},

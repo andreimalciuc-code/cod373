@@ -175,7 +175,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='341';
+const APP_BUILD='342';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -183,6 +183,28 @@ function $(id){return document.getElementById(id);}
    Măsurat: „Șantierele tale" lista șantierele altei firme. `S.tenant` null ⇒ zero rânduri,
    adică eșec în siguranță, nu scurgere. */
 function mSel(tbl, cols){ return sb.from(tbl).select(cols).eq('tenant_id', S.tenant); }
+/* ►► FIELD1 / D91 — fișa PROPRIE vine din contractul de context, niciodată din `employees`.
+   Din 0173 tabela e OFFICE-only; un `select` de aici ar întoarce zero rânduri, tăcut. */
+function mEmp(){ return (S.ctx && S.ctx.employee) || null; }
+/* ►► FIELD1 / D87 — numele colegilor: `field_roster`, cu coloanele enumerate pe server.
+   Cache pe sesiune: cele două suprafețe care-l cer (pontajul, selectorul „mută la angajat")
+   se deschid des, iar lista se schimbă rar. `mRosterWipe()` îl golește la delogare. */
+async function mRoster(force){
+  if(!force && S._roster) return S._roster;
+  try{ const r=await sb.rpc('field_roster',{p_tenant_id:S.tenant});
+       S._roster = (r && !r.error && Array.isArray(r.data)) ? r.data : []; }
+  catch(e){ S._roster=[]; }
+  return S._roster;
+}
+function mRosterWipe(){ S._roster=null; }
+/* ►► Chei locale legate de IDENTITATE (telefon partajat): namespaced pe utilizator+firmă.
+   `c373_install_dismiss` și `c373_mv_mode` rămân globale DELIBERAT — sunt preferințe de
+   DISPOZITIV („nu-mi mai arăta bannerul de instalare", „ultimul mod de scanare"), nu stare
+   de cont; al doilea utilizator al telefonului n-ar moșteni nimic despre primul prin ele. */
+function mLKey(base){
+  const u=(S.session&&S.session.user&&S.session.user.id)||'anon';
+  return base+':'+u+':'+(S.tenant||'-');
+}
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
 function money(n){return n==null||n===''?'—':Number(n).toLocaleString('ro-RO')+' '+(CURSYM[CUR]||CUR);}
@@ -205,7 +227,7 @@ async function doLogin(){
 }
 /* La delogare schița de lot se șterge ÎNAINTE de `signOut`: pe un telefon de șantier folosit
    de doi oameni, al doilea nu trebuie să găsească lotul scanat de primul (SCAN1-B.1). */
-async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}try{mNotifLiveStop();}catch(e){}await sb.auth.signOut();location.reload();}
+async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}try{mRosterWipe();}catch(e){}try{mNotifLiveStop();}catch(e){}await sb.auth.signOut();location.reload();}
 function mBase(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
 async function mForgot(){ const email=($('l-email').value||'').trim(); if(!email){ lmsg('Scrie întâi emailul.'); return; } lmsg('Se trimite…','ok');
   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:mBase()+'mobil.html'}); if(error){lmsg(error.message);return;} lmsg('📧 Ți-am trimis un link de resetare a parolei. Deschide emailul.','ok'); }
@@ -252,6 +274,9 @@ async function boot(){
     S._au={ tz:S.ctx.tz };            // fusul firmei vine din context, NU din `tenants.automations`
     S.emp = S.ctx.employee ? S.ctx.employee.id : null;
   }
+  /* ►► FIELD1 / D91 — din 0173, `employees` devine OFFICE-only: terenul NU mai citește
+     niciun rând, nici măcar pe al lui. Tot ce ținea de fișa proprie vine din `S.ctx`, iar
+     numele colegilor din contractul `field_roster`. Zero `sb.from('employees')` în acest fișier. */
   /* Rolurile de teren sunt BLOCATE pe interfața lor; conducerea poate comuta între vederi.
      `S.memberRole` rămâne singura autoritate — `S.role` e strict preferință de AFIȘARE. */
   if(['worker','driver','client','subcontractor'].includes(mem.role)){ S.role=mem.role; $('roles').classList.add('hidden'); }
@@ -409,6 +434,42 @@ function mRolesBar(){
 }
 /* Bara de jos: NAV-ul vederii + intrări CONTEXTUALE. „Vehiculul meu" apare din CUSTODIE
    (D62/KB#90), nu din rol — un lucrător cu mașină în custodie o vede, un șofer fără, nu. */
+/* ►► FIELD1 / D92 — ACCESUL OPERAȚIONAL.
+   Membership-ul dă dreptul de AUTENTIFICARE; fișa de angajat dă dreptul de a OPERA. Când a
+   doua îl contrazice pe primul, omul intră în aplicație, dar nu primește suprafață de lucru.
+   Fail-closed și pentru fișa ABSENTĂ: un `worker` fără fișă n-are ce ponta, ce i se planifica
+   sau ce i se atribui — serverul l-ar refuza oricum, iar un ecran care oferă butoane moarte e
+   mai rău decât unul care spune de ce.
+   Rolurile de BIROU nu trec pe aici: autoritatea lor e membership-ul, nu fișa (§10). */
+function mFieldBlocked(){
+  if(!S.ctx) return false;                       // fără context nu inventăm o interdicție
+  const r=S.memberRole||S.ctx.role;
+  if(['worker','driver'].indexOf(r)<0) return false;
+  const e=mEmp();
+  return !e || e.operational!==true;
+}
+async function scrAccesInactiv(){
+  const e=mEmp();
+  /* Textul traductibil rămâne un STRING FIX; data se concatenează în afara lui — altfel
+     cheia n-ar mai exista niciodată în dicționar. */
+  const motiv = !e ? mt('Contul tău nu e legat de o fișă de angajat.')
+    : (e.terminated_on ? mt('Contractul de muncă s-a încheiat.')+' '+e.terminated_on
+                       : mt('Fișa ta de angajat nu este activă.'));
+  $('screen').innerHTML=
+     '<div class="scr-title">🔒 '+esc(mt('Accesul operațional nu este activ'))+'</div>'
+    +'<div class="card" style="margin-bottom:.7rem"><div class="t">'+esc(T(motiv))+'</div>'
+    +'<div class="s" style="margin-top:.4rem">'+esc(mt('Poți în continuare să îți vezi propriile ore lucrate. Pentru orice altceva, vorbește cu biroul.'))+'</div></div>'
+    +'<div class="scr-title" style="font-size:.95rem">⏱️ '+esc(mt('Orele mele'))+'</div>'
+    +'<div id="ai-ore"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  /* D92: citirea propriului istoric rămâne permisă — poarta e pe operațiile VIITOARE. */
+  let rows=[];
+  try{ const r=await sb.from('timesheets').select('work_date,hours,site_id,approved')
+        .order('work_date',{ascending:false}).limit(30); rows=r.data||[]; }catch(err){}
+  $('ai-ore').innerHTML = rows.length
+    ? rows.map(r=>'<div class="card" style="margin:0 0 .5rem"><div class="row"><div class="grow"><div class="t">'
+        +esc(r.work_date)+'</div></div><div class="t">'+esc(r.hours||0)+'h</div></div></div>').join('')
+    : '<div class="empty"><div class="ei">⏱️</div>'+esc(mt('Niciun pontaj înregistrat.'))+'</div>';
+}
 function mNav(){
   const base=(NAV[S.role]||NAV.worker).slice();
   if(mHasVehicle() && !base.find(n=>n[0]==='livrari') && S.role!=='client' && S.role!=='subcontractor'
@@ -417,11 +478,21 @@ function mNav(){
 }
 function render(){
   clearInterval(window._pjTimer);
+  /* D92 — nicio suprafață de lucru pentru cine nu mai e operațional. Verificarea stă ÎNAINTE
+     de orice randare, ca să nu existe o fereastră în care butoanele apar și apoi dispar. */
+  if(mFieldBlocked()){
+    $('bottom').innerHTML='<button class="on"><span class="bi">🔒</span>'+esc(mt('Acces'))+'</button>';
+    const sc0=$('screen'); if(sc0){ sc0.scrollTop=0; sc0.style.paddingBottom=''; }
+    S.view='acces'; scrAccesInactiv(); loadNotifCount(); return;
+  }
   const nav=mNav();
-  /* 'taskuri' și 'scan' sunt ecrane în afara barei de jos (tiparul 'chat') — pull-to-refresh le păstrează */
-  if(!nav.find(n=>n[0]===S.view) && S.view!=='taskuri' && S.view!=='scan') S.view=nav[0][0];
+  /* Ecrane în AFARA barei de jos. `chat` lipsea din listă deși comentariul îl dădea drept
+     tiparul: `doRefresh` cheamă `render()`, deci o tragere în jos în chat te arunca înapoi
+     pe primul ecran din bară, tăcut. */
+  const OUTSIDE=['taskuri','scan','chat'];
+  if(!nav.find(n=>n[0]===S.view) && OUTSIDE.indexOf(S.view)<0) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove}[S.view];
+  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
   const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
@@ -679,7 +750,7 @@ async function scrAcasa(){
   $('screen').innerHTML='<div class="loading">Se încarcă…</div>';
   const {data:all}=await mSel('sites','id,name,address,status,progress,deadline');
   S.sites=all||[];
-  let mySpec=''; if(S.role!=='manager'){ try{ const _e=await sb.from('employees').select('specialty,position').eq('user_id',S.session.user.id).maybeSingle(); if(_e.data) mySpec=String(_e.data.specialty||_e.data.position||'').trim(); }catch(e){} }
+  let mySpec=''; if(S.role!=='manager'){ const _e=mEmp(); if(_e) mySpec=String(_e.specialty||_e.position||'').trim(); }
   const roleSub=mySpec||({worker:'Lucrător',driver:'Șofer',manager:'Responsabil'}[S.role]||'Utilizator');
   const sites=(all||[]).filter(s=>['planned','active','paused'].includes(s.status));
   const list=sites.map(s=>'<div class="card" onclick="openSite(\''+s.id+'\')" style="cursor:pointer"><div class="row"><div class="grow"><div class="t">'+esc(s.name)+' ›</div><div class="s">'+esc(s.address||'fără adresă')+'</div></div>'+pillSite(s.status)+'</div><div class="prog"><span style="width:'+(s.progress||0)+'%"></span></div></div>').join('');
@@ -707,7 +778,7 @@ async function scrAcasa(){
 /* „📌 Azi" — șantierul planificat azi + pașii de lucru deschiși, pe pagina principală a lucrătorului */
 async function fillAzi(){
   const host=$('azi-block'); if(!host) return;
-  let myEmp=null; try{ const e=await sb.from('employees').select('id').eq('user_id',S.session.user.id).maybeSingle(); myEmp=e.data&&e.data.id; }catch(e){}
+  const myEmp=S.emp;
   if(!myEmp){ host.innerHTML=''; return; }
   const d=today();
   let site=null,siteName=''; try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ site=cp.data.site_id; siteName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){}
@@ -729,7 +800,7 @@ async function scrProgram(){
   const {data:allSites}=await mSel('sites','id,name,address,status'); S.sites=allSites||[];
   const siteName={}; (allSites||[]).forEach(s=>siteName[s.id]=s.name);
   let siteIds=(allSites||[]).filter(s=>s.status!=='cancelled').map(s=>s.id);
-  let myEmp=null; try{ const e=await sb.from('employees').select('id').eq('user_id',S.session.user.id).maybeSingle(); myEmp=e.data&&e.data.id; }catch(e){}
+  const myEmp=S.emp;
   const plannedDays={};
   if(!isMgr){
     const mine=new Set();
@@ -1041,7 +1112,7 @@ async function scrPontaj(){
   if(S.role!=='worker') return scrPontajMgr();
   $('screen').innerHTML='<div class="scr-title">⏱️ Pontajul meu</div><div id="pj"><div class="loading">Se încarcă…</div></div>';
   const d=today();
-  let myEmp=null,myName=''; try{ const e=await sb.from('employees').select('id,full_name').eq('user_id',S.session.user.id).maybeSingle(); if(e.data){ myEmp=e.data.id; myName=e.data.full_name; } }catch(e){}
+  const myEmp=S.emp, myName=(mEmp()&&mEmp().name)||'';
   if(!myEmp){ $('pj').innerHTML='<div class="empty"><div class="ei">⏱️</div>Contul tău nu e legat de un angajat. Roagă biroul să te adauge ca angajat ca să poți ponta.</div>'; return; }
   let plannedSite=null,plannedName=''; try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ plannedSite=cp.data.site_id; plannedName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){}
   let ts=null; try{ const r=await sb.from('timesheets').select('id,start_time,end_time,break_min,hours,site_id,updated_at,approved,sites(name)').eq('employee_id',myEmp).eq('work_date',d).maybeSingle(); ts=r.data||null; }catch(e){}
@@ -1129,10 +1200,10 @@ async function scrPontajMgr(){
 }
 async function sheetPontaj(){
   const [emp,sites]=await Promise.all([
-    sb.from('employees').select('id,full_name').eq('active',true).order('full_name'),
+    mRoster(),
     mSel('sites','id,name').order('name')
   ]);
-  const eo=(emp.data||[]).map(e=>'<option value="'+e.id+'">'+esc(e.full_name)+'</option>').join('');
+  const eo=(emp||[]).filter(e=>e.active).map(e=>'<option value="'+e.id+'">'+esc(e.full_name)+'</option>').join('');
   const so=(sites.data||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
   openSheet('Pontează ore',
     '<div id="smsg"></div>'
@@ -1317,7 +1388,7 @@ async function sendOrder(){
   if(!deadline){ fail('Pune termenul de livrare (obligatoriu).'); return; }
   // numele angajatului (nu emailul): preferă fișa de angajat
   let who=(S.uname||'').trim();
-  if(!who || who.indexOf('@')>=0){ try{ const e=await sb.from('employees').select('full_name').eq('user_id',S.session.user.id).maybeSingle(); if(e.data&&e.data.full_name) who=e.data.full_name; }catch(e){} }
+  if(!who || who.indexOf('@')>=0){ const _e=mEmp(); if(_e&&_e.name) who=_e.name; }
   who=who||S.email||null;
   // prețuri din catalog (lucrătorul nu le vede, dar oficiul le primește)
   const total=items.reduce((t,it)=>t+(+it.qty||0)*catPriceOf(it),0);
@@ -2194,8 +2265,8 @@ async function scrScanMove(){
            DESTINAȚIE (operațional, filtrate mai jos) ȘI `mvLocLabel` (eticheta din istoricul
            de mișcări). Filtrat la sursă, o mișcare veche „la un angajat" acum concediat s-ar
            fi afișat „👤 Responsabil", fără nume — istoric mutilat. */
-        sb.from('employees').select('id,full_name,active,terminated_on').order('full_name')]);
-      S._mvLoc={wh:w.data||[], sites:(si.data||[]).filter(x=>x.status!=='cancelled'), emp:em.data||[]};
+        mRoster()]);
+      S._mvLoc={wh:w.data||[], sites:(si.data||[]).filter(x=>x.status!=='cancelled'), emp:em||[]};
     }catch(e){ S._mvLoc={wh:[],sites:[],emp:[]}; }
   }
   mvScreen();
@@ -2961,7 +3032,7 @@ async function mvbConfirm(){
 function notifIsField(){ return ['worker','driver','client','subcontractor'].includes(S.memberRole||S.role); }
 async function loadNotifCount(){
   try{ let q=sb.from('notifications').select('id,created_at'); if(notifIsField()) q=q.eq('user_id',S.session.user.id); const {data}=await q;
-    const seen=+(localStorage.getItem('c373_notif_seen')||0);
+    const seen=+(localStorage.getItem(mLKey('c373_notif_seen'))||0);
     const n=(data||[]).filter(x=>new Date(x.created_at).getTime()>seen).length;
     const b=$('notif-badge'); if(b){ if(n>0){ b.textContent=n>9?'9+':n; b.style.display='inline-block'; } else b.style.display='none'; }
   }catch(e){}
@@ -2969,7 +3040,7 @@ async function loadNotifCount(){
 async function openNotif(){
   let q=sb.from('notifications').select('id,title,body,entity_type,entity_id,created_at'); if(notifIsField()) q=q.eq('user_id',S.session.user.id); const {data}=await q;
   const list=(data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1)).slice(0,40);
-  localStorage.setItem('c373_notif_seen', Date.now()); loadNotifCount();
+  localStorage.setItem(mLKey('c373_notif_seen'), Date.now()); loadNotifCount();
   const ic={material_order:'🛒',estimate:'📄',invoice:'🧾',defect:'🔧',crew_plan:'📋',delivery:'🚚',message:'💬',task:'✅'};
   const html=list.length? list.map(n=>{ const act=(n.entity_type==='task'&&n.entity_id&&!mTaskExternal())?' onclick="closeSheet();mTaskSheet(\''+n.entity_id+'\')" ':'';
     return '<div class="card" style="margin:0 0 .6rem'+(act?';cursor:pointer':'')+'"'+act+'><div class="row"><div class="grow"><div class="t">'+(ic[n.entity_type]||'🔔')+' '+esc(n.title)+(act?' ›':'')+'</div>'+(n.body?'<div class="s">'+esc(n.body)+'</div>':'')+'</div><div class="s" style="white-space:nowrap;font-size:.7rem">'+esc((n.created_at||'').slice(5,16).replace('T',' '))+'</div></div></div>'; }).join('') : '<div class="empty"><div class="ei">🔔</div>Nicio notificare.</div>';
@@ -3066,13 +3137,13 @@ async function mPushSubscribeSave(){
   const r=await sb.from('push_subscriptions').upsert({tenant_id:S.tenant,user_id:S.session.user.id,endpoint:sub.endpoint,p256dh:k.p256dh||null,auth:k.auth||null},{onConflict:'endpoint'});
   if(r.error) throw r.error; return sub;
 }
-function pushOff(){ try{ return localStorage.getItem('c373_push_off')==='1'; }catch(e){ return false; } }
+function pushOff(){ try{ return localStorage.getItem(mLKey('c373_push_off'))==='1'; }catch(e){ return false; } }
 async function mPushToggle(){
   if(!('serviceWorker' in navigator)||!('PushManager' in window)){ toast('Dispozitivul nu suportă notificări push.'); return; }
   try{ const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription();
-    if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} try{ localStorage.setItem('c373_push_off','1'); }catch(e){} toast('🔕 Notificări dezactivate.'); mPushRefresh(); return; }
+    if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} try{ localStorage.setItem(mLKey('c373_push_off'),'1'); }catch(e){} toast('🔕 Notificări dezactivate.'); mPushRefresh(); return; }
     const perm=await Notification.requestPermission(); if(perm!=='granted'){ toast('Permite notificările din setările telefonului/browserului.'); return; }
-    await mPushSubscribeSave(); try{ localStorage.removeItem('c373_push_off'); }catch(e){}
+    await mPushSubscribeSave(); try{ localStorage.removeItem(mLKey('c373_push_off')); }catch(e){}
     toast('🔔 Notificări push activate.'); mPushRefresh();
   }catch(e){ toast('Eroare: '+esc(e.message||String(e))); }
 }
