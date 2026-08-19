@@ -175,7 +175,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='342';
+const APP_BUILD='343';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -457,7 +457,7 @@ async function scrAccesInactiv(){
                        : mt('Fișa ta de angajat nu este activă.'));
   $('screen').innerHTML=
      '<div class="scr-title">🔒 '+esc(mt('Accesul operațional nu este activ'))+'</div>'
-    +'<div class="card" style="margin-bottom:.7rem"><div class="t">'+esc(T(motiv))+'</div>'
+    +'<div class="card" style="margin-bottom:.7rem"><div class="t">'+esc(motiv)+'</div>'
     +'<div class="s" style="margin-top:.4rem">'+esc(mt('Poți în continuare să îți vezi propriile ore lucrate. Pentru orice altceva, vorbește cu biroul.'))+'</div></div>'
     +'<div class="scr-title" style="font-size:.95rem">⏱️ '+esc(mt('Orele mele'))+'</div>'
     +'<div id="ai-ore"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
