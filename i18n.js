@@ -13,6 +13,18 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── FIELD1 — secrete, capabilități, shell adaptiv ──
+    'configurat':{ru:'настроен',de:'konfiguriert',en:'configured'},
+    'neconfigurat':{ru:'не настроен',de:'nicht konfiguriert',en:'not configured'},
+    'lasă gol ca să păstrezi cheia actuală':{ru:'оставьте пустым, чтобы сохранить текущий ключ',de:'leer lassen, um den aktuellen Schlüssel zu behalten',en:'leave empty to keep the current key'},
+    'Șterge cheia':{ru:'Удалить ключ',de:'Schlüssel löschen',en:'Delete the key'},
+    'Ștergi cheia configurată?':{ru:'Удалить настроенный ключ?',de:'Konfigurierten Schlüssel löschen?',en:'Delete the configured key?'},
+    'Cheie ștearsă.':{ru:'Ключ удалён.',de:'Schlüssel gelöscht.',en:'Key deleted.'},
+    'Doar proprietarul sau administratorul pot administra cheile.':{ru:'Управлять ключами могут только владелец или администратор.',de:'Nur Inhaber oder Administrator dürfen die Schlüssel verwalten.',en:'Only the owner or an administrator can manage the keys.'},
+    'Cheia AI se folosește doar pe server.':{ru:'Ключ ИИ используется только на сервере.',de:'Der KI-Schlüssel wird nur serverseitig verwendet.',en:'The AI key is used server-side only.'},
+    'Cheie necunoscută.':{ru:'Неизвестный ключ.',de:'Unbekannter Schlüssel.',en:'Unknown key.'},
+    'Responsabil':{ru:'Ответственный',de:'Verantwortlicher',en:'Supervisor'},
+    'Lucrător':{ru:'Рабочий',de:'Arbeiter',en:'Worker'},
     // ── PLAN2 — planificare săptămânală: zile, luni, intervale, echipe, colaboratori externi ──
     'Luni':{ru:'Понедельник',de:'Montag',en:'Monday'},
     'Marți':{ru:'Вторник',de:'Dienstag',en:'Tuesday'},

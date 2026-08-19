@@ -3494,12 +3494,73 @@ function openTeamChat(){
 }
 function closeTeamChat(){ clearInterval(window._tcPoll); if(window._tcRec&&window._tcRec.state==='recording'){ try{ window._tcRec.stop(); }catch(e){} } closeModal(); }
 /* ════ ASISTENT AI (Claude) ════ */
-function aiKey(){ return (state.firm&&state.firm.automations&&state.firm.automations.anthropic_key)||''; }
+/* ════ SECRETELE FIRMEI (migr 0169/0171, D78/D85) ══════════════════════════════
+   Cheile de integrare NU mai stau în `tenants.automations`. Motivul, măsurat: `automations`
+   e citit de ORICE membru activ — `tenants_select` e `id IN (current_tenant_ids())`, fără
+   gardă de rol — iar `mobil.html` îl trăgea întreg pe telefonul fiecărui om de teren.
+   Acum stau în `tenant_secrets`, fără privilegii pentru `authenticated`.
+     · starea (configurat / nu)  → `tenant_secret_status`  (owner/admin)
+     · scrierea                  → `tenant_secret_set`     (owner/admin)
+     · valoarea                  → `tenant_secret_read_office` (owner/admin), DOAR pentru
+       integrările apelate din browser. `anthropic_key` nu trece pe acolo niciodată:
+       Edge Function-ul `ai` o citește singur, server-side.
+   Nu adăuga o cale nouă care aduce o cheie în client. */
+const SECRET_KEYS=['anthropic_key','wialon_token','tg_token','wa_token','wa_verify_token','sevdesk_key','lexoffice_key','inbound_key'];
+let _secStatus=null;
+async function secLoad(force){
+  if(_secStatus && !force) return _secStatus;
+  try{ const r=await sb.rpc('tenant_secret_status',{p_tenant_id:state.tenant}); _secStatus=r.data||{}; }
+  catch(e){ _secStatus={}; }
+  return _secStatus;
+}
+function secIsSet(k){ return !!(_secStatus && _secStatus[k]); }
+async function secSet(k,v){
+  const r=await sb.rpc('tenant_secret_set',{p_tenant_id:state.tenant,p_key:k,p_value:(v==null?null:String(v))});
+  if(r.error) throw r.error; _secStatus=r.data||_secStatus; return _secStatus;
+}
+async function secReadOffice(k){
+  const r=await sb.rpc('tenant_secret_read_office',{p_tenant_id:state.tenant,p_key:k});
+  if(r.error) throw r.error; return r.data||'';
+}
+/* Un câmp de secret e ÎNTOTDEAUNA gol la randare: arată DACĂ e configurat, nu CE e configurat.
+   Un `<input value="sk-ant-…">` e citibil de orice extensie de browser și rămâne în DOM. */
+function secField(id,key,label,hint,ph,extraBtn){
+  const on=secIsSet(key);
+  return '<div class="field"><label>'+esc(label)
+    +(hint?' <span class="hint-i" title="'+esc(hint)+'">ⓘ</span>':'')
+    +' <span class="secbadge" style="font-size:.66rem;font-weight:700;border-radius:20px;padding:.05rem .45rem;'
+    +(on?'background:var(--green-soft,#dcfce7);color:#166534':'background:var(--bg,#f1f5f9);color:var(--muted)')+'">'
+    +(on?'🔒 '+esc(C373t('configurat')):esc(C373t('neconfigurat')))+'</span></label>'
+    +'<div style="display:flex;gap:.5rem"><input id="'+id+'" type="password" autocomplete="off" style="flex:1" value="" placeholder="'
+    +esc(on?C373t('lasă gol ca să păstrezi cheia actuală'):(ph||''))+'"/>'
+    +(extraBtn||'')
+    +(on?'<button class="btn-ghost" title="'+esc(C373t('Șterge cheia'))+'" onclick="secClear(\''+key+'\')">🗑</button>':'')
+    +'</div></div>';
+}
+async function secClear(key){
+  if(!confirm(C373t('Ștergi cheia configurată?'))) return;
+  try{ await secSet(key,null); toast('🗑 '+C373t('Cheie ștearsă.')); renderSetari(); }
+  catch(e){ toast(secErr(e)); }
+}
+function secErr(e){ const m=((e&&e.message)||'').toString();
+  if(m.indexOf('SECRET_FORBIDDEN')>=0) return '🔒 '+C373t('Doar proprietarul sau administratorul pot administra cheile.');
+  if(m.indexOf('SECRET_SERVER_ONLY')>=0) return '🔒 '+C373t('Cheia AI se folosește doar pe server.');
+  if(m.indexOf('SECRET_UNKNOWN_KEY')>=0) return '⚠️ '+C373t('Cheie necunoscută.');
+  return 'Eroare: '+esc(m); }
+/* Salvează în bloc câmpurile de secrete completate (goale = nemodificate) */
+async function secSaveFields(map){
+  for(const id in map){ const el=$(id); if(!el) continue;
+    const v=(el.value||'').trim(); if(!v) continue;
+    try{ await secSet(map[id], v); el.value=''; }catch(e){ toast(secErr(e)); return false; } }
+  return true;
+}
+function aiKey(){ return ''; }   // ►► cheia AI NU mai pleacă din client (Edge Function `ai` v6)
 function aiModel(){ return (state.firm&&state.firm.automations&&state.firm.automations.ai_model)||'claude-haiku-4-5'; }
 function aiLang(){ try{ return localStorage.getItem('c373_lang')||'ro'; }catch(e){ return 'ro'; } }
 window._aiHist=[];
 async function aiCall(mode, input, history, image){
-  const body={ mode:mode, lang:aiLang(), currency:CUR||'MDL', model:aiModel(), tenant_id:state.tenant, key:aiKey()||undefined };
+  /* ►► fără `key`: din 0169 cheia se citește SERVER-SIDE (D78). */
+  const body={ mode:mode, lang:aiLang(), currency:CUR||'MDL', model:aiModel(), tenant_id:state.tenant };
   if(history) body.history=history; else body.input=input;
   if(image) body.image=image;
   const { data, error }=await sb.functions.invoke('ai',{body:body});
@@ -3536,7 +3597,7 @@ async function aiPolish(taId, instruction, btn){
 }
 function openAI(){
   if(isDemo()){ toast(tz('🤖 Asistentul AI e disponibil doar într-un cont real.')); return; }
-  const hasKey=!!aiKey();
+  const hasKey=secIsSet('anthropic_key');   /* starea, nu valoarea (D78) */
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;display:flex;flex-direction:column;height:min(82vh,680px)"><div class="modal-head"><h3>🤖 Asistent AI</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div id="ai-list" style="flex:1;overflow:auto;padding:.5rem .2rem;display:flex;flex-direction:column;gap:.45rem"></div>'
     +'<div style="display:flex;gap:.4rem;align-items:center;padding-top:.55rem;border-top:1px solid var(--line)"><input id="ai-input" placeholder="Întreabă asistentul…" autocomplete="off" style="flex:1;padding:.6rem .8rem;border:1px solid var(--line);border-radius:10px;outline:none" onkeydown="if(event.key===\'Enter\')aiSend()"/><button class="btn-primary" id="ai-send" onclick="aiSend()" style="padding:.55rem .9rem">➤</button></div>'
@@ -9365,12 +9426,13 @@ async function wialonCaptureFromUrl(){
   let tok=raw.substr(pos+13).split('&')[0]; try{ tok=decodeURIComponent(tok); }catch(e){}
   try{ history.replaceState(null,'',location.origin+location.pathname); }catch(e){}
   if(!tok) return false;
-  try{ const au=Object.assign({}, state.firm.automations||{}); au.wialon_token=tok; if(!au.wialon_host){ let hh='hst-api.wialon.com'; try{ hh=localStorage.getItem('c373_wialon_host')||hh; }catch(e){} au.wialon_host=hh; }
+  try{ await secSet('wialon_token', tok); const au=Object.assign({}, state.firm.automations||{}); if(!au.wialon_host){ let hh='hst-api.wialon.com'; try{ hh=localStorage.getItem('c373_wialon_host')||hh; }catch(e){} au.wialon_host=hh; }
     const { error }=await sb.from('tenants').update({automations:au}).eq('id',state.tenant); if(error) throw error;
     state.firm.automations=au; toast('✅ Wialon conectat — token salvat. Deschid harta…'); return true;
   }catch(e){ toast('Token Wialon primit, dar nu s-a salvat: '+(e.message||e)); return false; }
 }
-async function wialonTest(){ const tok=($('set-wialon-token').value||'').trim(); const host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,'');
+async function wialonTest(){ let tok=(($('set-wialon-token')||{}).value||'').trim();
+  if(!tok && secIsSet('wialon_token')){ try{ tok=await secReadOffice('wialon_token'); }catch(e){ toast(secErr(e)); return; } } const host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com').replace(/^https?:\/\//,'').replace(/\/+$/,'');
   if(!tok){ toast('Pune întâi token-ul Wialon.'); return; }
   toast('⏳ Testez conexiunea Wialon…');
   const inv=async(svc,params,sid)=>{ const { data, error }=await sb.functions.invoke('wialon',{body:{host:host,svc:svc,params:params||{},sid:sid||''}}); if(error) throw new Error(error.message||'proxy'); return data; };
@@ -9576,10 +9638,22 @@ async function hTrack(uid, name, dayOffset){
 function hClearTrack(){ if(_hTrackLine&&_hMap){ _hMap.removeLayer(_hTrackLine); _hTrackLine=null; toast('Traseu șters.'); } }
 
 /* ════ SETĂRI FIRMĂ ════ */
+/* ►► D78/D85 — token-urile de mesagerie NU mai vin din `automations` (citibil de orice membru),
+   ci din `tenant_secrets`, prin contractul de BIROU. Panoul e deja owner/admin-gated, iar
+   URL-urile de activare a webhook-urilor chiar au nevoie de valoare în browser. */
+var _msgSec = null;
+async function msgSecLoad(){
+  _msgSec = {};
+  for(const k of ['tg_token','wa_token','wa_verify_token','inbound_key']){
+    try{ _msgSec[k] = await secReadOffice(k) || ''; }catch(e){ _msgSec[k] = ''; }
+  }
+  return _msgSec;
+}
 function messagingPanel(au){
   if(!(state.role==='owner'||state.role==='admin')) return '';
   if(isDemo()) return ''; /* fără token-uri/webhook-uri în cont demo */
-  au=au||{}; const base='https://vzatmfhkwiojqkowtftg.supabase.co/functions/v1';
+  au=Object.assign({}, au||{}, _msgSec||{});
+  const base='https://vzatmfhkwiojqkowtftg.supabase.co/functions/v1';
   const key=au.inbound_key||''; const tgUrl=key?(base+'/tg-webhook?t='+key):''; const waUrl=base+'/wa-webhook';
   function fld(id,label,val,ph){ return '<div class="field"><label>'+esc(label)+'</label><input id="'+id+'" value="'+esc(val||'')+'" placeholder="'+esc(ph||'')+'" style="width:100%"/></div>'; }
   function urlBox(u){ return u?('<div style="display:flex;gap:.4rem;align-items:center;margin:.3rem 0"><input value="'+esc(u)+'" readonly onclick="this.select()" style="flex:1;font-size:.74rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.4rem"/><button type="button" class="btn-ghost" onclick="navigator.clipboard.writeText(this.previousElementSibling.value).then(()=>toast(\'📋 Copiat\'))">📋</button></div>'):('<div style="font-size:.8rem;color:var(--muted)">'+esc(tz('Apasă „Salvează" ca să se genereze codul firmei, apoi reapare aici linkul.'))+'</div>'); }
@@ -9619,15 +9693,19 @@ async function saveSocial(){
 }
 async function saveMessaging(){
   const au=Object.assign({}, (state.firm&&state.firm.automations)||{});
-  au.tg_token=($('msg-tg')&&$('msg-tg').value.trim())||'';
-  au.wa_token=($('msg-wa-token')&&$('msg-wa-token').value.trim())||'';
+  /* ►► secretele merg prin contract; `automations` rămâne configurație pură */
+  await secSet('tg_token', ($('msg-tg')&&$('msg-tg').value.trim())||null);
+  await secSet('wa_token', ($('msg-wa-token')&&$('msg-wa-token').value.trim())||null);
   au.wa_phone_id=($('msg-wa-phone')&&$('msg-wa-phone').value.trim())||'';
-  au.wa_verify_token=($('msg-wa-verify')&&$('msg-wa-verify').value.trim())||'';
-  if(!au.inbound_key){ let s=''; const c='abcdefghijklmnopqrstuvwxyz0123456789'; const a=(typeof crypto!=='undefined'&&crypto.getRandomValues)?crypto.getRandomValues(new Uint32Array(24)):null; for(let i=0;i<24;i++){ s+=c[(a?a[i]:Math.floor(Math.random()*4294967296))%c.length]; } au.inbound_key=s; }
+  await secSet('wa_verify_token', ($('msg-wa-verify')&&$('msg-wa-verify').value.trim())||null);
+  if(!(_msgSec&&_msgSec.inbound_key)){ let s2=''; const c='abcdefghijklmnopqrstuvwxyz0123456789'; const a=(typeof crypto!=='undefined'&&crypto.getRandomValues)?crypto.getRandomValues(new Uint32Array(24)):null; for(let i=0;i<24;i++){ s2+=c[(a?a[i]:Math.floor(Math.random()*4294967296))%c.length]; } await secSet('inbound_key', s2); }
+  await msgSecLoad();
   const r=await sbRetry(()=>sb.from('tenants').update({automations:au}).eq('id',state.tenant)); if(r.error){ toast(tz('Eroare:')+' '+esc(r.error.message)); return; }
   state.firm.automations=au; toast('✅ '+tz('Salvat.')); renderSetari();
 }
 async function renderSetari(){
+  await secLoad(true);   /* ►► starea cheilor (configurat/nu) — NICIODATĂ valorile (D78) */
+  if(state.role==='owner'||state.role==='admin'){ try{ await msgSecLoad(); }catch(e){} }
   const f=state.firm||{}; const au=(f.automations)||{};
   $('content').innerHTML='<div class="panel" style="max-width:660px"><div class="panel-head"><h3>Setări firmă</h3></div><div class="modal-body">'
     +'<div id="set-msg"></div>'
@@ -9687,7 +9765,7 @@ async function renderSetari(){
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🛰️ Integrare GPS (Wialon)</h3></div><div class="modal-body">'
     +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Leagă contul tău Wialon ca să vezi pozițiile reale ale vehiculelor pe „Hartă flotă". Apasă butonul de mai jos: <b>te duce la Wialon</b>, te loghezi și aprobi accesul, apoi <b>te aduce automat înapoi, salvează token-ul singur și deschide harta</b>. (Logarea e pe site-ul Wialon — nu introduci parola la noi.) Dacă providerul tău folosește alt server, schimbă-l mai jos înainte.</p>'
     +'<div style="margin-bottom:.6rem"><button class="btn-ghost" onclick="wialonOpenGen()">🔑 Generează token în Wialon (se deschide Wialon)</button></div>'
-    +'<div class="field"><label>Token Wialon</label><input id="set-wialon-token" type="text" autocomplete="off" value="'+esc(au.wialon_token||'')+'" placeholder="lipește aici token-ul copiat din Wialon"/></div>'
+    +secField('set-wialon-token','wialon_token','Token Wialon',null,'lipește aici token-ul copiat din Wialon')
     +'<div class="field"><label>Server (host) <span class="hint-i" title="Implicit hst-api.wialon.com (Wialon Hosting). Dacă providerul tău folosește alt domeniu (ex. de la dealer), pune-l aici. Butonul de generare folosește versiunea web a aceluiași server.">ⓘ</span></label><input id="set-wialon-host" type="text" autocomplete="off" value="'+esc(au.wialon_host||'hst-api.wialon.com')+'" placeholder="hst-api.wialon.com"/></div>'
     +'<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn-ghost" onclick="wialonTest()">🔌 Testează conexiunea</button><button class="btn-primary" onclick="saveSetari()">Salvează</button></div>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După salvare, deschide <a onclick="go(\'harta\')" style="cursor:pointer;color:var(--primary)">Hartă flotă</a> — pozițiile vin live din Wialon.</div>'
@@ -9697,14 +9775,14 @@ async function renderSetari(){
     +'<div style="font-weight:700;font-size:.86rem;margin:.3rem 0 .4rem">📤 Export (pentru contabil / orice program)</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem"><button class="btn-ghost" onclick="exportContabil()">📊 Export 1C / CSV (Moldova)</button><button class="btn-ghost" onclick="exportDATEV()">🇩🇪 Export DATEV (Buchungsstapel)</button><span style="font-size:.78rem;color:var(--muted);align-self:center">e-Factura <b>XRechnung</b> (acceptată de lexoffice/sevdesk/DATEV) se descarcă din fiecare factură → opțiunea „🇩🇪 e-Factură DE".</span></div>'
     +'<div style="font-weight:700;font-size:.86rem;margin:.3rem 0 .4rem;border-top:1px solid var(--line);padding-top:.7rem">🔗 Conectare live (API)</div>'
-    +'<div class="field"><label>lexoffice — cheie API (Public API) <span class="hint-i" title="O generezi în lexoffice: Setări → Extensii / Public API. Necesită un abonament lexoffice care permite API.">ⓘ</span></label><div style="display:flex;gap:.5rem"><input id="set-lexoffice" type="text" autocomplete="off" style="flex:1" value="'+esc(au.lexoffice_key||'')+'" placeholder="cheia API lexoffice"/><button class="btn-ghost" onclick="acctTest(\'lexoffice\')">🔌 Testează</button></div></div>'
-    +'<div class="field"><label>sevdesk — token API <span class="hint-i" title="Îl găsești în sevdesk: Setări → Utilizator → Token API.">ⓘ</span></label><div style="display:flex;gap:.5rem"><input id="set-sevdesk" type="text" autocomplete="off" style="flex:1" value="'+esc(au.sevdesk_key||'')+'" placeholder="token-ul API sevdesk"/><button class="btn-ghost" onclick="acctTest(\'sevdesk\')">🔌 Testează</button></div></div>'
+    +secField('set-lexoffice','lexoffice_key','lexoffice — cheie API (Public API)','O generezi în lexoffice: Setări → Extensii / Public API. Necesită un abonament lexoffice care permite API.','cheia API lexoffice','<button class="btn-ghost" onclick="acctTest(\'lexoffice\')">🔌 Testează</button>')
+    +secField('set-sevdesk','sevdesk_key','sevdesk — token API','Îl găsești în sevdesk: Setări → Utilizator → Token API.','token-ul API sevdesk','<button class="btn-ghost" onclick="acctTest(\'sevdesk\')">🔌 Testează</button>')
     +'<button class="btn-primary" onclick="saveSetari()">Salvează integrările</button>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După „Testează" reușit și „Salvează", din fiecare factură vei putea trimite direct în programul conectat (în lucru — îți activez butonul după ce confirmi conexiunea).</div>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🤖 Asistent AI</h3></div><div class="modal-body"><div id="set-ai-msg"></div>'
     +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Asistentul AI (din butonul 🤖 de sus) te ajută cu redactare de oferte/texte, estimări și întrebări despre program. Funcționează cu o <b>cotă gratuită lunară</b>. Pentru <b>consum nelimitat</b>, pune-ți propria cheie Anthropic — atunci consumul îl plătești tu, direct la Anthropic.</p>'
-    +'<div class="field"><label>Cheia mea Anthropic (BYOK) <span class="hint-i" title="O generezi pe console.anthropic.com → API Keys. Începe cu sk-ant-… Dacă o pui aici, consumul AI e nelimitat și se facturează pe contul tău Anthropic. O ștergi oricând ca să revii la cota gratuită a platformei.">ⓘ</span></label><div style="display:flex;gap:.5rem"><input id="set-anthropic" type="password" autocomplete="off" style="flex:1" value="'+esc(au.anthropic_key||'')+'" placeholder="sk-ant-…"/><button class="btn-ghost" onclick="aiTest()">🔌 Testează</button></div></div>'
+    +secField('set-anthropic','anthropic_key','Cheia mea Anthropic (BYOK)','O generezi pe console.anthropic.com → API Keys. Începe cu sk-ant-… Dacă o pui aici, consumul AI e nelimitat și se facturează pe contul tău Anthropic. Cheia nu se mai întoarce niciodată în browser — o poți doar înlocui sau șterge.','sk-ant-…','<button class="btn-ghost" onclick="aiTest()">🔌 Testează</button>')
     +'<div class="field" style="max-width:280px"><label>Model</label><select id="set-ai-model">'+[['claude-haiku-4-5','Haiku 4.5 — rapid și ieftin (recomandat)'],['claude-sonnet-4-6','Sonnet 4.6 — echilibrat'],['claude-opus-4-8','Opus 4.8 — cel mai capabil']].map(o=>'<option value="'+o[0]+'"'+((aiModel()===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'
     +'<button class="btn-primary" onclick="saveSetari()">Salvează</button>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">Cheia ta nu e vizibilă altor utilizatori și se folosește doar prin serverul nostru securizat către Anthropic.</div>'
@@ -9843,11 +9921,10 @@ async function saveSetari(){
   if($('set-director')) au.director=($('set-director').value||'').trim()||null;
   if($('set-addrs')){ const al=readAddrList(); au.addresses=al.length?al:null; }
   if($('set-contacts')){ const cl=readContactList(); au.contacts=cl.length?cl:null; }
-  if($('set-lexoffice')) au.lexoffice_key=($('set-lexoffice').value||'').trim()||null;
-  if($('set-sevdesk')) au.sevdesk_key=($('set-sevdesk').value||'').trim()||null;
-  if($('set-anthropic')) au.anthropic_key=($('set-anthropic').value||'').trim()||null;
+  /* ►► D78 — secretele se salvează SEPARAT, prin contract; `automations` rămâne pur configurație */
+  await secSaveFields({'set-lexoffice':'lexoffice_key','set-sevdesk':'sevdesk_key',
+                       'set-anthropic':'anthropic_key','set-wialon-token':'wialon_token'});
   if($('set-ai-model')) au.ai_model=$('set-ai-model').value||null;
-  if($('set-wialon-token')) au.wialon_token=($('set-wialon-token').value||'').trim()||null;
   if($('set-wialon-host')) au.wialon_host=(($('set-wialon-host').value||'').trim()||'hst-api.wialon.com');
   patch.automations=au;
   const { error }=await sb.from('tenants').update(patch).eq('id',state.tenant);
@@ -11385,7 +11462,7 @@ function rowActions(key,m,r){
     if(cc==='RO') a.push({i:'🇷🇴',l:'e-Factură RO (ANAF/SPV — XML)',f:"genEfacturaRO('"+id+"')"});
     else if(cc==='DE'||cc==='AT') a.push({i:'🇩🇪',l:'e-Factură (XRechnung XML)',f:"genXRechnung('"+id+"')"});
     else { a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"}); a.push({i:'🇪🇺',l:'e-Factură UBL (EN16931)',f:"genXRechnung('"+id+"')"}); } }
-  if(m.efactura){ const au=(state.firm&&state.firm.automations)||{}; if(au.lexoffice_key) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
+  if(m.efactura){ if(secIsSet('lexoffice_key')) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
   if(m.printable) a.push({i:'⬇',l:'Descarcă / Tipărește PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'🔢',l:'Bucăți (serii), inventar, valoare, amortizare + unde se află',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(m.vehicleLog){ if(canSee('harta')) a.push({i:'🗺️',l:'Vezi pe hartă (GPS)',f:"vehShowOnMap('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🖨️',l:tz('Fișă PDF vehicul'),f:"vehiclePdf('"+id+"')"}); }
@@ -14446,7 +14523,13 @@ async function genEfactura(id){
 
 /* ════ INTEGRĂRI CONTABILITATE (lexoffice / sevdesk via proxy acct) ════ */
 async function acctTest(provider){
-  const el=$('set-'+provider); const key=(el&&el.value||'').trim();
+  const el=$('set-'+provider); let key=(el&&el.value||'').trim();
+  /* ►► D85 — câmpul e write-only. Dacă utilizatorul n-a tastat nimic, dar cheia E configurată,
+     o cerem prin contractul de BIROU (owner/admin). Terenul nu poate ajunge aici. */
+  const SK={lexoffice:'lexoffice_key', sevdesk:'sevdesk_key'};
+  if(!key && SK[provider] && secIsSet(SK[provider])){
+    try{ key=await secReadOffice(SK[provider]); }catch(e){ toast(secErr(e)); return; }
+  }
   if(!key){ toast('Pune întâi cheia/token-ul.'); return; }
   toast('⏳ Testez conexiunea '+provider+'…');
   try{
@@ -14460,7 +14543,10 @@ async function acctTest(provider){
     else { const u=body&&body.objects&&body.objects[0]; toast('✅ sevdesk conectat'+(u&&u.fullname?': '+esc(u.fullname):'')+'.'); }
   }catch(e){ toast('❌ Conectare eșuată: '+(e.message||e)); }
 }
-async function acctCall(provider, path, method, payload){ const au=(state.firm&&state.firm.automations)||{}; const key=provider==='lexoffice'?au.lexoffice_key:au.sevdesk_key; if(!key) throw new Error('Cheia '+provider+' nu e setată în Setări.'); const { data, error }=await sb.functions.invoke('acct',{body:{provider:provider,path:path,method:method||'GET',key:key,payload:payload}}); if(error) throw new Error(error.message||'proxy'); if(data&&data.error) throw new Error(data.error); return data; }
+async function acctCall(provider, path, method, payload){ const au=(state.firm&&state.firm.automations)||{};
+  /* ►► D85 — cheia nu mai stă în `automations`; o cerem prin contractul de BIROU, la apel. */
+  const key=await secReadOffice(provider==='lexoffice'?'lexoffice_key':'sevdesk_key').catch(()=>'');
+  if(!key) throw new Error('Cheia '+provider+' nu e setată în Setări.'); const { data, error }=await sb.functions.invoke('acct',{body:{provider:provider,path:path,method:method||'GET',key:key,payload:payload}}); if(error) throw new Error(error.message||'proxy'); if(data&&data.error) throw new Error(data.error); return data; }
 async function acctInvoiceData(id){ const inv=(await sb.from('invoices').select('*, clients!client_id(name,idno,address,email)').eq('id',id).single()).data; if(!inv) throw new Error('Factura nu a fost găsită.'); const items=((await sb.from('invoice_items').select('*').eq('invoice_id',id).order('position',{ascending:true})).data||[]).filter(it=>(it.name||'').trim()); if(!items.length) throw new Error('Factura nu are linii.'); return {inv, items, cl:inv.clients||{}}; }
 async function pushLexoffice(id){ toast('⏳ Trimit în lexoffice…');
   try{ const _fl=await fiscalSnapshot(id); if(!_fl.ok){ toast('⛔ '+_fl.msg); return; } const lxSnap=_fl.snap;
