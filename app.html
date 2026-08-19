@@ -11881,6 +11881,17 @@ function rtErr(e){
     RENTAL_BAD_CONDITION:'Stare necunoscută.',
     RENTAL_BAD_PHOTO_PATH:'Poza nu aparține acestei firme.',
     RENTAL_BAD_EXTRA:'Tip de cost suplimentar necunoscut.',
+    /* RENT1-C — facturare. */
+    RENTAL_BAD_BASIS:'Bază de facturare necunoscută.',
+    RENTAL_NOT_RETURNED:'Se facturează doar o chirie returnată integral.',
+    RENTAL_EXTRAS_UNRESOLVED:'Stabilește suma pentru fiecare cost suplimentar sau marchează-l „Nu se facturează".',
+    RENTAL_NOTHING_TO_BILL:'Nu există nimic de facturat pe acest contract.',
+    RENTAL_EXTRA_NOT_FOUND:'Costul suplimentar nu a fost găsit.',
+    RENTAL_ALREADY_INVOICED:'Chiria e deja facturată — costurile nu se mai pot schimba.',
+    DOC_FORBIDDEN:'Nu ai dreptul să creezi facturi.',
+    DOC_INVALID_CLIENT:'Clientul contractului nu mai există în această firmă.',
+    DOC_NUMBER_CONFLICT:'Numărul de factură e deja folosit. Încearcă din nou.',
+    FISCAL_TOTALS_MISMATCH:'Totalurile nu se reconstituie din poziții. Reîmprospătează și încearcă din nou.',
     RENTAL_TOO_MANY_PHOTOS:'Cel mult 8 poze pe unitate.',
     RENTAL_TOO_MANY_ACCESSORIES:'Prea multe accesorii.',
     RENTAL_NOTE_TOO_LONG:'Observația e prea lungă.',
@@ -11909,6 +11920,12 @@ async function renderChirii(){
     }
     const c=await sb.from('clients').select('id,name').eq('tenant_id',state.tenant).order('name');
     cls=c.data||[];
+    /* RENT1-C: legătura chirie→factură într-o singură cerere, nu una per fișă deschisă. */
+    if(rows.length){
+      const iv=await sb.from('invoices').select('id,number,status,rental_id')
+        .eq('tenant_id',state.tenant).in('rental_id',rows.map(x=>x.id));
+      window._rtInv={}; (iv.data||[]).forEach(x=>{ if(x.rental_id) window._rtInv[x.rental_id]=x; });
+    } else window._rtInv={};
   }catch(e){ $('content').innerHTML='<div class="card" style="padding:1.5rem">'+rtErr(e)+'</div>'; return; }
   window._rtRows=rows; window._rtClients=cls;
   window._rtItems={}; items.forEach(x=>{ (window._rtItems[x.rental_id]=window._rtItems[x.rental_id]||[]).push(x); });
@@ -11985,6 +12002,10 @@ function rtFormState(r){
   return { id:(r&&r.id)||null, updated_at:(r&&r.updated_at)||null,
            client_id:(r&&r.client_id)||'', start:(r&&r.start_date)||coToday(), end:(r&&r.end_date)||coToday(),
            deposit:(r&&r.deposit_amount!=null?r.deposit_amount:''), notes:(r&&r.notes)||'',
+           /* RENT1-C/D70: baza de facturare e un FAPT contractual, nu o derivare. Implicit
+              „contractual"; se poate schimba doar cât contractul e încă rezervare — după predare
+              serverul refuză oricum orice editare (RENTAL_BAD_TRANSITION). */
+           basis:(r&&r.billing_basis)||'contractual',
            /* rq STABIL pe toată încercarea ⇒ un retry după eroare de rețea face replay, nu al doilea contract */
            rq:rtUuid(), avail:null, sel:{} };
 }
@@ -12015,11 +12036,25 @@ function rtFormPaint(){
       +'<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.4rem">'
         +'<div class="field" style="flex:1;min-width:150px"><label for="rt-deposit">'+esc(tz('Gaj / garanție'))+'</label>'
           +'<input id="rt-deposit" type="number" min="0" step="any" value="'+esc(F.deposit)+'" onchange="window._rtForm.deposit=this.value"></div>'
+        +'<div class="field" style="flex:1;min-width:200px"><label for="rt-basis">'+esc(tz('Facturare'))+'</label>'
+          +'<select id="rt-basis" onchange="window._rtForm.basis=this.value;rtBasisHint()">'
+          +'<option value="contractual"'+(F.basis==='contractual'?' selected':'')+'>'+esc(tz('Perioada contractuală'))+'</option>'
+          +'<option value="actual"'+(F.basis==='actual'?' selected':'')+'>'+esc(tz('Perioada efectivă'))+'</option>'
+          +'</select></div>'
       +'</div>'
+      +'<div class="hint" id="rt-basis-hint" style="margin:-.3rem 0 .6rem"></div>'
       +'<div class="field"><label for="rt-notes">'+esc(tz('Note'))+'</label>'
         +'<textarea id="rt-notes" rows="2" onchange="window._rtForm.notes=this.value">'+esc(F.notes)+'</textarea></div>'
       +'<button class="btn" id="rt-save" onclick="rtSave()">'+esc(tz(ed?'Salvează':'Rezervă'))+'</button>'
     +'</div></div></div>';
+  rtBasisHint();
+}
+/* Explică pe loc ce înseamnă alegerea, ca decizia să nu ceară deschiderea documentației. */
+function rtBasisHint(){
+  const el=$('rt-basis-hint'); if(!el) return;
+  el.textContent=tz((window._rtForm||{}).basis==='actual'
+    ? 'Se facturează zilele efectiv folosite: de la predarea reală până la returul real.'
+    : 'Se facturează perioada din contract. Returul anticipat nu scade suma; cel întârziat o mărește.');
 }
 function rtMsg(h,k){ const m=$('rt-msg'); if(m) m.innerHTML=h?'<div class="msg '+(k||'err')+'">'+h+'</div>':''; }
 /* Disponibilitatea vine EXCLUSIV de la server (`rental_available_units`). Nu încărcăm toate
@@ -12100,7 +12135,8 @@ async function rtSave(){
     if(s.rate_amount===''||s.rate_amount==null||isNaN(+s.rate_amount)){ rtMsg(esc(tz('Scrie tariful pentru fiecare unitate.'))); return; } }
   const items=ids.map(id=>({unit_id:id, rate_type:F.sel[id].rate_type, rate_amount:+F.sel[id].rate_amount}));
   const payload={ client_id:F.client_id, start_date:F.start, end_date:F.end,
-                  deposit_amount:(F.deposit===''?null:+F.deposit), notes:F.notes||null, items:items };
+                  deposit_amount:(F.deposit===''?null:+F.deposit), notes:F.notes||null,
+                  billing_basis:F.basis||'contractual', items:items };
   if(btn){ btn.disabled=true; } rtMsg(esc(tz('Se salvează…')),'ok');
   try{
     let r;
@@ -12150,6 +12186,13 @@ async function rtOpen(id){
     if(out.length) acts.push('<button class="btn" onclick="closeModal();rtReturn(\''+r.id+'\')">📥 '+esc(tz('Retur'))+'</button>');
     if(its.some(i=>!i.handed_over_at))
       acts.push('<button class="btn-ghost" onclick="closeModal();rtHandover(\''+r.id+'\')">📤 '+esc(tz('Predă'))+'</button>');
+  } else if(r.status==='returned'){
+    /* RENT1-C: facturarea e OFFICE și trece prin previzualizare — niciodată direct în document. */
+    const inv=(window._rtInv||{})[r.id];
+    if(inv) acts.push('<button class="btn" onclick="closeModal();window.open(\'factura.html?id='+inv.id+'\',\'_blank\')">🧾 '
+      +esc(tz('Deschide factura'))+' '+esc(inv.number||'')+'</button>');
+    else if(canDo('facturi','c'))
+      acts.push('<button class="btn" onclick="rtBilling(\''+r.id+'\')">🧾 '+esc(tz('Creează factura'))+'</button>');
   }
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()">'
     +'<div class="modal" style="max-width:760px">'
@@ -12161,7 +12204,9 @@ async function rtOpen(id){
             +back.length+' '+esc(tz('din'))+' '+handed.length+'</span>'):'')
       +'</div>'
       +'<div style="color:var(--muted);margin-bottom:.6rem">📅 '+esc(fmtDate(r.start_date))+' – '+esc(fmtDate(r.end_date))
-        +(r.deposit_amount!=null?(' · 🔒 '+esc(tz('Gaj'))+' '+money(r.deposit_amount)):'')+'</div>'
+        +(r.deposit_amount!=null?(' · 🔒 '+esc(tz('Gaj'))+' '+money(r.deposit_amount)):'')
+        +' · 🧾 '+esc(tz(r.billing_basis==='actual'?'Perioada efectivă':'Perioada contractuală'))
+        +((window._rtInv||{})[r.id]?(' · '+esc(tz('Factura'))+' '+esc(window._rtInv[r.id].number||'')):'')+'</div>'
       +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+esc(tz('Sculă'))+'</th><th>'+esc(tz('Serie'))+'</th>'
         +'<th>'+esc(tz('Stare'))+'</th><th>'+esc(tz('Stare la predare'))+' → '+esc(tz('Stare la retur'))+'</th>'
         +'<th>'+esc(tz('Tarif'))+'</th><th style="text-align:right">'+esc(tz('Sumă'))+'</th></tr></thead>'
@@ -12171,6 +12216,122 @@ async function rtOpen(id){
       +(r.notes?('<div style="margin-top:.6rem;color:var(--muted)">'+esc(r.notes)+'</div>'):'')
       +(acts.length?('<div style="display:flex;gap:.5rem;margin-top:.9rem;flex-wrap:wrap">'+acts.join('')+'</div>'):'')
     +'</div></div></div>';
+}
+/* ══ RENT1-C — PREVIZUALIZAREA FACTURII ═══════════════════════════════════════════════════════
+   Serverul e SINGURA autoritate de calcul: `rental_billing_preview` întoarce perioada, unitățile,
+   sumele nete ȘI documentul canonic gata de `save_invoice`. Aici NU se calculează nimic — nici
+   măcar un total parțial. Dacă apare vreodată o formulă în funcțiile de mai jos, e un bug:
+   ar putea diverge de bază, exact lecția 0130/0131 și FIN1.
+   Ecranul răspunde la o singură întrebare: „de ce suma asta?" — perioada, tariful, unitățile. */
+async function rtBilling(id){
+  const r=(window._rtRows||[]).find(x=>x.id===id); if(!r) return;
+  $('modal-mount').innerHTML='<div class="modal-overlay"><div class="modal" style="max-width:820px">'
+    +'<div class="modal-head"><h3>🧾 '+esc(tz('Facturare'))+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body"><div style="color:var(--muted)">'+esc(tz('Se calculează…'))+'</div></div></div></div>';
+  let p;
+  try{
+    const q=await sb.rpc('rental_billing_preview',{p_tenant_id:state.tenant,p_rental_id:id});
+    if(q.error) throw q.error; p=q.data;
+  }catch(e){ $('modal-mount').innerHTML=''; toast('⚠️ '+rtErr(e)); return; }
+  window._rtBill={id:id, p:p};
+  rtBillPaint();
+}
+function rtBillPaint(){
+  const S=window._rtBill, p=S.p, r=(window._rtRows||[]).find(x=>x.id===S.id)||{};
+  const uLbl={day:'zi',week:'săpt.',month:'lună'};
+  const rows=(p.items||[]).map(function(i){
+    const per=i.billing_start?(fmtDate(i.billing_start)+' – '+fmtDate(i.billing_end)):'—';
+    const note=i.never_handed_over
+      ? '<span class="rt-pill rt-reserved">'+esc(tz('Nepredată — nu se facturează'))+'</span>'
+      : (i.provisional?('<span class="rt-pill rt-warn">'+esc(tz('Încă la client'))+'</span>'):'');
+    return '<tr><td>'+esc(i.tool_name||'—')+'<div style="font-size:.78rem;color:var(--muted)">'+esc(i.serial_no||'')+'</div></td>'
+      +'<td style="font-size:.82rem">'+esc(per)+' '+note+'</td>'
+      +'<td style="text-align:right">'+esc(String(i.units))+' × '+esc(tz(uLbl[i.rate_type]||i.rate_type))+'</td>'
+      +'<td style="text-align:right">'+money(i.rate_amount)+'</td>'
+      +'<td style="text-align:right;font-weight:600">'+money(i.amount)+'</td></tr>';
+  }).join('');
+  /* Costurile suplimentare NEREZOLVATE blochează — dar se rezolvă AICI, nu în alt ecran (§8). */
+  const unres=(p.extras_unresolved||[]).map(function(x){
+    return '<tr><td>'+esc(tz(x.label||x.kind))+'</td><td>'+esc(x.description||'—')+'</td>'
+      +'<td style="text-align:right;white-space:nowrap">'
+        +'<input type="number" min="0" step="any" id="rx-'+esc(x.id)+'" placeholder="'+esc(tz('Sumă'))+'" style="width:96px">'
+        +' <button class="btn" style="padding:.25rem .5rem" onclick="rtExtraFix(\''+x.id+'\',true)">'+esc(tz('Salvează'))+'</button>'
+        +' <button class="btn-ghost" style="padding:.25rem .5rem" onclick="rtExtraFix(\''+x.id+'\',false)">'+esc(tz('Nu se facturează'))+'</button>'
+      +'</td></tr>';
+  }).join('');
+  const bill=(p.extras_billable||[]).map(function(x){
+    return '<tr><td>'+esc(tz(x.label||x.kind))+'</td><td>'+esc(x.description||'—')+'</td>'
+      +'<td style="text-align:right;font-weight:600">'+money(x.amount)+'</td></tr>'; }).join('');
+  const excl=(p.extras_excluded||[]).map(function(x){
+    return '<tr><td style="color:var(--muted)">'+esc(tz(x.label||x.kind))+'</td>'
+      +'<td style="color:var(--muted)">'+esc(x.description||'—')+'</td>'
+      +'<td style="text-align:right;color:var(--muted)">'+esc(tz('Nu se facturează'))+'</td></tr>'; }).join('');
+  const blocked=p.block_reason;
+  const msg=blocked==='RENTAL_EXTRAS_UNRESOLVED' ? tz('Stabilește suma pentru fiecare cost suplimentar sau marchează-l „Nu se facturează".')
+          : blocked==='RENTAL_NOT_RETURNED'      ? tz('Se facturează doar o chirie returnată integral.')
+          : blocked==='RENTAL_NOTHING_TO_BILL'   ? tz('Nu există nimic de facturat pe acest contract.')
+          : '';
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="modal" style="max-width:820px">'
+    +'<div class="modal-head"><h3>🧾 '+esc(tz('Facturare'))+' — '+esc(rtClientName(r.client_id))+'</h3>'
+      +'<button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'
+      +'<div id="rb-msg"></div>'
+      +'<div style="color:var(--muted);margin-bottom:.5rem">'
+        +'📅 '+esc(tz('Perioada contractuală'))+': '+esc(fmtDate(p.contract_start))+' – '+esc(fmtDate(p.contract_end))
+        +' · 🧾 '+esc(tz(p.billing_basis==='actual'?'Perioada efectivă':'Perioada contractuală'))+'</div>'
+      +'<div class="tbl-wrap"><table class="tbl"><thead><tr>'
+        +'<th>'+esc(tz('Unitate'))+'</th><th>'+esc(tz('Perioada facturată'))+'</th>'
+        +'<th style="text-align:right">'+esc(tz('Unități facturabile'))+'</th>'
+        +'<th style="text-align:right">'+esc(tz('Tarif'))+'</th>'
+        +'<th style="text-align:right">'+esc(tz('Valoare'))+'</th></tr></thead>'
+        +'<tbody>'+(rows||'<tr><td colspan="5" style="color:var(--muted)">—</td></tr>')+'</tbody></table></div>'
+      +(unres?('<div style="margin-top:.8rem"><b style="color:var(--red,#dc2626)">⚠️ '+esc(tz('Cost de stabilit'))+'</b>'
+        +'<div class="tbl-wrap"><table class="tbl"><tbody>'+unres+'</tbody></table></div></div>'):'')
+      +(bill?('<div style="margin-top:.8rem"><b>'+esc(tz('Costuri suplimentare'))+'</b>'
+        +'<div class="tbl-wrap"><table class="tbl"><tbody>'+bill+'</tbody></table></div></div>'):'')
+      +(excl?('<div class="tbl-wrap" style="margin-top:.4rem"><table class="tbl"><tbody>'+excl+'</tbody></table></div>'):'')
+      +(p.deposit_amount!=null?('<div style="margin-top:.7rem;color:var(--muted)">🔒 '+esc(tz('Garanție'))+': '+money(p.deposit_amount)
+        +' — '+esc(tz('nu intră în factură; se restituie sau se reține explicit ca și cost suplimentar.'))+'</div>'):'')
+      +'<div style="margin-top:.9rem;text-align:right;font-size:1.05rem">'
+        +esc(tz('Total fără TVA'))+': <b>'+money(p.total_net)+'</b>'
+        +'<div style="font-size:.82rem;color:var(--muted)">'+esc(tz('TVA și totalul final se calculează în factură.'))+'</div></div>'
+      +(msg?('<div class="msg err" style="margin-top:.7rem">'+esc(msg)+'</div>'):'')
+      +'<div style="display:flex;gap:.5rem;margin-top:.9rem;flex-wrap:wrap">'
+        +(p.existing_invoice
+           ? '<button class="btn" onclick="closeModal();window.open(\'factura.html?id='+p.existing_invoice.id+'\',\'_blank\')">🧾 '
+             +esc(tz('Factura a fost deja creată'))+' — '+esc(p.existing_invoice.number||'')+'</button>'
+           : '<button class="btn" id="rb-go"'+(blocked?' disabled':'')+' onclick="rtInvoiceCreate()">🧾 '+esc(tz('Creează factura'))+'</button>')
+        +'<button class="btn-ghost" onclick="closeModal()">'+esc(tz('Închide'))+'</button>'
+      +'</div>'
+    +'</div></div></div>';
+}
+async function rtExtraFix(xid, withAmount){
+  const S=window._rtBill; if(!S) return;
+  const payload={};
+  if(withAmount){
+    const el=$('rx-'+xid), v=el?el.value:'';
+    if(v===''||isNaN(+v)||+v<0){ rtMsg2('rb-msg',esc(tz('Scrie o sumă validă.'))); return; }
+    payload.amount=String(+v); payload.billable=true;
+  } else payload.billable=false;
+  try{
+    const q=await sb.rpc('rental_extra_set_billing',{p_tenant_id:state.tenant,p_extra_id:xid,p_payload:payload});
+    if(q.error) throw q.error;
+  }catch(e){ rtMsg2('rb-msg',rtErr(e)); return; }
+  await rtBilling(S.id);                       /* recitim de la SERVER, nu peticim starea locală */
+}
+async function rtInvoiceCreate(){
+  const S=window._rtBill; if(!S) return;
+  const b=$('rb-go'); if(b) b.disabled=true;   /* al doilea click e oricum idempotent pe server */
+  let out;
+  try{
+    const q=await sb.rpc('rental_invoice_create',{p_tenant_id:state.tenant,p_rental_id:S.id});
+    if(q.error) throw q.error; out=q.data;
+  }catch(e){ if(b) b.disabled=false; rtMsg2('rb-msg',rtErr(e)); return; }
+  closeModal();
+  toast('✅ '+tz(out&&out.created===false?'Factura a fost deja creată':'Factură creată în ciornă.'));
+  await renderChirii();
+  if(out&&out.invoice_id) window.open('factura.html?id='+out.invoice_id,'_blank');
 }
 async function rtCancel(id){
   const r=(window._rtRows||[]).find(x=>x.id===id); if(!r) return;
