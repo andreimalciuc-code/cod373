@@ -15,10 +15,35 @@
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   :root{--bg:#f4f6fb;--surface:#fff;--ink:#0f1c33;--muted:#6b7793;--line:#e5e9f2;
-        --primary:#2f6bff;--accent:#ff8a3d;--green:#16b364;--green-soft:#e3f8ee;--red:#f04438;--red-soft:#fde7e5;--amber:#f7a325;--amber-soft:#fdf2dd;--blue-soft:#e8f0ff}
+        --primary:#2f6bff;--accent:#ff8a3d;--green:#16b364;--green-soft:#e3f8ee;--red:#f04438;--red-soft:#fde7e5;--amber:#f7a325;--amber-soft:#fdf2dd;--blue-soft:#e8f0ff;
+        /* KB#109 — tokeni adăugați ca tema închisă să aibă ce rescrie. Valorile pe tema
+           DESCHISĂ sunt exact literalele care erau deja scrise în pagină, deci aspectul
+           luminos rămâne neschimbat pixel cu pixel. */
+        --chip:#eef1f6;--chip-ink:#475467;--green-ink:#067647;--blue-ink:#1d4ed8;--amber-ink:#92400e;--red-ink:#b42318;
+        --field:#fff;--link:#2f6bff;--star-off:#d8dee9;--toast-bg:#0f1c33;--toast-ink:#fff;--sheet-scrim:rgba(15,28,51,.5);
+        color-scheme:light}
+  /* ══ KB#109 / D97 — TEMA ÎNTUNECATĂ A APLICAȚIEI DE TEREN ══════════════════
+     Autoritatea NU e nouă. Biroul ține preferința în `c373_prefs:<user-id>`,
+     câmpul `theme` ∈ {light,dark}, și o aplică prin clasa `body.theme-dark`
+     (`applyPrefs` din `app.html`). Terenul citește ȘI SCRIE aceeași cheie, deci
+     comutatorul de pe telefon schimbă și biroul aceluiași utilizator — un singur
+     sistem de aspect, nu două. Biroul NU are opțiune „system" (nicăieri un
+     `prefers-color-scheme`), deci nici terenul n-o primește.
+     `color-scheme:dark` e ce înnegrește controalele NATIVE — selectoarele de dată,
+     popup-ul de `<select>`, barele de derulare — pe care CSS-ul nostru nu le atinge. */
+  body.theme-dark{
+    --bg:#0e1622;--surface:#18222f;--ink:#e7ecf6;--muted:#95a2bc;--line:#2a3648;
+    --green-soft:#12271c;--red-soft:#2e1616;--amber-soft:#2c2206;--blue-soft:#17263f;
+    --chip:#212c3d;--chip-ink:#aebbd4;--green-ink:#5cd39a;--blue-ink:#8fb4ff;--amber-ink:#f0b95c;--red-ink:#ff9b91;
+    --field:#111a26;--link:#8fb4ff;--star-off:#3a465c;--toast-bg:#2a3648;--toast-ink:#e7ecf6;
+    --sheet-scrim:rgba(0,0,0,.62);
+    color-scheme:dark}
   html,body{height:100%}
   body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
-  button,input,select{font-family:inherit}
+  button,input,select,textarea{font-family:inherit}
+  /* KB#109 — plasa de siguranță: câmpurile desenate din JS n-au clasa `.fld`, iar fără
+     fundal explicit rămâneau ALBE pe tema închisă, cu text deschis peste ele. */
+  input,select,textarea{background:var(--field);color:var(--ink)}
   .hidden{display:none!important}
 
   /* phone frame on desktop, full-bleed on phone */
@@ -34,11 +59,11 @@
   .login .logo{display:flex;align-items:center;gap:.6rem;margin-bottom:2rem;justify-content:center}
   .login .lg{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.8rem}
   .login .nm{font-weight:800;font-size:1.5rem;color:#fff}.login .nm span{color:var(--accent)}
-  .login .card{background:#fff;border-radius:18px;padding:1.6rem}
+  .login .card{background:var(--surface);border-radius:18px;padding:1.6rem}
   .login h2{font-size:1.15rem;margin-bottom:.3rem}.login .sub{color:var(--muted);font-size:.85rem;margin-bottom:1.2rem}
   .fld{margin-bottom:.9rem}
   .fld label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:.3rem}
-  .fld input,.fld select{width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;font-size:1rem;outline:none}
+  .fld input,.fld select,.fld textarea{width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;font-size:1rem;outline:none;background:var(--field);color:var(--ink)}
   .fld input:focus,.fld select:focus{border-color:var(--primary)}
   .btn{width:100%;background:var(--primary);color:#fff;border:none;padding:.95rem;border-radius:12px;font-weight:700;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.4rem}
   .btn:active{transform:scale(.99)}.btn:disabled{opacity:.6}
@@ -48,13 +73,13 @@
   .mini-btn,.bottom button{transition:transform .06s ease,opacity .12s ease}
   .mini-btn:active,.bottom button:active{transform:scale(.95)}
   .card[onclick]:active{opacity:.75}
-  .btn-soft{background:var(--blue-soft);color:var(--primary)}
-  .btn-line{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .btn-soft{background:var(--blue-soft);color:var(--link)}
+  .btn-line{background:var(--surface);border:1px solid var(--line);color:var(--ink)}
   .msg{padding:.7rem .9rem;border-radius:10px;font-size:.82rem;margin-bottom:.8rem}
-  .msg.err{background:var(--red-soft);color:#b42318}.msg.ok{background:var(--green-soft);color:#067647}
+  .msg.err{background:var(--red-soft);color:var(--red-ink)}.msg.ok{background:var(--green-soft);color:var(--green-ink)}
   .login .alt{margin-top:1rem;text-align:center;font-size:.85rem;color:var(--muted)}
-  .login .alt a{color:var(--primary);font-weight:600;cursor:pointer}
-  .cfg-warn{background:var(--amber-soft);color:#92400e;padding:.7rem .9rem;border-radius:10px;font-size:.78rem;margin-bottom:1rem}
+  .login .alt a{color:var(--link);font-weight:600;cursor:pointer}
+  .cfg-warn{background:var(--amber-soft);color:var(--amber-ink);padding:.7rem .9rem;border-radius:10px;font-size:.78rem;margin-bottom:1rem}
 
   /* APP HEADER */
   .top{background:var(--surface);padding:1rem 1.1rem;display:flex;align-items:center;gap:.7rem;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
@@ -66,7 +91,7 @@
 
   /* role switch */
   .roles{display:flex;gap:.4rem;padding:.7rem 1.1rem;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto}
-  .roles button{flex:1;white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:10px;padding:.5rem .6rem;font-size:.82rem;font-weight:600;color:var(--muted);cursor:pointer}
+  .roles button{flex:1;white-space:nowrap;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:.5rem .6rem;font-size:.82rem;font-weight:600;color:var(--muted);cursor:pointer}
   .roles button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
 
   /* SCREEN */
@@ -79,28 +104,34 @@
   .row{display:flex;align-items:center;gap:.7rem}
   .row .grow{flex:1;min-width:0}
   .pill{display:inline-block;padding:.16rem .55rem;border-radius:20px;font-size:.72rem;font-weight:600}
-  .pill.green{background:var(--green-soft);color:#067647}.pill.blue{background:var(--blue-soft);color:#1d4ed8}
-  .pill.amber{background:var(--amber-soft);color:#92400e}.pill.red{background:var(--red-soft);color:#b42318}.pill.grey{background:#eef0f5;color:#475467}
+  .pill.green{background:var(--green-soft);color:var(--green-ink)}.pill.blue{background:var(--blue-soft);color:var(--blue-ink)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber-ink)}.pill.red{background:var(--red-soft);color:var(--red-ink)}.pill.grey{background:var(--chip);color:var(--chip-ink)}
   .prog{height:8px;background:var(--line);border-radius:10px;overflow:hidden;margin-top:.6rem}
   .prog span{display:block;height:100%;background:var(--green)}
   .empty{text-align:center;color:var(--muted);padding:2.5rem 1rem}.empty .ei{font-size:2.2rem;margin-bottom:.5rem}
   .loading{text-align:center;color:var(--muted);padding:2rem}
   .mini-btn{border:none;border-radius:10px;padding:.55rem .8rem;font-weight:700;font-size:.82rem;cursor:pointer}
-  .mini-btn.go{background:var(--green);color:#fff}.mini-btn.pr{background:var(--primary);color:#fff}.mini-btn.gh{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .mini-btn.go{background:var(--green);color:#fff}.mini-btn.pr{background:var(--primary);color:#fff}.mini-btn.gh{background:var(--surface);border:1px solid var(--line);color:var(--ink)}
   /* FLEET2-B: „Trimite locația" e acțiunea PRINCIPALĂ de teren a cardului „Vehiculul meu" —
      se apasă din mașină, uneori cu mănuși. `.mini-btn` global rămâne la 35 px (îl folosește tot
      mobilul, iar schimbarea lui ar fi o modificare de primitivă); mărim DOAR aici, la 44 px. */
   #myveh-block .mini-btn{min-height:44px}
 
+  /* KB#109 — comutatorul de aspect din „Profilul meu". Ținta de atingere e 44px:
+     se apasă cu degetul, uneori cu mănuși, ca restul suprafeței de teren. */
+  .thm-seg{display:flex;gap:.4rem}
+  .thm-seg button{flex:1;min-height:44px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:.6rem .5rem;font-size:.85rem;font-weight:600;color:var(--muted);cursor:pointer}
+  .thm-seg button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+
   /* BOTTOM NAV */
   .bottom{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);display:flex;max-width:460px;margin:0 auto;z-index:20}
   .bottom button{flex:1;background:none;border:none;padding:.6rem 0 .75rem;display:flex;flex-direction:column;align-items:center;gap:.2rem;color:var(--muted);font-size:.68rem;font-weight:600;cursor:pointer}
   .bottom button .bi{font-size:1.3rem}
-  .bottom button.on{color:var(--primary)}
+  .bottom button.on{color:var(--link)}
 
   /* SHEET (bottom modal) */
-  .sheet-bg{position:fixed;inset:0;background:rgba(15,28,51,.5);z-index:40;display:flex;align-items:flex-end;justify-content:center;animation:bgIn .2s ease}
-  .sheet{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:460px;padding:1.2rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;animation:sheetUp .26s cubic-bezier(.2,.8,.2,1)}
+  .sheet-bg{position:fixed;inset:0;background:var(--sheet-scrim);z-index:40;display:flex;align-items:flex-end;justify-content:center;animation:bgIn .2s ease}
+  .sheet{background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:460px;padding:1.2rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;animation:sheetUp .26s cubic-bezier(.2,.8,.2,1)}
   .sheet-bg.closing{animation:bgOut .22s ease forwards}
   .sheet-bg.closing .sheet{animation:sheetDown .24s cubic-bezier(.4,0,1,1) forwards}
   @keyframes bgIn{from{opacity:0}to{opacity:1}} @keyframes bgOut{from{opacity:1}to{opacity:0}}
@@ -113,18 +144,18 @@
 
   .chat-list{display:flex;flex-direction:column;gap:.5rem;padding-bottom:.5rem}
   .bub{max-width:80%;padding:.55rem .8rem;border-radius:14px;font-size:.9rem;line-height:1.35}
-  .bub .bn{font-size:.72rem;font-weight:700;color:var(--primary);margin-bottom:.15rem}
-  .bub.them{background:#fff;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+  .bub .bn{font-size:.72rem;font-weight:700;color:var(--link);margin-bottom:.15rem}
+  .bub.them{background:var(--surface);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
   .bub.me{background:var(--primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
   .bub .bt{font-size:.65rem;opacity:.6;margin-top:.2rem;text-align:right}
   .chat-bar{display:flex;gap:.5rem;position:sticky;bottom:0;background:var(--bg);padding:.6rem 0 .2rem}
-  .chat-bar input{flex:1;padding:.8rem .9rem;border:1px solid var(--line);border-radius:14px;font-size:1rem;outline:none}
+  .chat-bar input{flex:1;padding:.8rem .9rem;border:1px solid var(--line);border-radius:14px;font-size:1rem;outline:none;background:var(--field);color:var(--ink)}
   #chat-rec{transition:background .15s}
   #chat-rec.rec{background:var(--red)!important;color:#fff;animation:recpulse 1s infinite}
   @keyframes recpulse{0%,100%{opacity:1}50%{opacity:.65}}
   .bub audio{display:block;margin-top:.35rem;width:210px;max-width:62vw;height:40px}
   .bub.me audio{filter:invert(0)}
-  #toast{position:fixed;bottom:5rem;left:50%;transform:translateX(-50%) translateY(10px);background:var(--ink);color:#fff;padding:.8rem 1.1rem;border-radius:12px;font-size:.85rem;opacity:0;transition:all .25s;z-index:60;max-width:90%;text-align:center;pointer-events:none}
+  #toast{position:fixed;bottom:5rem;left:50%;transform:translateX(-50%) translateY(10px);background:var(--toast-bg);color:var(--toast-ink);padding:.8rem 1.1rem;border-radius:12px;font-size:.85rem;opacity:0;transition:all .25s;z-index:60;max-width:90%;text-align:center;pointer-events:none}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
@@ -175,7 +206,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='344';
+const APP_BUILD='345';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -204,6 +235,31 @@ function mRosterWipe(){ S._roster=null; }
 function mLKey(base){
   const u=(S.session&&S.session.user&&S.session.user.id)||'anon';
   return base+':'+u+':'+(S.tenant||'-');
+}
+/* ►► KB#109 / D97 — TEMA ÎNTUNECATĂ. NU e un al doilea sistem de aspect: e
+   EXACT autoritatea biroului. `app.html` ține preferința în
+   `localStorage['c373_prefs:<user-id>']`, câmpul `theme` ∈ {light,dark}, și o
+   aplică prin `body.theme-dark` (`applyPrefs`). Terenul citește ȘI SCRIE aceeași
+   cheie ⇒ comutatorul de pe telefon schimbă și biroul aceluiași utilizator.
+   Înainte de autentificare se cade pe cheia GLOBALĂ `c373_prefs`, identic cu
+   `czKey()` din birou. Biroul n-are opțiune „system" (zero `prefers-color-scheme`
+   în tot `app.html`), deci nici terenul n-o primește. */
+function mThemeKey(){ const u=(S.session&&S.session.user&&S.session.user.id)||''; return u?('c373_prefs:'+u):'c373_prefs'; }
+function mThemePrefs(){ try{ return JSON.parse(localStorage.getItem(mThemeKey())||'{}')||{}; }catch(e){ return {}; } }
+function mTheme(){ return mThemePrefs().theme==='dark'?'dark':'light'; }
+function mApplyTheme(){ try{ document.body.classList.toggle('theme-dark', mTheme()==='dark'); }catch(e){} }
+function mSetTheme(v){
+  const k=mThemeKey(); let p={};
+  try{ p=JSON.parse(localStorage.getItem(k)||'{}')||{}; }catch(e){}
+  p.theme=(v==='dark')?'dark':'light';
+  try{ localStorage.setItem(k,JSON.stringify(p)); }catch(e){}
+  mApplyTheme();
+  /* actualizăm butoanele pe loc: o redeschidere a foii ar mai face o cerere de rețea
+     pentru profil și ar arunca poziția de derulare. */
+  try{ document.querySelectorAll('.thm-seg button').forEach(function(b){
+    const on=(b.getAttribute('data-thm')===p.theme);
+    b.classList.toggle('on',on); b.setAttribute('aria-pressed',on?'true':'false');
+  }); }catch(e){}
 }
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
@@ -250,6 +306,7 @@ async function boot(){
   const {data:{session}}=await sb.auth.getSession();
   if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');hideSplash();return;}
   S.session=session;
+  mApplyTheme();                     /* cheia devine `c373_prefs:<user-id>` abia acum */
   const _mr=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url,currency)').eq('user_id',session.user.id).eq('active',true);
   // SAFETY: la eroare (rețea) NU deloga — arată reîncărcare (altfel un membru valid ar fi dat afară degeaba)
   if(_mr.error){ $('screen')&&($('screen').innerHTML=''); $('app').classList.add('hidden'); $('login').classList.remove('hidden'); lmsg('Problemă de conexiune. Reîncarcă pagina (trage în jos) sau încearcă din nou.','err'); hideSplash(); return; }
@@ -631,7 +688,7 @@ function swipeBack(){
   const navList=function(){ try{ return (NAV[S.role]||NAV.worker)||[]; }catch(e){ return []; } };
   function reset(){ const el=scr(); if(el){ el.style.transition=''; el.style.transform=''; el.style.opacity=''; } }
   /* ── indicator pull-to-refresh ── */
-  function ptrEl(){ let p=document.getElementById('ptr'); if(!p){ p=document.createElement('div'); p.id='ptr'; p.style.cssText='position:fixed;top:8px;left:50%;z-index:70;width:38px;height:38px;border-radius:50%;background:#fff;box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:1.15rem;color:#2f6bff;opacity:0;transform:translateX(-50%) translateY(-50px);pointer-events:none'; p.innerHTML='<span id="ptr-ic">↓</span>'; document.body.appendChild(p); } return p; }
+  function ptrEl(){ let p=document.getElementById('ptr'); if(!p){ p=document.createElement('div'); p.id='ptr'; p.style.cssText='position:fixed;top:8px;left:50%;z-index:70;width:38px;height:38px;border-radius:50%;background:var(--surface);box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:1.15rem;color:#2f6bff;opacity:0;transform:translateX(-50%) translateY(-50px);pointer-events:none'; p.innerHTML='<span id="ptr-ic">↓</span>'; document.body.appendChild(p); } return p; }
   function ptrShow(pull){ const p=ptrEl(); const y=Math.min(pull,80)-50; p.style.transition='none'; p.style.opacity=String(Math.min(1,pull/64)); p.style.transform='translateX(-50%) translateY('+y+'px)'; const ic=document.getElementById('ptr-ic'); if(ic){ ic.style.animation=''; ic.textContent = pull>=64?'↻':'↓'; } }
   function ptrSpin(){ const p=ptrEl(); p.style.transition='transform .2s ease,opacity .2s ease'; p.style.opacity='1'; p.style.transform='translateX(-50%) translateY(14px)'; const ic=document.getElementById('ptr-ic'); if(ic){ ic.textContent='⟳'; ic.style.display='inline-block'; ic.style.animation='ptrspin .7s linear infinite'; } }
   function ptrHide(){ const p=document.getElementById('ptr'); if(p){ p.style.transition='transform .2s ease,opacity .2s ease'; p.style.opacity='0'; p.style.transform='translateX(-50%) translateY(-50px)'; const ic=document.getElementById('ptr-ic'); if(ic) ic.style.animation=''; } }
@@ -1105,7 +1162,7 @@ async function fillAzi(){
   if(_st && _st.id){ site=_st.id; siteName=_st.name||''; }
   else { const d=mToday();
     try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ site=cp.data.site_id; siteName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){} }
-  if(!site){ host.innerHTML='<div class="card" style="background:#fff7ed;border-color:#fb923c"><div class="t">📌 Azi</div><div class="s">Nu ai un șantier planificat azi. Întreabă responsabilul, sau alege manual când pontezi.</div></div>'; return; }
+  if(!site){ host.innerHTML='<div class="card" style="background:var(--amber-soft);border-color:var(--amber)"><div class="t">📌 Azi</div><div class="s">Nu ai un șantier planificat azi. Întreabă responsabilul, sau alege manual când pontezi.</div></div>'; return; }
   let stages=[]; try{ const sr=await sb.from('site_stages').select('*').eq('site_id',site).order('position'); stages=(sr.data||[]).filter(x=>x.status!=='done'); }catch(e){}
   S.curStages=(S.curStages||[]).filter(x=>x.site_id!==site).concat(stages);
   const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
@@ -1310,14 +1367,14 @@ async function openSite(id){
   S.curStages=stages;
   const reviews=(revR.data||[]).slice().sort((a,b)=>(a.created_at<b.created_at?1:-1));
   const stName=(sid)=>{ const st=stages.find(x=>x.id===sid); return st?st.name:''; };
-  const stars=(n)=>'<span style="color:#f7a325">'+'★'.repeat(n||0)+'</span><span style="color:#d8dee9">'+'★'.repeat(5-(n||0))+'</span>';
+  const stars=(n)=>'<span style="color:#f7a325">'+'★'.repeat(n||0)+'</span><span style="color:var(--star-off)">'+'★'.repeat(5-(n||0))+'</span>';
   const stageOpts=stages.map(st=>'<option value="'+st.id+'">'+esc(st.name)+'</option>').join('');
   const revList = reviews.length
     ? reviews.map(rv=>'<div class="card" style="margin:.5rem 0;padding:.7rem"><div class="row"><div class="grow"><b>'+esc(rv.author_name||'Client')+'</b>'+(rv.stage_id?' <span class="s">· '+esc(stName(rv.stage_id))+'</span>':'')+'</div>'+(rv.rating?stars(rv.rating):'')+'</div><div style="margin-top:.3rem">'+esc(rv.body)+'</div>'+(rv.reply?'<div class="card" style="margin:.5rem 0 0;background:var(--blue-soft);padding:.5rem"><b>Răspuns firmă:</b> '+esc(rv.reply)+'</div>':'')+'</div>').join('')
     : '<div class="s">Niciun comentariu încă. Fii primul!</div>';
   const revForm='<div class="card" style="margin:.6rem 0 0;padding:.8rem"><b>Lasă un comentariu</b>'
     +(stageOpts?'<div class="fld" style="margin:.5rem 0"><label>Etapa (opțional)</label><select id="rev-stage"><option value="">— general —</option>'+stageOpts+'</select></div>':'')
-    +'<div id="rev-stars" style="font-size:1.6rem;margin:.4rem 0;cursor:pointer">'+[1,2,3,4,5].map(n=>'<span onclick="setRevStars('+n+')" data-star="'+n+'" style="color:#d8dee9">★</span>').join('')+'</div>'
+    +'<div id="rev-stars" style="font-size:1.6rem;margin:.4rem 0;cursor:pointer">'+[1,2,3,4,5].map(n=>'<span onclick="setRevStars('+n+')" data-star="'+n+'" style="color:var(--star-off)">★</span>').join('')+'</div>'
     +'<textarea id="rev-body" placeholder="Cum vi se pare lucrarea la această etapă?" style="width:100%;min-height:64px;padding:.6rem;border:1px solid var(--line);border-radius:12px"></textarea>'
     +'<button class="btn" style="margin-top:.5rem" onclick="addReview()">Trimite comentariul</button></div>';
   const matMap=await nameMap('materials','name');
@@ -1335,13 +1392,13 @@ async function openSite(id){
       stagesHtml=stages.map(st=>{ let stt=st.status; if(stt!=='done'&&st.end_date&&st.end_date<todayS&&!st.is_milestone) stt='delayed';
         const cls=stt||'plan'; let bar='';
         if(st.start_date&&st.end_date){ const l=(+new Date(st.start_date)-min)/span*100;
-          if(st.is_milestone){ bar='<span style="position:absolute;left:'+l+'%;top:50%;width:12px;height:12px;transform:translate(-50%,-50%) rotate(45deg);background:#0f1c33;border:2px solid #fff;border-radius:2px"></span>'; }
+          if(st.is_milestone){ bar='<span style="position:absolute;left:'+l+'%;top:50%;width:12px;height:12px;transform:translate(-50%,-50%) rotate(45deg);background:var(--ink);border:2px solid var(--surface);border-radius:2px"></span>'; }
           else { const w=Math.max(3,((+new Date(st.end_date)-+new Date(st.start_date))/span)*100);
             bar='<div style="position:absolute;left:'+l+'%;width:'+w+'%;height:100%;border-radius:6px;background:'+(stTint[cls]||stTint.plan)+';overflow:hidden"><div style="position:absolute;left:0;top:0;height:100%;width:'+(st.progress||0)+'%;background:'+(stSolid[cls]||stSolid.plan)+'"></div></div>'; }
         }
         const ind=(st.description?' 📝':'')+((st.photo_urls&&st.photo_urls.length)?' 📷':'');
         return '<div onclick="openStageMobile(\''+st.id+'\')" style="padding:.5rem 0;border-bottom:1px solid var(--line);cursor:pointer"><div class="row" style="margin-bottom:.35rem"><div class="grow"><b>'+(st.is_milestone?'◆ ':'')+esc(st.name)+'</b><span style="font-size:.85rem">'+ind+'</span>'+(st.start_date?' <span class="s">'+fd(st.start_date)+(st.is_milestone?'':' → '+fd(st.end_date))+'</span>':'')+'</div><b style="font-size:.85rem;color:'+(stSolid[cls]||'#6b7793')+'">'+(st.is_milestone?'◆':(st.progress||0)+'%')+' ›</b></div>'
-          +'<div style="position:relative;height:15px;background:#eef1f6;border-radius:6px">'+bar+'</div></div>';
+          +'<div style="position:relative;height:15px;background:var(--chip);border-radius:6px">'+bar+'</div></div>';
       }).join('')
       +'<div style="margin-top:.6rem;display:flex;gap:.7rem;flex-wrap:wrap;font-size:.7rem;color:var(--muted)"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#16b364;vertical-align:middle"></i> Finalizat</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#2f6bff;vertical-align:middle"></i> În lucru</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#94a3b8;vertical-align:middle"></i> Planificat</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#ef4444;vertical-align:middle"></i> Întârziat</span><span>◆ Jalon</span></div>';
     } else {
@@ -1367,7 +1424,7 @@ async function openSite(id){
     +'<h4 style="margin:1.4rem 0 .3rem">💬 Comentarii & recenzii</h4>'+revList+revForm;
   const sh=document.querySelector('.sheet'); if(sh){ sh.innerHTML='<h3>'+esc(s.name||'Șantier')+'<button class="x" onclick="closeSheet()">×</button></h3>'+body; }
 }
-function setRevStars(n){ window._rev={rating:n}; document.querySelectorAll('#rev-stars [data-star]').forEach(s=>{ s.style.color=(+s.dataset.star<=n)?'#f7a325':'#d8dee9'; }); }
+function setRevStars(n){ window._rev={rating:n}; document.querySelectorAll('#rev-stars [data-star]').forEach(s=>{ s.style.color=(+s.dataset.star<=n)?'var(--amber)':'var(--star-off)'; }); }
 async function addReview(){
   const body=($('rev-body').value||'').trim(); if(!body){ toast('Scrie un comentariu.'); return; }
   const stage=document.getElementById('rev-stage'); const stage_id=stage?(stage.value||null):null;
@@ -1454,7 +1511,7 @@ async function scrPontaj(){
 function renderPontajWorker(){
   const P=S._pj; const el=$('pj'); if(!el) return; clearInterval(window._pjTimer);
   const siteName=(P.ts&&P.ts.sites&&P.ts.sites.name)||P.plannedName||'';
-  const planLine=P.plannedName?('<div class="card" style="background:#eef2ff;border-color:#2f6bff"><div class="t">🏗️ '+esc(P.plannedName)+'</div><div class="s">Șantierul tău planificat azi</div></div>'):'';
+  const planLine=P.plannedName?('<div class="card" style="background:var(--blue-soft);border-color:var(--primary)"><div class="t">🏗️ '+esc(P.plannedName)+'</div><div class="s">Șantierul tău planificat azi</div></div>'):'';
   let h='';
   if(!P.ts || !P.ts.start_time){
     let sitePick=''; if(!P.plannedSite){ sitePick='<div class="fld"><label>Pe ce șantier lucrezi azi?</label><select id="pj-site"><option value="">— alege —</option>'+(P.sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('')+'</select></div>'; }
@@ -1468,7 +1525,7 @@ function renderPontajWorker(){
     setTimeout(()=>{ const e=$('pj-elapsed'); if(e) e.textContent='⏱️ '+mElapsed(P.ts.start_time); },10);
     window._pjTimer=setInterval(()=>{ const e=$('pj-elapsed'); if(!e){ clearInterval(window._pjTimer); return; } e.textContent='⏱️ '+mElapsed(P.ts.start_time); },30000);
   } else {
-    h=planLine+'<div class="card" style="background:#ecfdf5;border-color:#16a34a"><div class="t">✅ Azi: '+esc(P.ts.hours)+' h</div><div class="s">'+esc(String(P.ts.start_time).slice(0,5))+'–'+esc(String(P.ts.end_time).slice(0,5))+' · pauză '+(P.ts.break_min||0)+' min'+(siteName?(' · 🏗️ '+esc(siteName)):'')+'</div></div>'
+    h=planLine+'<div class="card" style="background:var(--green-soft);border-color:var(--green)"><div class="t">✅ Azi: '+esc(P.ts.hours)+' h</div><div class="s">'+esc(String(P.ts.start_time).slice(0,5))+'–'+esc(String(P.ts.end_time).slice(0,5))+' · pauză '+(P.ts.break_min||0)+' min'+(siteName?(' · 🏗️ '+esc(siteName)):'')+'</div></div>'
       +(P.ts.approved?'<div class="s" style="text-align:center;padding:.5rem">'+esc(mt('🔒 Pontaj aprobat — nu mai poate fi schimbat.'))+'</div>':'<button class="btn gh" onclick="pjReopen()">↩️ Reia / corectează</button>');
   }
   el.innerHTML='<div class="s" style="margin-bottom:.5rem">📅 Azi · '+esc(P.date)+'</div>'+h+'<div id="pj-recent"></div>';
@@ -1761,7 +1818,7 @@ async function myOrders(){
   const byO={}; (its||[]).forEach(it=>{ (byO[it.order_id]=byO[it.order_id]||[]).push(it); });
   bd.innerHTML=list.map(o=>{ const s=ORD_ST[o.status]||['—','grey']; const ii=byO[o.id]||[];
     return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(fmtDT(o.created_at))+'</div><div class="s">'+(o.sites?('📍 '+esc(o.sites.name)):'fără șantier')+(o.expected_at?(' · 🚚 până la '+esc(o.expected_at)):'')+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div>'
-      +(o.accepted_by_name?'<div class="s" style="margin-top:.3rem;color:#166534">✅ Preluată de '+esc(o.accepted_by_name)+'</div>':'')
+      +(o.accepted_by_name?'<div class="s" style="margin-top:.3rem;color:var(--green-ink)">✅ Preluată de '+esc(o.accepted_by_name)+'</div>':'')
       +ordItemsGrouped(ii)+'</div>'; }).join('');
 }
 /* ── Comenzi de preluat (șofer) — apar în ecranul Livrări ── */
@@ -1773,7 +1830,7 @@ async function driverOrdersHtml(){
   const byO={}; (its||[]).forEach(it=>{ (byO[it.order_id]=byO[it.order_id]||[]).push(it); });
   return '<div class="scr-title" style="font-size:1rem;margin:.2rem 0 .5rem">📦 Comenzi de preluat ('+list.length+')</div>'
     +list.map(o=>{ const ii=byO[o.id]||[];
-      return '<div class="card" style="border-left:3px solid #f59e0b"><div class="row"><div class="grow"><div class="t">'+(o.sites?esc(o.sites.name):'Comandă materiale')+'</div><div class="s">'+esc(fmtDT(o.created_at))+(o.created_by_name?(' · '+esc(o.created_by_name)):'')+(o.expected_at?(' · 🚚 până la '+esc(o.expected_at)):'')+'</div></div></div>'
+      return '<div class="card" style="border-left:3px solid var(--amber)"><div class="row"><div class="grow"><div class="t">'+(o.sites?esc(o.sites.name):'Comandă materiale')+'</div><div class="s">'+esc(fmtDT(o.created_at))+(o.created_by_name?(' · '+esc(o.created_by_name)):'')+(o.expected_at?(' · 🚚 până la '+esc(o.expected_at)):'')+'</div></div></div>'
         +ordItemsGrouped(ii)
         +'<div style="margin-top:.7rem;text-align:right"><button class="btn" style="width:auto;padding:.6rem 1.1rem" onclick="driverAcceptOrder(\''+o.id+'\')">✅ Accept comanda</button></div></div>'; }).join('')
     +'<div style="height:1rem"></div>';
@@ -2200,7 +2257,7 @@ async function fillTasksHome(){
     .order('due_date',{ascending:true,nullsFirst:false}).limit(100); if(r.error) throw r.error; rows=r.data||[]; }
   catch(e){ host.innerHTML=''; return; }
   const late=rows.filter(x=>x.due_date&&x.due_date<td).length, azi=rows.filter(x=>x.due_date===td).length;
-  host.innerHTML='<div class="card" onclick="scrTaskuri()" style="cursor:pointer'+(late?';border-color:#fb923c':'')+'"><div class="row"><div class="grow"><div class="t">✅ '+esc(mtz('Taskurile mele'))+' ›</div><div class="s">'
+  host.innerHTML='<div class="card" onclick="scrTaskuri()" style="cursor:pointer'+(late?';border-color:var(--amber)':'')+'"><div class="row"><div class="grow"><div class="t">✅ '+esc(mtz('Taskurile mele'))+' ›</div><div class="s">'
     +(rows.length?((late?('⚠️ '+late+' '+esc(mtz('restante'))+' · '):'')+(azi?('📌 '+azi+' '+esc(mtz('azi'))+' · '):'')+rows.length+' '+esc(mtz('deschise'))):esc(mtz('Niciun task deschis. 🎉')))
     +'</div></div></div></div>';
 }
@@ -2236,7 +2293,7 @@ async function mTaskSheet(id){
   const lkH=links.length?('<div class="s" style="margin:.3rem 0">'+links.map(l=>{
       const lbl=esc(mtz(MT_CTX[l.entity_type]||l.entity_type)+(l.label?(': '+l.label):''));
       return l.entity_type==='site'&&l.entity_id
-        ? '<a onclick="closeSheet();openSite(\''+l.entity_id+'\')" style="color:#2f6bff;cursor:pointer">🔗 '+lbl+' ›</a>'
+        ? '<a onclick="closeSheet();openSite(\''+l.entity_id+'\')" style="color:var(--link);cursor:pointer">🔗 '+lbl+' ›</a>'
         : '<span>🔗 '+lbl+'</span>';
     }).join('<br>')+'</div>'):'';
   const cmH=(cms.length?cms.map(c=>'<div style="padding:.3rem 0;border-bottom:1px solid var(--line,#e5e9f2)">'
@@ -2245,10 +2302,10 @@ async function mTaskSheet(id){
     :'<div class="s">'+esc(mtz('Niciun comentariu încă.'))+'</div>');
   const attH=atts.map(a=>{ const img=(a.mime||'').indexOf('image/')===0;
       const rm=(a.uploaded_by===me||t.created_by===me||['manager','owner','admin'].includes(S.memberRole||S.role))
-        ?'<button class="mini-btn gh" style="color:#dc2626" aria-label="'+esc(mtz('Elimină atașamentul'))+'" onclick="mTaskAttachRemove(\''+a.id+'\',\''+t.id+'\')">×</button>':'';
+        ?'<button class="mini-btn gh" style="color:var(--red-ink)" aria-label="'+esc(mtz('Elimină atașamentul'))+'" onclick="mTaskAttachRemove(\''+a.id+'\',\''+t.id+'\')">×</button>':'';
       return '<div class="row" style="gap:.45rem;padding:.25rem 0;border-bottom:1px solid var(--line,#e5e9f2)">'
         +'<span aria-hidden="true">'+(img?'🖼️':'📄')+'</span>'
-        +'<a onclick="mTaskAttOpen(\''+encodeURIComponent(a.file_path)+'\')" class="grow" style="color:#2f6bff;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.file_name)+'</a>'+rm+'</div>'; }).join('');
+        +'<a onclick="mTaskAttOpen(\''+encodeURIComponent(a.file_path)+'\')" class="grow" style="color:var(--link);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.file_name)+'</a>'+rm+'</div>'; }).join('');
   const _site=(links||[]).find(l=>l.entity_type==='site');
   const _acc=mTaskAcc(t);
   const _needs=mTaskNeedsMe(t);
@@ -2342,7 +2399,7 @@ async function mTaskNew(){
   const td=mToday(); const tm=(function(){ const d=new Date(td+'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
   openSheet('✅ '+mtz('Task nou'),
     '<div class="fld"><label>'+esc(mtz('Ce trebuie făcut?'))+' *</label><input id="mtn-title" placeholder="'+esc(mtz('ex: Repară ușa etaj 2'))+'"/></div>'
-    +'<div class="fld"><label>'+esc(mtz('Responsabil'))+'</label><select id="mtn-asg" style="width:100%;padding:.6rem;border:1px solid var(--line,#e5e9f2);border-radius:10px;background:#fff">'+opts+'</select></div>'
+    +'<div class="fld"><label>'+esc(mtz('Responsabil'))+'</label><select id="mtn-asg" style="width:100%;padding:.6rem;border:1px solid var(--line,#e5e9f2);border-radius:10px;background:var(--field);color:var(--ink)">'+opts+'</select></div>'
     +'<div class="fld"><label>'+esc(mtz('Termen'))+'</label><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.25rem 0" role="group" aria-label="'+esc(mtz('Termen'))+'">'
       +'<button type="button" class="mini-btn gh" onclick="document.getElementById(\'mtn-due\').value=\''+td+'\'">'+esc(mtz('Azi'))+'</button>'
       +'<button type="button" class="mini-btn gh" onclick="document.getElementById(\'mtn-due\').value=\''+tm+'\'">'+esc(mtz('Mâine'))+'</button>'
@@ -2682,11 +2739,11 @@ function mvRender(){
   }
   /* pasul 4 — verificare + confirmare */
   h+='<div class="scr-title" style="font-size:.95rem">'+(isMat?'4. ':'3. ')+esc(mtz('Verifică'))+'</div>'
-    +'<div class="card" style="border-color:#2f6bff"><div class="t">'+esc(M.obj.label)+'</div>'
+    +'<div class="card" style="border-color:var(--primary)"><div class="t">'+esc(M.obj.label)+'</div>'
     +'<div class="s" style="font-size:.95rem;margin-top:.2rem">'
     +esc(M.from?mvLocLabel(M.from.kind,M.from.id):mtz('Intrare'))+' → '
     +esc(M.dest.kind==='consume'?mtz('Consum'):mvLocLabel(M.dest.kind,M.dest.id))+'</div>'
-    +'<div id="mv-err" style="color:#dc2626;font-size:.85rem;margin-top:.4rem" role="alert"></div>'
+    +'<div id="mv-err" style="color:var(--red-ink);font-size:.85rem;margin-top:.4rem" role="alert"></div>'
     +'<button class="btn" id="mv-go" style="margin-top:.6rem" onclick="mvConfirm()">✔ '+esc(mtz('Confirmă'))+'</button></div>';
   sc.innerHTML=h;
 }
@@ -3069,7 +3126,7 @@ function miRender(){
 
   /* Conflictul NU e semnalat doar prin culoare: are pictogramă, titlu și explicație. */
   if(conflicts.length){
-    h+='<div class="card" style="border-left:4px solid #d9480f"><div class="t">⚠️ '+esc(mtz('Stocul s-a modificat în timpul inventarierii'))+'</div>'
+    h+='<div class="card" style="border-left:4px solid var(--amber)"><div class="t">⚠️ '+esc(mtz('Stocul s-a modificat în timpul inventarierii'))+'</div>'
       +'<div class="s">'+esc(mtz('Cineva a mișcat marfă cât timp numărai. Numărătoarea ta e păstrată. Reîncarcă starea, verifică diferențele și confirmă din nou.'))+'</div>'
       +conflicts.map(x=>'<div class="s" style="margin-top:.35rem">• <b>'+esc(x.name)+'</b>: '
         +esc(mtz('la start'))+' '+(+x.expected_qty)+' → '+esc(mtz('acum'))+' <b>'+(+x.current_qty)+'</b>'
@@ -3083,7 +3140,7 @@ function miRender(){
   h+=mats.map(function(x){
     const d=x.counted?(+x.difference):null;
     const mark=!x.counted?'○':(d===0?'✓':(d>0?'▲':'▼'));
-    const col=!x.counted?'var(--muted)':(d===0?'#2b8a3e':(d>0?'#1971c2':'#d9480f'));
+    const col=!x.counted?'var(--muted)':(d===0?'var(--green-ink)':(d>0?'var(--blue-ink)':'var(--amber-ink)'));
     return '<button class="card" style="width:100%;text-align:left;display:block" onclick="miSet(\''+x.line_id+'\',\'material\',\''+x.material_id+'\')">'
       +'<div class="row"><div class="grow"><div class="t">'+esc(x.name)+'</div>'
       +'<div class="s">'+esc(mtz('În sistem'))+': '+(+x.expected_qty)+' '+esc(x.unit||'')
@@ -3097,7 +3154,7 @@ function miRender(){
   if(as.length){
     const ic={found:'✓',missing:'✗',unexpected:'＋'};
     const lb={found:'Găsit',missing:'Lipsă',unexpected:'Neașteptat aici'};
-    const cl={found:'#2b8a3e',missing:'#d9480f',unexpected:'#1971c2'};
+    const cl={found:'var(--green-ink)',missing:'var(--amber-ink)',unexpected:'var(--blue-ink)'};
     h+='<div class="scr-title" style="margin-top:.8rem">🛠️ '+esc(mtz('Scule'))+'</div>'
       +'<div class="card"><div class="s">'+esc(mtz('Discrepanțele se păstrează ca observație. Nimic nu se mută automat și nimic nu devine „pierdut".'))+'</div></div>'
       +as.map(function(x){
@@ -3251,7 +3308,7 @@ function mvbRow(it,i){
      (marfă venită din afară) exact în timp ce mai jos cere alegerea locației din care iese. */
   let src = it.from ? (it.from.kind==='external' ? mtz('La un terț') : mvLocLabel(it.from.kind,it.from.id))
                     : (needSrc ? mtz('Alege sursa') : (isMat ? mtz('Intrare nouă') : mtz('Nealocat')));
-  let h='<div class="card" style="padding:.7rem'+(it.err?';border-color:#dc2626':(needSrc?';border-color:#f7a325':''))+'">'
+  let h='<div class="card" style="padding:.7rem'+(it.err?';border-color:var(--red)':(needSrc?';border-color:var(--amber)':''))+'">'
    +'<div class="row" style="gap:.5rem"><div class="grow">'
    +'<div class="t" style="font-size:.92rem">'+(isMat?'📦 ':'🛠️ ')+esc(it.label)+'</div>'
    +'<div class="s">'+esc(src)+(isMat&&it.avail!=null?(' · '+esc(mtz('Disponibil'))+' '+(+it.avail)):'')+'</div>'
@@ -3267,14 +3324,14 @@ function mvbRow(it,i){
       +'</div>';
   }
   if(needSrc){
-    h+='<div class="s" style="margin-top:.45rem;color:#92400e">'+esc(mtz('Materialul e în mai multe locuri. Alege sursa:'))+'</div>'
+    h+='<div class="s" style="margin-top:.45rem;color:var(--amber-ink)">'+esc(mtz('Materialul e în mai multe locuri. Alege sursa:'))+'</div>'
       +it.multi.map(function(x,j){ const k=x.warehouse_id?'warehouse':(x.site_id?'site':null);
           if(!k) return '';
           return '<button class="mini-btn gh" style="margin:.15rem" onclick="mvbSetFrom('+i+','+j+')">'
             +esc(mvLocLabel(k,x.warehouse_id||x.site_id))+' · <b>'+(+x.qty)+'</b></button>'; }).join('')
       +'<div><button class="mini-btn gh" style="margin:.15rem" onclick="mvbNewEntry('+i+')">'+esc(mtz('Nu, e o intrare nouă'))+'</button></div>';
   }
-  if(it.err) h+='<div class="s" style="color:#dc2626;margin-top:.4rem" role="alert">'+esc(it.err)+'</div>';
+  if(it.err) h+='<div class="s" style="color:var(--red-ink);margin-top:.4rem" role="alert">'+esc(it.err)+'</div>';
   return h+'</div>';
 }
 function mvbRender(){
@@ -3309,9 +3366,9 @@ function mvbRender(){
   const nm=B.items.filter(x=>x.kind==='material').length, na=B.items.filter(x=>x.kind==='asset').length;
   const parts=[]; if(nm) parts.push(nm+' '+mtz('materiale')); if(na) parts.push(na+' '+mtz('scule'));
   h+=B.items.map(mvbRow).join('')
-    +'<div class="card" style="border-color:#2f6bff"><div class="t">'+esc(parts.join(' · '))+' → '
+    +'<div class="card" style="border-color:var(--primary)"><div class="t">'+esc(parts.join(' · '))+' → '
     +esc(B.dest.kind==='consume'?mtz('Consum'):mvLocLabel(B.dest.kind,B.dest.id))+'</div>'
-    +'<div id="mvb-err" style="color:#dc2626;font-size:.85rem;margin-top:.4rem" role="alert"></div>'
+    +'<div id="mvb-err" style="color:var(--red-ink);font-size:.85rem;margin-top:.4rem" role="alert"></div>'
     +'<button class="btn" id="mvb-go" style="margin-top:.6rem" onclick="mvbConfirm()">✔ '
     +esc(mtz('Confirmă'))+' ('+B.items.length+')</button>'
     +'<button class="mini-btn gh" style="width:100%;margin-top:.5rem" onclick="mvbRestartAsk()">'
@@ -3463,6 +3520,11 @@ async function openProfile(){
     +'<div class="hint" style="margin:.3rem 0 0;font-size:.78rem;color:var(--muted,#6b7793)">Setează o parolă ca să te poți loga cu email + parolă pe orice dispozitiv (recomandat dacă ai intrat prin link).</div>'
     +'<button class="btn btn-line" id="pf-push" style="margin-top:.6rem" onclick="mPushToggle()">🔔 Activează notificările push</button>'
     +'<div class="hint" style="margin:.3rem 0 0;font-size:.78rem;color:var(--muted,#6b7793)">Primești pe telefon când ești planificat pe un șantier, ai o livrare sau un mesaj — chiar dacă aplicația e închisă.</div>'
+    +'<div class="fld" style="margin-top:1rem"><label>'+esc(mtz('Aspect'))+'</label>'
+    +'<div class="thm-seg" role="group" aria-label="'+esc(mtz('Temă'))+'">'
+    +'<button data-thm="light" aria-pressed="'+(mTheme()==='light'?'true':'false')+'" class="'+(mTheme()==='light'?'on':'')+'" onclick="mSetTheme(\'light\')">☀️ '+esc(mtz('Luminos'))+'</button>'
+    +'<button data-thm="dark" aria-pressed="'+(mTheme()==='dark'?'true':'false')+'" class="'+(mTheme()==='dark'?'on':'')+'" onclick="mSetTheme(\'dark\')">🌙 '+esc(mtz('Întunecat'))+'</button>'
+    +'</div></div>'
     +'<button class="btn btn-line" style="margin-top:.6rem" onclick="doLogout()">Ieși din cont</button>'
     +'<div style="text-align:center;color:var(--muted,#6b7793);font-size:.72rem;margin-top:.9rem">Cod373 · build '+APP_BUILD+'</div>');
   setTimeout(mPushRefresh,0);
@@ -3606,7 +3668,7 @@ async function scrScule(){
 function toolCard(t){ const c=t.condition||'ok';
   return '<div class="card" onclick="openToolById(\''+t.id+'\')" style="cursor:pointer"><div class="row" style="gap:.6rem;align-items:center">'+mThumb(t.photo_url,'🔧')+'<div class="grow"><div class="t">🔧 '+esc(t.name)+' ›</div>'
     +'<div class="s">'+(t.code?('Cod '+esc(t.code)+' · '):'')+(t.holder_label?('📍 '+esc(t.holder_label)):'📍 —')+'</div></div>'
-    +'<span class="pill" style="white-space:nowrap;'+(c==='defect'?'background:#fee2e2;color:#b91c1c':(c==='dirty'?'background:#fef9c3;color:#854d0e':'background:#dcfce7;color:#166534'))+'">'+TOOL_COND[c]+'</span></div></div>';
+    +'<span class="pill" style="white-space:nowrap;'+(c==='defect'?'background:var(--red-soft);color:var(--red-ink)':(c==='dirty'?'background:var(--amber-soft);color:var(--amber-ink)':'background:var(--green-soft);color:var(--green-ink)'))+'">'+TOOL_COND[c]+'</span></div></div>';
 }
 function renderToolList(q){ q=(q||'').toLowerCase().trim();
   let list=S.tools||[]; if(q) list=list.filter(t=>((t.name||'')+' '+(t.code||'')+' '+(t.inventory_no||'')).toLowerCase().includes(q));
@@ -3630,8 +3692,8 @@ async function toolSheet(t){
     +'<button class="btn primary" style="flex:1;min-width:130px" onclick="toolAct(\''+t.id+'\',\'receive\',\'ok\')">✅ Am primit-o</button>'
     +'<button class="btn btn-line" style="flex:1;min-width:130px" onclick="toolAct(\''+t.id+'\',\'receive\',\'dirty\')">🧽 Primit, e murdară</button>'
     +'<button class="btn btn-line" style="flex:1;min-width:130px" onclick="toolAct(\''+t.id+'\',\'warehouse\',null)">🏬 În depozit</button>'
-    +'<button class="btn btn-line" style="flex:1;min-width:130px;border-color:#b91c1c;color:#b91c1c" onclick="toolAct(\''+t.id+'\',\'defect\',null)">🛠 Are defect</button>'
-    +(c==='defect'||c==='dirty'?'<button class="btn btn-line" style="flex:1;min-width:130px;border-color:#166534;color:#166534" onclick="toolAct(\''+t.id+'\',\'repaired\',null)">✔️ Reparat / curat</button>':'')
+    +'<button class="btn btn-line" style="flex:1;min-width:130px;border-color:var(--red-ink);color:var(--red-ink)" onclick="toolAct(\''+t.id+'\',\'defect\',null)">🛠 Are defect</button>'
+    +(c==='defect'||c==='dirty'?'<button class="btn btn-line" style="flex:1;min-width:130px;border-color:var(--green-ink);color:var(--green-ink)" onclick="toolAct(\''+t.id+'\',\'repaired\',null)">✔️ Reparat / curat</button>':'')
     +'</div>'
     +'<div style="margin-top:1rem;font-weight:700">🕘 Istoric mișcări</div>'+hist;
   openSheet('🔧 '+(t.name||'Sculă'), html);
@@ -3668,6 +3730,7 @@ closeSheet=function(){ if(window._qr){ try{ window._qr.stop(); }catch(e){} windo
 
 /* START */
 (async function(){
+  mApplyTheme();                     /* înaintea primului cadru vizibil; splash-ul acoperă tranziția */
   if('serviceWorker' in navigator){ const _hadCtrl=!!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').catch(()=>{});
     let _swReloaded=false; navigator.serviceWorker.addEventListener('controllerchange',function(){ if(_swReloaded) return; _swReloaded=true; if(_hadCtrl) location.reload(); }); }
   if(!cfgOk()){$('login').classList.remove('hidden');hideSplash();$('cfg-warn').classList.remove('hidden');$('cfg-warn').innerHTML='⚙️ Configurare incompletă (cheia publishable).';$('l-btn').disabled=true;return;}
