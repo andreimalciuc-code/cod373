@@ -11210,6 +11210,14 @@ async function renderModule(key){
      resetare aici ar readuce mereu implicitul și butonul apăsat n-ar avea niciun efect. */
   listState={ key, m, rows, q:'', status:'', chip:'', period:'', statusField, allSuppliers:null, allStores:null,
               scope:(_scopeKeep!=null?_scopeKeep:(m.scopeFilter?m.scopeFilter.def:'')) };
+  /* ►► HOTFIX-ROW-AU — starea cheilor de integrare se încarcă ÎNAINTE de randare.
+     `rowActions` e SINCRONă și întreabă `secIsSet(...)`, care citește cache-ul `_secStatus`
+     populat până acum DOAR de `renderSetari`. Fără linia asta acțiunile lexoffice/sevdesk
+     lipsesc din listă chiar când cheile SUNT configurate — fals negativ garantat, nu ocazional.
+     `secLoad` memoizează (un singur RPC pe încărcare de pagină) și înghite eroarea ⇒ degradare,
+     nu ecran gol. Poarta de rol e chiar contractul serverului: `tenant_secret_status` e
+     owner/admin, deci nu chemăm un RPC care oricum ar fi refuzat. */
+  if(m.efactura && ADMIN_ROLES.includes(state.role)){ try{ await secLoad(); }catch(e){} }
   renderList();
   // populează filtrele cu TOȚI furnizorii / TOATE magazinele din bază (nu doar cei legați de materiale)
   if(m.supplierFilter){ sb.from('suppliers').select('name').then(r=>{ if(listState.m===m){ listState.allSuppliers=(r.data||[]).map(x=>x.name).filter(Boolean); renderList(); } }).catch(()=>{}); }
@@ -11462,7 +11470,7 @@ function rowActions(key,m,r){
     if(cc==='RO') a.push({i:'🇷🇴',l:'e-Factură RO (ANAF/SPV — XML)',f:"genEfacturaRO('"+id+"')"});
     else if(cc==='DE'||cc==='AT') a.push({i:'🇩🇪',l:'e-Factură (XRechnung XML)',f:"genXRechnung('"+id+"')"});
     else { a.push({i:'🏛️',l:'e-Factura (SFS) — generează XML',f:"genEfactura('"+id+"')"}); a.push({i:'🇪🇺',l:'e-Factură UBL (EN16931)',f:"genXRechnung('"+id+"')"}); } }
-  if(m.efactura){ if(secIsSet('lexoffice_key')) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(au.sevdesk_key) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
+  if(m.efactura){ if(secIsSet('lexoffice_key')) a.push({i:'🟢',l:'Trimite în lexoffice (ciornă)',f:"pushLexoffice('"+id+"')"}); if(secIsSet('sevdesk_key')) a.push({i:'🟣',l:'Trimite în sevdesk (ciornă)',f:"pushSevdesk('"+id+"')"}); }
   if(m.printable) a.push({i:'⬇',l:'Descarcă / Tipărește PDF',f:(m.pageEditor?"openEditorPdf('"+m.pageEditor+"','"+id+"')":"printDoc('"+key+"','"+id+"')")});
   if(m.toolActions){ a.push({i:'🔢',l:'Bucăți (serii), inventar, valoare, amortizare + unde se află',f:"toolStock('"+id+"','"+jsArg(r.name)+"')"}); a.push({i:'🕘',l:'Istoric mișcări',f:"toolHistory('"+id+"')"}); a.push({i:'🏷️',l:'Etichetă QR (de lipit pe sculă)',f:"toolQR('"+id+"','"+jsArg(r.name)+"','"+jsArg(r.code)+"')"}); }
   if(m.vehicleLog){ if(canSee('harta')) a.push({i:'🗺️',l:'Vezi pe hartă (GPS)',f:"vehShowOnMap('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🧑‍✈️',l:'Șoferi atribuiți',f:"vehDrivers('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🩺',l:'Fișa mașinii (service & mentenanță)',f:"vehicleLog('"+id+"','"+jsArg(r.label)+"')"}); a.push({i:'🖨️',l:tz('Fișă PDF vehicul'),f:"vehiclePdf('"+id+"')"}); }
