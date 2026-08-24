@@ -1334,6 +1334,7 @@ async function save(thenPdf){
     if(r.error) throw r.error;
     const row=Array.isArray(r.data)?r.data[0]:r.data;
     S.id=row.id; S.est.number=row.number||''; S._updatedAt=row.updated_at;
+    S._loaded=true;   // CDI1: starea din editor E completă după un save reușit — resalvarea fără reload nu se blochează
     const nel=$('f-num'); if(nel) nel.value=S.est.number;
     history.replaceState(null,'',base()+'deviz.html?id='+S.id);
     if($('btn-dup')) $('btn-dup').style.display='';
