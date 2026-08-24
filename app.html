@@ -6739,11 +6739,18 @@ async function calcSavePrices(){ const au=Object.assign({},state.firm.automation
 async function calcSaveDeviz(){ const ex=_calc.extra||[]; if(!_calc.items.length && !ex.length){ toast('Nimic de salvat.'); return; }
   const vat=calcVat(); const sub=_calc._sub||0;
   try{ const num='CALC-'+coToday().replace(/-/g,'')+'-'+String(Date.now()).slice(-4);
-    const er=await sb.from('estimates').insert({tenant_id:state.tenant,number:num,status:'draft',subtotal:Math.round(sub*100)/100,vat_total:Math.round(sub*vat/100*100)/100,total:Math.round(sub*(1+vat/100)*100)/100}).select('id').single();
+    /* CDI1 (D105): devizul din Calculator se creează prin `save_estimate` — o singură
+       tranzacție (antet + poziții numerotate 1..N, validare fiscală), nu două INSERT-uri care
+       puteau lăsa un antet fără linii și poziții toate 0. */
+    const rows=_calc.items.map(it=>({name:it.name+' ('+it.unit+')',qty:+it.qty||0,unit:it.unit,unit_price:(_calc.prices[it.key]||0),vat_rate:vat,disc:0,kind:'service'}))
+      .concat(ex.map(it=>({name:it.name,qty:(+it.qty||0),unit:(it.unit||'buc'),unit_price:(+it.price||0),vat_rate:vat,disc:0,kind:'service'})))
+      .filter(r=>r.name&&String(r.name).trim());
+    if(!rows.length){ toast('Nimic de salvat.'); return; }
+    const doc={ number:num, status:'draft', issue_date:coToday(), groups:[], disc_mode:'none', disc_value:0, vat_mode:'line', vat_value:vat, materials_mode:'detailed',
+      subtotal:Math.round(sub*100)/100, vat_total:Math.round(sub*vat/100*100)/100, total:Math.round(sub*(1+vat/100)*100)/100,
+      price_contract_version:2, price_input_mode:'net' };
+    const er=await sb.rpc('save_estimate',{ p_document_id:null, p_tenant_id:state.tenant, p_document:doc, p_items:rows, p_expected_updated_at:null, p_number_manual:true });
     if(er.error) throw er.error;
-    const rows=_calc.items.map(it=>({tenant_id:state.tenant,estimate_id:er.data.id,name:it.name+' ('+it.unit+')',qty:it.qty,unit:it.unit,unit_price:(_calc.prices[it.key]||0),vat_rate:vat}))
-      .concat(ex.map(it=>({tenant_id:state.tenant,estimate_id:er.data.id,name:it.name,qty:(+it.qty||0),unit:(it.unit||'buc'),unit_price:(+it.price||0),vat_rate:vat})));
-    const ir=await sb.from('estimate_items').insert(rows); if(ir.error) throw ir.error;
     toast('📋 Deviz creat ('+num+'). Îl găsești în Devize.'); if(confirm('Deviz creat. Deschizi modulul Devize?')) go('devize');
   }catch(e){ toast('Eroare: '+esc(e.message)); } }
 async function calcAI(){ const desc=prompt('Descrie proiectul (ex: „casă P+1, 10×12 m, ziduri BCA 30 cm, acoperiș în 4 ape, 8 ferestre, 1 ușă exterioară, 6 uși interioare"):'); if(!desc) return;
@@ -7632,11 +7639,31 @@ async function planExtDelete(id){
 /* ── gestionare echipe ── */
 async function planTeamsModal(){
   if(!planCanEdit()){ toast(planErrMsg({message:'CP_FORBIDDEN'})); return; }
-  const [teamR,tmR,empR]=await Promise.all([
-    sb.from('crew_teams').select('id,name,color'),
+  /* ►► FIELD1-C — poarta de birou pentru Maistru.
+     `caps` trăiește pe MEMBERSHIP (cont), iar `lead_employee_id` pe FIȘA de angajat. Cele două
+     se leagă prin `employees.user_id`; un angajat fără cont nu poate primi capabilitatea,
+     fiindcă n-are membership pe care s-o poarte. De aceea le încărcăm pe amândouă aici. */
+  const [teamR,tmR,empR,memR]=await Promise.all([
+    sb.from('crew_teams').select('id,name,color,lead_employee_id'),
     sb.from('crew_team_members').select('team_id,employee_id'),
-    sb.from('employees').select('id,full_name,active,terminated_on')
+    sb.from('employees').select('id,full_name,active,terminated_on,user_id'),
+    sb.from('memberships').select('user_id,role,caps,active').eq('tenant_id',state.tenant)
   ]);
+  const mbyu={}; (memR.data||[]).forEach(m=>{ mbyu[m.user_id]=m; });
+  /* ►► FIELD1-C / D-1 — `memberships` e vizibilă doar lui owner/admin (`memberships_admin_read`,
+     0001:146) plus propriul rând (`memberships_self`, 0001:144). Poarta asta e însă deschisă la
+     MGMT (`PLAN_WRITE_ROLES`), deci un MANAGER primește un singur rând: al lui.
+     Nu lărgim RLS ca să-i fie comod interfeței. În schimb, capabilitatea are TREI stări, nu două:
+     `true` / `false` / **necunoscută**. Un manager nu poate afirma niciuna dintre primele două,
+     deci interfața nu i le arată — nici ca „lipsește" (l-ar trimite să apese un buton pe care
+     serverul îl refuză), nici ca „există" (ar fi o afirmație nesusținută).
+     `capKnown` e `true` DOAR dacă chiar am putut citi rândurile celorlalți. */
+  const capKnown = ADMIN_ROLES.includes(state.role)
+                && (memR.data||[]).some(m=>m.user_id!==(state.session&&state.session.user&&state.session.user.id));
+  const hasCap=(e)=>{ if(!capKnown) return null;
+    const m=e&&e.user_id?mbyu[e.user_id]:null; return !!(m&&m.active&&(m.caps||[]).indexOf('team_lead')>=0); };
+  _planTeamCtx={ mbyu, empById:{}, capKnown };
+  (empR.data||[]).forEach(e=>{ _planTeamCtx.empById[e.id]=e; });
   const teams=(teamR.data||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const allE=(empR.data||[]).sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||''));
   const emps=allE.filter(e=>e.active!==false);
@@ -7651,6 +7678,39 @@ async function planTeamsModal(){
     +'<button class="btn-ghost" title="'+esc(C373t('Redenumește'))+'" onclick="planRenameTeam(\''+t.id+'\',\''+jsArg(t.name)+'\')">✏️</button>'
     +'<span style="display:inline-flex;gap:.2rem;align-items:center;margin-right:.3rem">'+PLAN_PALETTE.map(c=>'<span onclick="planSetTeamColor(\''+t.id+'\',\''+c+'\')" title="'+esc(C373t('culoare'))+'" style="width:16px;height:16px;border-radius:4px;background:'+c+';cursor:pointer;'+(((t.color||'#2f6bff')===c)?'outline:2px solid var(--text);outline-offset:1px':'')+'"></span>').join('')+'</span>'
     +'<button class="btn-ghost" style="color:var(--red)" onclick="planDelTeam(\''+t.id+'\')">🗑 '+esc(C373t('Șterge'))+'</button></div>'
+    +(function(){
+        /* ►► FIELD1-C-B2 / D103 — CONDUCEREA NU E APARTENENȚĂ. Varianta anterioară oferea drept
+           candidați DOAR membrii echipei. Serverul n-a cerut niciodată asta: `app.tg_crew_team_lead`
+           (0170) verifică exclusiv aceeași firmă, iar `app.lead_team_ids` (0174) nu atinge nicăieri
+           `crew_team_members`. Restricția era, deci, o regulă inventată de interfață — și îl obliga
+           pe birou să bage maistrul ca „muncitor" în fiecare echipă doar ca să poată conduce.
+           Un angajat conduce 0..N echipe. Membrii rămân PRIMII, fiindcă sunt cazul obișnuit;
+           restul firmei devine accesibil, nu obligatoriu. */
+        const cur=t.lead_employee_id||'';
+        const curE=cur?_planTeamCtx.empById[cur]:null;
+        const inTeam=e=>!!(mem[t.id]&&mem[t.id][e.id]);
+        /* Un angajat inactiv nu poate fi operațional (`app.field_operational`, D88), deci nu se
+           OFERĂ. Rămâne vizibil doar dacă e deja șeful sau membru — altfel n-ar mai putea fi scos. */
+        const elig=allE.filter(e=>e.active!==false||e.id===cur||inTeam(e));
+        const optOf=e=>'<option value="'+e.id+'"'+(e.id===cur?' selected':'')+'>'+esc(e.full_name)
+          +(e.user_id?'':' ('+esc(C373t('fără cont'))+')')+'</option>';
+        const gMem=elig.filter(inTeam), gOth=elig.filter(e=>!inTeam(e));
+        const opts='<option value="">— '+esc(C373t('fără șef'))+' —</option>'
+          +(gMem.length?'<optgroup label="'+esc(C373t('Membrii echipei'))+'">'+gMem.map(optOf).join('')+'</optgroup>':'')
+          +(gOth.length?'<optgroup label="'+esc(C373t('Alți angajați (pot conduce fără să fie membri)'))+'">'+gOth.map(optOf).join('')+'</optgroup>':'');
+        let note='';
+        if(curE){
+          const cap=hasCap(curE);          /* true · false · null = nu pot ști */
+          if(!curE.user_id) note='<span class="pill cancelled" style="font-size:.68rem">⚠️ '+esc(C373t('Fișa nu e legată de un cont — nu poate primi capabilitatea.'))+'</span>';
+          else if(cap===null) note='<span style="font-size:.72rem;color:var(--muted)">👑 '+esc(C373t('Capabilitatea „Maistru" se acordă de proprietar sau administrator.'))+'</span>';
+          else if(cap===false) note='<button class="btn-ghost" style="font-size:.75rem;color:var(--brand,#2563eb)" onclick="planGrantLeadCap(\''+curE.user_id+'\',true)">➕ '+esc(C373t('Acordă capabilitatea „Maistru"'))+'</button>';
+          else note='<span class="pill active" style="font-size:.68rem">👑 '+esc(C373t('Maistru activ'))+'</span> <button class="btn-ghost" style="font-size:.75rem;color:var(--red)" onclick="planGrantLeadCap(\''+curE.user_id+'\',false)">'+esc(C373t('Retrage'))+'</button>';
+        }
+        return '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.1rem 0 .5rem;font-size:.84rem">'
+          +'<span>👑 '+esc(C373t('Șef de echipă'))+':</span>'
+          +'<select onchange="planSetLead(\''+t.id+'\',this.value)" style="max-width:220px">'+opts+'</select>'
+          +note+'</div>';
+      })()
     +'<div style="display:flex;flex-wrap:wrap;gap:.45rem">'+(function(){ const le=teamEmps(t); return le.length?le.map(e=>{ const ck=mem[t.id]&&mem[t.id][e.id]; const term=(e.active===false); return '<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.84rem;background:var(--bg,#f1f5f9);border-radius:8px;padding:.25rem .55rem;cursor:pointer'+(term?';opacity:.75':'')+'"><input type="checkbox" '+(ck?'checked':'')+' onchange="planToggleMember(\''+t.id+'\',\''+e.id+'\',this.checked)"/> '+esc(e.full_name)+(term?' <span class="pill cancelled" style="font-size:.62rem">⛔ '+esc(C373t('Concediat'))+'</span>':'')+'</label>'; }).join(''):'<span style="color:var(--muted);font-size:.83rem">'+esc(C373t('Niciun angajat activ.'))+'</span>'; })()+'</div></div>'; };
   const hint='<div style="background:var(--primary-soft,#eef2ff);border:1px solid var(--line);border-radius:9px;padding:.5rem .7rem;font-size:.82rem;margin-bottom:.7rem">ℹ️ '+esc(C373t('Pașii: 1) apasă „＋ Echipă nouă" și dă-i un nume → 2) bifează membrii (se salvează automat) → 3) „Gata". Echipa apare apoi în planșă.'))+'</div>';
   const body=hint+(teams.length?teams.map(blk).join(''):'<div style="color:var(--muted);padding:.4rem 0 .7rem">'+esc(C373t('Nicio echipă încă. Creează una și bifează membrii.'))+'</div>')
@@ -7679,6 +7739,79 @@ async function planToggleMember(teamId,empId,ck){
   else { const r=await sbRetry(()=>sb.from('crew_team_members').delete().eq('team_id',teamId).eq('employee_id',empId).select('id'));
     if(r.error){ toast(planTeamErr(r.error)); planTeamsModal(); return; }
     if(!r.data||!r.data.length){ toast('🔒 '+C373t('Nu ai dreptul să modifici echipele.')); planTeamsModal(); } }
+}
+/* ════ FIELD1-C — POARTA DE BIROU pentru Maistru ══════════════════════════════════
+   Autoritatea are DOUĂ jumătăți, iar amândouă stau pe server:
+     · `crew_teams.lead_employee_id` — CINE conduce echipa (scriere MGMT, prin RLS);
+     · `memberships.caps ∋ 'team_lead'` — DREPTUL de a conduce (scriere owner/admin, prin
+       `membership_caps_set`, cu CAS pe `p_expect_caps`).
+   Cele două sunt INDEPENDENTE și rămân așa (D103): un angajat conduce 0..N echipe, iar
+   capabilitatea trăiește pe CONT, nu pe echipă — deci nu se re-acordă la fiecare atribuire.
+   Conducerea nu e apartenență: serverul nu cere ca șeful să fie membru al echipei lui.
+   Interfața de aici nu e autoritate: e doar administrarea lor. Un manager poate desemna șeful,
+   dar NU poate acorda capabilitatea — serverul îi răspunde `CAP_FORBIDDEN`, iar noi îi spunem
+   de ce. Un maistru nu se poate auto-promova: n-are nici scriere pe `crew_teams` (nu e MGMT),
+   nici drept pe `membership_caps_set` (nu e owner/admin).
+   Schimbarea șefului NU rescrie nimic: pontajele, rapoartele și progresul rămân ale autorului
+   lor (`created_by`), exact ca la componența echipei (D76/§J). */
+let _planTeamCtx={ mbyu:{}, empById:{} };
+function planCapErr(e){ const m=(e&&e.message||'').toString();
+  if(m.indexOf('CAP_FORBIDDEN')>=0)   return '🔒 '+C373t('Doar proprietarul sau un administrator poate acorda capabilitatea de maistru.');
+  if(m.indexOf('CAP_NO_MEMBER')>=0)   return C373t('Angajatul nu are cont în această firmă.');
+  if(m.indexOf('CAP_CONFLICT')>=0)    return '⚠️ '+C373t('Capabilitățile au fost schimbate între timp. Redeschide fereastra.');
+  if(m.indexOf('CAP_UNKNOWN')>=0)     return C373t('Capabilitate necunoscută.');
+  if(m.indexOf('TEAM_LEAD_INVALID')>=0) return C373t('Fișa de angajat nu aparține acestei firme.');
+  if(m.indexOf('row-level security')>=0||m.indexOf('permission')>=0) return '🔒 '+C373t('Nu ai dreptul să modifici echipele.');
+  return 'Eroare: '+esc(m); }
+
+async function planSetLead(teamId, empId){
+  const val = empId || null;
+  /* KB#104 — un `update` respins de RLS întoarce 0 rânduri FĂRĂ eroare. Un buton care
+     raportează succes pe tăcere e clasa de defect KB#96, deci verificăm rowcount-ul. */
+  const r=await sbRetry(()=>sb.from('crew_teams').update({lead_employee_id:val}).eq('id',teamId).select('id'));
+  if(r.error){ toast(planCapErr(r.error)); return; }
+  if(!r.data||!r.data.length){ toast('🔒 '+C373t('Nu ai dreptul să modifici echipele.')); return; }
+  if(!val){ toast(C373t('Echipa a rămas fără șef.')); planTeamsModal(); return; }
+  const e=_planTeamCtx.empById[val];
+  if(e && !e.user_id){
+    toast('⚠️ '+C373t('Șef desemnat, dar fișa nu e legată de un cont — nu poate lucra ca maistru încă.'));
+    planTeamsModal(); return;
+  }
+  /* ►► FIELD1-C-B2 / D103 — ATRIBUIREA NU E ACORDARE DE DREPTURI. Înainte, desemnarea încerca
+     TĂCUT și acordarea capabilității. Cu 0..N echipe asta devine dăunător: fiecare atribuire
+     nouă ar re-executa un privilege grant, iar cele două jumătăți ale autorității — capabilitatea
+     (pe cont) și atribuirea (pe echipă) — s-ar contopi într-un singur gest, exact ce contractul
+     ține separat. Capabilitatea se acordă EXPLICIT, din butonul de sub selector, care apare
+     numai când chiar lipsește ȘI când cel care apasă poate ști că lipsește. */
+  /* ►► D-1 — dacă nu putem CITI capabilitățile (manager: `memberships` îi arată doar propriul
+     rând), nu afirmăm nimic despre ea: nici că există, nici că lipsește. Desemnarea a reușit;
+     atât spunem, și spunem cine duce mai departe. */
+  if(!_planTeamCtx.capKnown){
+    toast('👑 '+C373t('Șef desemnat.')+' '+C373t('Capabilitatea „Maistru" se acordă de proprietar sau administrator.'));
+    planTeamsModal(); return;
+  }
+  const m=e&&e.user_id?_planTeamCtx.mbyu[e.user_id]:null;
+  toast((m && (m.caps||[]).indexOf('team_lead')>=0)
+    ? '👑 '+C373t('Șef de echipă actualizat.')
+    : '👑 '+C373t('Șef desemnat.')+' '+C373t('Mai trebuie acordată capabilitatea „Maistru", din butonul de sub selector.'));
+  planTeamsModal();
+}
+
+/* ►► FIELD1-C-B2 / D103 — capabilitatea se scrie DOAR de aici, adică doar dintr-un clic explicit.
+   Parametrul `quiet` a dispărut odată cu acordarea automată din `planSetLead`: nu mai există
+   niciun apelant care s-o ceară pe tăcute, iar o cale tăcută spre un privilege grant e exact
+   ce nu vrem să rămână în cod „pentru mai târziu". */
+async function planGrantLeadCap(userId, on){
+  const m=_planTeamCtx.mbyu[userId]||{};
+  const cur=(m.caps||[]);
+  const next = on ? Array.from(new Set(cur.concat(['team_lead']))) : cur.filter(c=>c!=='team_lead');
+  /* CAS: `p_expect_caps` = ce am citit când am deschis fereastra. Dacă altcineva a schimbat
+     capabilitățile între timp, serverul refuză cu `CAP_CONFLICT` în loc să suprascrie tăcut. */
+  const r=await sb.rpc('membership_caps_set',{ p_tenant_id:state.tenant, p_user_id:userId,
+                                               p_caps:next, p_expect_caps:cur });
+  if(r.error){ toast(planCapErr(r.error)); return false; }
+  toast(on?('👑 '+C373t('Capabilitate acordată.')):C373t('Capabilitate retrasă.')); planTeamsModal();
+  return true;
 }
 async function planDelTeam(teamId){ if(!confirm(C373t('Ștergi echipa? (planificările individuale rămân neatinse)'))) return; await softDelete('crew_teams','plantafel',teamId, function(){ planTeamsModal(); }); }
 /* ── raport săptămânal: cine, pe ce șantier, câte zile ── */
@@ -7762,8 +7895,16 @@ async function runAutomations(estId){
       let n=0; try{ const works=await buildWorksFromEstimate(estId); n=await genStages(siteId, new Date().toISOString().slice(0,10), works); }catch(_){}
       msg.push(n?('șantier + '+n+' pași de lucru'):'șantier creat'); } }
     if(au.acc_invoice){ const pct=+au.acc_invoice_pct||30; const amt=Math.round((+e.total||0)*pct/100*100)/100;
-      const inv=await sb.from('invoices').insert({tenant_id:state.tenant,client_id:e.client_id||null,site_id:siteId||null,estimate_id:estId,number:'AVANS-'+(e.number||''),status:'draft',issue_date:new Date().toISOString().slice(0,10),subtotal:amt,vat_total:0,total:amt}).select('id').single();
-      if(!inv.error){ await sb.from('invoice_items').insert({tenant_id:state.tenant,invoice_id:inv.data.id,name:'Avans '+pct+'% — ofertă '+(e.number||''),qty:1,unit:'buc',unit_price:amt,vat_rate:0,position:1}); msg.push('factură de avans '+pct+'%'); }
+      /* CDI1 (D105): factura de avans trece prin contractul canonic `save_invoice` (atomic,
+         validare fiscală, poziție din `with ordinality`), nu prin două INSERT-uri directe care
+         puteau lăsa un antet fără poziții. O eroare devine VIZIBILĂ, nu înghițită. */
+      const invDoc={ client_id:e.client_id||null, site_id:siteId||null, estimate_id:estId, number:'AVANS-'+(e.number||''), status:'draft',
+        issue_date:coToday(), groups:[], disc_mode:'none', disc_value:0, vat_mode:'none', vat_value:0, materials_mode:'detailed',
+        inv_type:'normal', subtotal:amt, vat_total:0, total:amt, price_contract_version:2, price_input_mode:'net' };
+      const invItems=[{ name:'Avans '+pct+'% — ofertă '+(e.number||''), qty:1, unit:'buc', unit_price:amt, vat_rate:0, disc:0, kind:'service' }];
+      const inv=await sb.rpc('save_invoice',{ p_document_id:null, p_tenant_id:state.tenant, p_document:invDoc, p_items:invItems, p_expected_updated_at:null, p_number_manual:true });
+      if(!inv.error){ msg.push('factură de avans '+pct+'%'); }
+      else { toast('⚠️ '+C373t('Factura de avans nu a putut fi creată')+': '+esc(inv.error.message||'')); }
     }
     if(msg.length) toast('🤖 Automat: '+msg.join(' + ')+'.');
   }catch(e){}
@@ -11636,6 +11777,7 @@ const CHILD_ERR={
   CHILD_DEPENDENCY_MISSING: 'O valoare aleasă nu mai există sau nu aparține firmei tale.',
   CHILD_INVALID_INPUT:      'Datele trimise nu sunt valide.',
   CHILD_TOO_MANY_ROWS:      'Prea multe rânduri într-o singură salvare.',
+  WRITES_FROZEN:            'Scrierile sunt suspendate temporar pentru recuperarea datelor. Citirea funcționează; încearcă mai târziu.',
   CHILD_DENIED:             'Salvarea a fost refuzată de baza de date.'
 };
 function childErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
@@ -12360,8 +12502,12 @@ async function openForm(key,row,preset){
     +'<div class="modal-foot"><button class="btn-ghost" onclick="closeModal()">'+TR('anuleaza')+'</button>'
     +'<button class="btn-primary" id="btn-save" onclick="saveRecord()">'+TR('salveaza')+'</button></div></div></div>';
   if(m.lineItems){
-    if(row){ const { data:items } = await sb.from(m.lineItems.table).select('*').eq(m.lineItems.parentKey,row.id);
-      formCtx.lines=(items||[]).map(it=>({name:it.name,qty:it.qty,unit:it.unit,unit_price:it.unit_price,vat_rate:it.vat_rate})); }
+    if(row){ const { data:items, error:lerr } = await sb.from(m.lineItems.table).select('*').eq(m.lineItems.parentKey,row.id);
+      /* CDI1 (D105): o eroare la încărcarea pozițiilor NU devine un formular gol salvabil —
+         Save-ul ar rescrie colecția cu 0 linii. Blocăm salvarea până la redeschidere. */
+      if(lerr){ formCtx._linesLoadFailed=true; showMsg('form-msg', C373t('Pozițiile nu s-au încărcat complet. Închide și redeschide formularul înainte de a salva.')); const bs=$('btn-save'); if(bs) bs.disabled=true; }
+      formCtx._linesLoaded=(items||[]).length;
+      formCtx.lines=(items||[]).map(it=>({name:it.name,qty:it.qty,unit:it.unit,unit_price:it.unit_price,vat_rate:it.vat_rate,material_id:it.material_id||null})); }
     else if(preset && preset.lines && preset.lines.length){ formCtx.lines=preset.lines.map(l=>({name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||20})); }
     if(!formCtx.lines.length) formCtx.lines=[{name:'',qty:1,unit:'buc',unit_price:0,vat_rate:20}];
     renderLines();
@@ -13741,6 +13887,10 @@ async function saveRecord(){
        greșeală. Ramura are `return` propriu — altfel ar cădea în coada de lineItems/
        rețetă/prețuri, unde n-are ce căuta. */
     if(m.table==='stock'){ await stockSaveViaContract(payload); return; }
+    /* ── CDI1 (D105): COMENZILE nu se mai scriu prin delete+insert din client ──────────
+       `material_order_set` e atomic și fail-closed (UPDATE/DELETE/INSERT verificate pe
+       server). Seam ancorat pe `m.table`, ca la stoc. Ramura are `return` propriu. */
+    if(m.table==='material_orders'){ await materialOrderSaveViaContract(payload); return; }
     if(formCtx.id && CATALOG_KIND[key]){
       // Simetric cu crearea: si MODIFICAREA trece prin contractul canonic, ca
       // pretul sa fie convertit dupa semantica declarata, nu ghicita.
@@ -13867,6 +14017,48 @@ function invErrMsg(e){
    marfă se înregistrează prin fluxul de mișcare, nu de aici.
    `min_qty` e PRAG de alertă, nu cantitate: nu produce mișcare și se scrie direct
    (garda din 0141 lasă să treacă un UPDATE care schimbă doar pragul). */
+/* ════ CDI1 (D105) — comanda de materiale se salvează prin contract ════
+   Părinte + poziții într-o singură tranzacție (`material_order_set`, 0177). Serverul
+   verifică fiecare verb (row_count), calculează totalul, aplică CAS pe `updated_at` și
+   refuză tranziția N>0 → 0 poziții fără intenție explicită (`p_allow_empty`). */
+const MO_ERR={
+  MO_CONFLICT:              'Comanda a fost modificată între timp (alt tab sau alt coleg). Închide și redeschide formularul.',
+  MO_FORBIDDEN:             'Nu ai dreptul să salvezi comenzi.',
+  MO_NOT_FOUND:             'Comanda nu mai există.',
+  MO_DELETE_BLOCKED:        'Pozițiile vechi nu au putut fi înlocuite. Comanda a rămas neschimbată — anunță administratorul.',
+  MO_UPDATE_BLOCKED:        'Antetul comenzii nu a putut fi actualizat. Comanda a rămas neschimbată.',
+  MO_INSERT_INCOMPLETE:     'Nu toate pozițiile au putut fi salvate. Comanda a rămas neschimbată.',
+  MO_EMPTY_REQUIRES_INTENT: 'Ștergerea tuturor pozițiilor cere confirmare explicită.',
+  MO_TOTALS_MISMATCH:       'Totalul nu corespunde pozițiilor. Reîncarcă pagina și încearcă din nou.',
+  MO_INVALID_REF:           'Furnizorul, șantierul sau un material ales nu aparține firmei tale.',
+  MO_INVALID_ITEMS:         'O poziție nu are denumire.',
+  MO_TOO_MANY_ROWS:         'Prea multe poziții într-o singură comandă.',
+  MO_INVALID_TENANT:        'Firma activă nu e validă. Reîncarcă pagina.',
+  MO_SAVE_FAILED:           'Datele comenzii nu sunt valide.',
+  WRITES_FROZEN:            'Scrierile sunt suspendate temporar pentru recuperarea datelor. Citirea funcționează; încearcă mai târziu.' };
+function moErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in MO_ERR){ if(m.indexOf(k)>=0) return C373t(MO_ERR[k]); }
+  return isNetErr(e)?netMsg():(m||C373t('Eroare la salvare.')); }
+async function materialOrderSaveViaContract(payload){
+  const key=formCtx.key;
+  if(formCtx._linesLoadFailed){ showMsg('form-msg', C373t('Pozițiile nu s-au încărcat complet. Închide și redeschide formularul înainte de a salva.')); $('btn-save').disabled=false; return; }
+  const items=(formCtx.lines||[]).filter(l=>l.name&&String(l.name).trim())
+    .map(l=>({ name:String(l.name).trim(), qty:+l.qty||0, unit:l.unit||'buc', unit_price:+l.unit_price||0, vat_rate:+l.vat_rate||20, material_id:l.material_id||null }));
+  let allowEmpty=false;
+  if(formCtx.id && (formCtx._linesLoaded||0)>0 && items.length===0){
+    // N>0 → 0 nu e implicit: intenția se declară AICI și se transmite serverului ca flag
+    if(!confirm(C373t('Comanda avea poziții și acum nu mai are niciuna. Ștergi toate pozițiile comenzii?'))){ $('btn-save').disabled=false; return; }
+    allowEmpty=true;
+  }
+  const doc={}; ['supplier_id','site_id','number','status','ordered_at','expected_at'].forEach(k=>{ if(k in payload) doc[k]=payload[k]; });
+  doc.total=payload.total;   // informativ: serverul îl recalculează și refuză o diferență > 0,02
+  try{
+    const r=await sb.rpc('material_order_set',{ p_order_id:formCtx.id||null, p_tenant_id:state.tenant, p_document:doc, p_items:items,
+      p_expected_updated_at:(formCtx._orig&&formCtx._orig.updated_at)||null, p_allow_empty:allowEmpty });
+    if(r.error) throw r.error;
+    fdraftClear(key); closeModal(); toast('✅ Salvat în baza de date.'); renderModule(key);
+  }catch(e){ $('btn-save').disabled=false; showMsg('form-msg', moErrMsg(e)); }
+}
 async function stockSaveViaContract(payload){
   const kind = payload.warehouse_id ? 'warehouse' : (payload.site_id ? 'site' : null);
   const loc  = payload.warehouse_id || payload.site_id || null;

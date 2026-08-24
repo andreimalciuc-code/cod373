@@ -65,6 +65,13 @@
   .fld label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:.3rem}
   .fld input,.fld select,.fld textarea{width:100%;padding:.8rem .9rem;border:1px solid var(--line);border-radius:12px;font-size:1rem;outline:none;background:var(--field);color:var(--ink)}
   .fld input:focus,.fld select:focus{border-color:var(--primary)}
+  /* ►► FIELD1-C — câmpurile din AFARA unui `.fld` (rândurile de prezență din „Echipa mea")
+     primeau doar regula-plasă de la :46: fundalul corect, dar zero padding și font 13px ⇒
+     20px înălțime, imposibil de atins cu mănuși pe șantier. `.tdf` le dă aceleași metrici ca
+     `.fld`, fără să depindă de gazdă. */
+  .tdf{padding:.7rem .6rem;border:1px solid var(--line);border-radius:12px;font-size:1rem;
+       outline:none;background:var(--field);color:var(--ink);min-height:44px}
+  .tdf:focus{border-color:var(--primary)}
   .btn{width:100%;background:var(--primary);color:#fff;border:none;padding:.95rem;border-radius:12px;font-weight:700;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.4rem}
   .btn:active{transform:scale(.99)}.btn:disabled{opacity:.6}
   /* ── Reacție rapidă: anti-întârziere tap pe mobil + feedback instant ── */
@@ -227,6 +234,7 @@ async function mRoster(force){
   catch(e){ S._roster=[]; }
   return S._roster;
 }
+function mTeamWipe(){ S._td=null; S._tdEdit={}; S._tdTeam=null; S._tdDate=null; }
 function mRosterWipe(){ S._roster=null; }
 /* ►► Chei locale legate de IDENTITATE (telefon partajat): namespaced pe utilizator+firmă.
    `c373_install_dismiss` și `c373_mv_mode` rămân globale DELIBERAT — sunt preferințe de
@@ -268,6 +276,37 @@ function depPct(acqDate,life){ if(!acqDate) return 0; const L=+life||0; if(!(L>0
 function toast(m){const t=$('toast');t.innerHTML=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),3500);}
 function lmsg(t,k='err'){$('lmsg').innerHTML=t?'<div class="msg '+k+'">'+esc(t)+'</div>':'';}
 function today(){return new Date().toISOString().slice(0,10);}
+/* ►► FIELD1-C / D-2 — aritmetică pe ZIUA CIVILĂ, independentă de fusul aparatului.
+   `new Date('2026-08-20T00:00:00')` construiește miezul nopții LOCAL, iar `toISOString()` se
+   întoarce în UTC: la est de Greenwich se pierde o zi. Măsurat pe 2026-08-20 — „ziua următoare"
+   ieșea 2026-08-20 (aceeași) și „ziua precedentă" 2026-08-18 (două în urmă) la Chișinău,
+   București ȘI Berlin, adică pe toată piața. Sub UTC ieșea corect, de aceea o măsurătoare pe un
+   laptop la Greenwich ar fi dat verde.
+   Aici nu există niciun moment de timp: `Date.UTC` e folosit ca un simplu calendar gregorian,
+   deci nu poate exista nici deriva de fus, nici saltul de la ora de vară — o zi civilă are
+   întotdeauna exact o zi civilă înainte și una după, chiar dacă are 23 sau 25 de ore.
+   Ziua FIRMEI vine de la server (`app.tz_local_date`) sau din `mToday()`; funcția asta doar
+   se plimbă pe calendar de la ea. */
+function mDayAdd(iso, n){
+  const p=String(iso||'').slice(0,10).split('-');
+  if(p.length!==3) return '';
+  const y=+p[0], m=+p[1], d=+p[2];
+  if(!(y>0&&m>=1&&m<=12&&d>=1&&d<=31)) return '';
+  const t=new Date(Date.UTC(y, m-1, d));
+  t.setUTCDate(t.getUTCDate()+(+n||0));
+  return t.toISOString().slice(0,10);
+}
+/* Afișarea unei zile CIVILE. `fmtDT` e pentru momente de timp și le mută în fusul firmei; o zi
+   civilă e deja în fusul firmei, deci o a doua conversie ar deplasa-o. `timeZone:'UTC'` aici nu
+   înseamnă „arată în UTC", ci „nu reinterpreta componentele" — ele sunt deja cele corecte. */
+function mFmtDay(iso){
+  const s=String(iso||'').slice(0,10); const p=s.split('-'); if(p.length!==3) return s;
+  try{
+    return new Intl.DateTimeFormat((window.C373lang&&C373lang())||'ro', {timeZone:'UTC',
+      weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'})
+      .format(new Date(Date.UTC(+p[0], +p[1]-1, +p[2])));
+  }catch(e){ return p[2]+'.'+p[1]+'.'+p[0]; }
+}
 async function nameMap(table,col){ const {data}=await sb.from(table).select('id,'+col); const m={}; (data||[]).forEach(r=>m[r.id]=r[col]); return m; }
 function pillSite(s){const m={planned:['Planificat','blue'],active:['Activ','green'],paused:['Pauză','amber'],done:['Gata','grey'],cancelled:['Anulat','grey']}[s]||['—','grey'];return '<span class="pill '+m[1]+'">'+m[0]+'</span>';}
 
@@ -283,7 +322,7 @@ async function doLogin(){
 }
 /* La delogare schița de lot se șterge ÎNAINTE de `signOut`: pe un telefon de șantier folosit
    de doi oameni, al doilea nu trebuie să găsească lotul scanat de primul (SCAN1-B.1). */
-async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}try{mRosterWipe();}catch(e){}try{mNotifLiveStop();}catch(e){}
+async function doLogout(){const m='Sigur vrei să ieși din cont?';if(!confirm(window.C373t?C373t(m):m))return;try{mvbWipeAll();}catch(e){}try{mRosterWipe();}catch(e){}try{mTeamWipe();}catch(e){}try{mNotifLiveStop();}catch(e){}
   /* istoricul nu supraviețuiește schimbării de utilizator: intrările rămase ar purta ecranul
      și contextul (șantier, săptămână) ale contului anterior. */
   try{ history.replaceState(null,'',location.pathname); }catch(e){}
@@ -558,6 +597,12 @@ async function scrAccesInactiv(){
 }
 function mNav(){
   const base=(NAV[S.role]||NAV.worker).slice();
+  /* ►► FIELD1-C — „Echipa mea" se derivă din FAPTE (capabilitatea `team_lead` + cel puțin o
+     echipă în care e `lead_employee_id`), nu din rol și nu din persona. Un maistru e de obicei
+     `worker` în membership; un manager care chiar conduce o echipă o vede la fel. Fără cap sau
+     fără echipă, `my_team_day` ar întoarce `team_id: null` ⇒ intrarea ar fi moartă. */
+  if(mIsLead() && !base.find(n=>n[0]==='echipa')
+     && ['client','subcontractor'].indexOf(S.role)<0) base.splice(1,0,['echipa','👷','Echipa']);
   /* `accountant` iese din regula asta: custodia unui vehicul nu face din contabil un om al
      depozitului, iar intrarea în plus i-ar dilua persona exact în bara care trebuie s-o
      exprime. Vehiculul lui rămâne vizibil pe Acasă, prin „Vehiculul meu" (D62). */
@@ -581,7 +626,7 @@ function render(){
   const OUTSIDE=['taskuri','scan','chat'];
   if(!nav.find(n=>n[0]===S.view) && OUTSIDE.indexOf(S.view)<0) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs}[S.view];
+  const fn={acasa:scrAcasa,echipa:scrEchipa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
   const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
@@ -1085,7 +1130,8 @@ function mHomeActions(){
     return a.join(' ');
   }
   if(S.role==='worker'){
-    a.push(B('pr',"goV('pontaj')",'⏱️','Pontaj'));
+    if(mIsLead()) a.push(B('pr',"goV('echipa')",'👷','Echipa mea'));
+    a.push(B(mIsLead()?'go':'pr',"goV('pontaj')",'⏱️','Pontaj'));
     a.push(B('go',"goV('comanda')",'🛒','Comandă'));
     a.push(B('gh',"goV('poze')",'📷','Poză'));
     a.push(B('gh',"goV('scan')",'📷','Scanează / Mută'));
@@ -1094,7 +1140,8 @@ function mHomeActions(){
     return a.join(' ');
   }
   /* conducere (owner/admin/manager, sau contabil aflat în vederea de responsabil) */
-  a.push(B('pr',"goV('program')",'📋','Program'));
+  if(mIsLead()) a.push(B('pr',"goV('echipa')",'👷','Echipa mea'));
+  a.push(B(mIsLead()?'go':'pr',"goV('program')",'📋','Program'));
   a.push(B('go',"goV('santiere')",'🏗️','Șantiere'));
   a.push(B('gh',"scrTaskuri()",'✅','Taskuri'));
   a.push(B('gh',"goV('poze')",'📷','Poze'));
@@ -1459,16 +1506,48 @@ async function openStageMobile(stageId){
      +'</div>');
   const sh=document.querySelector('.sheet'); if(sh){ sh.innerHTML='<h3>'+esc(st.name||'Pas de lucru')+'<button class="x" onclick="closeSheet()">×</button></h3>'+body; }
 }
-async function setStageStatus(stageId,status){
+/* ►► KB#112 / D100 — Aici era „butonul care minte" (clasa KB#96).
+   Vechiul cod făcea `sb.from('site_stages').update(...)`, iar `site_stages` are scriere
+   `{owner,admin,manager}` (0019:75) plus `sub_upd` pentru subcontractant (0025:46). Pentru un
+   `worker` sau `driver` UPDATE-ul atingea ZERO rânduri și NU întorcea eroare: garda `if(error)`
+   nu se declanșa niciodată, randarea optimistă rămânea pe ecran, iar toast-ul anunța
+   „✅ Pas finalizat." peste o scriere care nu se întâmplase. Omul pleca de pe șantier convins
+   că a raportat.
+
+   Acum trece prin `site_stage_progress_set` (0174): serverul spune DA sau NU, iar NU-ul se vede.
+   Randarea optimistă rămâne — dar se retrage la refuz, fiindcă acum există un refuz. */
+const STAGE_MSG={
+  STAGE_FORBIDDEN:'⛔ Poți schimba doar etapele de pe șantierul unde echipa ta e planificată azi.',
+  STAGE_NOT_FOUND:'Etapa nu mai există.',
+  STAGE_CONFLICT:'⚠️ Etapa a fost schimbată între timp. Reîncarcă și încearcă din nou.',
+  STAGE_INVALID_STATUS:'Stare invalidă pentru o etapă.',
+  STAGE_INVALID_INPUT:'Valoare invalidă.'
+};
+function mStageMsg(e){ const m=((e&&(e.message||e))||'').toString();
+  if(!navigator.onLine||/load failed|failed to fetch|networkerror|network error|timeout|aborted/i.test(m))
+    return mt('📴 Fără internet. Reconectează-te și încearcă din nou.');
+  const c=Object.keys(STAGE_MSG).find(k=>m.indexOf(k)>=0);
+  return c?mt(STAGE_MSG[c]):('Eroare: '+((e&&e.message)||e)); }
+async function setStageStatus(stageId,status,progress){
   const st=(S.curStages||[]).find(x=>x.id===stageId);
   const prev=st?{status:st.status,progress:st.progress}:null;
-  // optimist: actualizez pe loc + randez instant, salvez în fundal, revin dacă eșuează
-  if(st){ st.status=status; if(status==='done') st.progress=100; }
+  // optimist: actualizez pe loc + randez instant, salvez în fundal, revin dacă serverul refuză
+  if(st){ if(status) st.status=status; if(status==='done') st.progress=100;
+          else if(progress!=null) st.progress=progress; }
   openStageMobile(stageId);
-  toast(status==='done'?'✅ Pas finalizat.':'▶️ Pas pornit.');
-  const patch={status}; if(status==='done') patch.progress=100;
-  const {error}=await sb.from('site_stages').update(patch).eq('id',stageId);
-  if(error){ if(st&&prev){ st.status=prev.status; st.progress=prev.progress; } toast('Eroare: '+esc(error.message)); openStageMobile(stageId); }
+  const r=await sb.rpc('site_stage_progress_set',{
+    p_tenant_id:S.tenant, p_stage_id:stageId,
+    p_status:status||null, p_progress:(status==='done'?100:(progress!=null?progress:null)),
+    /* CAS pe VALOAREA observată (D100): `site_stages` n-are `updated_at` */
+    p_expect_status:(prev?prev.status:null), p_expect_progress:(prev?prev.progress:null) });
+  if(r.error){
+    if(st&&prev){ st.status=prev.status; st.progress=prev.progress; }
+    toast(mStageMsg(r.error)); openStageMobile(stageId); return;
+  }
+  const d=r.data||{};
+  if(st){ st.status=d.status||st.status; st.progress=(d.progress!=null?d.progress:st.progress); }
+  toast(d.status==='done'?mt('✅ Pas finalizat.'):(status?mt('▶️ Pas pornit.'):mt('✅ Progres salvat.')));
+  openStageMobile(stageId);
 }
 /* poză de progres la un pas de lucru → ajunge la birou (documente pe șantier), legată de pasul respectiv */
 async function stagePhotoUpload(stageId, inp){
@@ -1614,6 +1693,234 @@ async function savePontaj(){
   $('p-save').disabled=false;
   if(r.error){$('smsg').innerHTML='<div class="msg err">'+esc(mtsCode(r.error)==='TS_CONFLICT'?mt('Există deja pontaj în această zi pentru angajat. Corectează-l de la birou.'):mtsMsg(r.error))+'</div>';return;}
   closeSheet();toast('✅ Pontaj salvat.');scrPontaj();
+}
+
+
+/* ════ FIELD1-C — „ECHIPA MEA": ziua maistrului, într-un singur ecran ════════════
+   Regula de produs: nu cerem de două ori ce sistemul știe. Ziua, echipa, oamenii,
+   ȘANTIERUL și starea prezenței vin dintr-un SINGUR apel (`my_team_day`, 0174) —
+   maistrul completează doar EXCEPȚIILE.
+
+   De ce un contract și nu `select`-uri: `timesheets.p_sel` (0173) nu-i dă rândurile
+   colegilor, iar `employees` e OFFICE-only. Trei din cinci interogări ar fi întors
+   zero rânduri TĂCUT, adică un ecran gol care arată exact ca „echipă fără treabă".
+   Faptul se dă întreg, nu tabela (D61). */
+const CA_MSG={
+  CA_FORBIDDEN:'⛔ Nu conduci această echipă.',
+  CA_TEAM_NOT_FOUND:'Echipa nu există în firma ta.',
+  CA_DATE_OUT_OF_RANGE:'📅 Poți înregistra prezența doar pentru ultimele 7 zile, nu în viitor.',
+  CA_NOT_IN_TEAM:'⛔ Angajatul nu e în echipa ta.',
+  CA_SITE_OUT_OF_SCOPE:'⛔ Echipa nu e planificată pe acest șantier în ziua aceasta.',
+  CA_INVALID_SITE:'Șantierul nu aparține firmei.',
+  CA_INVALID_EMPLOYEE:'Angajatul nu aparține firmei.',
+  CA_APPROVED:'🔒 Ziua e aprobată de birou — nu mai poate fi schimbată.',
+  CA_CONFLICT:'⚠️ Ziua a fost schimbată între timp. Reîncarcă „Echipa mea".',
+  CA_AMBIGUOUS:'⚠️ Există mai multe pontaje în ziua asta. Anunță biroul.',
+  CA_DELETE_FORBIDDEN:'⛔ Ștergerea unui pontaj o face biroul. Pune 0 ore sau o absență.',
+  CA_INVALID_INPUT:'Valoare invalidă. Verifică orele.',
+  CA_TOO_MANY:'Prea multe rânduri deodată.',
+  TEAM_FORBIDDEN:'⛔ Nu ai acces la echipe în această firmă.',
+  TEAM_DATE_OUT_OF_RANGE:'📅 Poți vedea doar ultimele 7 zile.',
+  TEAM_NOT_FOUND:'Echipa nu există.',
+  DLOG_FORBIDDEN:'⛔ Poți scrie raportul doar pentru un șantier unde echipa ta e planificată.',
+  DLOG_INVALID_SITE:'Șantierul nu aparține firmei.',
+  DLOG_INVALID_INPUT:'Valoare invalidă în raport.'
+};
+function mCaMsg(e){ const m=((e&&(e.message||e))||'').toString();
+  if(!navigator.onLine||/load failed|failed to fetch|networkerror|network error|timeout|aborted/i.test(m))
+    return mt('📴 Fără internet. Reconectează-te și încearcă din nou.');
+  const c=Object.keys(CA_MSG).find(k=>m.indexOf(k)>=0);
+  return c?mt(CA_MSG[c]):('Eroare: '+((e&&e.message)||e)); }
+
+function mIsLead(){ const c=mCtx(); return (c.caps&&c.caps.indexOf('team_lead')>=0)
+  && (((c.leads_teams)||[]).length>0); }
+function mTeamDayShift(n){ const T=S._td; if(!T) return;
+  const iso=mDayAdd(T.date, n); if(!iso) return;
+  /* `T.window` vine întotdeauna din contract, dar garda nu depinde de asta: fără `T.window &&`,
+     o singură zi în care serverul n-ar trimite fereastra ar arunca `TypeError` peste un buton. */
+  if(!T.is_mgmt && T.window && (iso>T.window.to || iso<T.window.from)){ toast(mt(CA_MSG.TEAM_DATE_OUT_OF_RANGE)); return; }
+  S._tdDate=iso; S._tdEdit={}; scrEchipa(); }
+
+async function scrEchipa(){
+  $('screen').innerHTML='<div class="scr-title">👷 '+esc(mt('Echipa mea'))+'</div><div id="td"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  const r=await sb.rpc('my_team_day',{ p_tenant_id:S.tenant, p_team_id:S._tdTeam||null, p_date:S._tdDate||null });
+  if(r.error){ $('td').innerHTML='<div class="empty"><div class="ei">👷</div>'+esc(mCaMsg(r.error))+'</div>'; return; }
+  S._td=r.data||{}; S._tdEdit=S._tdEdit||{};
+  if(!S._td.team_id){ $('td').innerHTML='<div class="empty"><div class="ei">👷</div>'
+    +esc(mt('Nu conduci nicio echipă. Biroul te poate desemna șef de echipă din Planificare echipe.'))+'</div>'; return; }
+  renderEchipa();
+}
+function renderEchipa(){
+  const T=S._td, el=$('td'); if(!T||!el) return;
+  const E=S._tdEdit||{};
+  const teams=T.teams||[], members=T.members||[], sites=T.sites||[];
+  const siteName=id=>{ const s=sites.find(x=>x.id===id); return s?s.name:''; };
+  const pick = teams.length>1
+    ? '<div class="fld" style="margin-bottom:.5rem"><label>'+esc(mt('Echipa'))+'</label><select onchange="S._tdTeam=this.value;S._tdEdit={};scrEchipa()">'
+      +teams.map(t=>'<option value="'+t.id+'"'+(t.id===T.team_id?' selected':'')+'>'+esc(t.name)+' ('+t.members+')</option>').join('')+'</select></div>'
+    : '<div class="s" style="margin-bottom:.4rem">👥 '+esc((teams[0]&&teams[0].name)||'')+'</div>';
+  const isToday=T.date===T.today;
+  const nav='<div class="row" style="gap:.5rem;align-items:center;margin:.2rem 0 .6rem">'
+    +'<button class="mini-btn gh" onclick="mTeamDayShift(-1)">‹</button>'
+    +'<div class="grow" style="text-align:center"><b>'+esc(mFmtDay(T.date))+'</b>'
+      +(isToday?' <span class="pill blue">'+esc(mt('Azi'))+'</span>':'')+'</div>'
+    +'<button class="mini-btn gh" onclick="mTeamDayShift(1)"'+(isToday&&!T.is_mgmt?' disabled style="opacity:.4"':'')+'>›</button></div>';
+  const siteLine = sites.length
+    ? '<div class="card" style="background:var(--blue-soft);border-color:var(--primary);margin:0 0 .6rem"><div class="t">🏗️ '
+      +sites.map(s=>esc(s.name)).join(' · ')+'</div><div class="s">'+esc(mt('Șantierul echipei în ziua asta, din planificare'))+'</div></div>'
+    : '<div class="card" style="margin:0 0 .6rem"><div class="t">'+esc(mt('Echipa nu e planificată azi pe niciun șantier.'))+'</div>'
+      +'<div class="s">'+esc(mt('Poți înregistra doar absențe. Șantierul îl pune biroul în Planificare echipe.'))+'</div></div>';
+
+  const val=(m,k)=>{ const e=E[m.employee_id]; if(e&&e[k]!==undefined) return e[k];
+    if(k==='hours')   return m.ts?(m.ts.hours||0):'';
+    if(k==='absence') return m.ts?(m.ts.absence||''):'';
+    return ''; };
+  const ABS=[['','—'],['concediu','Concediu'],['boala','Boală'],['liber','Liber'],['absent','Absent']];
+  const rows=members.map(m=>{
+    const locked=m.ts&&m.ts.approved;
+    const amb=m.ts_ambiguous;
+    const h=val(m,'hours'), a=val(m,'absence');
+    const dirty=!!E[m.employee_id];
+    return '<div class="card" style="margin:0 0 .5rem'+(dirty?';border-color:var(--primary)':'')+'">'
+      +'<div class="row"><div class="grow"><div class="t">'+esc(m.name||'—')+(m.is_lead?' <span class="pill grey">'+esc(mt('tu'))+'</span>':'')+'</div>'
+      +'<div class="s">'+(m.planned_site_id?('🏗️ '+esc(siteName(m.planned_site_id)||'—')):esc(mt('neplanificat')))
+        +(m.planned_slot&&m.planned_slot!=='full'?(' · '+esc(m.planned_slot)):'')+'</div></div>'
+      +(locked?'<span class="pill green">🔒 '+esc(mt('Aprobat'))+'</span>':'')+'</div>'
+      +(amb?'<div class="s" style="color:var(--amber-ink,#92400e)">⚠️ '+esc(mt('Mai multe pontaje în ziua asta — corectează de la birou.'))+'</div>':'')
+      +(locked||amb?'':'<div class="row" style="gap:.5rem;margin-top:.5rem;align-items:center">'
+        +'<input class="tdf" type="number" inputmode="decimal" min="0" max="24" step="0.5" placeholder="0" value="'+esc(String(h))+'" '
+          +'style="width:5.4rem;text-align:center" onchange="mTdSet(\''+m.employee_id+'\',\'hours\',this.value)"/>'
+        +'<span class="s">'+esc(mt('ore'))+'</span>'
+        +'<select class="grow tdf" onchange="mTdSet(\''+m.employee_id+'\',\'absence\',this.value)">'
+          +ABS.map(o=>'<option value="'+o[0]+'"'+(String(a)===o[0]?' selected':'')+'>'+esc(mt(o[1]))+'</option>').join('')
+        +'</select></div>')
+      +'</div>';
+  }).join('');
+
+  const nDirty=Object.keys(E).length;
+  const canWrite=T.can_write===true;
+  const bulk = canWrite
+    ? '<div class="row" style="gap:.5rem;margin:0 0 .6rem">'
+      +'<button class="mini-btn pr grow" onclick="mTdAll(8)">👍 '+esc(mt('Toți 8 ore'))+'</button>'
+      +'<button class="mini-btn gh" onclick="mTdAll(0)">'+esc(mt('Golește'))+'</button></div>'
+    : '<div class="s" style="margin-bottom:.5rem">'+esc(mt('Poți doar vedea ziua asta.'))+'</div>';
+
+  const stages=(T.stages||[]);
+  const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
+  const stLbl={plan:'Planificat',active:'În lucru',done:'Gata',delayed:'Întârziat'};
+  const stagesHtml = stages.length
+    ? stages.map(st=>'<div class="card" style="margin:0 0 .45rem"><div class="row"><div class="grow"><div class="t">'+esc(st.name)+'</div>'
+        +'<div class="s">'+esc(siteName(st.site_id)||'')+' · '+(st.progress||0)+'%</div></div>'
+        +'<span class="pill '+(stCol[st.status]||'grey')+'">'+esc(mt(stLbl[st.status]||st.status||'—'))+'</span></div>'
+        +(canWrite?'<div class="row" style="gap:.4rem;margin-top:.45rem">'
+          +(st.status!=='active'?'<button class="mini-btn go grow" onclick="mTdStage(\''+st.id+'\',\'active\',null)">▶️ '+esc(mt('Începe'))+'</button>':'')
+          +'<button class="mini-btn gh grow" onclick="mTdProgress(\''+st.id+'\')">📈 '+esc(mt('Progres'))+'</button>'
+          +'<button class="mini-btn pr grow" onclick="mTdStage(\''+st.id+'\',\'done\',100)">✅ '+esc(mt('Gata'))+'</button>'
+        +'</div>':'')+'</div>').join('')
+    : '<div class="s">'+esc(mt('Nicio etapă deschisă pe șantierele zilei.'))+'</div>';
+
+  const tasks=(T.tasks||[]);
+  const tasksHtml = tasks.length
+    ? tasks.slice(0,6).map(t=>'<div class="card" style="margin:0 0 .4rem;cursor:pointer" onclick="mTaskSheet(\''+t.id+'\')"><div class="row"><div class="grow">'
+        +'<div class="t">'+esc(t.title)+'</div><div class="s">'+esc(t.assignee_name||'')+(t.due_date?(' · '+esc(t.due_date)):'')+'</div></div>'
+        +mStPill(t.status)+'</div></div>').join('')
+      +(tasks.length>6?'<button class="mini-btn gh" onclick="scrTaskuri()">'+esc(mt('Vezi toate'))+' ('+tasks.length+') ›</button>':'')
+    : '<div class="s">'+esc(mt('Nicio sarcină deschisă.'))+'</div>';
+
+  const rep=(T.reports||[]).find(x=>x.mine)||null;
+  const mainSite=(sites[0]||{}).id||'';
+
+  el.innerHTML = pick+nav+siteLine+bulk+rows
+    +(canWrite?'<button class="btn" id="td-save"'+(nDirty?'':' disabled style="opacity:.5"')+' onclick="mTdSave()">💾 '
+        +esc(mt('Salvează prezența'))+(nDirty?(' ('+nDirty+')'):'')+'</button>':'')
+    +'<div class="scr-title" style="font-size:.95rem;margin-top:1.1rem">🧱 '+esc(mt('Etape'))+'</div>'+stagesHtml
+    +'<div class="scr-title" style="font-size:.95rem;margin-top:1rem">✅ '+esc(mt('Sarcini'))+'</div>'+tasksHtml
+    +'<div class="scr-title" style="font-size:.95rem;margin-top:1rem">📓 '+esc(mt('Raport zilnic'))+'</div>'
+    +(mainSite
+       ? '<button class="btn '+(rep?'btn-line':'btn-soft')+'" onclick="mTdReport()">'+(rep?'✏️ '+esc(mt('Editează raportul zilei')):'📓 '+esc(mt('Scrie raportul zilei')))+'</button>'
+       : '<div class="s">'+esc(mt('Fără șantier planificat nu există raport de scris.'))+'</div>')
+    +'<div class="row" style="gap:.5rem;margin-top:1rem;flex-wrap:wrap">'
+      +(mainSite?'<button class="mini-btn gh" onclick="S.psite=\''+mainSite+'\';goV(\'poze\')">📷 '+esc(mt('Poză'))+'</button>':'')
+      +(mainSite?'<button class="mini-btn gh" onclick="S.dsite=\''+mainSite+'\';goV(\'defecte\');setTimeout(sheetDefect,200)">🔧 '+esc(mt('Problemă'))+'</button>':'')
+      +(mainSite?'<button class="mini-btn gh" onclick="S.psite=\''+mainSite+'\';goV(\'comanda\')">🛒 '+esc(mt('Comandă'))+'</button>':'')
+      +'<button class="mini-btn gh" onclick="goV(\'scan\')">📦 '+esc(mt('Scanează / Mută'))+'</button>'
+    +'</div>';
+}
+function mTdSet(emp,k,v){ const T=S._td; const m=(T.members||[]).find(x=>x.employee_id===emp); if(!m) return;
+  S._tdEdit=S._tdEdit||{}; const e=S._tdEdit[emp]||(S._tdEdit[emp]={});
+  e[k]=v;
+  /* Șantierul NU se cere: vine din planul zilei, altfel din singurul șantier al echipei. */
+  if(e.site_id===undefined) e.site_id=m.planned_site_id||((T.sites||[])[0]||{}).id||null;
+  const btn=$('td-save'); if(btn){ btn.disabled=false; btn.style.opacity='';
+    btn.textContent='💾 '+mt('Salvează prezența')+' ('+Object.keys(S._tdEdit).length+')'; }
+}
+function mTdAll(h){ const T=S._td; S._tdEdit=S._tdEdit||{};
+  (T.members||[]).forEach(m=>{ if(m.ts&&m.ts.approved) return; if(m.ts_ambiguous) return;
+    const e=S._tdEdit[m.employee_id]||(S._tdEdit[m.employee_id]={});
+    e.hours=String(h); if(h>0) e.absence='';
+    e.site_id=m.planned_site_id||((T.sites||[])[0]||{}).id||null; });
+  renderEchipa(); }
+async function mTdSave(){
+  const T=S._td, E=S._tdEdit||{}; const ids=Object.keys(E); if(!ids.length) return;
+  const btn=$('td-save'); if(btn) btn.disabled=true;
+  const entries=ids.map(id=>{ const m=(T.members||[]).find(x=>x.employee_id===id)||{};
+    const e=E[id]; const o={ employee_id:id };
+    if(e.hours!==undefined)   o.hours=String(e.hours||0);
+    if(e.absence!==undefined) o.absence=e.absence||'';
+    if(e.site_id!==undefined) o.site_id=e.site_id||null;
+    /* CAS: `my_team_day` ne-a dat `updated_at`, deci nu suprascriem tăcut munca altcuiva */
+    o.expected_updated_at=(m.ts&&m.ts.updated_at)||null;
+    return o; });
+  const r=await sb.rpc('crew_attendance_set',{ p_tenant_id:S.tenant, p_team_id:T.team_id,
+                                               p_work_date:T.date, p_entries:entries });
+  if(btn) btn.disabled=false;
+  if(r.error){ toast(mCaMsg(r.error)); return; }
+  const d=r.data||{};
+  toast('✅ '+mt('Prezență salvată')+': '+((d.created||0)+(d.updated||0))+' '+mt('rânduri'));
+  S._tdEdit={}; scrEchipa();
+}
+async function mTdStage(stageId,status,progress){
+  const st=(S._td.stages||[]).find(x=>x.id===stageId);
+  const r=await sb.rpc('site_stage_progress_set',{ p_tenant_id:S.tenant, p_stage_id:stageId,
+    p_status:status||null, p_progress:(progress!=null?progress:null),
+    p_expect_status:(st?st.status:null), p_expect_progress:(st?st.progress:null) });
+  if(r.error){ toast(mStageMsg(r.error)); return; }
+  toast(status==='done'?mt('✅ Etapă finalizată.'):mt('▶️ Etapă pornită.'));
+  scrEchipa();
+}
+function mTdProgress(stageId){
+  const st=(S._td.stages||[]).find(x=>x.id===stageId); if(!st) return;
+  openSheet(mt('Progres')+' — '+esc(st.name),
+     '<div class="fld"><label>'+esc(mt('Cât e gata, în procente'))+'</label>'
+    +'<input id="tdp" type="number" inputmode="numeric" min="0" max="100" step="5" value="'+(st.progress||0)+'"/></div>'
+    +'<button class="btn" onclick="mTdProgressSave(\''+stageId+'\')">'+esc(mt('Salvează'))+'</button>');
+}
+async function mTdProgressSave(stageId){
+  const v=Math.max(0,Math.min(100,parseInt(($('tdp')&&$('tdp').value)||'0',10)||0));
+  closeSheet(); await mTdStage(stageId, null, v);
+}
+function mTdReport(){
+  const T=S._td; const site=((T.sites||[])[0]||{}).id; if(!site) return;
+  const rep=(T.reports||[]).find(x=>x.mine)||{};
+  /* Prefill din ce sistemul ȘTIE deja: numărul de oameni prezenți se numără, nu se întreabă. */
+  const present=(T.members||[]).filter(m=>m.ts&&(+m.ts.hours>0)).length;
+  openSheet('📓 '+mt('Raport zilnic')+' — '+esc(mFmtDay(T.date)),
+     '<div id="tdr-msg"></div>'
+    +'<div class="s" style="margin-bottom:.5rem">🏗️ '+esc(((T.sites||[])[0]||{}).name||'')+' · '+esc(mFmtDay(T.date))+'</div>'
+    +'<div class="fld"><label>'+esc(mt('Vreme'))+'</label><input id="tdr-w" value="'+esc(rep.weather||'')+'" placeholder="'+esc(mt('însorit, ploaie, -2°C…'))+'"/></div>'
+    +'<div class="fld"><label>'+esc(mt('Lucrători prezenți'))+'</label><input id="tdr-c" type="number" inputmode="numeric" value="'+(rep.crew_count!=null?rep.crew_count:present)+'"/></div>'
+    +'<div class="fld"><label>'+esc(mt('Lucrări efectuate'))+'</label><textarea id="tdr-t" style="width:100%;min-height:80px;padding:.7rem;border:1px solid var(--line);border-radius:12px">'+esc(rep.work_done||'')+'</textarea></div>'
+    +'<button class="btn" id="tdr-save" onclick="mTdReportSave()">'+esc(mt('Salvează raportul'))+'</button>');
+}
+async function mTdReportSave(){
+  const T=S._td; const site=((T.sites||[])[0]||{}).id; if(!site) return;
+  const b=$('tdr-save'); if(b) b.disabled=true;
+  const r=await sb.rpc('field_daily_report_save',{ p_tenant_id:S.tenant, p_site_id:site, p_log_date:T.date,
+    p_payload:{ weather:($('tdr-w')&&$('tdr-w').value)||'', crew_count:($('tdr-c')&&$('tdr-c').value)||null,
+                work_done:($('tdr-t')&&$('tdr-t').value)||'' } });
+  if(b) b.disabled=false;
+  if(r.error){ $('tdr-msg').innerHTML='<div class="msg err">'+esc(mCaMsg(r.error))+'</div>'; return; }
+  closeSheet(); toast('✅ '+mt('Raport zilnic salvat.')); scrEchipa();
 }
 
 /* LIVRARI (sofer) */

@@ -179,7 +179,7 @@ async function boot(){
   if(!S.canEdit){ $('root').innerHTML='<div class="center">🔒 Doar proprietar/administrator/manager/contabil pot emite facturi.</div>'; return; }
   await loadCatalog();
   const id=param('id');
-  if(id){ await loadInvoice(id); }
+  if(id){ const _b=$('btn-save'); if(_b) _b.disabled=true; await loadInvoice(id); }
   else { S.inv.number=await genNumber(); S._autoNum=S.inv.number; if(param('client')) S.inv.client_id=param('client'); S.lines=[blankLine()];
     const d=new Date(); d.setDate(d.getDate()+14); S.inv.due_date=d.toISOString().slice(0,10);
     S.inv.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.inv.vat_mode=(S.firm.vat_rate?'line':'none');
@@ -222,27 +222,30 @@ async function loadCatalog(){
 }
 async function loadInvoice(id){
   const e=await sb.from('invoices').select('*').eq('id',id).single();
-  if(e.error){ toast('Eroare: '+e.error.message); return; }
+  if(e.error){ docLoadFailed('Factura nu a putut fi citită.', e.error.message); return; }
   S.id=id; S._updatedAt=e.data.updated_at; setTimeout(refreshSnap,0); S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
     disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:e.data.bank_choice||'', amount_paid:(e.data.amount_paid!=null?+e.data.amount_paid:null), plan_url:e.data.plan_url||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   if(S.inv.inv_type!=='normal') loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
+  if(it.error){ docLoadFailed('Pozițiile facturii nu au putut fi citite.', it.error.message); return; }
   const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
-  // Auto-curățare: elimină liniile EXACT identice (corupere veche dintr-o regulă RLS care bloca ștergerea la salvarea făcută de manager/contabil → liniile se dublau).
-  const _seen=new Set(); const _before=mapped.length;
-  S.lines=mapped.filter(l=>{ const k=[l.name,l.qty,l.unit,l.unit_price,l.vat_rate,l.disc,l.group,l.description||'',l.photo_url||''].join('¦'); if(_seen.has(k)) return false; _seen.add(k); return true; });
-  const _removed=_before-S.lines.length;
+  /* CDI1: fără „auto-curățare" pe amprentă — două linii legitime pot fi identice (KB#114);
+     dedup-ul de client transforma deschiderea într-o editare distructivă. Coruperea se
+     detectează STRUCTURAL (poziții duplicate) și blochează Save-ul, nu șterge linii. */
+  S.lines=mapped;
   reorderLinesBySection();
   if(!S.lines.length) S.lines=[blankLine()];
-  if(_removed>0) setTimeout(function(){ toast('⚠️ Am eliminat '+_removed+' linii dublate (eroare mai veche). Verifică totalul și apasă „Salvează" ca să se corecteze definitiv.'); },500);
+  if(!docLoadTripwire(it.data, e.data)) return;
+  S._loaded=true; const _b=$('btn-save'); if(_b) _b.disabled=false;
 }
 async function fromEstimate(eid){
   const e=await sb.from('estimates').select('client_id,title,disc_mode,disc_value,vat_mode,vat_value,groups,materials_mode,skonto_off,skonto_pct').eq('id',eid).single();
   if(e.data&&e.data.client_id) S.inv.client_id=e.data.client_id;
   if(e.data){ S.inv.title=e.data.title||''; S.inv.disc_mode=e.data.disc_mode||'none'; S.inv.disc_value=+e.data.disc_value||0; S.inv.vat_mode=e.data.vat_mode||S.inv.vat_mode; S.inv.vat_value=+e.data.vat_value||S.inv.vat_value; S.inv.materials_mode=e.data.materials_mode||'detailed'; S.inv.skonto_off=!!e.data.skonto_off; S.inv.skonto_pct=(e.data.skonto_pct!=null?+e.data.skonto_pct:null); S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[]; }
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',eid);
+  if(it.error){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Pozițiile ofertei nu au putut fi citite. Reîncarcă pagina înainte de a continua.')); S._needsReload=true; const _b=$('btn-save'); if(_b) _b.disabled=true; return; }
   const items=(it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
   if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
   reorderLinesBySection();
@@ -568,6 +571,34 @@ function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase()
    NU repetăm operația financiară și NU raportăm eșec. Invalidăm tokenul de concurență: 0117
    tratează `p_expected_updated_at is null` ca DOC_CONFLICT, deci salvarea e refuzată de SERVER,
    nu doar de interfață. În plus dezactivăm „Salvează" și oferim o reîncărcare controlată. */
+/* ════ CDI1 (D105) — contractul `loaded-complete` + tripwire la deschidere ════
+   Un document existent se poate salva DOAR după ce antetul ȘI pozițiile s-au încărcat
+   complet. O eroare de încărcare NU devine un formular gol salvabil: blocăm Save-ul și
+   cerem reîncărcarea. Pozițiile DUPLICATE (aceeași `position` > 0) sunt dovada unei
+   coruperi anterioare (KB#114) — documentul se deschide pentru citire, nu se salvează.
+   Totalurile din antet care nu se reconstituie din poziții sunt DOAR avertisment:
+   măsurat pe producție, 7/79 documente istorice (pre-0133/0160, KB#95) nu se reconstituie
+   legitim — un blocaj ar fi fals pozitiv; blocajul aparține FIN-REVISION1. */
+function docLoadFailed(msg, detail){
+  S._loaded=false; S._updatedAt=null; S._needsReload=true;
+  const b=$('btn-save'); if(b) b.disabled=true;
+  const T=window.C373t||function(s){return s;};
+  toast('⚠️ '+T(msg)+(detail?' ('+detail+')':''));
+  $('modal-mount').innerHTML='<div class="ov"><div class="modal" style="max-width:460px"><h3>⚠️ '+esc(T('Documentul nu s-a încărcat complet'))+'</h3>'
+    +'<p style="font-size:.88rem;line-height:1.5;margin:.2rem 0 .9rem">'+esc(T(msg)+(detail?' ('+detail+')':'')+' '+T('Salvarea este dezactivată ca să nu se piardă poziții. Reîncarcă documentul.'))+'</p>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end"><button class="btn primary" onclick="location.reload()">🔄 '+esc(T('Reîncarcă documentul'))+'</button></div></div></div>';
+}
+function docLoadTripwire(rawItems, hdr){
+  const T=window.C373t||function(s){return s;};
+  const seen={}; let dup=0;
+  (rawItems||[]).forEach(x=>{ const p=+x.position||0; if(p>0){ if(seen[p]) dup++; seen[p]=1; } });
+  if(dup>0){ docLoadFailed('Documentul are poziții duplicate (corupere anterioară). Poate fi citit, dar nu salvat din această filă — anunță administratorul.'); return false; }
+  try{ const t=totals(); const tol=0.02;
+    if(Math.abs((+hdr.subtotal||0)-t.sub)>tol || Math.abs((+hdr.vat_total||0)-t.vat)>tol || Math.abs((+hdr.total||0)-t.total)>tol){
+      setTimeout(function(){ toast('⚠️ '+T('Totalurile salvate nu se reconstituie din poziții (document istoric sau modificat în afara editorului). Verifică pozițiile înainte de a salva.')); },600);
+    } }catch(e){}
+  return true;
+}
 function docStale(ceAReusit){
   S._updatedAt=null; S._needsReload=true;
   const b=$('btn-save'); if(b) b.disabled=true;
@@ -1014,6 +1045,7 @@ async function dupInvoice(){
 }
 async function save(thenPdf){
   if(S._needsReload){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul trebuie reîncărcat înainte de a continua editarea.')); return; }
+  if(S.id && !S._loaded){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul nu s-a încărcat complet. Reîncarcă documentul.')); return; }
   if(!(S.inv.number||'').trim()){ toast('Numărul facturii e obligatoriu.'); return; }
   if(!S.inv.client_id){ toast('Alege un client.'); return; }
   const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
@@ -1045,7 +1077,7 @@ async function save(thenPdf){
   }catch(e){
     $('btn-save').disabled=false; console.error('save_invoice', e);
     const T=window.C373t||function(s){return s;};
-    const code=(((e&&e.message)||'').match(/DOC_[A-Z_]+/)||[])[0];
+    const code=(((e&&e.message)||'').match(/(?:DOC|FISCAL|WRITES)_[A-Z_]+/)||[])[0];
     const M={DOC_CONFLICT:'Documentul a fost modificat într-o altă filă sau de alt utilizator. Reîncarcă documentul înainte de a continua.',
       DOC_NUMBER_CONFLICT:'Numărul există deja la altă factură. Schimbă numărul.',
       DOC_FORBIDDEN:'Nu ai dreptul să salvezi documente în această firmă.',
@@ -1055,6 +1087,12 @@ async function save(thenPdf){
       DOC_INVALID_ITEMS:'Pozițiile documentului nu sunt valide.',
       DOC_INVALID_TENANT:'Firma activă nu e validă. Reîncarcă pagina.',
       DOC_SAVE_FAILED:'Salvarea nu a reușit. Verifică datele și încearcă din nou.',
+      // CDI1 (D104/D105): contractul e fail-closed pe fiecare verb — documentul a rămas NEATINS.
+      DOC_ITEMS_DELETE_BLOCKED:'Pozițiile vechi nu au putut fi înlocuite. Documentul a rămas neschimbat — anunță administratorul.',
+      DOC_UPDATE_BLOCKED:'Antetul nu a putut fi actualizat. Documentul a rămas neschimbat — anunță administratorul.',
+      DOC_INSERT_INCOMPLETE:'Nu toate pozițiile au putut fi salvate. Documentul a rămas neschimbat — anunță administratorul.',
+      FISCAL_TOTALS_MISMATCH:'Totalurile nu se reconstituie din poziții. Reîncarcă pagina și încearcă din nou.',
+      WRITES_FROZEN:'Scrierile sunt suspendate temporar pentru recuperarea datelor. Citirea funcționează; încearcă mai târziu.',
       // Contractul de preț v2 (D35): serverul refuză un document a cărui semantică
       // de preț nu poate fi stabilită, în loc să ghicească și să dubleze TVA-ul.
       PRICE_SEMANTICS_REQUIRED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',

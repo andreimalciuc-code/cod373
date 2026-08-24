@@ -168,7 +168,7 @@ async function boot(){
   if(!S.canEdit){ $('root').innerHTML='<div class="center">🔒 Doar proprietar/administrator/manager/contabil pot crea oferte.</div>'; return; }
   await loadCatalog();
   const id=param('id');
-  if(id){ await loadEstimate(id); }
+  if(id){ const _b=$('btn-save'); if(_b) _b.disabled=true; await loadEstimate(id); }
   else { S.est.number=await genNumber(); S._autoNum=S.est.number; if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()];
     S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none');
     if(param('prefill')){ try{ const pf=JSON.parse(localStorage.getItem('c373_offer_prefill')||'null'); if(pf && pf.lines && pf.lines.length){ S.lines=pf.lines.map(l=>Object.assign(blankLine(),{name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20))})); S._restored=true; } localStorage.removeItem('c373_offer_prefill'); }catch(e){} }
@@ -215,7 +215,7 @@ async function loadCatalog(){
 }
 async function loadEstimate(id){
   const e=await sb.from('estimates').select('*').eq('id',id).single();
-  if(e.error){ toast('Eroare: '+e.error.message); return; }
+  if(e.error){ docLoadFailed('Oferta nu a putut fi citită.', e.error.message); return; }
   S.id=id; S._updatedAt=e.data.updated_at; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     /* FIN2 — marcajele de lifecycle vin de la server; `select('*')` le aducea deja, dar
        maparea le arunca, deci starea clientului le avea mereu null. */
@@ -225,6 +225,7 @@ async function loadEstimate(id){
     signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null, plan_url:e.data.plan_url||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
+  if(it.error){ docLoadFailed('Pozițiile ofertei nu au putut fi citite.', it.error.message); return; }
   const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); const cid=x.material_id||x.service_id||null; const csrc=x.material_id?'material':(x.service_id?'service':null);
     const cat=cid?S.catalog.find(z=>z.id===cid&&z.src===csrc):null;
     return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null,
@@ -240,16 +241,16 @@ async function loadEstimate(id){
       sub_price_unit:x.sub_price_unit||null,
       _catName:cat?cat.name:undefined, _catPrice:cat?+cat.price||0:undefined, _catUnit:cat?cat.unit:undefined,
       _catDesc:cat?(cat.desc||''):undefined, _catPhoto:cat?(cat.photo||null):undefined }; });
-  // Auto-curățare: elimină liniile EXACT identice (corupere veche dintr-o regulă RLS care bloca ștergerea la salvarea făcută de manager/contabil → liniile se dublau la fiecare salvare).
-  const _seen=new Set(); const _before=mapped.length;
-  const deduped=mapped.filter(l=>{ const k=[l.name,l.qty,l.unit,l.unit_price,l.vat_rate,l.disc,l.group,l.description||'',l.photo_url||''].join('¦'); if(_seen.has(k)) return false; _seen.add(k); return true; });
-  const _removed=_before-deduped.length;
-  S.lines=deduped; reorderLinesBySection();
+  /* CDI1: fără „auto-curățare" pe amprentă — două linii legitime pot fi identice (KB#114);
+     dedup-ul de client transforma deschiderea într-o editare distructivă. Coruperea se
+     detectează STRUCTURAL (poziții duplicate) și blochează Save-ul, nu șterge linii. */
+  S.lines=mapped; reorderLinesBySection();
   // dacă documentul are prețuri luate de la subcontractori, se încarcă tarifele
   // ca să putem arăta numele lor și dacă tariful s-a schimbat între timp
   if(S.lines.some(l=>l.sub_id||l.sub_price_id)) loadSubPrices().then(()=>renderLines());
   if(!S.lines.length) S.lines=[blankLine()];
-  if(_removed>0) setTimeout(function(){ toast('⚠️ Am eliminat '+_removed+' linii dublate (eroare mai veche). Verifică totalul și apasă „Salvează" ca să se corecteze definitiv.'); },500);
+  if(!docLoadTripwire(it.data, e.data)) return;
+  S._loaded=true; const _b=$('btn-save'); if(_b) _b.disabled=false;
 }
 async function fromSurvey(sid){
   const sv=await sb.from('site_surveys').select('name,client_id,area_m2').eq('id',sid).single();
@@ -666,6 +667,34 @@ function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase()
    NU repetăm operația și NU raportăm eșec. Invalidăm tokenul de concurență: 0117 tratează
    `p_expected_updated_at is null` ca DOC_CONFLICT, deci salvarea e refuzată de SERVER, nu doar
    de interfață. În plus dezactivăm „Salvează" și oferim o reîncărcare controlată. */
+/* ════ CDI1 (D105) — contractul `loaded-complete` + tripwire la deschidere ════
+   Un document existent se poate salva DOAR după ce antetul ȘI pozițiile s-au încărcat
+   complet. O eroare de încărcare NU devine un formular gol salvabil: blocăm Save-ul și
+   cerem reîncărcarea. Pozițiile DUPLICATE (aceeași `position` > 0) sunt dovada unei
+   coruperi anterioare (KB#114) — documentul se deschide pentru citire, nu se salvează.
+   Totalurile din antet care nu se reconstituie din poziții sunt DOAR avertisment:
+   măsurat pe producție, 7/79 documente istorice (pre-0133/0160, KB#95) nu se reconstituie
+   legitim — un blocaj ar fi fals pozitiv; blocajul aparține FIN-REVISION1. */
+function docLoadFailed(msg, detail){
+  S._loaded=false; S._updatedAt=null; S._needsReload=true;
+  const b=$('btn-save'); if(b) b.disabled=true;
+  const T=window.C373t||function(s){return s;};
+  toast('⚠️ '+T(msg)+(detail?' ('+detail+')':''));
+  $('modal-mount').innerHTML='<div class="ov"><div class="modal" style="max-width:460px"><h3>⚠️ '+esc(T('Documentul nu s-a încărcat complet'))+'</h3>'
+    +'<p style="font-size:.88rem;line-height:1.5;margin:.2rem 0 .9rem">'+esc(T(msg)+(detail?' ('+detail+')':'')+' '+T('Salvarea este dezactivată ca să nu se piardă poziții. Reîncarcă documentul.'))+'</p>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end"><button class="btn primary" onclick="location.reload()">🔄 '+esc(T('Reîncarcă documentul'))+'</button></div></div></div>';
+}
+function docLoadTripwire(rawItems, hdr){
+  const T=window.C373t||function(s){return s;};
+  const seen={}; let dup=0;
+  (rawItems||[]).forEach(x=>{ const p=+x.position||0; if(p>0){ if(seen[p]) dup++; seen[p]=1; } });
+  if(dup>0){ docLoadFailed('Documentul are poziții duplicate (corupere anterioară). Poate fi citit, dar nu salvat din această filă — anunță administratorul.'); return false; }
+  try{ const t=totals(); const tol=0.02;
+    if(Math.abs((+hdr.subtotal||0)-t.sub)>tol || Math.abs((+hdr.vat_total||0)-t.vat)>tol || Math.abs((+hdr.total||0)-t.total)>tol){
+      setTimeout(function(){ toast('⚠️ '+T('Totalurile salvate nu se reconstituie din poziții (document istoric sau modificat în afara editorului). Verifică pozițiile înainte de a salva.')); },600);
+    } }catch(e){}
+  return true;
+}
 function docStale(ceAReusit){
   S._updatedAt=null; S._needsReload=true;
   const b=$('btn-save'); if(b) b.disabled=true;
@@ -1274,6 +1303,7 @@ async function dupEstimate(){
 }
 async function save(thenPdf){
   if(S._needsReload){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul trebuie reîncărcat înainte de a continua editarea.')); return; }
+  if(S.id && !S._loaded){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul nu s-a încărcat complet. Reîncarcă documentul.')); return; }
   if(!S.est.client_id){ toast('Alege un client.'); return; }
   const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
   $('btn-save').disabled=true;
@@ -1317,7 +1347,7 @@ async function save(thenPdf){
   }catch(e){
     $('btn-save').disabled=false; console.error('save_estimate', e);
     const T=window.C373t||function(s){return s;};
-    const code=(((e&&e.message)||'').match(/DOC_[A-Z_]+/)||[])[0];
+    const code=(((e&&e.message)||'').match(/(?:DOC|FISCAL|WRITES)_[A-Z_]+/)||[])[0];
     const M={DOC_CONFLICT:'Documentul a fost modificat într-o altă filă sau de alt utilizator. Reîncarcă documentul înainte de a continua.',
       DOC_NUMBER_CONFLICT:'Numărul există deja la altă ofertă. Schimbă numărul.',
       DOC_FORBIDDEN:'Nu ai dreptul să salvezi documente în această firmă.',
@@ -1327,6 +1357,12 @@ async function save(thenPdf){
       DOC_INVALID_ITEMS:'Pozițiile documentului nu sunt valide.',
       DOC_INVALID_TENANT:'Firma activă nu e validă. Reîncarcă pagina.',
       DOC_SAVE_FAILED:'Salvarea nu a reușit. Verifică datele și încearcă din nou.',
+      // CDI1 (D104/D105): contractul e fail-closed pe fiecare verb — documentul a rămas NEATINS.
+      DOC_ITEMS_DELETE_BLOCKED:'Pozițiile vechi nu au putut fi înlocuite. Documentul a rămas neschimbat — anunță administratorul.',
+      DOC_UPDATE_BLOCKED:'Antetul nu a putut fi actualizat. Documentul a rămas neschimbat — anunță administratorul.',
+      DOC_INSERT_INCOMPLETE:'Nu toate pozițiile au putut fi salvate. Documentul a rămas neschimbat — anunță administratorul.',
+      FISCAL_TOTALS_MISMATCH:'Totalurile nu se reconstituie din poziții. Reîncarcă pagina și încearcă din nou.',
+      WRITES_FROZEN:'Scrierile sunt suspendate temporar pentru recuperarea datelor. Citirea funcționează; încearcă mai târziu.',
       // Contractul de preț v2 (D35): serverul refuză un document a cărui semantică
       // de preț nu poate fi stabilită, în loc să ghicească și să dubleze TVA-ul.
       PRICE_SEMANTICS_REQUIRED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
