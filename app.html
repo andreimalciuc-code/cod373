@@ -3595,8 +3595,11 @@ async function aiPolish(taId, instruction, btn){
   catch(e){ toast(C373t('Eroare AI:')+' '+esc((e&&e.message)||e)); }
   ta.disabled=false; if(btn){ btn.disabled=false; btn.textContent=o||'✨ AI'; }
 }
-function openAI(){
+async function openAI(){
   if(isDemo()){ toast(tz('🤖 Asistentul AI e disponibil doar într-un cont real.')); return; }
+  /* ►► cache-ul de status e populat doar de Setări/efactura; la deschidere directă după un
+     boot curat ar fi null ⇒ fals „neconfigurat" (KB#119). secLoad memoizează — un RPC/sesiune. */
+  try{ await secLoad(); }catch(e){}
   const hasKey=secIsSet('anthropic_key');   /* starea, nu valoarea (D78) */
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;display:flex;flex-direction:column;height:min(82vh,680px)"><div class="modal-head"><h3>🤖 Asistent AI</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div id="ai-list" style="flex:1;overflow:auto;padding:.5rem .2rem;display:flex;flex-direction:column;gap:.45rem"></div>'
