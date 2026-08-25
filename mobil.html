@@ -213,7 +213,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='346';
+const APP_BUILD='347';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -608,6 +608,12 @@ function mNav(){
      exprime. Vehiculul lui rămâne vizibil pe Acasă, prin „Vehiculul meu" (D62). */
   if(mHasVehicle() && !base.find(n=>n[0]==='livrari') && S.role!=='client' && S.role!=='subcontractor'
      && S.role!=='accountant' && !base.find(n=>n[0]==='scule')) base.splice(2,0,['scule','🔧','Scule']);
+  /* ►► INVENTORY-CUTOVER1/D108 — workspace-ul Depozit se derivă din FAPTE (capabilitatea
+     `material_responsible` + cel puțin o desemnare în `warehouse_keepers`), raportate de
+     `my_field_context` în `keeper_warehouses`. Fără ambele jumătăți, lista e goală și
+     intrarea nu apare. Persona nu acordă drepturi (D95) — serverul re-verifică oricum. */
+  if(((S.ctx&&S.ctx.keeper_warehouses)||[]).length && !base.find(n=>n[0]==='depozit')
+     && ['client','subcontractor'].indexOf(S.role)<0) base.splice(1,0,['depozit','🏬','Depozit']);
   return base.slice(0,6);   /* maximum 6 destinații simultane — restul e contextual */
 }
 function render(){
@@ -626,7 +632,7 @@ function render(){
   const OUTSIDE=['taskuri','scan','chat'];
   if(!nav.find(n=>n[0]===S.view) && OUTSIDE.indexOf(S.view)<0) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,echipa:scrEchipa,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs}[S.view];
+  const fn={acasa:scrAcasa,echipa:scrEchipa,depozit:scrDepozit,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
   const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
@@ -2762,6 +2768,18 @@ const MV_ERR={
   BATCH_PAYLOAD_MISMATCH:'Lista s-a schimbat după prima trimitere. Confirmă din nou.',
   BATCH_MOVE_ALL_EMPTY:'Nu mai e nimic de mutat din locația aleasă.',
   BATCH_DUPLICATE_REQUEST:'Operațiunea e deja în curs. Reîncearcă.',
+  /* 0180/D110 — codurile cererilor de transfer */
+  TR_FORBIDDEN:'Nu ai dreptul pentru această cerere.',
+  TR_INVALID_INPUT:'Date invalide.',
+  TR_INVALID_REF:'Material sau depozit inexistent.',
+  TR_NOT_FOUND:'Cererea nu a fost găsită.',
+  TR_CONFLICT:'Cererea s-a schimbat între timp. Reîncarcă.',
+  TR_ALREADY_CLAIMED:'Cererea e deja preluată de un coleg.',
+  TR_NOT_CLAIMANT:'Cererea e în lucru la un coleg.',
+  TR_SAME_WAREHOUSE:'Sursa și destinația sunt același depozit.',
+  TR_INSUFFICIENT_AVAILABLE:'Disponibilul nu ajunge (o parte e deja rezervată).',
+  TR_ALREADY_DONE:'Transferul a fost deja executat.',
+  TR_EMPTY:'Cererea nu are poziții.',
   MOVE_FORBIDDEN:'Nu ai dreptul pentru această mișcare.',
   MOVE_NOT_FOUND:'Obiectul nu a fost găsit.',
   MOVE_INVALID_INPUT:'Date invalide.',
@@ -2779,7 +2797,10 @@ function mvErr(e){ const m=String((e&&(e.message||e))||'');
   for(const k in MV_ERR){ if(m.indexOf(k)>=0) return mtz(MV_ERR[k]); }
   if(!navigator.onLine||/load failed|failed to fetch|network/i.test(m)) return mtz('📴 Fără internet. Reîncearcă.');
   return mtz('Eroare:')+' '+m; }
-function mvCanMaterial(){ return ['owner','admin','manager','accountant'].includes(S.memberRole||S.role); }
+/* 0179/D108 — responsabilul de depozit poate opera materiale pe depozitele DESEMNATE;
+   scope-ul exact (recepția ÎN / transferul-consumul DIN depozitul lui) îl impune serverul. */
+function mvCanMaterial(){ return ['owner','admin','manager','accountant'].includes(S.memberRole||S.role)
+  || ((S.ctx&&S.ctx.keeper_warehouses)||[]).length>0; }
 function mvExternal(){ return ['client','subcontractor'].includes(S.memberRole||S.role); }
 
 /* ── Scanner: BarcodeDetector nativ când există, altfel biblioteca deja folosită
@@ -3297,7 +3318,8 @@ function miDoneScan(){ mScanStop(); miRender(); }
 function miHud(){
   const st=S._mi&&S._mi.st; if(!st) return;
   const d=document.getElementById('mv-done');
-  const n=(st.materials||[]).filter(x=>x.counted).length+(st.assets||[]).filter(x=>x.counted_here).length;
+  const n=(st.materials||[]).filter(x=>x.counted).length+(st.assets||[]).filter(x=>x.counted_here).length
+         +(st.tools||[]).filter(x=>x.counted).length;
   if(d) d.textContent=mtz('Gata')+(n?' ('+n+')':'');
   const el=document.getElementById('mv-hud'); if(!el) return;
   const L=S._mi._last;
@@ -3315,6 +3337,8 @@ async function miOnCode(code){
   let payload=null;
   if(res.kind==='material') payload={kind:'material', material_id:res.id, mode:'scan', qty:1};
   else if(res.kind==='asset') payload={kind:'asset', unit_id:res.id, mode:'scan'};
+  /* 0181: scula-TIP (cantitativă) se numără ca materialul — fiecare scanare = încă o bucată */
+  else if(res.kind==='tool') payload={kind:'tool', tool_id:res.id, mode:'scan', qty:1};
   else { mScanMsg(mtz('Codul scanat nu e un obiect care se poate număra.')); return; }
   payload.session_id=mi.sid;
   try{
@@ -3322,7 +3346,7 @@ async function miOnCode(code){
     if(r.error) throw r.error;
     const d=r.data;
     mi._last=(res.kind==='material'?'📦 ':'🛠️ ')+res.label
-      +(res.kind==='material'?(' × '+(+d.counted_qty)):'');
+      +(res.kind!=='asset'?(' × '+(+d.counted_qty)):'');
     mvFeedback();
     await miLoad(); miHud();
   }catch(e){
@@ -3332,13 +3356,14 @@ async function miOnCode(code){
 }
 async function miSet(lineId, kind, objId){
   const st=S._mi&&S._mi.st; if(!st) return;
-  const row=(kind==='material'?(st.materials||[]).find(x=>x.line_id===lineId):null);
+  const row=(kind==='material'?(st.materials||[]):kind==='tool'?(st.tools||[]):[]).find(x=>x.line_id===lineId);
   const cur=row&&row.counted_qty!=null?(+row.counted_qty):'';
   const v=prompt(mtz('Cantitatea numărată')+(row?(' — '+row.name+(row.unit?(' ('+row.unit+')'):'')):''), String(cur));
   if(v===null) return;
   const s=String(v).trim();
-  const payload={session_id:S._mi.sid, kind:'material', material_id:objId,
+  const payload={session_id:S._mi.sid, kind:kind,
                  mode:(s===''?'clear':'set'), expected_version:row?row.version:null};
+  if(kind==='tool') payload.tool_id=objId; else payload.material_id=objId;
   if(s!==''){ const n=Number(s.replace(',','.')); if(!isFinite(n)||n<0){ toast(mtz('Cantitate invalidă.')); return; } payload.qty=n; }
   try{
     const r=await sb.rpc('inventory_session_count',{p_tenant_id:S.tenant, p_payload:payload, p_request_id:mUuid()});
@@ -3369,7 +3394,7 @@ async function miCancel(){
 }
 async function miFinalize(){
   const st=S._mi&&S._mi.st; if(!st) return;
-  const mats=st.materials||[];
+  const mats=(st.materials||[]).concat(st.tools||[]);   /* 0181: sculele-tip = aceeași economie */
   const dif=mats.filter(x=>x.counted && (+x.difference)!==0);
   const unc=mats.filter(x=>!x.counted).length;
   const as=st.assets||[];
@@ -3389,7 +3414,7 @@ async function miFinalize(){
       p_request_id:S._mi._rq});
     if(r.error) throw r.error;
     const d=r.data||{};
-    toast('✅ '+mtz('Inventariere finalizată.')+' '+(d.adjusted||0)+' '+mtz('corecții'));
+    toast('✅ '+mtz('Inventariere finalizată.')+' '+((d.adjusted||0)+(d.tools_adjusted||0))+' '+mtz('corecții'));
     miReset(); S._mi.busy=false; miScreen(); return;
   }catch(e){
     S._mi.busy=false;
@@ -3418,14 +3443,17 @@ function miRender(){
     sc.innerHTML=h; return;
   }
 
-  const st=mi.st||{}, S1=st.session||{}, mats=st.materials||[], as=st.assets||[];
-  const conflicts=mats.filter(x=>x.changed);
-  const counted=mats.filter(x=>x.counted).length, unc=mats.length-counted;
-  const dif=mats.filter(x=>x.counted && (+x.difference)!==0).length;
+  const st=mi.st||{}, S1=st.session||{}, mats=st.materials||[], as=st.assets||[], tls=st.tools||[];
+  /* 0181: sculele cantitative intră în ACEEAȘI economie ca materialele */
+  const conflicts=mats.filter(x=>x.changed).concat(tls.filter(x=>x.changed));
+  const counted=mats.filter(x=>x.counted).length+tls.filter(x=>x.counted).length,
+        unc=(mats.length+tls.length)-counted;
+  const dif=mats.filter(x=>x.counted && (+x.difference)!==0).length
+           +tls.filter(x=>x.counted && (+x.difference)!==0).length;
 
   h+='<div class="card"><div class="row"><div class="grow">'
     +'<div class="t">'+esc(mvLocLabel(S1.location&&S1.location.kind, S1.location&&S1.location.id))+'</div>'
-    +'<div class="s">'+esc(mtz('Numărate'))+': <b>'+counted+'/'+mats.length+'</b>'
+    +'<div class="s">'+esc(mtz('Numărate'))+': <b>'+counted+'/'+(mats.length+tls.length)+'</b>'
     +(dif?(' · '+esc(mtz('diferențe'))+': <b>'+dif+'</b>'):'')
     +(unc?(' · '+esc(mtz('nenumărate'))+': '+unc):'')+'</div></div>'
     +'<button class="mini-btn gh" onclick="miLoad().then(miRender)">🔄</button></div>'
@@ -3456,6 +3484,22 @@ function miRender(){
       +'<div style="text-align:right;min-width:4.2rem"><div style="font-size:1.1rem;color:'+col+'">'+mark+'</div>'
       +(d!==null&&d!==0?('<div class="s" style="color:'+col+'"><b>'+(d>0?'+':'')+d+'</b></div>'):'')+'</div></div></button>';
   }).join('');
+
+  /* ── 0181: SCULE CANTITATIVE — aceeași economie ca materialele (În sistem / Numărat / Diferență) ── */
+  if(tls.length){
+    h+='<div class="scr-title" style="margin-top:.8rem">🧰 '+esc(mtz('Scule pe cantități'))+'</div>';
+    h+=tls.map(function(x){
+      const d=x.counted?(+x.difference):null;
+      const mark=!x.counted?'○':(d===0?'✓':(d>0?'▲':'▼'));
+      const col=!x.counted?'var(--muted)':(d===0?'var(--green-ink)':(d>0?'var(--blue-ink)':'var(--amber-ink)'));
+      return '<button class="card" style="width:100%;text-align:left;display:block" onclick="miSet(\''+x.line_id+'\',\'tool\',\''+x.tool_id+'\')">'
+        +'<div class="row"><div class="grow"><div class="t">'+esc(x.name)+'</div>'
+        +'<div class="s">'+esc(mtz('În sistem'))+': '+(+x.expected_qty)+' '+esc(x.unit||'buc')
+        +' · '+esc(mtz('Numărat'))+': '+(x.counted?('<b>'+(+x.counted_qty)+'</b>'):esc(mtz('—')))+'</div></div>'
+        +'<div style="text-align:right;min-width:4.2rem"><div style="font-size:1.1rem;color:'+col+'">'+mark+'</div>'
+        +(d!==null&&d!==0?('<div class="s" style="color:'+col+'"><b>'+(d>0?'+':'')+d+'</b></div>'):'')+'</div></div></button>';
+    }).join('');
+  }
 
   /* ── SCULE: găsit / lipsă / neașteptat — se CONSTATĂ, nu se corectează ── */
   if(as.length){
@@ -4017,6 +4061,192 @@ async function toolAct(id, action, condition){
   }catch(e){ const m=((e&&e.message)||'').toLowerCase();
     if($('tool-msg'))$('tool-msg').textContent=(!navigator.onLine||/load failed|failed to fetch|network/.test(m))?'📡 Conexiune întreruptă — încearcă din nou.':('Eroare: '+(e.message||e)); }
 }
+/* ════ INVENTORY-CUTOVER1/D — workspace DEPOZIT (D108/D109/D110) ══════════════
+   Interfața se COMPUNE din responsabilități: `ctx.keeper_warehouses` e RAPORT (D84),
+   autoritatea reală o recalculează serverul la fiecare scriere. Mișcarea fizică rămâne
+   ecranul `scan` (un singur scanner, D53); aici stau stocul, cererile de transfer
+   (preia → acceptă total/parțial → execută / anulează), disponibilitatea din alte
+   depozite și istoricul. Datele de timp trec prin fmtDT (fusul FIRMEI, nu UTC). */
+function mKeeps(){ return ((S.ctx&&S.ctx.keeper_warehouses)||[]); }
+function mWkWh(){ const ks=mKeeps(); if(!ks.length) return null;
+  if(!S._wkWh||!ks.find(k=>k.id===S._wkWh)) S._wkWh=ks[0].id; return S._wkWh; }
+async function wkNames(){ if(S._wkWhNames) return S._wkWhNames;
+  const r=await mSel('warehouses','id,name').order('name');
+  S._wkWhNames=(r.data||[]); return S._wkWhNames; }
+function wkWhName(id){ const w=(S._wkWhNames||[]).find(x=>x.id===id); return w?w.name:'—'; }
+
+async function scrDepozit(){
+  const ks=mKeeps(); const wh=mWkWh();
+  if(!wh){ goV('acasa'); return; }
+  await wkNames();
+  const chips=ks.map(k=>'<button class="mini-btn'+(k.id===wh?'':' gh')+'" onclick="S._wkWh=\''+k.id+'\';render()">🏬 '+esc(k.name)+'</button>').join(' ');
+  $('screen').innerHTML='<div class="scr-title">Depozit</div>'
+    +(ks.length>1?'<div class="row" style="gap:.4rem;flex-wrap:wrap;margin-bottom:.6rem">'+chips+'</div>'
+                 :'<div class="s" style="margin-bottom:.6rem">🏬 '+esc(wkWhName(wh))+'</div>')
+    +'<div class="row" style="gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem">'
+    +'<button class="btn btn-soft" style="flex:1;min-width:44%" onclick="goV(\'scan\')">📷 Scanează / Mută</button>'
+    +'<button class="btn btn-soft" style="flex:1;min-width:44%" onclick="wkInv()">📋 Inventariere</button>'
+    +'<button class="btn btn-soft" style="flex:1;min-width:44%" onclick="wkRequests()">🔁 Cereri de transfer<span id="wk-reqn"></span></button>'
+    +'<button class="btn btn-soft" style="flex:1;min-width:44%" onclick="wkLookup()">🔍 Alte depozite</button>'
+    +'<button class="btn btn-soft" style="flex:1;min-width:44%" onclick="wkHistory()">🕘 Istoric mișcări</button>'
+    +'<button class="btn btn-soft" style="flex:1;min-width:44%" onclick="wkOrders()">🛒 Comenzi de pregătit<span id="wk-ordn"></span></button></div>'
+    +'<div class="fld"><input id="wk-q" placeholder="Caută în stoc…" oninput="wkStockFilter(this.value)"/></div>'
+    +'<div id="wk-stock"><div class="loading">Se încarcă…</div></div>';
+  const st=await mSel('stock','id,qty,min_qty,materials(name,unit)').eq('warehouse_id',wh).is('site_id',null);
+  S._wkStock=(st.data||[]).filter(x=>+x.qty>0||+x.min_qty>0)
+    .sort((a,b)=>String((a.materials||{}).name||'').localeCompare(String((b.materials||{}).name||''),'ro'));
+  wkStockFilter('');
+  try{ const ids=ks.map(k=>k.id);
+    const rq=await mSel('transfer_requests','id,status,from_warehouse_id,to_warehouse_id').in('status',['pending','accepted']);
+    const n=(rq.data||[]).filter(r=>ids.indexOf(r.from_warehouse_id)>=0||ids.indexOf(r.to_warehouse_id)>=0).length;
+    const e1=$('wk-reqn'); if(e1&&n) e1.textContent=' ('+n+')';
+    const or=await mSel('material_orders','id').eq('warehouse_id',wh).in('status',['sent','confirmed']);
+    const e2=$('wk-ordn'); if(e2&&(or.data||[]).length) e2.textContent=' ('+or.data.length+')';
+  }catch(e){}
+}
+function wkStockFilter(q){ q=(q||'').toLowerCase(); const el=$('wk-stock'); if(!el) return;
+  const rows=(S._wkStock||[]).filter(x=>String((x.materials||{}).name||'').toLowerCase().indexOf(q)>=0);
+  el.innerHTML=rows.length?rows.map(x=>{ const m=x.materials||{};
+    return '<div class="card" style="padding:.6rem .8rem;margin-bottom:.45rem"><div class="row"><div class="grow"><div class="t">'+esc(m.name||'—')+'</div></div><div class="t">'+(+x.qty||0)+' '+esc(m.unit||'')+((+x.min_qty>0&&+x.qty<+x.min_qty)?' <span class="pill red">sub minim</span>':'')+'</div></div></div>'; }).join('')
+    :'<div class="empty"><div class="ei">📦</div>Nimic în stocul acestui depozit.</div>';
+}
+function wkInv(){ try{ localStorage.setItem('c373_mv_mode','inv'); }catch(e){} goV('scan'); }
+
+/* ── Cererile de transfer: preia → acceptă (total/parțial) → execută / anulează ── */
+async function wkRequests(){
+  await wkNames(); const ids=mKeeps().map(k=>k.id); const me=S.session.user.id;
+  const rq=await mSel('transfer_requests','id,status,from_warehouse_id,to_warehouse_id,requested_by,claimed_by,version,created_at')
+    .in('status',['pending','accepted']).order('created_at',{ascending:false}).limit(60);
+  if(rq.error){ toast(mvErr(rq.error)); return; }
+  const all=(rq.data||[]).filter(r=>ids.indexOf(r.from_warehouse_id)>=0||ids.indexOf(r.to_warehouse_id)>=0||r.requested_by===me);
+  const rids=all.map(r=>r.id); S._wkItems={};
+  if(rids.length){ const it=await mSel('transfer_request_items','id,request_id,qty_requested,qty_accepted,unit,materials(name)').in('request_id',rids);
+    (it.data||[]).forEach(x=>{(S._wkItems[x.request_id]=S._wkItems[x.request_id]||[]).push(x);}); }
+  const card=(r,dir)=>{ const its=S._wkItems[r.id]||[];
+    const lines=its.map(x=>'<div class="s">• '+esc((x.materials||{}).name||'—')+' — '
+      +((dir==='in'&&r.status==='pending'&&r.claimed_by===me)
+        ?'<input id="wk-acc-'+x.id+'" type="number" inputmode="decimal" min="0" max="'+(+x.qty_requested)+'" value="'+(+x.qty_requested)+'" style="width:76px;padding:.2rem .35rem"> / '+(+x.qty_requested)
+        :(+((r.status==='accepted'?(x.qty_accepted!=null?x.qty_accepted:x.qty_requested):x.qty_requested))||0))
+      +' '+esc(x.unit||'')+'</div>').join('');
+    let act='';
+    if(dir==='in'){
+      if(r.status==='pending'&&!r.claimed_by) act='<button class="mini-btn" onclick="wkClaim(\''+r.id+'\','+r.version+')">✋ Preia</button>';
+      else if(r.status==='pending'&&r.claimed_by===me) act='<button class="mini-btn" onclick="wkDecide(\''+r.id+'\','+r.version+',\'accept\')">✅ Acceptă</button> <button class="mini-btn gh" onclick="wkDecide(\''+r.id+'\','+r.version+',\'decline\')">✖ Refuză</button>';
+      else if(r.status==='pending') act='<span class="pill amber">în lucru la un coleg</span>';
+      if(r.status==='accepted') act='<button class="mini-btn" onclick="wkExec(\''+r.id+'\','+r.version+')">🚚 Execută predarea</button>';
+    } else {
+      act='<span class="pill '+(r.status==='accepted'?'green':'amber')+'">'+(r.status==='accepted'?'acceptată':'în așteptare')+'</span> <button class="mini-btn gh" onclick="wkCancel(\''+r.id+'\','+r.version+')">✖ Anulează</button>';
+    }
+    return '<div class="card" style="margin-bottom:.5rem"><div class="t">'+esc(wkWhName(r.from_warehouse_id))+' → '+esc(wkWhName(r.to_warehouse_id))+'</div><div class="s">'+fmtDT(r.created_at)+'</div>'+lines+'<div class="row" style="margin-top:.4rem;gap:.4rem;flex-wrap:wrap">'+act+'</div></div>'; };
+  const inc=all.filter(r=>ids.indexOf(r.from_warehouse_id)>=0);
+  const out=all.filter(r=>ids.indexOf(r.from_warehouse_id)<0);
+  openSheet('🔁 Cereri de transfer',
+    '<div class="t" style="margin:.2rem 0">📥 De pregătit (din depozitele tale)</div>'
+    +(inc.length?inc.map(r=>card(r,'in')).join(''):'<div class="s">Nicio cerere primită.</div>')
+    +'<div class="t" style="margin:.8rem 0 .2rem">📤 Cerute pentru tine</div>'
+    +(out.length?out.map(r=>card(r,'out')).join(''):'<div class="s">Nicio cerere trimisă.</div>')
+    +'<button class="btn" style="margin-top:.8rem" onclick="wkNewReq()">＋ Solicită transfer</button>');
+}
+async function wkClaim(id,ver){ const r=await sb.rpc('transfer_request_claim',{p_tenant_id:S.tenant,p_request_id:id,p_expected_version:ver});
+  if(r.error){ toast(mvErr(r.error)); } else toast('✋ Cerere preluată.'); wkRequests(); }
+async function wkDecide(id,ver,action){
+  const payload={request_id:id,action:action};
+  if(action==='accept'){ const over={}; let bad=false;
+    (S._wkItems[id]||[]).forEach(x=>{ const i=$('wk-acc-'+x.id); if(!i) return;
+      const v=parseFloat(i.value); if(isNaN(v)||v<0||v>+x.qty_requested){ bad=true; return; }
+      if(v!==+x.qty_requested) over[x.id]=v; });
+    if(bad){ toast('Cantitățile acceptate trebuie să fie între 0 și cerut.'); return; }
+    if(Object.keys(over).length) payload.overrides=over; }
+  const r=await sb.rpc('transfer_request_decide',{p_tenant_id:S.tenant,p_payload:payload,p_expected_version:ver});
+  if(r.error){ toast(mvErr(r.error)); } else toast(action==='accept'?'✅ Cerere acceptată — cantitatea e rezervată.':'✖ Cerere refuzată.');
+  wkRequests(); }
+async function wkExec(id,ver){ const r=await sb.rpc('transfer_request_execute',{p_tenant_id:S.tenant,p_request_id:id,p_expected_version:ver});
+  if(r.error){ toast(mvErr(r.error)); } else toast('🚚 Transfer executat — stocul s-a mutat.'); wkRequests(); }
+async function wkCancel(id,ver){ const r=await sb.rpc('transfer_request_cancel',{p_tenant_id:S.tenant,p_request_id:id,p_expected_version:ver});
+  if(r.error){ toast(mvErr(r.error)); } else toast('Cerere anulată — rezervarea s-a eliberat.'); wkRequests(); }
+
+async function wkMats(){ if(S._wkMats) return S._wkMats;
+  const r=await mSel('materials','id,name,unit').order('name'); S._wkMats=(r.data||[]); return S._wkMats; }
+async function wkNewReq(fromWh, matId){
+  await wkNames(); const mats=await wkMats(); const wh=mWkWh();
+  const others=(S._wkWhNames||[]).filter(w=>w.id!==wh);
+  openSheet('＋ Solicită transfer',
+    '<div id="wk-nmsg"></div>'
+    +'<div class="fld"><label>Din depozitul</label><select id="wk-nfrom">'+others.map(w=>'<option value="'+w.id+'"'+(w.id===fromWh?' selected':'')+'>'+esc(w.name)+'</option>').join('')+'</select></div>'
+    +'<div class="fld"><label>Către depozitul tău</label><select id="wk-nto">'+mKeeps().map(k=>'<option value="'+k.id+'">'+esc(k.name)+'</option>').join('')+'</select></div>'
+    +'<div class="fld"><label>Material</label><select id="wk-nmat">'+mats.map(m=>'<option value="'+m.id+'"'+(m.id===matId?' selected':'')+'>'+esc(m.name)+'</option>').join('')+'</select></div>'
+    +'<div class="fld"><label>Cantitate</label><input id="wk-nqty" type="number" inputmode="decimal" min="0.001" placeholder="ex: 20"/></div>'
+    +'<button class="btn" id="wk-nsave" onclick="wkNewReqSave()">Trimite cererea</button>');
+}
+async function wkNewReqSave(){
+  const qty=parseFloat($('wk-nqty').value);
+  if(isNaN(qty)||qty<=0){ $('wk-nmsg').innerHTML='<div class="msg err">Scrie o cantitate mai mare decât zero.</div>'; return; }
+  $('wk-nsave').disabled=true;
+  const r=await sb.rpc('transfer_request_create',{p_tenant_id:S.tenant,p_payload:{
+    from_warehouse_id:$('wk-nfrom').value, to_warehouse_id:$('wk-nto').value,
+    items:[{material_id:$('wk-nmat').value, qty:qty}]}});
+  $('wk-nsave').disabled=false;
+  if(r.error){ $('wk-nmsg').innerHTML='<div class="msg err">'+mvErr(r.error)+'</div>'; return; }
+  /* fără closeSheet înainte de următorul openSheet — vezi nota din wkLookupRun */
+  toast('✅ Cerere trimisă.'); wkRequests();
+}
+
+/* ── „Verifică alte depozite": Central: 0 · Nord: 80 · Sud: 450 ── */
+async function wkLookup(){
+  const mats=await wkMats();
+  openSheet('🔍 Disponibil în alte depozite',
+    '<div class="fld"><label>Material</label><select id="wk-lmat" onchange="wkLookupRun()"><option value="">— alege —</option>'
+    +mats.map(m=>'<option value="'+m.id+'">'+esc(m.name)+'</option>').join('')+'</select></div>'
+    +'<div id="wk-lres" class="s">Alege un material ca să vezi disponibilitatea.</div>');
+}
+async function wkLookupRun(){
+  const mid=$('wk-lmat').value; const el=$('wk-lres'); if(!mid||!el) return;
+  el.innerHTML='<div class="loading">Se încarcă…</div>';
+  const r=await sb.rpc('warehouse_availability',{p_tenant_id:S.tenant,p_material_id:mid});
+  if(r.error){ el.innerHTML='<div class="msg err">'+mvErr(r.error)+'</div>'; return; }
+  const mine=new Set(mKeeps().map(k=>k.id));
+  el.innerHTML=(r.data||[]).map(w=>'<div class="card" style="padding:.55rem .8rem;margin-bottom:.4rem"><div class="row"><div class="grow"><div class="t">🏬 '+esc(w.warehouse_name)+(mine.has(w.warehouse_id)?' <span class="pill green">al tău</span>':'')+'</div><div class="s"><span>fizic</span> '+(+w.physical||0)+' · <span>rezervat</span> '+(+w.reserved||0)+'</div></div><div class="t">'+(+w.available||0)+'</div></div>'
+    /* NU `closeSheet()` înainte: mSheetWipe golește async (230ms) și ar CLOBBER-ui foaia nouă —
+       defect prins în Product E2E. `openSheet` înlocuiește oricum conținutul. */
+    +((+w.available>0&&!mine.has(w.warehouse_id))?'<button class="mini-btn" style="margin-top:.35rem" onclick="wkNewReq(\''+w.warehouse_id+'\',\''+mid+'\')">🔁 Solicită de aici</button>':'')
+    +'</div>').join('')||'<div class="s">Niciun depozit.</div>';
+}
+
+/* ── Istoricul mișcărilor depozitului (ledgerul canonic, fusul firmei) ── */
+async function wkHistory(){
+  const wh=mWkWh(); await wkNames();
+  const [mv,sm]=await Promise.all([
+    sb.from('inventory_movements')
+      .select('movement_type,kind,qty,unit,from_kind,from_id,to_kind,to_id,from_label,to_label,created_at,materials(name),tool_units(serial_no,tools(name))')
+      .eq('tenant_id',S.tenant)
+      .or('and(from_kind.eq.warehouse,from_id.eq.'+wh+'),and(to_kind.eq.warehouse,to_id.eq.'+wh+')')
+      .order('created_at',{ascending:false}).limit(40),
+    nameMap('sites','name')
+  ]);
+  if(mv.error){ toast(mvErr(mv.error)); return; }
+  const roster=await mRoster(); const rm={}; (roster||[]).forEach(e=>rm[e.id]=e.full_name);
+  const endName=(k,id,lbl)=>k==='warehouse'?('🏬 '+wkWhName(id)):k==='site'?('🏗️ '+(sm[id]||'—')):k==='employee'?('👤 '+(rm[id]||'—')):k==='external'?('🌍 '+(lbl||'extern')):'—';
+  const IC={receipt:'📥',transfer:'🔁',assign:'👤',return:'↩️',consumption:'🔥',opening_balance:'🧾',inventory_adjustment:'📋'};
+  openSheet('🕘 Istoric — '+wkWhName(wh),
+    (mv.data||[]).map(r=>{ const nm=r.kind==='material'?((r.materials||{}).name||'—')
+        :(((r.tool_units||{}).tools||{}).name||'—')+((r.tool_units||{}).serial_no?(' · '+r.tool_units.serial_no):'');
+      return '<div class="card" style="padding:.55rem .8rem;margin-bottom:.4rem"><div class="t">'+(IC[r.movement_type]||'•')+' '+esc(nm)+(r.qty?(' — '+(+r.qty)+' '+esc(r.unit||'')):'')+'</div>'
+        +'<div class="s">'+esc(r.from_kind?endName(r.from_kind,r.from_id,r.from_label):'—')+' → '+esc(r.to_kind?endName(r.to_kind,r.to_id,r.to_label):'—')+'</div>'
+        +'<div class="s">'+fmtDT(r.created_at)+'</div></div>'; }).join('')
+    ||'<div class="s">Nicio mișcare încă.</div>');
+}
+
+/* ── Comenzile de pregătit din acest depozit (sursa deterministă, 0179) ── */
+async function wkOrders(){
+  const wh=mWkWh();
+  const r=await mSel('material_orders','id,number,status,expected_at,created_by_name,sites!site_id(name)')
+    .eq('warehouse_id',wh).in('status',['sent','confirmed']).order('created_at',{ascending:false}).limit(30);
+  if(r.error){ toast(mvErr(r.error)); return; }
+  openSheet('🛒 Comenzi de pregătit',
+    (r.data||[]).map(o=>'<div class="card" style="padding:.55rem .8rem;margin-bottom:.4rem"><div class="row"><div class="grow"><div class="t">'+esc(o.number||'—')+'</div><div class="s">'+esc((o.sites||{}).name||'—')+' · '+esc(o.created_by_name||'—')+(o.expected_at?(' · <span>până la</span> '+esc(o.expected_at)):'')+'</div></div><span class="pill amber">'+esc(o.status)+'</span></div></div>').join('')
+    ||'<div class="s">Nicio comandă alocată acestui depozit.</div>');
+}
+
 /* scanner QR în aplicație (html5-qrcode) */
 function scanTool(){
   openSheet('📷 Scanează scula','<div class="s">Îndreaptă camera spre eticheta QR a sculei.</div><div id="qr-reader" style="width:100%;margin-top:.6rem"></div><div id="qr-msg" class="s"></div>');

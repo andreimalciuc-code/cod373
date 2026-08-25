@@ -1009,7 +1009,7 @@ const MODULES = {
       {key:'contract_url',label:'Contract (fișier PDF/scan)',type:'file',hint:'Atașează contractul cu clientul. Se stochează securizat în Documente.'},
       {key:'notes',label:'Note',type:'textarea'} ] },
 
-  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă'}, catFilter:true, supplierFilter:true, storeFilter:true, priceSrc:['suppliers','stores'],
+  materiale:{ title:'Materiale', sub:'Nomenclator de materiale.', icon:'📦', group:'Catalog', table:'materials', bulkOrder:{target:'comenzi',label:'Creează comandă'}, qrLabels:'material', catFilter:true, supplierFilter:true, storeFilter:true, priceSrc:['suppliers','stores'],
     newLabel:'Material nou', orderBy:{col:'name',asc:true}, autoCode:{field:'sku',prefix:'MAT'},
     select:'id,name,sku,unit,category,last_price,vat_rate,description,photo_url,material_suppliers(price,suppliers(name)),material_stores(price,stores(name))',
     columns:[
@@ -1053,7 +1053,7 @@ const MODULES = {
       {key:'description',label:'Descriere (compactă)',type:'textarea',hint:'Ce include serviciul, condiții, observații. Apare în nomenclator și pe oferte.'},
       {key:'photo_url',label:'Poză serviciu',type:'photo',hint:'Fotografie ilustrativă (exemplu de lucrare). Se încarcă în Documente.'} ] },
 
-  instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, locFilter:true, toolStockForm:true, bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
+  instrumente:{ title:'Instrumente & utilaje', sub:'Inventar de scule — scanare la primire/predare, custodie și stare.', icon:'🛠️', group:'Catalog', table:'tools', toolActions:true, locFilter:true, toolStockForm:true, qrLabels:'tool', bulkOrder:{target:'comenzi',label:'Creează comandă',nameField:'name'},
     newLabel:'Instrument nou', orderBy:{col:'name',asc:true},
     select:'id,name,code,photo_url,qty,default_rent,default_deposit,tool_locations(qty,site_id,store_id,warehouse_id,holder,loan_type,sites(name),stores(name),warehouses(name)),tool_units(id,serial_no,inventory_no,value,acq_condition,acq_date,useful_life_years,photo_url,site_id,warehouse_id,holder,loan_type,sites(name),warehouses(name))',
     columns:[
@@ -3886,6 +3886,57 @@ function toolQRPrint(name,code){
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(name)+'</title><style>body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;text-align:center;padding:24px}img{width:240px;height:240px}h2{margin:8px 0 0;font-size:18px}div{color:#555}@media print{button{display:none}}</style></head><body><img src="'+src+'"><h2>'+esc(name)+'</h2>'+(code?'<div>Cod '+esc(code)+'</div>':'')+'<br><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 Printează</button></body></html>'); w.document.close();
 }
 
+/* ════ INVENTORY-CUTOVER1/C — etichete QR în masă (absoarbe SCAN1-B.3) ══════════
+   Codul e cel OPAC din `scan_codes` (`C373`+12 hex, fără nume/preț/locație);
+   `scan_code_ensure` întoarce ÎNTOTDEAUNA codul existent ⇒ reprint = aceeași identitate.
+   Tratament pe clase: material → etichetă per ARTICOL; sculă cu bucăți → per SERIE (asset);
+   sculă cantitativă (fără bucăți) → per TIP. Zero serviciu extern de print (fereastră HTML). */
+function qrLibLoad(cb){ if(window.QRCode) return cb(true);
+  const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js';
+  s.onload=()=>cb(!!window.QRCode); s.onerror=()=>cb(false); document.head.appendChild(s); }
+async function qrEnsure(kind,id){ const r=await sb.rpc('scan_code_ensure',{p_tenant_id:state.tenant,p_kind:kind,p_id:id}); if(r.error) throw r.error; return r.data&&r.data.code; }
+async function qrLabelsPrint(items){
+  if(!items.length){ toast(tz('Nimic selectat.')); return; }
+  if(items.length>200){ toast(C373t('Cel mult 200 de etichete odată.')); return; }
+  toast('🏷️ '+C373t('Se generează etichetele…'));
+  try{
+    for(let i=0;i<items.length;i+=10){ await Promise.all(items.slice(i,i+10).map(async it=>{ it.code=await qrEnsure(it.kind,it.id); })); }
+  }catch(e){ toast('Eroare: '+esc(e.message||e)); return; }
+  /* capcana din SCAN1-B.3: biblioteca vine de pe CDN și NU e în precache — se încarcă O DATĂ,
+     cu verificare `window.QRCode`, ÎNAINTE de a deschide fereastra de print. */
+  qrLibLoad(ok=>{ if(!ok){ toast(C373t('Codul nu s-a putut încărca (verifică internetul).')); return; }
+    const host=document.createElement('div'); host.style.cssText='position:fixed;left:-9999px;top:0'; document.body.appendChild(host);
+    const srcs=items.map(it=>{ const d=document.createElement('div'); host.appendChild(d);
+      try{ new QRCode(d,{text:it.code,width:180,height:180,correctLevel:QRCode.CorrectLevel.M}); }catch(e){}
+      /* qrcodejs setează `img.src` ASINCRON (onload intern) — imediat după constructor e gol.
+         Canvas-ul e desenat SINCRON, deci el e sursa; img rămâne fallback (IE-path al bibliotecii). */
+      const cv=d.querySelector('canvas'), img=d.querySelector('img');
+      return cv?cv.toDataURL():((img&&img.src)||''); });
+    document.body.removeChild(host);
+    const w=window.open('','_blank'); if(!w){ toast(C373t('Permite ferestrele pop-up.')); return; }
+    const cells=items.map((it,i)=>'<div class="lb"><img src="'+srcs[i]+'"><div class="t">'+esc(it.title||'')+'</div>'+(it.sub?'<div class="s">'+esc(it.sub)+'</div>':'')+'<div class="c">'+esc(it.code||'')+'</div></div>').join('');
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(C373t('Etichete QR'))+' ('+items.length+')</title><style>'
+      +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;margin:8mm}'
+      +'.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm}'
+      +'.lb{border:1px dashed #bbb;border-radius:6px;padding:4mm;text-align:center;page-break-inside:avoid}'
+      +'.lb img{width:30mm;height:30mm}.t{font-size:11px;font-weight:700;margin-top:2mm;word-break:break-word}.s{font-size:10px;color:#555}.c{font-size:8px;color:#999;letter-spacing:.5px;margin-top:1mm}'
+      +'@media print{button{display:none}}</style></head><body>'
+      +'<button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer;margin-bottom:8px">🖨 '+esc(C373t('Printează'))+'</button>'
+      +'<div class="grid">'+cells+'</div></body></html>');
+    w.document.close();
+  });
+}
+function bulkQrLabels(){ const m=listState.m; if(!m||!m.qrLabels) return;
+  const view=listState._view||[]; const ids=Object.keys(_bulkSel); const rows=(ids.length?view.filter(r=>_bulkSel[r.id]):[]);
+  if(!rows.length){ toast(tz('Nimic selectat.')); return; }
+  let items=[];
+  if(m.qrLabels==='material'){ items=rows.map(r=>({kind:'material',id:r.id,title:r.name,sub:(r.sku?r.sku+' · ':'')+(r.unit||'')})); }
+  else { rows.forEach(r=>{ const us=r.tool_units||[];
+      if(us.length) us.forEach(u=>items.push({kind:'asset',id:u.id,title:r.name,sub:(u.serial_no||u.inventory_no||'')}));
+      else items.push({kind:'tool',id:r.id,title:r.name,sub:r.code||''}); }); }
+  qrLabelsPrint(items);
+}
+
 /* ════ MESAJE / EMAIL CLIENȚI ════ */
 let emailThreads=[];
 async function renderEmailuri(){
@@ -5378,6 +5429,74 @@ async function warehouseContents(whId, whName){
     const sum='<div style="background:var(--bg);border-radius:9px;padding:.5rem .7rem;margin-bottom:.8rem;font-size:.84rem;display:flex;gap:1rem;flex-wrap:wrap"><span>🛠️ <b>'+tBuc+'</b> buc · ~<b>'+money(tVal)+'</b></span><span>📦 <b>'+mBuc+'</b> buc · ~<b>'+money(mVal)+'</b></span><span>🚗 <b>'+veh.length+'</b> vehicule</span><span style="margin-left:auto">💰 Total valoare ~<b>'+money(tVal+mVal)+'</b></span></div>';
     const b=$('wc-body'); if(b) b.innerHTML=sum+_contSection('🛠️','Instrumente'+(tBuc?(' — '+tBuc+' buc · ~'+money(tVal)):''),tR,'Niciun instrument aici.')+_contSection('📦','Materiale'+(mBuc?(' — '+mBuc+' buc · ~'+money(mVal)):''),mR,'Niciun material aici.')+_contSection('🚗','Flotă (depozit de bază)'+(veh.length?(' — '+veh.length):''),vR,'Niciun vehicul cu acest depozit de bază.');
   }catch(e){ const b=$('wc-body'); if(b) b.innerHTML='<div style="color:var(--red)">Eroare: '+esc(e.message||e)+'</div>'; }
+}
+/* ════ INVENTORY-CUTOVER1/B — Responsabili depozit (D108) ═══════════════════════
+   Autoritatea are DOUĂ jumătăți, ca la Maistru (D103), și amândouă stau pe server:
+     · `warehouse_keepers` — CE depozite are omul în grijă (scriere MGMT, prin RLS);
+     · `memberships.caps ∋ 'material_responsible'` — DREPTUL (owner/admin, prin
+       `membership_caps_set`, cu CAS). Interfața de aici doar le administrează. */
+let _whkCtx={ mbyu:{}, capKnown:false, empById:{} };
+function whkErr(e){ const m=(e&&e.message||'').toString();
+  if(m.indexOf('CAP_FORBIDDEN')>=0) return '🔒 '+C373t('Doar proprietarul sau un administrator poate acorda capabilitatea de responsabil.');
+  if(m.indexOf('CAP_NO_MEMBER')>=0) return C373t('Angajatul nu are cont în această firmă.');
+  if(m.indexOf('CAP_CONFLICT')>=0)  return '⚠️ '+C373t('Capabilitățile au fost schimbate între timp. Redeschide fereastra.');
+  if(m.indexOf('KEEPER_INVALID')>=0) return C373t('Fișa de angajat nu aparține acestei firme.');
+  if(m.indexOf('row-level security')>=0||m.indexOf('permission')>=0) return '🔒 '+C373t('Nu ai dreptul să modifici responsabilii de depozit.');
+  return 'Eroare: '+esc(m); }
+async function whKeepers(whId, whName){
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>👤 '+C373t('Responsabili depozit')+' — '+esc(whName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body" id="whk-body"><div class="loading">Se încarcă…</div></div></div></div>';
+  try{
+    const [ke,em,mb]=await Promise.all([
+      sb.from('warehouse_keepers').select('id,employee_id,employees!employee_id(full_name,user_id)').eq('warehouse_id',whId).eq('tenant_id',state.tenant),
+      sb.from('employees').select('id,full_name,user_id,active').eq('tenant_id',state.tenant).eq('active',true).order('full_name'),
+      sb.from('memberships').select('user_id,caps').eq('tenant_id',state.tenant)
+    ]);
+    if(ke.error) throw ke.error;
+    const rows=ke.data||[], emps=em.data||[];
+    _whkCtx.empById={}; emps.forEach(e=>_whkCtx.empById[e.id]=e);
+    /* D-1: dacă nu putem citi capabilitățile (managerul vede doar rândul lui), nu afirmăm nimic. */
+    _whkCtx.mbyu={}; (mb.data||[]).forEach(m=>_whkCtx.mbyu[m.user_id]=m);
+    _whkCtx.capKnown=!mb.error && ADMIN_ROLES.includes(state.role);
+    const taken=new Set(rows.map(r=>r.employee_id));
+    const capBadge=u=>{ if(!u) return '<span class="pill" style="font-size:.66rem">'+C373t('fără cont')+'</span>';
+      if(!_whkCtx.capKnown) return '';
+      const has=((_whkCtx.mbyu[u]||{}).caps||[]).indexOf('material_responsible')>=0;
+      return has?'<span class="pill done" style="font-size:.66rem">🔑 '+C373t('capabilitate activă')+'</span>'
+        :'<button class="btn-ghost" style="font-size:.72rem;padding:.15rem .5rem" onclick="whkGrantCap(\''+u+'\',true,\''+whId+'\',\''+jsArg(whName)+'\')">🔑 '+C373t('Acordă capabilitatea')+'</button>'; };
+    const list=rows.length?rows.map(r=>{ const e=r.employees||{};
+      return '<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem .2rem;border-bottom:1px solid var(--line)"><span style="flex:1">👤 '+esc(e.full_name||'—')+'</span>'+capBadge(e.user_id)
+        +'<button class="btn-ghost" title="'+esc(C373t('Retrage desemnarea'))+'" onclick="whkDel(\''+r.id+'\',\''+whId+'\',\''+jsArg(whName)+'\')">🗑</button></div>'; }).join('')
+      :'<div class="empty" style="padding:.6rem 0">'+C373t('Niciun responsabil desemnat.')+'</div>';
+    const opts=emps.filter(e=>!taken.has(e.id)).map(e=>'<option value="'+e.id+'">'+esc(e.full_name)+(e.user_id?'':' — '+C373t('fără cont'))+'</option>').join('');
+    const b=$('whk-body'); if(b) b.innerHTML=list
+      +'<div style="display:flex;gap:.5rem;margin-top:.8rem"><select id="whk-emp" style="flex:1"><option value="">'+C373t('Alege angajatul…')+'</option>'+opts+'</select>'
+      +'<button class="btn-primary" onclick="whkAdd(\''+whId+'\',\''+jsArg(whName)+'\')">＋ '+C373t('Desemnează')+'</button></div>'
+      +'<div style="font-size:.74rem;color:var(--muted);margin-top:.6rem">'+C373t('Desemnarea și capabilitatea sunt separate: fără capabilitatea „Responsabil depozit" pe cont, desemnarea nu dă niciun drept.')+'</div>';
+  }catch(e){ const b=$('whk-body'); if(b) b.innerHTML='<div style="color:var(--red)">'+whkErr(e)+'</div>'; }
+}
+async function whkAdd(whId, whName){
+  const sel=$('whk-emp'); const empId=sel&&sel.value; if(!empId){ toast(C373t('Alege angajatul…')); return; }
+  /* KB#104 — un insert respins de RLS nu aruncă mereu eroare vizibilă: verificăm rândul întors. */
+  const r=await sb.from('warehouse_keepers').insert({tenant_id:state.tenant,warehouse_id:whId,employee_id:empId}).select('id');
+  if(r.error){ toast(whkErr(r.error)); return; }
+  if(!r.data||!r.data.length){ toast('🔒 '+C373t('Nu ai dreptul să modifici responsabilii de depozit.')); return; }
+  const e=_whkCtx.empById[empId];
+  if(e&&!e.user_id) toast('⚠️ '+C373t('Desemnat, dar fișa nu e legată de un cont — nu poate opera încă.'));
+  else toast('✅ '+C373t('Responsabil desemnat.'));
+  whKeepers(whId, whName);
+}
+async function whkDel(rowId, whId, whName){
+  const r=await sb.from('warehouse_keepers').delete().eq('id',rowId).select('id');
+  if(r.error){ toast(whkErr(r.error)); return; }
+  if(!r.data||!r.data.length){ toast('🔒 '+C373t('Nu ai dreptul să modifici responsabilii de depozit.')); return; }
+  toast(C373t('Desemnare retrasă.')); whKeepers(whId, whName);
+}
+async function whkGrantCap(userId, on, whId, whName){
+  const cur=((_whkCtx.mbyu[userId]||{}).caps||[]);
+  const next=on?Array.from(new Set(cur.concat(['material_responsible']))):cur.filter(c=>c!=='material_responsible');
+  const r=await sb.rpc('membership_caps_set',{p_tenant_id:state.tenant,p_user_id:userId,p_caps:next,p_expect_caps:cur});
+  if(r.error){ toast(whkErr(r.error)); return; }
+  toast(on?('🔑 '+C373t('Capabilitate acordată.')):C373t('Capabilitate retrasă.')); whKeepers(whId, whName);
 }
 async function siteContents(siteId, siteName){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📦 Pe șantier — '+esc(siteName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body" id="sc-body"><div class="loading">Se încarcă…</div></div></div></div>';
@@ -11327,6 +11446,8 @@ async function renderModule(key){
   // (orderItems action injectat în rowActions)
   if(m.bulkOrder && canAdd) bar=bar.replace(/<\/div>$/,'<button class="btn-ghost" id="bulk-order-btn" onclick="bulkCreateOrder()" style="margin-left:.5rem;display:none">🛒 '+esc(m.bulkOrder.label||'Creează comandă')+' (<span id="bulk-n">0</span>)</button></div>');
   if(canDo(key,'d')) bar=bar.replace(/<\/div>$/,'<button class="btn-ghost" id="bulk-del-btn" onclick="bulkDelete()" style="margin-left:.4rem;display:none;color:var(--red);border-color:var(--red)">🗑 '+esc(tz('Șterge'))+' (<span id="bulk-n3">0</span>)</button></div>');
+  /* INVENTORY-CUTOVER1/C — etichete QR pentru selecție (material / serie / tip) */
+  if(m.qrLabels) bar=bar.replace(/<\/div>$/,'<button class="btn-ghost" id="bulk-labels-btn" onclick="bulkQrLabels()" style="margin-left:.4rem;display:none">🏷️ '+esc(tz('Etichete QR'))+' (<span id="bulk-n4">0</span>)</button></div>');
   $('content').innerHTML=bar+'<div class="panel"><div class="panel-head"><h3>'+esc(m.title)+'</h3><span id="list-count" style="font-size:.8rem;color:var(--muted)"></span></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
   // sortarea o facem în client (robust față de hopurile Supabase pe ordonarea după coloane temporale)
   let sel=m.select;
@@ -11388,6 +11509,7 @@ function bulkToggleAll(ck){ const data=bulkVisibleRows(); data.forEach(r=>{ if(c
 function bulkVisibleRows(){ return listState._view||[]; }
 function updateBulkBtn(){ const n=Object.keys(_bulkSel).length; const b=$('bulk-order-btn'); if(b){ b.style.display=n?'inline-flex':'none'; const c=$('bulk-n'); if(c) c.textContent=n; }
   const db=$('bulk-del-btn'); if(db){ db.style.display=n?'inline-flex':'none'; const c3=$('bulk-n3'); if(c3) c3.textContent=n; }
+  const lb=$('bulk-labels-btn'); if(lb){ lb.style.display=n?'inline-flex':'none'; const c4=$('bulk-n4'); if(c4) c4.textContent=n; }
   const all=$('bulk-all'); if(all){ const data=bulkVisibleRows(); all.checked=data.length>0 && data.every(r=>_bulkSel[r.id]); } }
 function listSort(ci){ if(listState.sortIdx===ci){ listState.sortAsc=!listState.sortAsc; } else { listState.sortIdx=ci; listState.sortAsc=true; } renderList(); }
 function stripHtml(s){ const d=document.createElement('div'); d.innerHTML=(s==null?'':String(s)); return (d.textContent||d.innerText||'').replace(/\s+/g,' ').trim(); }
@@ -11598,6 +11720,8 @@ function rowActions(key,m,r){
   if(m.warehouseHub) a.push({i:'📦',l:'Ce se află în depozit (instrumente, materiale, flotă)',f:"warehouseContents('"+id+"','"+jsArg(r.name)+"')"});
   /* SCAN1-A: eticheta scanabilă a locației (depozit / șantier) */
   if(m.warehouseHub) a.push({i:'🏷️',l:tz('Etichetă QR (de lipit la intrare)'),f:"locQR('warehouse','"+id+"','"+jsArg(r.name)+"')"});
+  /* INVENTORY-CUTOVER1/D108: desemnarea responsabililor de depozit */
+  if(m.warehouseHub) a.push({i:'👤',l:tz('Responsabili depozit'),f:"whKeepers('"+id+"','"+jsArg(r.name)+"')"});
   if(m.siteHub)      a.push({i:'🏷️',l:tz('Etichetă QR (de lipit la intrare)'),f:"locQR('site','"+id+"','"+jsArg(r.name)+"')"});
   if(m.scheduler){ a.push({i:'📅',l:'Grafic lucrări (filă nouă)',f:"window.open('grafic.html?site="+id+"','_blank')"}); a.push({i:'📊',l:'Rezumat rapid (marjă & etape)',f:"openSiteDetail('"+id+"')"}); }
   if(m.teamable) a.push({i:'👥',l:'Acces / echipă',f:"siteTeam('"+id+"')"});
