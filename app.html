@@ -910,7 +910,7 @@ const MODULES = {
 
   santiere:{ title:'Șantiere', sub:'Proiectele firmei.', icon:'🏗️', group:'Operațional', table:'sites',
     newLabel:'Proiect nou', portalable:true, teamable:true, scheduler:true, wizard:true, siteHub:true, orderBy:{col:'created_at',asc:false},
-    select:'id,name,code,address,status,budget,progress,deadline,work_type,area_m2,lat,lng',
+    select:'id,name,code,address,status,budget,progress,deadline,work_type,area_m2,lat,lng,default_warehouse_id',
     columns:[
       {label:'Proiect',get:r=>'<span class="tname">'+esc(r.name)+'</span>'+(r.code?' <small style="color:var(--muted)">· '+esc(r.code)+'</small>':'')+(r.work_type?' <small style="color:var(--muted)">· '+(r.work_type==='reparatie'?'reparație':'construcție')+'</small>':'')},
       {label:'Adresă',get:r=>esc(r.address||'—')},
@@ -929,7 +929,8 @@ const MODULES = {
       {key:'budget',label:'Buget contractat (MDL)',type:'number',hint:'Suma TOTALĂ a contractului cu clientul, în lei (MDL), fără separatori. Ex: scrie 4200000 pentru 4,2 milioane. Față de aceasta se calculează marja live (buget − cheltuieli).'},
       {key:'progress',label:'Progres (%)',type:'number',hint:'Cât din lucrare e gata, în procente (0–100). Apare clientului în portal.'},
       {key:'start_date',label:'Început',type:'date',hint:'Data la care încep efectiv lucrările. Folosită în graficul Gantt.'},
-      {key:'deadline',label:'Termen',type:'date',hint:'Data țintă de finalizare. Folosită în graficul Gantt și la alerte.'} ] },
+      {key:'deadline',label:'Termen',type:'date',hint:'Data țintă de finalizare. Folosită în graficul Gantt și la alerte.'},
+      {key:'default_warehouse_id',label:'Depozit implicit',type:'ref',ref:'warehouses',hint:'Depozitul din care se aprovizionează de obicei acest șantier. Recomandarea logistică îl preferă când are stoc suficient.'} ] },
 
   previzualizare:{ title:'Previzualizare șantier', sub:'Fișă de vizită pe teren — poze, întrebări, măsurători → PDF și deviz.', icon:'📋', group:'Operațional', custom:true },
   emailuri:{ title:'Mesaje clienți', sub:'Trimite emailuri clienților și primește răspunsurile aici.', icon:'📨', group:'Operațional', custom:true },
@@ -946,7 +947,7 @@ const MODULES = {
 
   comenzi:{ title:'Comenzi materiale', sub:'Comenzi către furnizori.', icon:'🛒', group:'Operațional', table:'material_orders',
     newLabel:'Comandă nouă', orderBy:{col:'created_at',asc:false},
-    select:'id,number,status,total,ordered_at,expected_at,created_at,created_by_name,suppliers!supplier_id(name),sites!site_id(name)',
+    select:'id,number,status,total,ordered_at,expected_at,created_at,created_by_name,warehouse_id,suppliers!supplier_id(name),sites!site_id(name)',
     orderItems:true,
     columns:[
       {label:'Data',get:r=>'<span style="white-space:nowrap">'+esc(r.created_at?fmtDT(r.created_at):fmtDate(r.ordered_at))+'</span>'},
@@ -960,10 +961,13 @@ const MODULES = {
       {key:'number',label:'Număr comandă',type:'text'},
       {key:'supplier_id',label:'Furnizor',type:'ref',ref:'suppliers'},
       {key:'site_id',label:'Șantier',type:'ref',ref:'sites'},
+      {key:'warehouse_id',label:'Depozit-sursă',type:'ref',ref:'warehouses',hint:'Din ce depozit se pregătește comanda (opțional). Responsabilul depozitului o vede la „Comenzi de pregătit".'},
       {key:'status',label:'Stare',type:'select',options:opts(['draft','sent','confirmed','received','cancelled']),default:'draft'},
       {key:'ordered_at',label:'Data comenzii',type:'date'},
       {key:'expected_at',label:'Livrare estimată',type:'date'} ],
     lineItems:{table:'material_order_items',parentKey:'order_id',totals:['total']} },
+
+  transferuri:{ title:'Transferuri între depozite', sub:'Cereri de transfer — alocare, rezervare, pregătire, transport, recepție.', icon:'🔁', group:'Operațional', custom:true },
 
   livrari:{ title:'Livrări', sub:'Transport către șantiere.', icon:'🚚', group:'Operațional', table:'deliveries',
     newLabel:'Livrare nouă', orderBy:{col:'created_at',asc:false},
@@ -1603,7 +1607,7 @@ const WS_MODULES = {
   vanzari  :['clienti','devize','calculator','licitatii','emailuri','inbox','programari'],
   financiar:['facturi','achizitii','restante','platibil','reconciliere','postcalc','situatii'],
   catalog  :['materiale','servicii','norme','calitate','stoc'],
-  achizitii:['furnizori','magazine','depozite','comenzi'],
+  achizitii:['furnizori','magazine','depozite','comenzi','transferuri'],
   personal :['angajati','subcontractori','pontaj','concedii','salarii','pontajsim','echipament','ssm'],
   resurse  :['instrumente','chirii','flota','harta','alimentari','carduri_carburant'],
   admin    :['utilizatori','setari','seif','cos','documente','ghid','cunostinte']
@@ -3433,7 +3437,7 @@ function go(key){
   if(_navEl) _navEl.scrollTop=_navScroll;
   navRevealActive();                                // NAV2: acordeonul poate muta rândul activ sub linia de plutire
   const L=mt(key); $('ptitle').textContent=L.title; $('psub').textContent=L.sub; $('content').scrollTop=0; closeNav();
-  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, taskuri:renderTaskuri, chirii:renderChirii, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash, calitate:renderCalitate}[key]||renderDashboard)(); }
+  if(m.custom){ ({dashboard:renderDashboard, salarii:renderSalarii, documente:renderDocumente, utilizatori:renderUtilizatori, setari:renderSetari, ghid:renderGhid, norme:renderNorme, gantt:renderGantt, harta:renderHarta, previzualizare:renderPreviz, emailuri:renderEmailuri, postcalc:renderPostcalc, restante:renderRestante, platibil:renderPlatibil, reconciliere:renderReconciliere, plantafel:renderPlantafel, pontaj:renderPontaj, pontajsim:renderPontajSim, clienti:renderClienti, calculator:renderCalculator, seif:renderSeif, programari:renderProgramari, taskuri:renderTaskuri, chirii:renderChirii, cunostinte:renderCunostinte, inbox:renderInbox, cos:renderTrash, calitate:renderCalitate, transferuri:renderTransferuri}[key]||renderDashboard)(); }
   else renderModule(key);
   loadNotifCount();
   maybeInstallBanner();
@@ -5498,6 +5502,266 @@ async function whkGrantCap(userId, on, whId, whName){
   if(r.error){ toast(whkErr(r.error)); return; }
   toast(on?('🔑 '+C373t('Capabilitate acordată.')):C373t('Capabilitate retrasă.')); whKeepers(whId, whName);
 }
+
+/* ════ WAREHOUSE-LOGISTICS1/E — modul „Transferuri între depozite" (D112–D116) ════════════════
+   Biroul vede TOT lanțul: cerere → claim → rezervare → pregătire → încărcare → tranzit →
+   recepție. Serverul e singura autoritate (contractele 0180/0182/0183); UI-ul doar declară
+   intenția și afișează starea. Recomandarea (0184) e deterministă și EXPLICATĂ — override-ul
+   e permis (alegi altă sursă), dar trece prin aceleași contracte, zero bypass de rezervare. */
+const TR_ERR={
+  TR_FORBIDDEN:'Nu ai dreptul la această operație pe depozitul respectiv.',
+  TR_INVALID_INPUT:'Datele cererii sunt incomplete sau invalide.',
+  TR_INVALID_REF:'Referință inexistentă sau din altă firmă.',
+  TR_NOT_FOUND:'Cererea nu există sau nu e vizibilă.',
+  TR_CONFLICT:'Cererea s-a schimbat între timp — reîncarcă lista.',
+  TR_ALREADY_CLAIMED:'Un coleg a preluat deja cererea.',
+  TR_NOT_CLAIMANT:'Cererea e în lucru la altcineva.',
+  TR_SAME_WAREHOUSE:'Sursa și destinația nu pot fi același depozit.',
+  TR_INSUFFICIENT_AVAILABLE:'Disponibil insuficient — fizic minus rezervări nu acoperă cantitatea.',
+  TR_ALREADY_DONE:'Transferul e deja finalizat.',
+  TR_EMPTY:'Cererea nu are nicio poziție.',
+  TR_STAGED:'Cererea e pe fluxul etapizat (pregătire/încărcare) — nu se mai poate executa direct.',
+  TR_ALLOC_EXCEEDS:'Alocările depășesc necesarul cererii.',
+  TR_SHORTFALL:'Lipsește marfă la recepție — declară explicit lipsa ca să finalizezi.'};
+function trErr(e){ const m=String((e&&e.message)||e||''); for(const k in TR_ERR){ if(m.indexOf(k)>=0) return C373t(TR_ERR[k]); } return C373t('Eroare')+': '+m; }
+const TR_ST={pending:['În așteptare','amber'],accepted:['Rezervată','blue'],prepared:['Pregătită','blue'],loaded:['În tranzit','amber'],fulfilled:['Finalizată','green'],declined:['Refuzată','grey'],cancelled:['Anulată','grey']};
+const TR_REASON={default_warehouse:'depozitul implicit al șantierului',covers_all:'acoperă tot necesarul',partial:'acoperă parțial',has_distance:'distanță cunoscută',no_geo:'fără coordonate — distanța nu se poate calcula',active_delivery:'are deja o livrare spre această destinație'};
+let _trCtx={};
+async function trNames(){
+  const [wh,st,mt]=await Promise.all([
+    sb.from('warehouses').select('id,name').eq('tenant_id',state.tenant).order('name'),
+    sb.from('sites').select('id,name').eq('tenant_id',state.tenant).order('name'),
+    sb.from('materials').select('id,name,unit').eq('tenant_id',state.tenant).order('name')]);
+  _trCtx.whs=wh.data||[]; _trCtx.sites=st.data||[]; _trCtx.mats=mt.data||[];
+  _trCtx.wh={}; _trCtx.whs.forEach(w=>_trCtx.wh[w.id]=w.name);
+  _trCtx.site={}; _trCtx.sites.forEach(s=>_trCtx.site[s.id]=s.name);
+  _trCtx.mat={}; _trCtx.mats.forEach(m=>_trCtx.mat[m.id]=m);
+}
+function trDest(r){ return r.to_warehouse_id?('🏬 '+esc(_trCtx.wh[r.to_warehouse_id]||'—')):('🏗️ '+esc(_trCtx.site[r.to_site_id]||'—')); }
+function trItemLine(r,x){
+  const m=_trCtx.mat[x.material_id]||{}; const u=esc(x.unit||m.unit||'');
+  let ch=tz('cerut')+' <b>'+(+x.qty_requested)+'</b>';
+  if(x.qty_accepted!=null) ch+=' · '+tz('acceptat')+' <b>'+(+x.qty_accepted)+'</b>';
+  if(x.qty_prepared!=null) ch+=' · '+tz('pregătit')+' <b>'+(+x.qty_prepared)+'</b>';
+  if(x.qty_loaded!=null)   ch+=' · '+tz('încărcat')+' <b>'+(+x.qty_loaded)+'</b>';
+  if(x.qty_received!=null) ch+=' · '+tz('primit')+' <b>'+(+x.qty_received)+'</b>';
+  const transit=(x.qty_loaded!=null)?(+x.qty_loaded-(+x.qty_received||0)):0;
+  // pe cererea ÎNCHISĂ diferența nu mai e „pe drum" — e lipsa DECLARATĂ (singura cale de a
+  // finaliza cu lipsă); eticheta trebuie să spună adevărul (defect prins de Product E2E)
+  if(transit>0) ch+=' · '+(r.status==='fulfilled'
+    ? '<span style="color:var(--red-ink,#b91c1c)">'+tz('pierdut în tranzit')+' <b>'+transit+'</b></span>'
+    : '<span style="color:var(--amber-ink,#b45309)">'+tz('în tranzit')+' <b>'+transit+'</b></span>');
+  return '<div style="font-size:.84rem;color:var(--muted)">• '+esc(m.name||'—')+' — '+ch+' '+u+'</div>';
+}
+async function renderTransferuri(){
+  $('content').innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--muted)">'+tz('Se încarcă…')+'</div>';
+  try{
+    await trNames();
+    const rq=await sb.from('transfer_requests').select('*').eq('tenant_id',state.tenant).order('created_at',{ascending:false}).limit(100);
+    if(rq.error) throw rq.error;
+    const rows=rq.data||[]; _trCtx.rows={}; rows.forEach(r=>_trCtx.rows[r.id]=r); _trCtx.items={};
+    if(rows.length){
+      const it=await sb.from('transfer_request_items').select('*').in('request_id',rows.map(r=>r.id));
+      (it.data||[]).forEach(x=>{(_trCtx.items[x.request_id]=_trCtx.items[x.request_id]||[]).push(x);});
+    }
+    const act=r=>{
+      const b=[]; const v=r.version;
+      if(r.status==='pending'){
+        if(!r.claimed_by) b.push('<button class="btn-ghost" onclick="trClaim(\''+r.id+'\','+v+')">✋ '+tz('Preia')+'</button>');
+        b.push('<button class="btn-ghost" onclick="trDecide(\''+r.id+'\')">✅ '+tz('Decide')+'</button>');
+        b.push('<button class="btn-ghost" onclick="trCancel(\''+r.id+'\','+v+')">✖ '+tz('Anulează')+'</button>');
+      } else if(r.status==='accepted'){
+        b.push('<button class="btn-ghost" onclick="trPrepare(\''+r.id+'\')">📦 '+tz('Pregătește')+'</button>');
+        b.push('<button class="btn-ghost" onclick="trExec(\''+r.id+'\','+v+')">🚚 '+tz('Execută direct')+'</button>');
+        b.push('<button class="btn-ghost" onclick="trCancel(\''+r.id+'\','+v+')">✖ '+tz('Anulează')+'</button>');
+      } else if(r.status==='prepared'){
+        b.push('<button class="btn-ghost" onclick="trPrepare(\''+r.id+'\')">📦 '+tz('Pregătește')+'</button>');
+        b.push('<button class="btn-ghost" onclick="trLoad(\''+r.id+'\')">🚚 '+tz('Încarcă')+'</button>');
+      } else if(r.status==='loaded'){
+        b.push('<button class="btn-ghost" onclick="trReceive(\''+r.id+'\')">📥 '+tz('Recepționează')+'</button>');
+      }
+      return b.join(' ');
+    };
+    $('content').innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;flex-wrap:wrap;margin-bottom:.8rem">'
+      +'<div><h2 style="margin:0">🔁 '+tz('Transferuri între depozite')+'</h2><p style="margin:.2rem 0 0;color:var(--muted);font-size:.86rem">'+tz('Cereri de transfer — alocare, rezervare, pregătire, transport, recepție.')+'</p></div>'
+      +'<button class="btn-primary" onclick="trNew()">＋ '+tz('Cerere nouă')+'</button></div>'
+      +(rows.length?rows.map(r=>{ const st=TR_ST[r.status]||[r.status,'grey'];
+        return '<div class="card" style="padding:.7rem .9rem;margin-bottom:.5rem">'
+          +'<div style="display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap"><b>🏬 '+esc(_trCtx.wh[r.from_warehouse_id]||'—')+' → '+trDest(r)+'</b>'
+          +'<span class="pill '+st[1]+'">'+tz(st[0])+'</span>'
+          +(r.demand_id?'<span class="pill blue" title="'+tz('Parte dintr-o cerere împărțită pe mai multe depozite')+'">'+tz('split')+'</span>':'')
+          +'<span style="color:var(--muted);font-size:.8rem">'+esc(fmtDT(r.created_at))+(r.needed_by?(' · '+tz('până la')+' '+esc(fmtDate(r.needed_by))):'')+'</span></div>'
+          +((_trCtx.items[r.id]||[]).map(x=>trItemLine(r,x)).join(''))
+          +'<div style="margin-top:.45rem;display:flex;gap:.4rem;flex-wrap:wrap">'+act(r)+'</div></div>'; }).join('')
+        :'<div class="card" style="text-align:center;color:var(--muted);padding:1.6rem">'+tz('Nicio cerere de transfer încă.')+'</div>');
+  }catch(e){ $('content').innerHTML='<div class="card" style="padding:1rem">'+trErr(e)+'</div>'; }
+}
+async function trClaim(id,v){ const r=await sb.rpc('transfer_request_claim',{p_tenant_id:state.tenant,p_request_id:id,p_expected_version:v});
+  if(r.error){ toast(trErr(r.error)); } else toast('✋ '+C373t('Cerere preluată.')); renderTransferuri(); }
+async function trExec(id,v){ const r=await sb.rpc('transfer_request_execute',{p_tenant_id:state.tenant,p_request_id:id,p_expected_version:v});
+  if(r.error){ toast(trErr(r.error)); } else toast('🚚 '+C373t('Transfer executat — stocul s-a mutat.')); renderTransferuri(); }
+async function trCancel(id,v){ if(!confirm(C373t('Anulezi cererea? Rezervarea se eliberează.'))) return;
+  const r=await sb.rpc('transfer_request_cancel',{p_tenant_id:state.tenant,p_request_id:id,p_expected_version:v});
+  if(r.error){ toast(trErr(r.error)); } else toast(C373t('Cerere anulată — rezervarea s-a eliberat.')); renderTransferuri(); }
+function trModal(title, body){ $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>'+title+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'+body+'</div></div></div>'; }
+function trDecide(id){
+  const r=_trCtx.rows[id]; const its=_trCtx.items[id]||[];
+  trModal('✅ '+tz('Decide cererea'),
+    '<div id="trd-msg"></div>'
+    +its.map(x=>{ const m=_trCtx.mat[x.material_id]||{};
+      return '<div class="fld"><label>'+esc(m.name||'—')+' — '+tz('cerut')+' '+(+x.qty_requested)+' '+esc(x.unit||'')+'</label>'
+        +'<input id="trd-'+x.id+'" type="number" min="0" max="'+(+x.qty_requested)+'" step="any" value="'+(+x.qty_requested)+'"/></div>'; }).join('')
+    +'<div style="display:flex;gap:.5rem;margin-top:.6rem"><button class="btn-primary" onclick="trDecideGo(\''+id+'\',\'accept\')">✅ '+tz('Acceptă (rezervă)')+'</button>'
+    +'<button class="btn-ghost" onclick="trDecideGo(\''+id+'\',\'decline\')">✖ '+tz('Refuză')+'</button></div>');
+}
+async function trDecideGo(id,action){
+  const r=_trCtx.rows[id]; const its=_trCtx.items[id]||[]; const payload={request_id:id,action:action};
+  if(action==='accept'){ const over={}; let bad=false;
+    its.forEach(x=>{ const i=$('trd-'+x.id); if(!i) return; const v=parseFloat(i.value);
+      if(isNaN(v)||v<0||v>+x.qty_requested){ bad=true; return; } if(v!==+x.qty_requested) over[x.id]=v; });
+    if(bad){ showMsg('trd-msg', C373t('Cantitățile acceptate trebuie să fie între 0 și cerut.')); return; }
+    if(Object.keys(over).length) payload.overrides=over; }
+  const q=await sb.rpc('transfer_request_decide',{p_tenant_id:state.tenant,p_payload:payload,p_expected_version:r.version});
+  if(q.error){ showMsg('trd-msg', trErr(q.error)); return; }
+  closeModal(); toast(action==='accept'?('✅ '+C373t('Cerere acceptată — cantitatea e rezervată.')):('✖ '+C373t('Cerere refuzată.'))); renderTransferuri();
+}
+function trPrepare(id){
+  const r=_trCtx.rows[id]; const its=(_trCtx.items[id]||[]).filter(x=>(+x.qty_accepted||0)>0);
+  trModal('📦 '+tz('Pregătirea transferului'),
+    '<div id="trp-msg"></div><p style="color:var(--muted);font-size:.84rem;margin-top:0">'+tz('Scrie cât ai pregătit FIZIC din fiecare poziție (cel mult cantitatea rezervată). Diferența rămâne vizibilă — nu se corectează tăcut.')+'</p>'
+    +its.map(x=>{ const m=_trCtx.mat[x.material_id]||{};
+      return '<div class="fld"><label>'+esc(m.name||'—')+' — '+tz('rezervat')+' '+(+x.qty_accepted)+' '+esc(x.unit||'')+'</label>'
+        +'<input id="trp-'+x.id+'" type="number" min="0" max="'+(+x.qty_accepted)+'" step="any" value="'+(x.qty_prepared!=null?+x.qty_prepared:+x.qty_accepted)+'"/></div>'; }).join('')
+    +'<div style="display:flex;gap:.5rem;margin-top:.6rem"><button class="btn-ghost" onclick="trPrepareGo(\''+id+'\',false)">'+tz('Salvează progresul')+'</button>'
+    +'<button class="btn-primary" onclick="trPrepareGo(\''+id+'\',true)">📦 '+tz('Gata de încărcare')+'</button></div>');
+}
+async function trPrepareGo(id,complete){
+  const r=_trCtx.rows[id]; const its=(_trCtx.items[id]||[]).filter(x=>(+x.qty_accepted||0)>0); const map={}; let bad=false;
+  its.forEach(x=>{ const i=$('trp-'+x.id); if(!i) return; const v=parseFloat(i.value);
+    if(isNaN(v)||v<0||v>+x.qty_accepted){ bad=true; return; } map[x.id]=v; });
+  if(bad){ showMsg('trp-msg', C373t('Cantitățile pregătite trebuie să fie între 0 și rezervat.')); return; }
+  const q=await sb.rpc('transfer_request_prepare',{p_tenant_id:state.tenant,p_request_id:id,p_items:map,p_complete:complete,p_expected_version:r.version});
+  if(q.error){ showMsg('trp-msg', trErr(q.error)); return; }
+  closeModal(); toast(complete?('📦 '+C373t('Transfer pregătit — gata de încărcare.')):C373t('Progres salvat.')); renderTransferuri();
+}
+async function trLoad(id){
+  const r=_trCtx.rows[id];
+  const emp=await sb.from('employees').select('id,full_name,user_id').eq('tenant_id',state.tenant).eq('active',true).not('user_id','is',null).order('full_name');
+  const veh=await sb.from('vehicles').select('id,label').eq('tenant_id',state.tenant).order('label');
+  trModal('🚚 '+tz('Încărcare și plecare'),
+    '<div id="trl-msg"></div><p style="color:var(--muted);font-size:.84rem;margin-top:0">'+tz('La încărcare stocul iese din depozitul-sursă și rămâne „în tranzit" până la recepție. Rezervarea pozițiilor neîncărcate se eliberează.')+'</p>'
+    +'<div class="fld"><label>'+tz('Șofer (opțional)')+'</label><select id="trl-drv"><option value="">— '+tz('fără șofer — pleacă direct')+' —</option>'
+    +(emp.data||[]).map(e=>'<option value="'+e.user_id+'">'+esc(e.full_name)+'</option>').join('')+'</select></div>'
+    +'<div class="fld"><label>'+tz('Vehicul (opțional)')+'</label><select id="trl-veh"><option value="">—</option>'
+    +(veh.data||[]).map(v=>'<option value="'+v.id+'">'+esc(v.label)+'</option>').join('')+'</select></div>'
+    +'<button class="btn-primary" onclick="trLoadGo(\''+id+'\')">🚚 '+tz('Confirmă încărcarea')+'</button>');
+}
+async function trLoadGo(id){
+  const r=_trCtx.rows[id]; const p={};
+  const d=$('trl-drv').value; if(d) p.driver_user_id=d;
+  const v=$('trl-veh').value; if(v) p.vehicle_id=v;
+  const q=await sb.rpc('transfer_request_load',{p_tenant_id:state.tenant,p_request_id:id,p_payload:p,p_expected_version:r.version});
+  if(q.error){ showMsg('trl-msg', trErr(q.error)); return; }
+  closeModal(); toast('🚚 '+C373t('Încărcat — marfa e în tranzit.')); renderTransferuri();
+}
+function trReceive(id){
+  const r=_trCtx.rows[id]; const its=(_trCtx.items[id]||[]).filter(x=>(+x.qty_loaded||0)>0);
+  trModal('📥 '+tz('Recepția transferului'),
+    '<div id="trr-msg"></div><p style="color:var(--muted);font-size:.84rem;margin-top:0">'+tz('Scrie TOTALUL primit până acum din fiecare poziție (cumulativ). Poți recepționa în mai mulți pași; la finalizare, o lipsă trebuie DECLARATĂ — nu se corectează tăcut.')+'</p>'
+    +its.map(x=>{ const m=_trCtx.mat[x.material_id]||{};
+      return '<div class="fld"><label>'+esc(m.name||'—')+' — '+tz('încărcat')+' '+(+x.qty_loaded)+' · '+tz('primit')+' '+(+x.qty_received||0)+' '+esc(x.unit||'')+'</label>'
+        +'<input id="trr-'+x.id+'" type="number" min="'+(+x.qty_received||0)+'" max="'+(+x.qty_loaded)+'" step="any" value="'+(+x.qty_loaded)+'"/></div>'; }).join('')
+    +'<label style="display:flex;gap:.45rem;align-items:center;font-size:.86rem;margin:.5rem 0"><input type="checkbox" id="trr-lost"/> '+tz('Declar diferența nelivrată ca PIERDUTĂ în tranzit (intră în istoric)')+'</label>'
+    +'<div style="display:flex;gap:.5rem;margin-top:.4rem"><button class="btn-ghost" onclick="trReceiveGo(\''+id+'\',false)">'+tz('Recepție parțială')+'</button>'
+    +'<button class="btn-primary" onclick="trReceiveGo(\''+id+'\',true)">📥 '+tz('Finalizează recepția')+'</button></div>');
+}
+async function trReceiveGo(id,final){
+  const r=_trCtx.rows[id]; const its=(_trCtx.items[id]||[]).filter(x=>(+x.qty_loaded||0)>0); const map={}; let bad=false;
+  its.forEach(x=>{ const i=$('trr-'+x.id); if(!i) return; const v=parseFloat(i.value);
+    if(isNaN(v)||v<(+x.qty_received||0)||v>+x.qty_loaded){ bad=true; return; } map[x.id]=v; });
+  if(bad){ showMsg('trr-msg', C373t('Totalul primit trebuie să fie între ce era deja primit și ce s-a încărcat.')); return; }
+  const lost=$('trr-lost')&&$('trr-lost').checked;
+  const q=await sb.rpc('transfer_request_receive',{p_tenant_id:state.tenant,p_request_id:id,p_items:map,p_final:final,p_shortfall:(final&&lost)?'lost':null,p_expected_version:r.version});
+  if(q.error){ showMsg('trr-msg', trErr(q.error)); return; }
+  closeModal(); toast(final?('📥 '+C373t('Recepție finalizată.')):C373t('Recepție parțială salvată.')); renderTransferuri();
+}
+/* ── Cerere nouă + recomandarea deterministă (0184) ── */
+function trNew(){
+  trModal('＋ '+tz('Cerere de transfer nouă'),
+    '<div id="trn-msg"></div>'
+    +'<div class="fld"><label>'+tz('Destinația')+'</label><div style="display:flex;gap:.5rem"><select id="trn-kind" onchange="trNewKind()" style="flex:0 0 40%"><option value="warehouse">🏬 '+tz('Depozit')+'</option><option value="site">🏗️ '+tz('Șantier')+'</option></select>'
+    +'<select id="trn-dest" style="flex:1">'+_trCtx.whs.map(w=>'<option value="'+w.id+'">'+esc(w.name)+'</option>').join('')+'</select></div></div>'
+    +'<div id="trn-rows"></div>'
+    +'<button class="btn-ghost" style="margin:.3rem 0" onclick="trNewRow()">＋ '+tz('Adaugă material')+'</button>'
+    +'<div class="fld"><label>'+tz('Necesar până la (opțional)')+'</label><input id="trn-need" type="date"/></div>'
+    +'<button class="btn-ghost" onclick="trRecommend()">💡 '+tz('Recomandă sursa')+'</button>'
+    +'<div id="trn-rec"></div>'
+    +'<div class="fld" style="margin-top:.5rem"><label>'+tz('Sursa')+'</label><select id="trn-src"><option value="">— '+tz('alege sau cere recomandarea')+' —</option>'
+    +_trCtx.whs.map(w=>'<option value="'+w.id+'">🏬 '+esc(w.name)+'</option>').join('')+'</select></div>'
+    +'<button class="btn-primary" onclick="trNewGo()">'+tz('Trimite cererea')+'</button>');
+  _trCtx.plan=null; trNewRow();
+}
+function trNewKind(){ const k=$('trn-kind').value; const d=$('trn-dest');
+  d.innerHTML=(k==='site'?_trCtx.sites:_trCtx.whs).map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');
+  _trCtx.plan=null; const e=$('trn-rec'); if(e) e.innerHTML=''; }
+function trNewRow(){ const host=$('trn-rows'); const i=host.children.length;
+  const div=document.createElement('div'); div.className='fld'; div.style.cssText='display:flex;gap:.5rem;align-items:center';
+  div.innerHTML='<select class="trn-mat" style="flex:1">'+_trCtx.mats.map(m=>'<option value="'+m.id+'">'+esc(m.name)+'</option>').join('')+'</select>'
+    +'<input class="trn-qty" type="number" min="0.001" step="any" placeholder="'+tz('cant.')+'" style="flex:0 0 90px"/>'
+    +(i>0?'<button class="btn-ghost" style="flex:none" onclick="this.parentNode.remove()">×</button>':'');
+  host.appendChild(div); }
+function trNewItems(){
+  const out=[]; const rows=$('trn-rows').children;
+  for(const d of rows){ const m=d.querySelector('.trn-mat').value; const q=parseFloat(d.querySelector('.trn-qty').value);
+    if(!m||isNaN(q)||q<=0) continue; out.push({material_id:m, qty:q}); }
+  return out; }
+async function trRecommend(){
+  const items=trNewItems(); const el=$('trn-rec');
+  if(!items.length){ showMsg('trn-msg', C373t('Adaugă cel puțin un material cu cantitate.')); return; }
+  el.innerHTML='<div style="color:var(--muted);font-size:.84rem">'+tz('Se calculează…')+'</div>';
+  const r=await sb.rpc('logistics_recommend',{p_tenant_id:state.tenant,p_payload:{to:{kind:$('trn-kind').value,id:$('trn-dest').value},items:items}});
+  if(r.error){ el.innerHTML='<div class="msg err">'+trErr(r.error)+'</div>'; return; }
+  const d=r.data||{}; _trCtx.plan=d;
+  const cands=(d.candidates||[]).slice(0,4).map((c,ix)=>{
+    const why=(c.reasons||[]).map(k=>tz(TR_REASON[k]||k)).join(' · ');
+    return '<div style="font-size:.84rem;margin:.2rem 0">'+(ix===0?'⭐ ':'')+'🏬 <b>'+esc(c.name)+'</b>'
+      +(c.distance_km!=null?(' · '+c.distance_km+' km'):'')+' · '+tz('disponibil pt. necesar')+': '+Math.round((+c.coverage||0)*100)+'%'
+      +(why?('<br><span style="color:var(--muted)">'+why+'</span>'):'')+'</div>'; }).join('');
+  const plan=d.plan||{}; const nal=(plan.allocations||[]).length;
+  const short=(d.shortfall||[]).length;
+  el.innerHTML='<div class="card" style="padding:.6rem .8rem;margin:.4rem 0">'+ (cands||tz('Niciun depozit candidat.'))
+    +(nal>1?('<div style="font-size:.84rem;margin-top:.3rem">✂️ '+tz('Necesarul nu încape într-un singur depozit — plan împărțit pe')+' '+nal+' '+tz('depozite')+'.</div>'):'')
+    +(short?('<div class="msg err" style="margin-top:.3rem">'+tz('Stoc insuficient în TOATE depozitele pentru o parte din necesar — cere doar ce există sau completează prin comandă la furnizor.')+'</div>'):'')
+    +(nal?('<button class="btn-ghost" style="margin-top:.4rem" onclick="trNewGoPlan()">'+(nal>1?('✂️ '+tz('Creează cererile conform planului')):('⭐ '+tz('Folosește sursa recomandată')))+'</button>'):'')
+    +'</div>';
+  if(nal===1) $('trn-src').value=plan.allocations[0].from_warehouse_id;
+}
+async function trNewGoPlan(){
+  const d=_trCtx.plan; if(!d) return;
+  const plan=(d.plan&&d.plan.allocations)||[];
+  if(plan.length<=1){ if(plan.length===1) $('trn-src').value=plan[0].from_warehouse_id; trNewGo(); return; }
+  // SPLIT: cererea business rămâne UNA (transfer_demands), alocările devin cereri per depozit
+  const k=$('trn-kind').value; const dest=$('trn-dest').value; const items=trNewItems();
+  const payload={items:items, allocations:plan, recommendation:{plan:d.plan, top:(d.candidates||[]).slice(0,3).map(c=>({id:c.warehouse_id,reasons:c.reasons,distance_km:c.distance_km}))}};
+  if(k==='site') payload.to_site_id=dest; else payload.to_warehouse_id=dest;
+  const need=$('trn-need').value; if(need) payload.needed_by=need;
+  const r=await sb.rpc('transfer_demand_create',{p_tenant_id:state.tenant,p_payload:payload});
+  if(r.error){ showMsg('trn-msg', trErr(r.error)); return; }
+  closeModal(); toast('✂️ '+C373t('Cerere împărțită creată — câte o alocare per depozit.')); renderTransferuri();
+}
+async function trNewGo(){
+  const items=trNewItems(); const src=$('trn-src').value;
+  if(!items.length){ showMsg('trn-msg', C373t('Adaugă cel puțin un material cu cantitate.')); return; }
+  if(!src){ showMsg('trn-msg', C373t('Alege depozitul-sursă sau cere recomandarea.')); return; }
+  const k=$('trn-kind').value; const payload={from_warehouse_id:src, items:items};
+  if(k==='site') payload.to_site_id=$('trn-dest').value; else payload.to_warehouse_id=$('trn-dest').value;
+  const need=$('trn-need').value; if(need) payload.needed_by=need;
+  if(_trCtx.plan) payload.recommendation={picked:src, top:(_trCtx.plan.candidates||[]).slice(0,3).map(c=>({id:c.warehouse_id,reasons:c.reasons,distance_km:c.distance_km}))};
+  const r=await sb.rpc('transfer_request_create',{p_tenant_id:state.tenant,p_payload:payload});
+  if(r.error){ showMsg('trn-msg', trErr(r.error)); return; }
+  closeModal(); toast('✅ '+C373t('Cerere trimisă.')); renderTransferuri();
+}
+
 async function siteContents(siteId, siteName){
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px"><div class="modal-head"><h3>📦 Pe șantier — '+esc(siteName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body" id="sc-body"><div class="loading">Se încarcă…</div></div></div></div>';
   try{
@@ -14177,7 +14441,7 @@ async function materialOrderSaveViaContract(payload){
     if(!confirm(C373t('Comanda avea poziții și acum nu mai are niciuna. Ștergi toate pozițiile comenzii?'))){ $('btn-save').disabled=false; return; }
     allowEmpty=true;
   }
-  const doc={}; ['supplier_id','site_id','number','status','ordered_at','expected_at'].forEach(k=>{ if(k in payload) doc[k]=payload[k]; });
+  const doc={}; ['supplier_id','site_id','warehouse_id','number','status','ordered_at','expected_at'].forEach(k=>{ if(k in payload) doc[k]=payload[k]; });
   doc.total=payload.total;   // informativ: serverul îl recalculează și refuză o diferență > 0,02
   try{
     const r=await sb.rpc('material_order_set',{ p_order_id:formCtx.id||null, p_tenant_id:state.tenant, p_document:doc, p_items:items,

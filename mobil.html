@@ -213,7 +213,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='347';
+const APP_BUILD='348';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -1933,18 +1933,39 @@ async function mTdReportSave(){
 async function scrLivrari(){
   $('screen').innerHTML='<div class="scr-title">Livrări</div><div id="drv-orders"></div><div id="dl"><div class="loading">Se încarcă…</div></div>';
   try{ const oh=await driverOrdersHtml(); const od=$('drv-orders'); if(od) od.innerHTML=oh; }catch(e){}
-  const {data}=await sb.from('deliveries').select('id,status,scheduled_at,order_id,site_id,vehicle_id');
+  const {data}=await sb.from('deliveries').select('id,status,scheduled_at,order_id,site_id,vehicle_id,transfer_request_id,from_warehouse_id');
   const sm=await nameMap('sites','name'); const om=await nameMap('material_orders','number'); const vm=await nameMap('vehicles','label');
   const rows=(data||[]).slice().reverse();
   if(!rows.length){$('dl').innerHTML='<div class="empty"><div class="ei">🚚</div>Nicio livrare programată.</div>';return;}
+  /* WAREHOUSE-LOGISTICS1/E: destinația-DEPOZIT a livrărilor de transfer vine din cererea legată */
+  const trIds=rows.filter(r=>r.transfer_request_id).map(r=>r.transfer_request_id); const trTo={};
+  if(trIds.length){ try{ const wm=await nameMap('warehouses','name');
+    const tq=await sb.from('transfer_requests').select('id,to_warehouse_id,to_site_id').in('id',trIds);
+    (tq.data||[]).forEach(t=>{ trTo[t.id]=t.to_warehouse_id?('🏬 '+(wm[t.to_warehouse_id]||'—')):('🏗️ '+(sm[t.to_site_id]||'—')); });
+  }catch(e){} }
   const stat={pending:['În așteptare','amber'],accepted:['Acceptată','blue'],en_route:['Pe drum','blue'],delivered:['Livrată','green'],failed:['Eșuată','red']};
   $('dl').innerHTML=rows.map(r=>{
-    const st=stat[r.status]||['—','grey']; let act='';
-    if(r.status==='pending') act='<button class="mini-btn go" onclick="setDeliv(\''+r.id+'\',\'accepted\')">Accept</button>';
-    else if(r.status==='accepted') act='<button class="mini-btn pr" onclick="setDeliv(\''+r.id+'\',\'en_route\')">Pornesc</button>';
-    else if(r.status==='en_route') act='<button class="mini-btn go" onclick="setDeliv(\''+r.id+'\',\'delivered\')">Am livrat</button>';
-    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(r.site_id?(sm[r.site_id]||'Destinație'):'Destinație')+'</div><div class="s">Comanda '+esc(r.order_id?(om[r.order_id]||'—'):'—')+(r.vehicle_id&&vm[r.vehicle_id]?(' · '+esc(vm[r.vehicle_id])):'')+'</div></div><span class="pill '+st[1]+'">'+st[0]+'</span></div>'+(act?'<div style="margin-top:.7rem;text-align:right">'+act+'</div>':'')+'</div>';
+    const st=stat[r.status]||['—','grey']; let act=''; const isTr=!!r.transfer_request_id;
+    if(isTr){
+      /* tranzițiile livrărilor de transfer trec prin CONTRACT (monoton, D116) — nu prin UPDATE
+         direct; „Livrată" o închide RECEPȚIA la destinație, nu șoferul */
+      if(r.status==='pending') act='<button class="mini-btn go" onclick="trDlv(\''+r.id+'\',\'accepted\')">Accept</button>';
+      else if(r.status==='accepted') act='<button class="mini-btn pr" onclick="trDlv(\''+r.id+'\',\'en_route\')">Pornesc</button>';
+      else if(r.status==='en_route') act='<span class="pill amber">se închide la recepție</span>';
+    } else {
+      if(r.status==='pending') act='<button class="mini-btn go" onclick="setDeliv(\''+r.id+'\',\'accepted\')">Accept</button>';
+      else if(r.status==='accepted') act='<button class="mini-btn pr" onclick="setDeliv(\''+r.id+'\',\'en_route\')">Pornesc</button>';
+      else if(r.status==='en_route') act='<button class="mini-btn go" onclick="setDeliv(\''+r.id+'\',\'delivered\')">Am livrat</button>';
+    }
+    const dest=isTr?(trTo[r.transfer_request_id]||'Destinație'):(r.site_id?(sm[r.site_id]||'Destinație'):'Destinație');
+    const sub=isTr?('🔁 Transfer'+(r.from_warehouse_id?(' din depozit'):'')):('Comanda '+esc(r.order_id?(om[r.order_id]||'—'):'—'));
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(dest)+'</div><div class="s">'+sub+(r.vehicle_id&&vm[r.vehicle_id]?(' · '+esc(vm[r.vehicle_id])):'')+'</div></div><span class="pill '+st[1]+'">'+st[0]+'</span></div>'+(act?'<div style="margin-top:.7rem;text-align:right">'+act+'</div>':'')+'</div>';
   }).join('');
+}
+async function trDlv(id,status){
+  const r=await sb.rpc('transfer_delivery_progress',{p_tenant_id:S.tenant,p_delivery_id:id,p_status:status});
+  if(r.error){ toast(mvErr(r.error)); return; }
+  toast('🚚 Stare actualizată.'); scrLivrari();
 }
 async function setDeliv(id,status){
   const patch={status}; if(status==='delivered') patch.delivered_at=new Date().toISOString();
@@ -2101,13 +2122,16 @@ async function sendOrder(){
   let who=(S.uname||'').trim();
   if(!who || who.indexOf('@')>=0){ const _e=mEmp(); if(_e&&_e.name) who=_e.name; }
   who=who||S.email||null;
-  // prețuri din catalog (lucrătorul nu le vede, dar oficiul le primește)
-  const total=items.reduce((t,it)=>t+(+it.qty||0)*catPriceOf(it),0);
-  const ins=await sb.from('material_orders').insert({tenant_id:S.tenant,site_id:site,status:'draft',total:total,expected_at:deadline,created_by:S.session.user.id,created_by_name:who}).select('id').single();
-  if(ins.error){ fail('Eroare la creare: '+ins.error.message); return; }
-  const rows=items.map(it=>({tenant_id:S.tenant,order_id:ins.data.id,material_id:it.kind==='m'?it.refId:null,name:(it.kind==='t'?'🛠️ '+it.name:it.name),qty:it.qty,unit:it.unit,unit_price:catPriceOf(it),vat_rate:20}));
-  const r2=await sb.from('material_order_items').insert(rows);
-  if(r2.error){ fail('Eroare la poziții: '+r2.error.message); return; }
+  // KB#31 ÎNCHIS (WAREHOUSE-LOGISTICS1/E): comanda se scrie prin contractul ATOMIC
+  // `material_order_set` (0177/0179) — antetul și pozițiile într-o singură tranzacție, nu două
+  // INSERT-uri care puteau lăsa un părinte orfan. Totalul NU se trimite: serverul îl calculează
+  // (clientul aduna fără TVA și ar fi picat pe MO_TOTALS_MISMATCH). Prețurile din catalog merg
+  // pe poziții (lucrătorul nu le vede, dar oficiul le primește).
+  const rows=items.map(it=>({material_id:it.kind==='m'?it.refId:null,name:(it.kind==='t'?'🛠️ '+it.name:it.name),qty:it.qty,unit:it.unit,unit_price:catPriceOf(it),vat_rate:20}));
+  const r2=await sb.rpc('material_order_set',{p_order_id:null,p_tenant_id:S.tenant,
+    p_document:{site_id:site,status:'draft',expected_at:deadline,created_by_name:who},
+    p_items:rows,p_expected_updated_at:null,p_allow_empty:false});
+  if(r2.error){ fail(mvErr(r2.error)); return; }
   S.cart={}; closeSheet(); toast('✅ Comandă trimisă la birou ('+items.length+' poziții).'); scrComanda();
 }
 /* ── fus orar firmă pt afișarea orei ── */
@@ -2780,6 +2804,16 @@ const MV_ERR={
   TR_INSUFFICIENT_AVAILABLE:'Disponibilul nu ajunge (o parte e deja rezervată).',
   TR_ALREADY_DONE:'Transferul a fost deja executat.',
   TR_EMPTY:'Cererea nu are poziții.',
+  /* 0182–0184/D112–D116 — fluxul etapizat + split + recomandare */
+  TR_STAGED:'Cererea e pe fluxul de pregătire/încărcare — nu se mai execută direct.',
+  TR_ALLOC_EXCEEDS:'Alocările depășesc necesarul cererii.',
+  TR_SHORTFALL:'Lipsește marfă la recepție. Bifează declararea lipsei ca să finalizezi.',
+  /* KB#31 — comanda de materiale prin contractul atomic */
+  MO_FORBIDDEN:'Nu ai dreptul să trimiți comenzi.',
+  MO_INVALID_ITEMS:'Pozițiile comenzii sunt invalide.',
+  MO_INVALID_REF:'Șantier, depozit sau material inexistent.',
+  MO_CONFLICT:'Comanda s-a schimbat între timp. Reîncarcă.',
+  MO_SAVE_FAILED:'Comanda nu s-a putut salva. Încearcă din nou.',
   MOVE_FORBIDDEN:'Nu ai dreptul pentru această mișcare.',
   MOVE_NOT_FOUND:'Obiectul nu a fost găsit.',
   MOVE_INVALID_INPUT:'Date invalide.',
@@ -4097,7 +4131,7 @@ async function scrDepozit(){
     .sort((a,b)=>String((a.materials||{}).name||'').localeCompare(String((b.materials||{}).name||''),'ro'));
   wkStockFilter('');
   try{ const ids=ks.map(k=>k.id);
-    const rq=await mSel('transfer_requests','id,status,from_warehouse_id,to_warehouse_id').in('status',['pending','accepted']);
+    const rq=await mSel('transfer_requests','id,status,from_warehouse_id,to_warehouse_id').in('status',['pending','accepted','prepared','loaded']);
     const n=(rq.data||[]).filter(r=>ids.indexOf(r.from_warehouse_id)>=0||ids.indexOf(r.to_warehouse_id)>=0).length;
     const e1=$('wk-reqn'); if(e1&&n) e1.textContent=' ('+n+')';
     const or=await mSel('material_orders','id').eq('warehouse_id',wh).in('status',['sent','confirmed']);
@@ -4112,32 +4146,54 @@ function wkStockFilter(q){ q=(q||'').toLowerCase(); const el=$('wk-stock'); if(!
 }
 function wkInv(){ try{ localStorage.setItem('c373_mv_mode','inv'); }catch(e){} goV('scan'); }
 
-/* ── Cererile de transfer: preia → acceptă (total/parțial) → execută / anulează ── */
+/* ── Cererile de transfer: preia → acceptă → PREGĂTEȘTE → ÎNCARCĂ → tranzit → RECEPȚIONEAZĂ ──
+   (0182/0183, D112–D116). Execuția expresă rămâne pentru transferul fără transport etapizat;
+   o cerere intrată pe pregătire nu se mai execută direct (TR_STAGED, server-side). */
 async function wkRequests(){
   await wkNames(); const ids=mKeeps().map(k=>k.id); const me=S.session.user.id;
-  const rq=await mSel('transfer_requests','id,status,from_warehouse_id,to_warehouse_id,requested_by,claimed_by,version,created_at')
-    .in('status',['pending','accepted']).order('created_at',{ascending:false}).limit(60);
+  const sm=await nameMap('sites','name');
+  const rq=await mSel('transfer_requests','id,status,from_warehouse_id,to_warehouse_id,to_site_id,needed_by,demand_id,requested_by,claimed_by,version,created_at')
+    .in('status',['pending','accepted','prepared','loaded']).order('created_at',{ascending:false}).limit(60);
   if(rq.error){ toast(mvErr(rq.error)); return; }
   const all=(rq.data||[]).filter(r=>ids.indexOf(r.from_warehouse_id)>=0||ids.indexOf(r.to_warehouse_id)>=0||r.requested_by===me);
-  const rids=all.map(r=>r.id); S._wkItems={};
-  if(rids.length){ const it=await mSel('transfer_request_items','id,request_id,qty_requested,qty_accepted,unit,materials(name)').in('request_id',rids);
+  const rids=all.map(r=>r.id); S._wkItems={}; S._wkReq={}; all.forEach(r=>S._wkReq[r.id]=r);
+  if(rids.length){ const it=await mSel('transfer_request_items','id,request_id,qty_requested,qty_accepted,qty_prepared,qty_loaded,qty_received,unit,materials(name)').in('request_id',rids);
     (it.data||[]).forEach(x=>{(S._wkItems[x.request_id]=S._wkItems[x.request_id]||[]).push(x);}); }
+  const destName=r=>r.to_warehouse_id?wkWhName(r.to_warehouse_id):('🏗️ '+(sm[r.to_site_id]||'—'));
+  const qline=(r,x,dir)=>{
+    if(dir==='in'&&r.status==='pending'&&r.claimed_by===me)
+      return '<input id="wk-acc-'+x.id+'" type="number" inputmode="decimal" min="0" max="'+(+x.qty_requested)+'" value="'+(+x.qty_requested)+'" style="width:76px;padding:.2rem .35rem"> / '+(+x.qty_requested);
+    let s=''+(+x.qty_requested);
+    if(x.qty_accepted!=null) s=(+x.qty_accepted)+' <span>rez.</span>';
+    if(x.qty_prepared!=null) s+=' · '+(+x.qty_prepared)+' <span>preg.</span>';
+    if(x.qty_loaded!=null){ s+=' · '+(+x.qty_loaded)+' <span>înc.</span>';
+      const tr=(+x.qty_loaded)-(+x.qty_received||0);
+      /* pe cererea închisă diferența e lipsa DECLARATĂ, nu „pe drum" (defect prins de E2E) */
+      s+=' · '+(+x.qty_received||0)+' <span>primit</span>'
+        +(tr>0?(' · <b>'+tr+'</b> <span>'+(r.status==='fulfilled'?'pierdut în tranzit':'pe drum')+'</span>'):''); }
+    return s;
+  };
   const card=(r,dir)=>{ const its=S._wkItems[r.id]||[];
-    const lines=its.map(x=>'<div class="s">• '+esc((x.materials||{}).name||'—')+' — '
-      +((dir==='in'&&r.status==='pending'&&r.claimed_by===me)
-        ?'<input id="wk-acc-'+x.id+'" type="number" inputmode="decimal" min="0" max="'+(+x.qty_requested)+'" value="'+(+x.qty_requested)+'" style="width:76px;padding:.2rem .35rem"> / '+(+x.qty_requested)
-        :(+((r.status==='accepted'?(x.qty_accepted!=null?x.qty_accepted:x.qty_requested):x.qty_requested))||0))
-      +' '+esc(x.unit||'')+'</div>').join('');
+    const lines=its.map(x=>'<div class="s">• '+esc((x.materials||{}).name||'—')+' — '+qline(r,x,dir)+' '+esc(x.unit||'')+'</div>').join('');
     let act='';
     if(dir==='in'){
       if(r.status==='pending'&&!r.claimed_by) act='<button class="mini-btn" onclick="wkClaim(\''+r.id+'\','+r.version+')">✋ Preia</button>';
       else if(r.status==='pending'&&r.claimed_by===me) act='<button class="mini-btn" onclick="wkDecide(\''+r.id+'\','+r.version+',\'accept\')">✅ Acceptă</button> <button class="mini-btn gh" onclick="wkDecide(\''+r.id+'\','+r.version+',\'decline\')">✖ Refuză</button>';
       else if(r.status==='pending') act='<span class="pill amber">în lucru la un coleg</span>';
-      if(r.status==='accepted') act='<button class="mini-btn" onclick="wkExec(\''+r.id+'\','+r.version+')">🚚 Execută predarea</button>';
+      if(r.status==='accepted') act='<button class="mini-btn" onclick="wkPrepare(\''+r.id+'\')">📦 Pregătește</button> <button class="mini-btn gh" onclick="wkExec(\''+r.id+'\','+r.version+')">🚚 Predau direct</button>';
+      if(r.status==='prepared') act='<button class="mini-btn" onclick="wkLoad(\''+r.id+'\')">🚚 Încarcă</button> <button class="mini-btn gh" onclick="wkPrepare(\''+r.id+'\')">📦 Pregătește</button>';
+      if(r.status==='loaded') act='<span class="pill amber">în tranzit — aștept recepția</span>';
     } else {
-      act='<span class="pill '+(r.status==='accepted'?'green':'amber')+'">'+(r.status==='accepted'?'acceptată':'în așteptare')+'</span> <button class="mini-btn gh" onclick="wkCancel(\''+r.id+'\','+r.version+')">✖ Anulează</button>';
+      if(r.status==='loaded'&&(ids.indexOf(r.to_warehouse_id)>=0||r.requested_by===me))
+        act='<button class="mini-btn" onclick="wkReceive(\''+r.id+'\')">📥 Recepționează</button>';
+      else if(r.status==='loaded') act='<span class="pill amber">în tranzit</span>';
+      else if(r.status==='prepared') act='<span class="pill blue">se pregătește</span>';
+      else act='<span class="pill '+(r.status==='accepted'?'green':'amber')+'">'+(r.status==='accepted'?'acceptată':'în așteptare')+'</span> <button class="mini-btn gh" onclick="wkCancel(\''+r.id+'\','+r.version+')">✖ Anulează</button>';
     }
-    return '<div class="card" style="margin-bottom:.5rem"><div class="t">'+esc(wkWhName(r.from_warehouse_id))+' → '+esc(wkWhName(r.to_warehouse_id))+'</div><div class="s">'+fmtDT(r.created_at)+'</div>'+lines+'<div class="row" style="margin-top:.4rem;gap:.4rem;flex-wrap:wrap">'+act+'</div></div>'; };
+    return '<div class="card" style="margin-bottom:.5rem"><div class="t">'+esc(wkWhName(r.from_warehouse_id))+' → '+esc(destName(r))
+      +(r.demand_id?' <span class="pill blue">split</span>':'')+'</div><div class="s">'+fmtDT(r.created_at)
+      +(r.needed_by?(' · <span>până la</span> '+esc(r.needed_by)):'')+'</div>'+lines
+      +'<div class="row" style="margin-top:.4rem;gap:.4rem;flex-wrap:wrap">'+act+'</div></div>'; };
   const inc=all.filter(r=>ids.indexOf(r.from_warehouse_id)>=0);
   const out=all.filter(r=>ids.indexOf(r.from_warehouse_id)<0);
   openSheet('🔁 Cereri de transfer',
@@ -4146,6 +4202,63 @@ async function wkRequests(){
     +'<div class="t" style="margin:.8rem 0 .2rem">📤 Cerute pentru tine</div>'
     +(out.length?out.map(r=>card(r,'out')).join(''):'<div class="s">Nicio cerere trimisă.</div>')
     +'<button class="btn" style="margin-top:.8rem" onclick="wkNewReq()">＋ Solicită transfer</button>');
+}
+/* pregătirea: cantități ABSOLUTE (retry idempotent), plafon = rezervat; diferența rămâne vizibilă */
+function wkPrepare(id){
+  const r=S._wkReq[id]; const its=(S._wkItems[id]||[]).filter(x=>(+x.qty_accepted||0)>0);
+  openSheet('📦 Pregătirea transferului',
+    '<div id="wkp-msg"></div><div class="s" style="margin-bottom:.5rem">Scrie cât ai pregătit fizic din fiecare poziție (cel mult cât e rezervat).</div>'
+    +its.map(x=>'<div class="fld"><label>'+esc((x.materials||{}).name||'—')+' — rezervat '+(+x.qty_accepted)+' '+esc(x.unit||'')+'</label>'
+      +'<input id="wkp-'+x.id+'" type="number" inputmode="decimal" min="0" max="'+(+x.qty_accepted)+'" value="'+(x.qty_prepared!=null?+x.qty_prepared:+x.qty_accepted)+'"/></div>').join('')
+    +'<div class="row" style="gap:.5rem"><button class="btn btn-soft" style="flex:1" onclick="wkPrepareGo(\''+id+'\',false)">Salvează</button>'
+    +'<button class="btn" style="flex:1" onclick="wkPrepareGo(\''+id+'\',true)">📦 Gata de încărcare</button></div>');
+}
+async function wkPrepareGo(id,complete){
+  const r=S._wkReq[id]; const its=(S._wkItems[id]||[]).filter(x=>(+x.qty_accepted||0)>0); const map={}; let bad=false;
+  its.forEach(x=>{ const i=$('wkp-'+x.id); if(!i) return; const v=parseFloat(i.value);
+    if(isNaN(v)||v<0||v>+x.qty_accepted){ bad=true; return; } map[x.id]=v; });
+  if(bad){ $('wkp-msg').innerHTML='<div class="msg err">Cantitățile pregătite trebuie să fie între 0 și rezervat.</div>'; return; }
+  const q=await sb.rpc('transfer_request_prepare',{p_tenant_id:S.tenant,p_request_id:id,p_items:map,p_complete:complete,p_expected_version:r.version});
+  if(q.error){ $('wkp-msg').innerHTML='<div class="msg err">'+mvErr(q.error)+'</div>'; return; }
+  toast(complete?'📦 Pregătit — gata de încărcare.':'Progres salvat.'); wkRequests();
+}
+/* încărcarea: stocul iese din sursă și rămâne „pe drum" până la recepție; vehiculul e opțional.
+   Șoferul se asignează din birou (modulul Transferuri) — de pe teren keeperul pleacă singur. */
+function wkLoad(id){
+  const r=S._wkReq[id];
+  openSheet('🚚 Încărcare și plecare',
+    '<div id="wkl-msg"></div><div class="s" style="margin-bottom:.5rem">La încărcare, marfa iese din depozit și rămâne „pe drum" până o confirmă destinația. Pozițiile nepregătite își eliberează rezervarea.</div>'
+    +'<div class="fld"><label>Vehicul (opțional)</label><select id="wkl-veh"><option value="">—</option></select></div>'
+    +'<button class="btn" onclick="wkLoadGo(\''+id+'\')">🚚 Confirmă încărcarea</button>');
+  mSel('vehicles','id,label').order('label').then(v=>{ const s=$('wkl-veh'); if(!s) return;
+    (v.data||[]).forEach(x=>{ const o=document.createElement('option'); o.value=x.id; o.textContent=x.label; s.appendChild(o); }); });
+}
+async function wkLoadGo(id){
+  const r=S._wkReq[id]; const p={}; const v=$('wkl-veh')&&$('wkl-veh').value; if(v) p.vehicle_id=v;
+  const q=await sb.rpc('transfer_request_load',{p_tenant_id:S.tenant,p_request_id:id,p_payload:p,p_expected_version:r.version});
+  if(q.error){ $('wkl-msg').innerHTML='<div class="msg err">'+mvErr(q.error)+'</div>'; return; }
+  toast('🚚 Încărcat — marfa e pe drum.'); wkRequests();
+}
+/* recepția: TOTALURI cumulative (parțial repetabil, retry idempotent); lipsa se DECLARĂ */
+function wkReceive(id){
+  const r=S._wkReq[id]; const its=(S._wkItems[id]||[]).filter(x=>(+x.qty_loaded||0)>0);
+  openSheet('📥 Recepția transferului',
+    '<div id="wkr-msg"></div><div class="s" style="margin-bottom:.5rem">Scrie TOTALUL primit până acum din fiecare poziție. Poți recepționa în mai mulți pași; la finalizare, o lipsă trebuie declarată — nimic nu se corectează tăcut.</div>'
+    +its.map(x=>'<div class="fld"><label>'+esc((x.materials||{}).name||'—')+' — încărcat '+(+x.qty_loaded)+' · primit '+(+x.qty_received||0)+' '+esc(x.unit||'')+'</label>'
+      +'<input id="wkr-'+x.id+'" type="number" inputmode="decimal" min="'+(+x.qty_received||0)+'" max="'+(+x.qty_loaded)+'" value="'+(+x.qty_loaded)+'"/></div>').join('')
+    +'<label class="s" style="display:flex;gap:.45rem;align-items:center;margin:.4rem 0"><input type="checkbox" id="wkr-lost"/> Declar diferența nelivrată ca pierdută în tranzit</label>'
+    +'<div class="row" style="gap:.5rem"><button class="btn btn-soft" style="flex:1" onclick="wkReceiveGo(\''+id+'\',false)">Recepție parțială</button>'
+    +'<button class="btn" style="flex:1" onclick="wkReceiveGo(\''+id+'\',true)">📥 Finalizează</button></div>');
+}
+async function wkReceiveGo(id,final){
+  const r=S._wkReq[id]; const its=(S._wkItems[id]||[]).filter(x=>(+x.qty_loaded||0)>0); const map={}; let bad=false;
+  its.forEach(x=>{ const i=$('wkr-'+x.id); if(!i) return; const v=parseFloat(i.value);
+    if(isNaN(v)||v<(+x.qty_received||0)||v>+x.qty_loaded){ bad=true; return; } map[x.id]=v; });
+  if(bad){ $('wkr-msg').innerHTML='<div class="msg err">Totalul primit trebuie să fie între ce era deja primit și ce s-a încărcat.</div>'; return; }
+  const lost=$('wkr-lost')&&$('wkr-lost').checked;
+  const q=await sb.rpc('transfer_request_receive',{p_tenant_id:S.tenant,p_request_id:id,p_items:map,p_final:final,p_shortfall:(final&&lost)?'lost':null,p_expected_version:r.version});
+  if(q.error){ $('wkr-msg').innerHTML='<div class="msg err">'+mvErr(q.error)+'</div>'; return; }
+  toast(final?'📥 Recepție finalizată.':'Recepție parțială salvată.'); wkRequests();
 }
 async function wkClaim(id,ver){ const r=await sb.rpc('transfer_request_claim',{p_tenant_id:S.tenant,p_request_id:id,p_expected_version:ver});
   if(r.error){ toast(mvErr(r.error)); } else toast('✋ Cerere preluată.'); wkRequests(); }
@@ -4176,15 +4289,39 @@ async function wkNewReq(fromWh, matId){
     +'<div class="fld"><label>Către depozitul tău</label><select id="wk-nto">'+mKeeps().map(k=>'<option value="'+k.id+'">'+esc(k.name)+'</option>').join('')+'</select></div>'
     +'<div class="fld"><label>Material</label><select id="wk-nmat">'+mats.map(m=>'<option value="'+m.id+'"'+(m.id===matId?' selected':'')+'>'+esc(m.name)+'</option>').join('')+'</select></div>'
     +'<div class="fld"><label>Cantitate</label><input id="wk-nqty" type="number" inputmode="decimal" min="0.001" placeholder="ex: 20"/></div>'
-    +'<button class="btn" id="wk-nsave" onclick="wkNewReqSave()">Trimite cererea</button>');
+    +'<button class="btn btn-soft" onclick="wkRecommend()">💡 Recomandă sursa</button>'
+    +'<div id="wk-nrec"></div>'
+    +'<button class="btn" id="wk-nsave" style="margin-top:.5rem" onclick="wkNewReqSave()">Trimite cererea</button>');
+  S._wkRec=null;
+}
+/* recomandarea deterministă (0184): explică DE CE și preselectează sursa; alegerea finală
+   rămâne a omului și trece prin aceleași contracte (zero bypass de rezervare) */
+async function wkRecommend(){
+  const qty=parseFloat($('wk-nqty').value); const el=$('wk-nrec'); if(!el) return;
+  if(isNaN(qty)||qty<=0){ $('wk-nmsg').innerHTML='<div class="msg err">Scrie întâi cantitatea.</div>'; return; }
+  el.innerHTML='<div class="s">Se calculează…</div>'; S._wkRec=null;
+  const r=await sb.rpc('logistics_recommend',{p_tenant_id:S.tenant,p_payload:{
+    to:{kind:'warehouse',id:$('wk-nto').value}, items:[{material_id:$('wk-nmat').value, qty:qty}]}});
+  if(r.error){ el.innerHTML='<div class="msg err">'+mvErr(r.error)+'</div>'; return; }
+  const d=r.data||{}; S._wkRec=d;
+  const WHY={default_warehouse:'depozit implicit',covers_all:'acoperă tot',partial:'acoperă parțial',has_distance:'distanță cunoscută',no_geo:'fără coordonate',active_delivery:'livrare deja planificată'};
+  const cs=(d.candidates||[]).filter(c=>(+c.coverage||0)>0).slice(0,3);
+  if(!cs.length){ el.innerHTML='<div class="msg err">Niciun depozit nu are disponibil pentru cantitatea asta.</div>'; return; }
+  el.innerHTML='<div class="card" style="padding:.55rem .8rem;margin:.4rem 0">'+cs.map((c,i)=>{
+    const why=(c.reasons||[]).map(k=>WHY[k]||k).join(' · ');
+    return '<div class="s">'+(i===0?'⭐ ':'')+'🏬 <b>'+esc(c.name)+'</b>'+(c.distance_km!=null?(' · '+c.distance_km+' km'):'')
+      +(why?('<br><span style="opacity:.75">'+why+'</span>'):'')+'</div>'; }).join('')+'</div>';
+  const sel=$('wk-nfrom'); if(sel&&cs[0]&&cs[0].covers_all) sel.value=cs[0].warehouse_id;
 }
 async function wkNewReqSave(){
   const qty=parseFloat($('wk-nqty').value);
   if(isNaN(qty)||qty<=0){ $('wk-nmsg').innerHTML='<div class="msg err">Scrie o cantitate mai mare decât zero.</div>'; return; }
   $('wk-nsave').disabled=true;
-  const r=await sb.rpc('transfer_request_create',{p_tenant_id:S.tenant,p_payload:{
-    from_warehouse_id:$('wk-nfrom').value, to_warehouse_id:$('wk-nto').value,
-    items:[{material_id:$('wk-nmat').value, qty:qty}]}});
+  const payload={ from_warehouse_id:$('wk-nfrom').value, to_warehouse_id:$('wk-nto').value,
+    items:[{material_id:$('wk-nmat').value, qty:qty}]};
+  if(S._wkRec) payload.recommendation={picked:payload.from_warehouse_id,
+    top:(S._wkRec.candidates||[]).slice(0,3).map(c=>({id:c.warehouse_id,reasons:c.reasons,distance_km:c.distance_km}))};
+  const r=await sb.rpc('transfer_request_create',{p_tenant_id:S.tenant,p_payload:payload});
   $('wk-nsave').disabled=false;
   if(r.error){ $('wk-nmsg').innerHTML='<div class="msg err">'+mvErr(r.error)+'</div>'; return; }
   /* fără closeSheet înainte de următorul openSheet — vezi nota din wkLookupRun */
