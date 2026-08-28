@@ -194,7 +194,7 @@
       <div class="who"><div class="n" id="who-n">Utilizator</div><div class="r" id="who-r">—</div></div>
       <img id="firm-logo" alt="" style="display:none;height:30px;max-width:84px;object-fit:contain;margin-right:.3rem;border-radius:6px;background:#fff;padding:1px"/>
       <button class="out" id="notif-btn" onclick="openNotif()" title="Notificări" style="margin-right:.3rem;position:relative">🔔<span id="notif-badge" style="position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:.6rem;font-weight:700;padding:0 .28rem;display:none"></span></button>
-      <button class="out" onclick="openChat()" title="Chat" style="margin-right:.3rem">💬</button>
+      <button class="out" id="chat-btn" onclick="openChat()" title="Chat" style="margin-right:.3rem">💬</button>
       <button class="out" onclick="openSupport()" title="Suport / Ajutor" style="margin-right:.3rem">🛟</button>
       <button class="out" onclick="doLogout()">Ieși</button>
     </div>
@@ -213,7 +213,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='349';
+const APP_BUILD='350';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -380,6 +380,11 @@ async function boot(){
   /* Rolurile de teren sunt BLOCATE pe interfața lor; conducerea poate comuta între vederi.
      `S.memberRole` rămâne singura autoritate — `S.role` e strict preferință de AFIȘARE. */
   if(['worker','driver','client','subcontractor'].includes(mem.role)){ S.role=mem.role; $('roles').classList.add('hidden'); }
+  /* SEC-CLIENT-FINAL-GATE — `messages` e chat-ul INTERN al firmei („Chat echipă"): fără model de
+     participanți, iar inserția nu poartă `site_id`. Clientul nu are ce citi acolo, iar 0188 îi
+     retrage și politica. Butonul dispare, ca să nu rămână o suprafață moartă spre discuțiile
+     echipei. */
+  if(mem.role==='client'){ const cb=$('chat-btn'); if(cb) cb.style.display='none'; }
   else { S.role=mFieldDefaultView(); $('roles').classList.remove('hidden'); mRolesBar(); }
   document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.role===S.role));
   $('login').classList.add('hidden');$('app').classList.remove('hidden');
@@ -898,12 +903,21 @@ function receipt(number,total,issue){
     +'<p style="font-size:.75rem;color:var(--muted);margin-top:.8rem;text-align:center">Chitanță generată de Cod373 ('+esc(S.email||'')+').</p>');
 }
 async function payInvoiceSheet(id,number,total){
-  const {data:ba}=await sb.from('bank_accounts').select('bank,iban');
-  const acc=(ba&&ba[0])||null;
+  /* SEC-CLIENT-PAYMENT1 — contract invoice-scoped (0187), NU SELECT direct pe `bank_accounts`.
+     Vechiul cod lua `ba[0]` dintr-un select FĂRĂ `order by`, dintr-o tabelă internă de trezorerie
+     (care are și `balance`), deci putea arăta un IBAN care NU e cel de pe factura clientului.
+     Acum datele vin din `invoices.bank_choice` + lista bancară PUBLICATĂ a firmei, cu aceeași
+     semantică ca factura/PDF: `__off` ⇒ niciun cont, id explicit ⇒ acel cont, gol ⇒ toate. */
+  let accs=[];
+  try{ const {data}=await sb.rpc('my_client_invoice_bank',{p_invoice_id:id}); accs=data||[]; }catch(e){ accs=[]; }
+  const bankBlock=a=>a.legacy?esc(a.legacy)
+    :[a.bank?'<b>'+esc(a.bank)+'</b>':'', a.iban?'<span style="font-family:monospace">'+esc(a.iban)+'</span>':'',
+      a.swift?'<b>SWIFT/BIC:</b> '+esc(a.swift):'', a.note?esc(a.note):''].filter(Boolean).join('<br>');
   openSheet('Plată factura '+number,
     '<div id="pay-msg"></div>'
     +'<div class="card" style="margin:0 0 1rem;text-align:center"><div class="s">Sumă de plată</div><div style="font-size:1.8rem;font-weight:800;margin-top:.2rem">'+money(total)+'</div></div>'
-    +(acc?'<div class="card" style="margin:0 0 1rem"><div class="s">Transfer bancar către</div><b>'+esc(acc.bank||'Bancă')+'</b><div style="font-family:monospace;margin-top:.3rem">'+esc(acc.iban||'IBAN nedefinit')+'</div></div>':'')
+    +(accs.length?'<div class="card" style="margin:0 0 1rem"><div class="s">'+esc(mt('Transfer bancar către'))+'</div>'
+        +accs.map(a=>'<div style="margin-top:.3rem">'+bankBlock(a)+'</div>').join('')+'</div>':'')
     /* KB#48A: butonul „Plătește online" chema `pay_invoice`, care marca factura
        plătită și insera în `bank_transactions` totalul integral — la apăsarea
        CLIENTULUI, fără sumă și fără registru. Toate cele 5 încasări istorice
