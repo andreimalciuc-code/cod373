@@ -213,7 +213,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='348';
+const APP_BUILD='349';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -1215,7 +1215,7 @@ async function fillAzi(){
   if(_st && _st.id){ site=_st.id; siteName=_st.name||''; }
   else { const d=mToday();
     try{ const cp=await sb.from('crew_plan').select('site_id,sites(name)').eq('employee_id',myEmp).eq('plan_date',d).maybeSingle(); if(cp.data&&cp.data.site_id){ site=cp.data.site_id; siteName=(cp.data.sites&&cp.data.sites.name)||''; } }catch(e){} }
-  if(!site){ host.innerHTML='<div class="card" style="background:var(--amber-soft);border-color:var(--amber)"><div class="t">📌 Azi</div><div class="s">Nu ai un șantier planificat azi. Întreabă responsabilul, sau alege manual când pontezi.</div></div>'; return; }
+  if(!site){ host.innerHTML='<div class="card" style="background:var(--amber-soft);border-color:var(--amber)"><div class="t">📌 '+esc(mt('Azi'))+'</div><div class="s">'+esc(mt('Nu ai un șantier planificat azi. Întreabă responsabilul, sau alege manual când pontezi.'))+'</div></div>'; return; }
   let stages=[]; try{ const sr=await sb.from('site_stages').select('*').eq('site_id',site).order('position'); stages=(sr.data||[]).filter(x=>x.status!=='done'); }catch(e){}
   S.curStages=(S.curStages||[]).filter(x=>x.site_id!==site).concat(stages);
   const stCol={plan:'grey',active:'blue',done:'green',delayed:'amber'};
@@ -1805,6 +1805,15 @@ function renderEchipa(){
 
   const nDirty=Object.keys(E).length;
   const canWrite=T.can_write===true;
+  // KB#122 — `site_stage_progress_set` (0174) își derivă autoritatea din ZIUA CURENTĂ, nu din
+  // ziua vizualizată — spre deosebire de `crew_attendance_set` (p_work_date) și
+  // `field_daily_report_save` (p_log_date). Pe o zi istorică din fereastră, starea etapei rămâne
+  // VIZIBILĂ, dar acțiunile ar primi inevitabil STAGE_FORBIDDEN, deci nu se oferă.
+  // Ziua se compară din contract (`date` vs `today`, amândouă calculate server-side cu
+  // app.tz_local_date în fusul FIRMEI) — niciodată din ceasul aparatului sau din UTC brut.
+  // Nu e o a doua regulă de fereastră: fereastra rămâne exclusiv a serverului (`can_write`),
+  // iar `isToday` e cel deja calculat mai sus pentru pastila „Azi" — nu se redeclară.
+  const canStage=canWrite&&isToday;
   const bulk = canWrite
     ? '<div class="row" style="gap:.5rem;margin:0 0 .6rem">'
       +'<button class="mini-btn pr grow" onclick="mTdAll(8)">👍 '+esc(mt('Toți 8 ore'))+'</button>'
@@ -1818,11 +1827,12 @@ function renderEchipa(){
     ? stages.map(st=>'<div class="card" style="margin:0 0 .45rem"><div class="row"><div class="grow"><div class="t">'+esc(st.name)+'</div>'
         +'<div class="s">'+esc(siteName(st.site_id)||'')+' · '+(st.progress||0)+'%</div></div>'
         +'<span class="pill '+(stCol[st.status]||'grey')+'">'+esc(mt(stLbl[st.status]||st.status||'—'))+'</span></div>'
-        +(canWrite?'<div class="row" style="gap:.4rem;margin-top:.45rem">'
+        +(canStage?'<div class="row" style="gap:.4rem;margin-top:.45rem">'
           +(st.status!=='active'?'<button class="mini-btn go grow" onclick="mTdStage(\''+st.id+'\',\'active\',null)">▶️ '+esc(mt('Începe'))+'</button>':'')
           +'<button class="mini-btn gh grow" onclick="mTdProgress(\''+st.id+'\')">📈 '+esc(mt('Progres'))+'</button>'
           +'<button class="mini-btn pr grow" onclick="mTdStage(\''+st.id+'\',\'done\',100)">✅ '+esc(mt('Gata'))+'</button>'
-        +'</div>':'')+'</div>').join('')
+        +'</div>'
+        :(canWrite?'<div class="s" style="margin-top:.45rem">'+esc(mt('Zi încheiată — progresul se schimbă doar în ziua curentă.'))+'</div>':''))+'</div>').join('')
     : '<div class="s">'+esc(mt('Nicio etapă deschisă pe șantierele zilei.'))+'</div>';
 
   const tasks=(T.tasks||[]);
