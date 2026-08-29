@@ -13,6 +13,20 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── AI-QUOTA1 — panoul „Consum AI" + mesajul de limită al Edge Function-ului ──
+    'Consum AI luna aceasta':{ru:'Расход ИИ в этом месяце',de:'KI-Verbrauch diesen Monat',en:'AI usage this month'},
+    'mesaje':{ru:'сообщений',de:'Nachrichten',en:'messages'},
+    'rămase':{ru:'осталось',de:'verbleibend',en:'remaining'},
+    'Se resetează':{ru:'Обновится',de:'Zurücksetzung',en:'Resets'},
+    'AI Cod373 — inclus în plan':{ru:'ИИ Cod373 — включён в тариф',de:'Cod373-KI — im Tarif enthalten',en:'Cod373 AI — included in your plan'},
+    'Cheie Anthropic proprie — activă':{ru:'Собственный ключ Anthropic — активен',de:'Eigener Anthropic-Schlüssel — aktiv',en:'Your own Anthropic key — active'},
+    'Consum nelimitat, plătit direct la Anthropic.':{ru:'Безлимитный расход, оплачивается напрямую Anthropic.',de:'Unbegrenzte Nutzung, direkt an Anthropic bezahlt.',en:'Unlimited usage, billed directly by Anthropic.'},
+    'mesaje trimise luna aceasta':{ru:'сообщений отправлено в этом месяце',de:'Nachrichten diesen Monat gesendet',en:'messages sent this month'},
+    'Ai folosit peste 80% din mesajele AI ale lunii.':{ru:'Вы использовали более 80% сообщений ИИ за месяц.',de:'Sie haben über 80% der KI-Nachrichten des Monats verbraucht.',en:'You have used over 80% of this month\'s AI messages.'},
+    'Ți-au rămas foarte puține mesaje AI luna aceasta.':{ru:'У вас осталось очень мало сообщений ИИ в этом месяце.',de:'Ihnen bleiben diesen Monat nur noch sehr wenige KI-Nachrichten.',en:'You have very few AI messages left this month.'},
+    'Ai atins limita de mesaje AI pe luna aceasta.':{ru:'Вы достигли лимита сообщений ИИ на этот месяц.',de:'Sie haben das KI-Nachrichtenlimit für diesen Monat erreicht.',en:'You have reached this month\'s AI message limit.'},
+    'Consumul AI nu poate fi citit acum.':{ru:'Расход ИИ сейчас недоступен.',de:'Der KI-Verbrauch kann gerade nicht gelesen werden.',en:'AI usage cannot be read right now.'},
+    'Ai atins limita de mesaje AI pe luna aceasta. Vezi Setări → Asistent AI pentru consum și opțiuni.':{ru:'Вы достигли лимита сообщений ИИ на этот месяц. Расход и варианты — в Настройки → ИИ-ассистент.',de:'Sie haben das KI-Nachrichtenlimit für diesen Monat erreicht. Verbrauch und Optionen unter Einstellungen → KI-Assistent.',en:'You have reached this month\'s AI message limit. See Settings → AI Assistant for usage and options.'},
     // ── HOTFIX-AI-BYOK-TEST1 — „Testează" verifică EXCLUSIV cheia salvată server-side (D78) ──
     'Se testează…':{ru:'Идёт проверка…',de:'Wird getestet…',en:'Testing…'},
     'Salvează întâi cheia, apoi testeaz-o — se verifică doar cheia salvată.':{ru:'Сначала сохраните ключ, затем проверьте его — проверяется только сохранённый ключ.',de:'Speichern Sie den Schlüssel zuerst und testen Sie ihn dann — geprüft wird nur der gespeicherte Schlüssel.',en:'Save the key first, then test it — only the saved key is checked.'},

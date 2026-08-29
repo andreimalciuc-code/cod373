@@ -3646,6 +3646,69 @@ async function aiTest(){
     else { showMsg('set-ai-msg','⚠ '+esc((data&&(data.message||data.detail))||'Eroare')); }
   }catch(e){ showMsg('set-ai-msg','⚠ '+esc(e.message||'eroare')); }
 }
+/* ════ AI-QUOTA1 — panoul „Consum AI"
+   Sursa e EXCLUSIV contractul server-side `ai_quota_status` (0189): un singur RPC, cu poartă
+   de membership, care întoarce consumul, cota efectivă și sursa. Clientul NU citește
+   `ai_usage`/`ai_quotas` direct și NU află niciodată costurile interne Anthropic. ════ */
+async function aiUsageLoad(){
+  const box=$('ai-usage-box'); if(!box) return;
+  box.innerHTML='<div style="font-size:.8rem;color:var(--muted)">'+esc(C373t('Se încarcă…'))+'</div>';
+  try{
+    const r=await sb.rpc('ai_quota_status',{p_tenant_id:state.tenant});
+    if(r.error) throw r.error;
+    const el=$('ai-usage-box'); if(el) el.innerHTML=aiUsageHtml(r.data||{});
+  }catch(e){
+    const el=$('ai-usage-box');
+    if(el) el.innerHTML='<div style="font-size:.8rem;color:var(--muted)">'+esc(C373t('Consumul AI nu poate fi citit acum.'))+'</div>';
+  }
+}
+function aiUsageHtml(d){
+  const byok = d.quota_source==='byok';
+  const used = +d.used_messages||0;
+  /* reset_at vine ca instant UTC; `fmtDT` îl randează în FUSUL FIRMEI, nu în UTC brut */
+  const reset = d.reset_at?fmtDT(d.reset_at):'';
+  const wrap = (inner)=>'<div style="border:1px solid var(--line);border-radius:10px;padding:.6rem .7rem;background:var(--surface)">'+inner+'</div>';
+  const cap = '<div style="font-size:.74rem;font-weight:700;color:var(--muted);letter-spacing:.02em;margin-bottom:.35rem">'
+    +esc(C373t('Consum AI luna aceasta'))+'</div>';
+  const resetLine = reset?('<div style="font-size:.74rem;color:var(--muted);margin-top:.4rem">'
+    +esc(C373t('Se resetează'))+': '+esc(reset)+'</div>'):'';
+
+  if(byok){
+    /* Cota platformei NU se aplică factual ⇒ nu inventăm un „x / 100". */
+    return wrap(cap
+      +'<div style="display:flex;flex-wrap:wrap;gap:.3rem .6rem;align-items:baseline">'
+      +'<b style="font-size:1.02rem">'+used+'</b>'
+      +'<span style="font-size:.8rem;color:var(--muted)">'+esc(C373t('mesaje trimise luna aceasta'))+'</span></div>'
+      +'<div style="font-size:.78rem;color:var(--text);font-weight:600;margin-top:.35rem">🔑 '
+      +esc(C373t('Cheie Anthropic proprie — activă'))+'</div>'
+      +'<div style="font-size:.74rem;color:var(--muted)">'+esc(C373t('Consum nelimitat, plătit direct la Anthropic.'))+'</div>'
+      +resetLine);
+  }
+
+  const quota=+d.quota_messages||0;
+  const left =(d.remaining_messages==null)?Math.max(0,quota-used):+d.remaining_messages;
+  const pct  =(d.percent_used==null)?(quota?Math.min(100,Math.floor(100*used/quota)):100):+d.percent_used;
+  const col  = pct>=90?'var(--red)':(pct>=80?'var(--amber)':'var(--primary)');
+  let warn='';
+  /* ►► Culoarea textului NU se scrie în hex: `--red-soft`/`--amber-soft` se schimbă cu tema,
+     iar un hex fix dă 2,2:1 pe întuneric (măsurat). `--text` se adaptează singur; accentul
+     de severitate stă pe bordură, care nu trebuie să fie lizibilă, ci doar vizibilă. */
+  if(pct>=100) warn='<div style="margin-top:.5rem;font-size:.78rem;color:var(--text);background:var(--red-soft);border-left:3px solid var(--red);border-radius:8px;padding:.45rem .6rem">'
+    +esc(C373t('Ai atins limita de mesaje AI pe luna aceasta.'))+'</div>';
+  else if(pct>=90) warn='<div style="margin-top:.45rem;font-size:.78rem;color:var(--text);background:var(--amber-soft);border-left:3px solid var(--amber);border-radius:8px;padding:.45rem .6rem">'
+    +esc(C373t('Ți-au rămas foarte puține mesaje AI luna aceasta.'))+'</div>';
+  else if(pct>=80) warn='<div style="margin-top:.45rem;font-size:.78rem;color:var(--muted)">'
+    +esc(C373t('Ai folosit peste 80% din mesajele AI ale lunii.'))+'</div>';
+
+  return wrap(cap
+    +'<div style="display:flex;flex-wrap:wrap;gap:.2rem .7rem;align-items:baseline;justify-content:space-between">'
+    +'<b style="font-size:1.02rem">'+used+' / '+quota+' <span style="font-weight:500;font-size:.8rem;color:var(--muted)">'+esc(C373t('mesaje'))+'</span></b>'
+    +'<span style="font-size:.8rem;color:var(--muted)">'+left+' '+esc(C373t('rămase'))+'</span></div>'
+    +'<div style="height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:.4rem">'
+    +'<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:999px"></div></div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.35rem">🤖 '+esc(C373t('AI Cod373 — inclus în plan'))+'</div>'
+    +resetLine+warn);
+}
 async function tcLoad(scroll){
   const { data }=await sb.from('messages').select('id,user_id,sender_name,body,created_at,attachments');
   const el=$('tc-list'); if(!el) return;
@@ -10312,6 +10375,7 @@ async function renderSetari(){
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">După „Testează" reușit și „Salvează", din fiecare factură vei putea trimite direct în programul conectat (în lucru — îți activez butonul după ce confirmi conexiunea).</div>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🤖 Asistent AI</h3></div><div class="modal-body"><div id="set-ai-msg"></div>'
+    +'<div id="ai-usage-box" style="margin:.1rem 0 .9rem"></div>'
     +'<p style="color:var(--muted);font-size:.85rem;margin-top:0">Asistentul AI (din butonul 🤖 de sus) te ajută cu redactare de oferte/texte, estimări și întrebări despre program. Funcționează cu o <b>cotă gratuită lunară</b>. Pentru <b>consum nelimitat</b>, pune-ți propria cheie Anthropic — atunci consumul îl plătești tu, direct la Anthropic.</p>'
     +secField('set-anthropic','anthropic_key','Cheia mea Anthropic (BYOK)','O generezi pe console.anthropic.com → API Keys. Începe cu sk-ant-… Dacă o pui aici, consumul AI e nelimitat și se facturează pe contul tău Anthropic. Cheia nu se mai întoarce niciodată în browser — o poți doar înlocui sau șterge.','sk-ant-…','<button class="btn-ghost" onclick="aiTest()">🔌 Testează</button>')
     +'<div class="field" style="max-width:280px"><label>Model</label><select id="set-ai-model">'+[['claude-haiku-4-5','Haiku 4.5 — rapid și ieftin (recomandat)'],['claude-sonnet-4-6','Sonnet 4.6 — echilibrat'],['claude-opus-4-8','Opus 4.8 — cel mai capabil']].map(o=>'<option value="'+o[0]+'"'+((aiModel()===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'
@@ -10350,6 +10414,7 @@ async function renderSetari(){
     +stageTplPanel()
     +'</div>';
   firmLogoUrl(3600).then(u=>{ const el=$('set-logo-prev'); if(u&&el) el.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:100%;object-fit:contain">'; });
+  aiUsageLoad();
   geoScan($('content'));
 }
 async function uploadFirmLogo(input){
