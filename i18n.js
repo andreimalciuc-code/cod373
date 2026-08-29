@@ -13,6 +13,25 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── ADMIN1 / migr 0190 — administrarea firmei, mesaje de autoritate ──
+    'Nu îți poți schimba propriul rol.':{ru:'Вы не можете изменить собственную роль.',de:'Sie können Ihre eigene Rolle nicht ändern.',en:'You cannot change your own role.'},
+    'Nu te poți dezactiva pe tine.':{ru:'Вы не можете деактивировать себя.',de:'Sie können sich nicht selbst deaktivieren.',en:'You cannot deactivate yourself.'},
+    'Doar un proprietar poate schimba rolul altui proprietar.':{ru:'Менять роль владельца может только владелец.',de:'Nur ein Inhaber kann die Rolle eines anderen Inhabers ändern.',en:'Only an owner can change another owner\'s role.'},
+    'Doar un proprietar poate retrage accesul altui proprietar.':{ru:'Отозвать доступ владельца может только владелец.',de:'Nur ein Inhaber kann einem anderen Inhaber den Zugang entziehen.',en:'Only an owner can revoke another owner\'s access.'},
+    'Doar proprietarul poate acorda rolul de proprietar.':{ru:'Назначить роль владельца может только владелец.',de:'Nur der Inhaber kann die Inhaber-Rolle vergeben.',en:'Only the owner can grant the owner role.'},
+    'Doar un proprietar poate schimba rolul sau accesul altui proprietar.':{ru:'Менять роль или доступ владельца может только владелец.',de:'Nur ein Inhaber kann Rolle oder Zugang eines anderen Inhabers ändern.',en:'Only an owner can change another owner\'s role or access.'},
+    'Contul tău administrează mai multe firme. Deschide firma dorită înainte de această operație.':{ru:'Ваша учётная запись управляет несколькими фирмами. Откройте нужную фирму перед этой операцией.',de:'Ihr Konto verwaltet mehrere Firmen. Öffnen Sie die gewünschte Firma vor diesem Vorgang.',en:'Your account administers several companies. Open the intended company before this operation.'},
+    'Cerere invalidă. Reîncarcă pagina și încearcă din nou.':{ru:'Некорректный запрос. Обновите страницу и повторите.',de:'Ungültige Anfrage. Seite neu laden und erneut versuchen.',en:'Invalid request. Reload the page and try again.'},
+    'Invitația nu mai e în așteptare — a fost deja folosită sau anulată.':{ru:'Приглашение больше не в ожидании — оно уже использовано или отменено.',de:'Die Einladung ist nicht mehr offen — sie wurde bereits genutzt oder storniert.',en:'The invitation is no longer pending — it was already used or cancelled.'},
+    'Proprietarul firmei':{ru:'Владелец фирмы',de:'Inhaber der Firma',en:'Company owner'},
+    'Acces activat.':{ru:'Доступ активирован.',de:'Zugang aktiviert.',en:'Access enabled.'},
+    'Linkul nu mai funcționează. Anuleaz-o și trimite o invitație nouă.':{ru:'Ссылка больше не работает. Отмените приглашение и отправьте новое.',de:'Der Link funktioniert nicht mehr. Stornieren Sie die Einladung und senden Sie eine neue.',en:'The link no longer works. Cancel it and send a new invitation.'},
+    'Persoana e deja membră. Rolul se schimbă din lista de membri, nu de aici.':{ru:'Человек уже участник. Роль меняется в списке участников, а не здесь.',de:'Die Person ist bereits Mitglied. Die Rolle wird in der Mitgliederliste geändert, nicht hier.',en:'This person is already a member. Change the role from the member list, not here.'},
+    'Persoana e deja membră a firmei.':{ru:'Человек уже является участником фирмы.',de:'Die Person ist bereits Mitglied der Firma.',en:'This person is already a member of the company.'},
+    'Acces reactivat.':{ru:'Доступ восстановлен.',de:'Zugang reaktiviert.',en:'Access reactivated.'},
+    'Dezactivează membrul':{ru:'Деактивировать участника',de:'Mitglied deaktivieren',en:'Deactivate member'},
+    'Activează membrul':{ru:'Активировать участника',de:'Mitglied aktivieren',en:'Activate member'},
+
     // ── AI-QUOTA1 — panoul „Consum AI" + mesajul de limită al Edge Function-ului ──
     'Consum AI luna aceasta':{ru:'Расход ИИ в этом месяце',de:'KI-Verbrauch diesen Monat',en:'AI usage this month'},
     'mesaje':{ru:'сообщений',de:'Nachrichten',en:'messages'},

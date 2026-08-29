@@ -10537,6 +10537,61 @@ async function saveSetari(){
 }
 
 /* ════ UTILIZATORI & ROLURI ════ */
+/* ══════════════════════════════════════════════════════════════════════════
+   ADMIN1 / migr 0190 — INTERFAȚA NU OFERĂ CE SERVERUL REFUZĂ
+
+   Serverul a devenit fail-closed: un admin nu poate acorda și nu poate retrage
+   rolul de proprietar, ultimul proprietar activ nu poate fi retrogradat sau
+   dezactivat, iar un refuz nu mai trece drept succes. Dacă interfața ar continua
+   să afișeze aceleași butoane, singura schimbare vizibilă pentru utilizator ar fi
+   un mesaj de eroare DUPĂ clic — adică exact suprafața moartă pe care lotul o
+   interzice. De aceea deciziile de mai jos oglindesc, unu la unu, gărzile din
+   `membership_role_apply`, `set_member_active` și `add_member_by_email`.
+
+   `admLock` întoarce MOTIVUL blocării (string gol = acțiune permisă), ca butonul
+   să poată fi dezactivat CU explicație, nu doar ascuns. `admErr` traduce codurile
+   serverului; le păstrăm pe amândouă fiindcă interfața poate rămâne în urma bazei
+   (tab vechi pe cache-ul SW) — atunci codul serverului e ultima plasă. */
+function admLock(u, kind, activeOwners){
+  const self = u.user_id === (state.session && state.session.user && state.session.user.id);
+  const iAmOwner = state.role === 'owner';
+  const ownerRow = u.role === 'owner';
+  if(kind === 'role'){
+    if(self) return tz('Nu îți poți schimba propriul rol.');
+  } else {
+    if(self) return tz('Nu te poți dezactiva pe tine.');
+  }
+  if(ownerRow && !iAmOwner)
+    return kind === 'role'
+      ? tz('Doar un proprietar poate schimba rolul altui proprietar.')
+      : tz('Doar un proprietar poate retrage accesul altui proprietar.');
+  /* ultimul proprietar ACTIV: identic cu `MEMBERSHIP_LAST_OWNER` */
+  if(ownerRow && u.active && activeOwners <= 1)
+    return tz('Firma ar rămâne fără proprietar. Numește întâi alt proprietar.');
+  return '';
+}
+/* Codurile serverului → mesaje pentru om. Necunoscutele trec mai departe ca atare:
+   un cod nou nu trebuie să devină „Eroare" fără conținut. */
+function admErr(error){
+  const m = String((error && error.message) || error || '');
+  if(m.indexOf('MEMBERSHIP_LAST_OWNER') >= 0)        return '🔒 ' + tz('Firma ar rămâne fără proprietar. Numește întâi alt proprietar.');
+  if(m.indexOf('MEMBERSHIP_ROLE_ESCALATION') >= 0)   return '🔒 ' + tz('Doar proprietarul poate acorda rolul de proprietar.');
+  if(m.indexOf('MEMBERSHIP_OWNER_PROTECTED') >= 0)   return '🔒 ' + tz('Doar un proprietar poate schimba rolul sau accesul altui proprietar.');
+  if(m.indexOf('MEMBERSHIP_TENANT_AMBIGUOUS') >= 0)  return '⚠️ ' + tz('Contul tău administrează mai multe firme. Deschide firma dorită înainte de această operație.');
+  if(m.indexOf('MEMBERSHIP_CONFLICT') >= 0)          return '⚠️ ' + tz('Altcineva a modificat acest membru între timp. Am reîncărcat lista.');
+  if(m.indexOf('MEMBERSHIP_NOT_FOUND') >= 0)         return '⚠️ ' + tz('Membrul nu mai există în firmă.');
+  if(m.indexOf('MEMBERSHIP_MODE_INVALID') >= 0)      return '⚠️ ' + tz('Cerere invalidă. Reîncarcă pagina și încearcă din nou.');
+  if(m.indexOf('INVITE_NOT_PENDING') >= 0)           return '⚠️ ' + tz('Invitația nu mai e în așteptare — a fost deja folosită sau anulată.');
+  return tz('Eroare:') + ' ' + esc(m);
+}
+/* O invitație expirată rămâne `pending` în bază (0146): `expires_at` nu schimbă
+   `status`. Fără verificarea asta, lista arăta „În așteptare" pentru un link care
+   eșuează la activare — utilizatorul îl trimitea degeaba. */
+function invExpired(i){
+  if(!i || !i.expires_at) return false;
+  const t = Date.parse(i.expires_at);
+  return isFinite(t) && t <= Date.now();
+}
 async function renderUtilizatori(){
   $('content').innerHTML='<div class="seg"><button class="btn-primary" style="margin-left:auto" onclick="openInviteForm()">🔗 Invită prin link</button><button class="btn-ghost" onclick="addMemberForm()"><span>＋</span> Adaugă după email</button></div>'
     +'<div class="panel"><div class="panel-head"><h3>Membrii firmei</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>'
@@ -10545,7 +10600,12 @@ async function renderUtilizatori(){
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; }
   else{
     const me=state.session.user.id;
-    const roleOpts=(cur,uid)=>Object.keys(ROLE_LABELS).map(r=>'<option value="'+r+'" '+(r===cur?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
+    const iAmOwner=state.role==='owner';
+    /* numărat din lista REALĂ întoarsă de server, nu presupus */
+    const activeOwners=(data||[]).filter(u=>u.role==='owner'&&u.active).length;
+    /* `owner` apare în listă doar dacă e acordabil (sunt proprietar) sau dacă e
+       chiar rolul curent al rândului — altfel selectul ar afișa altceva decât e. */
+    const roleOpts=(cur)=>Object.keys(ROLE_LABELS).filter(r=>r!=='owner'||iAmOwner||cur==='owner').map(r=>'<option value="'+r+'" '+(r===cur?'selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('');
     membersList=data||[];
     /* UX1: `list_members()` nu întoarce `perms`. Le citim O SINGURĂ dată, în lot —
        nu o interogare per rând — ca să putem marca vizibil membrii cu politică
@@ -10562,13 +10622,23 @@ async function renderUtilizatori(){
       return ' <span class="pill planned" title="'+esc(tz('Permisiuni personalizate, diferite de presetul rolului. Schimbarea rolului nu le șterge fără confirmare.'))+'">🔧 '+esc(tz('personalizate'))+'</span>';
     };
     const body=(data||[]).map(u=>{ const self=u.user_id===me;
-      return '<tr'+(self?'':' onclick="memberOptions(\''+u.user_id+'\')" style="cursor:pointer"')+'><td class="tname">'+esc(u.email)+(self?' <small style="color:var(--muted)">(tu)</small>':'')+'</td>'
-      +'<td onclick="event.stopPropagation()"><select '+(self?'disabled':'')+' onchange="changeRole(\''+u.user_id+'\',this.value,this)">'+roleOpts(u.role)+'</select>'+permBadge(u.user_id)+'</td>'
-      +'<td>'+(u.active?'<span class="pill active">Activ</span>':'<span class="pill cancelled">Inactiv</span>')+'</td>'
+      const lockRole=admLock(u,'role',activeOwners);
+      /* dezactivarea unui membru INACTIV nu are gardă de owner — reactivarea e sigură */
+      const lockAct=u.active?admLock(u,'active',activeOwners):(self?tz('Nu te poți dezactiva pe tine.'):'');
+      const actTitle=u.active?tz('Dezactivează'):tz('Activează');
+      return '<tr'+(self?'':' onclick="memberOptions(\''+u.user_id+'\')" style="cursor:pointer"')+'><td class="tname">'+esc(u.email)+(self?' <small style="color:var(--muted)">(tu)</small>':'')+(u.role==='owner'?' <span class="pill active" title="'+esc(tz('Proprietarul firmei'))+'">👑</span>':'')+'</td>'
+      +'<td onclick="event.stopPropagation()"><select '+(lockRole?'disabled title="'+esc(lockRole)+'"':'')+' onchange="changeRole(\''+u.user_id+'\',this.value,this)">'+roleOpts(u.role)+'</select>'+permBadge(u.user_id)+(lockRole?'<div style="font-size:.72rem;color:var(--text);opacity:.9;margin-top:.15rem">🔒 '+esc(lockRole)+'</div>':'')+'</td>'
+      +'<td>'+(u.active?'<span class="pill active">'+esc(tz('Activ'))+'</span>':'<span class="pill cancelled">'+esc(tz('Inactiv'))+'</span>')+'</td>'
       +'<td><div class="rowact">'
       +(self?'':'<button class="iconbtn" title="Permisiuni (module accesibile)" onclick="event.stopPropagation();editMemberPerms(\''+u.user_id+'\',\''+u.role+'\',\''+esc(u.email).replace(/\x27/g,"")+'\')">🔐</button>')
       +((!self && permBadge(u.user_id))?'<button class="iconbtn" title="'+esc(tz('Resetează la permisiunile rolului'))+'" onclick="event.stopPropagation();resetMemberPermsToRole(\''+u.user_id+'\')">↺</button>':'')
-      +(self?'':'<button class="iconbtn" title="'+(u.active?'Dezactivează':'Activează')+'" onclick="event.stopPropagation();toggleMember(\''+u.user_id+'\','+(u.active?'false':'true')+')">'+(u.active?'🚫':'✅')+'</button>')
+      /* MĂSURAT, nu presupus: un <button disabled> NU emite `mouseover`, iar tooltipul
+         aplicației e delegat pe document (i18n.js:4308) ⇒ motivul blocării ar fi
+         rămas invizibil. Purtătorul tipului e un <span>, iar butonul are
+         `pointer-events:none` ca ținta evenimentului să fie spanul. */
+      +(self?'':(lockAct
+          ? '<span title="'+esc(lockAct)+'" style="display:inline-flex"><button class="iconbtn" disabled style="opacity:.4;cursor:not-allowed;pointer-events:none">'+(u.active?'🚫':'✅')+'</button></span>'
+          : '<button class="iconbtn" title="'+esc(actTitle)+'" onclick="event.stopPropagation();toggleMember(\''+u.user_id+'\','+(u.active?'false':'true')+')">'+(u.active?'🚫':'✅')+'</button>'))
       +'</div></td></tr>'; }).join('');
     $('mod-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Rol</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
   }
@@ -10594,7 +10664,7 @@ async function saveMemberPerms(uid){
   $('perm-save').disabled=true;
   const { error }=await sb.rpc('set_member_perms',{ p_user:uid, p_perms:perms });
   $('perm-save').disabled=false;
-  if(error){ showMsg('perm-msg','Eroare: '+esc(error.message)); return; }
+  if(error){ showMsg('perm-msg', admErr(error)); return; }
   toast('✅ Permisiuni actualizate.'); closeModal();
 }
 async function renderInvites(){
@@ -10602,11 +10672,23 @@ async function renderInvites(){
   if(error){ $('inv-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
   const list=data||[];
   if(!list.length){ $('inv-body').innerHTML='<div style="padding:1rem 1.2rem;color:var(--muted);font-size:.85rem">Nicio invitație. Apasă „🔗 Invită prin link" ca să generezi un link de acces (persoana își setează singură parola, iar tu primești notificare la înregistrare).</div>'; return; }
-  const stp={pending:'<span class="pill planned">În așteptare</span>',accepted:'<span class="pill active">Acceptată</span>',revoked:'<span class="pill cancelled">Anulată</span>'};
-  const body=list.map(i=>{ const link=inviteLink(i.token);
+  const stp={pending:'<span class="pill planned">'+esc(tz('În așteptare'))+'</span>',accepted:'<span class="pill active">'+esc(tz('Acceptată'))+'</span>',revoked:'<span class="pill cancelled">'+esc(tz('Anulată'))+'</span>'};
+  /* ADMIN1/0190 — „expirat" NU e o stare în bază: rândul rămâne `pending`, dar
+     `redeem_invite` îl refuză cu `EXPIRED`. Îl arătăm ca atare și NU mai oferim
+     copierea unui link care sigur nu mai funcționează. Anularea rămâne posibilă
+     (rândul e încă `pending`), ca lista să poată fi curățată. */
+  const body=list.map(i=>{ const exp=invExpired(i); const pend=i.status==='pending';
+    /* MĂSURAT: `.pill.cancelled` are fundal FIX `#eef0f5` în AMBELE teme (clasa nu e
+       redefinită pentru tema închisă), deci `var(--text)` s-ar inversa în dark și ar
+       da 1,04:1 — text alb pe pastilă albă. Culoarea se fixează la perechea care
+       măsoară 14,92:1 pe acel fundal, identic în ambele teme. */
+    const st = (pend&&exp) ? '<span class="pill cancelled" style="color:#0f1c33" title="'+esc(tz('Linkul nu mai funcționează. Anuleaz-o și trimite o invitație nouă.'))+'">⏳ '+esc(tz('Expirată'))+'</span>' : (stp[i.status]||esc(i.status));
     return '<tr><td class="tname">'+esc(ROLE_LABELS[i.role]||i.role)+(i.entity_type?' <small style="color:var(--muted)">· '+esc(i.entity_type)+'</small>':'')+'</td>'
-    +'<td>'+esc(i.email||'—')+'</td><td>'+(stp[i.status]||esc(i.status))+'</td>'
-    +'<td><div class="rowact">'+(i.status==='pending'?((i.email?'<button class="iconbtn" title="Copiază linkul de activare (trimiterea pe email nu e activată)" onclick="resendInvite(\''+i.token+'\',\''+jsArg(i.email)+'\')">📋</button>':'')+'<button class="iconbtn" title="Copiază linkul" onclick="copyInvite(\''+i.token+'\')">📋</button><button class="iconbtn danger" title="Anulează" onclick="revokeInvite(\''+i.id+'\')">🚫</button>'):'')+'</div></td></tr>'; }).join('');
+    +'<td>'+esc(i.email||'—')+'</td><td>'+st+'</td>'
+    +'<td><div class="rowact">'
+    +(pend&&!exp?((i.email?'<button class="iconbtn" title="'+esc(tz('Copiază linkul de activare (trimiterea pe email nu e activată)'))+'" onclick="resendInvite(\''+i.token+'\',\''+jsArg(i.email)+'\')">📋</button>':'')+'<button class="iconbtn" title="'+esc(tz('Copiază linkul'))+'" onclick="copyInvite(\''+i.token+'\')">📋</button>'):'')
+    +(pend?'<button class="iconbtn danger" title="'+esc(tz('Anulează'))+'" onclick="revokeInvite(\''+i.id+'\')">🚫</button>':'')
+    +'</div></td></tr>'; }).join('');
   $('inv-body').innerHTML='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Rol</th><th>Email</th><th>Stare</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 /* INVITE1-B.1: construcția trebuie să pornească din `appBase()`, care taie ȘI hash-ul.
@@ -10617,7 +10699,14 @@ async function renderInvites(){
    ajungea DUPĂ `#`, deci `location.search` era gol și tokenul nu era citit niciodată. */
 function inviteLink(token){ return appBase()+'acces.html?invite='+encodeURIComponent(token); }
 function copyInvite(token){ const l=inviteLink(token); navigator.clipboard.writeText(l).then(()=>toast('✅ Link copiat: '+l)).catch(()=>prompt('Copiază linkul:',l)); }
-async function revokeInvite(id){ if(!confirm('Anulezi această invitație? Linkul nu va mai funcționa.')) return; const { error }=await sb.rpc('revoke_invite',{p_id:id}); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('Invitație anulată.'); renderInvites(); }
+async function revokeInvite(id){
+  if(!confirm(tz('Anulezi această invitație? Linkul nu va mai funcționa.'))) return;
+  const { error }=await sb.rpc('revoke_invite',{p_id:id});
+  /* `INVITE_NOT_PENDING` (0190): înainte, o invitație deja acceptată sau dintr-o altă
+     firmă întorcea `void` fără eroare și interfața anunța „Invitație anulată." */
+  if(error){ toast(admErr(error)); renderInvites(); return; }
+  toast('✅ '+tz('Invitație anulată.')); renderInvites();
+}
 
 async function inviteEntity(type, id){
   const def={ employee:'worker', client:'client', subcontractor:'subcontractor' }[type]||'worker';
@@ -10762,7 +10851,9 @@ async function genInvite(entityType, entityId){
 }
 function addMemberForm(){
   if(isDemo()){ toast(tz('Invitațiile sunt disponibile doar într-un cont real.')); return; }
-  const roleOpts=Object.keys(ROLE_LABELS).map(r=>'<option value="'+r+'">'+ROLE_LABELS[r]+'</option>').join('');
+  /* ADMIN1/0190: `add_member_by_email` refuză `owner` unui admin
+     (`MEMBERSHIP_ROLE_ESCALATION`) ⇒ nu-l mai oferim în listă. */
+  const roleOpts=Object.keys(ROLE_LABELS).filter(r=>r!=='owner'||state.role==='owner').map(r=>'<option value="'+r+'">'+ROLE_LABELS[r]+'</option>').join('');
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px">'
     +'<div class="modal-head"><h3>Adaugă membru</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body"><div id="mem-msg"></div>'
@@ -10776,7 +10867,18 @@ async function saveMember(){
   $('mem-save').disabled=true;
   const { data, error }=await sb.rpc('add_member_by_email',{ p_email:email, p_role:$('mem-role').value });
   $('mem-save').disabled=false;
-  if(error){ showMsg('mem-msg', error.message); return; }
+  if(error){ showMsg('mem-msg', admErr(error)); return; }
+  /* ADMIN1/0190 — `add_member_by_email` nu mai schimbă rolul unui membru existent
+     (era o cale paralelă peste `membership_role_apply`: fără CAS, fără gardă de
+     ultim proprietar, fără sincronizarea permisiunilor). Spunem exact ce s-a
+     întâmplat și unde se schimbă rolul, în loc să pretindem că l-am schimbat. */
+  if(data==='EXISTS_ROLE_UNCHANGED'){
+    closeModal();
+    toast('ℹ️ '+tz('Persoana e deja membră. Rolul se schimbă din lista de membri, nu de aici.'));
+    renderUtilizatori(); return;
+  }
+  if(data==='EXISTS'){ closeModal(); toast('ℹ️ '+tz('Persoana e deja membră a firmei.')); renderUtilizatori(); return; }
+  if(data==='REACTIVATED'){ closeModal(); toast('✅ '+tz('Acces reactivat.')); renderUtilizatori(); return; }
   if(data==='NOUSER'){
     // persoana nu are cont încă → generăm automat un link de invitație de trimis
     const role=$('mem-role').value;
@@ -10857,14 +10959,7 @@ async function changeRole(uid, role, selEl){
     p_expect_role:c.role, p_expect_perms:c.perms
   });
   if(selEl) selEl.disabled=false;
-  if(error){
-    const m=String(error.message||'');
-    if(m.indexOf('MEMBERSHIP_LAST_OWNER')>=0) toast('🔒 '+tz('Firma ar rămâne fără proprietar. Numește întâi alt proprietar.'));
-    else if(m.indexOf('MEMBERSHIP_CONFLICT')>=0) toast('⚠️ '+tz('Altcineva a modificat acest membru între timp. Am reîncărcat lista.'));
-    else if(m.indexOf('MEMBERSHIP_NOT_FOUND')>=0) toast('⚠️ '+tz('Membrul nu mai există în firmă.'));
-    else toast('Eroare: '+esc(error.message));
-    renderUtilizatori(); return;
-  }
+  if(error){ toast(admErr(error)); renderUtilizatori(); return; }
   const r=(data&&typeof data==='object')?data:{};
   toast('✅ '+tz('Rol actualizat.')+(r.perms_changed?(' '+tz('Permisiunile au fost aduse la presetul rolului.')):(c.kind==='C'?(' '+tz('Permisiunile personalizate au fost păstrate.')):'')));
   renderUtilizatori();
@@ -10877,10 +10972,17 @@ async function resetMemberPermsToRole(uid){
     p_user:uid, p_role:c.role, p_mode:'role_defaults', p_perms:roleDefaultPerms(c.role),
     p_expect_role:c.role, p_expect_perms:c.perms
   });
-  if(error){ toast('Eroare: '+esc(error.message)); renderUtilizatori(); return; }
+  if(error){ toast(admErr(error)); renderUtilizatori(); return; }
   toast('✅ '+tz('Permisiunile au fost aduse la presetul rolului.')); renderUtilizatori();
 }
-async function toggleMember(uid,active){ const { error }=await sb.rpc('set_member_active',{ p_user:uid, p_active:active }); if(error){ toast('Eroare: '+esc(error.message)); return; } toast('✅ Actualizat.'); renderUtilizatori(); }
+/* ADMIN1/0190 — `set_member_active` nu mai întoarce `void` tăcut: un rând negăsit dă
+   `MEMBERSHIP_NOT_FOUND`, iar un proprietar protejat dă `MEMBERSHIP_OWNER_PROTECTED`.
+   Înainte, orice refuz al bazei apărea aici ca „✅ Actualizat." */
+async function toggleMember(uid,active){
+  const { error }=await sb.rpc('set_member_active',{ p_user:uid, p_active:active });
+  if(error){ toast(admErr(error)); renderUtilizatori(); return; }
+  toast('✅ '+(active?tz('Acces activat.'):tz('Acces retras.'))); renderUtilizatori();
+}
 
 /* ════════════════════════════════════════════════════════════════════
    PREVIZUALIZARE ȘANTIER — fișă de vizită pe teren
@@ -11363,7 +11465,11 @@ function memberOptions(uid){
     acts.push({i:'📧',l:'Trimite link de logare pe email',f:"sendLoginLink('"+jsArg(u.email)+"')"});
     acts.push({i:'🔑',l:'Trimite link de resetare parolă',f:"sendResetLink('"+jsArg(u.email)+"')"});
   }
-  acts.push({i:(u.active?'🚫':'✅'),l:(u.active?'Dezactivează membrul':'Activează membrul'),f:"toggleMember('"+uid+"',"+(u.active?'false':'true')+")"});
+  /* aceeași gardă ca în tabel — foaia de acțiuni nu are voie să ofere mai mult */
+  const ao=(membersList||[]).filter(x=>x.role==='owner'&&x.active).length;
+  const lockAct=u.active?admLock(u,'active',ao):'';
+  if(lockAct) acts.push({i:'🔒',l:lockAct,f:"toast('🔒 '+"+JSON.stringify(lockAct)+")"});
+  else acts.push({i:(u.active?'🚫':'✅'),l:(u.active?tz('Dezactivează membrul'):tz('Activează membrul')),f:"toggleMember('"+uid+"',"+(u.active?'false':'true')+")"});
   actionsSheet(u.email,acts);
 }
 function sendLoginLink(email){

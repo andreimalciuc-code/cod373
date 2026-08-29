@@ -3,7 +3,7 @@
    comentariul și nu numărul din mesajul de commit. v372 = INVITE1-B.1 (linkul de
    invitație duce la ecranul de activare). v373 = TASK2-A.2 (Task Center Pro,
    acceptarea responsabilității, notificări live). */
-const CACHE = 'cod373-v405';
+const CACHE = 'cod373-v406';
 const ASSETS = [
   './app.html', './mobil.html', './acces.html', './portal.html', './erp.html', './grafic.html', './deviz.html', './factura.html', './i18n.js', './catalog-form.js',
   './manifest.webmanifest', './manifest-mobil.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png'
