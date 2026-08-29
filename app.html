@@ -3632,13 +3632,17 @@ async function aiSend(){
   }finally{ if(inp){ inp.disabled=false; inp.focus(); } if(btn) btn.disabled=false; }
 }
 async function aiTest(){
-  const k=($('set-anthropic')&&$('set-anthropic').value||'').trim();
-  showMsg('set-ai-msg','⏳ Se testează…');
+  /* ►► D78 — endpointul `ai` citește cheia SERVER-SIDE din `tenant_secrets` și ignoră
+     deliberat orice `key` din corp. „Testează" verifică deci EXCLUSIV cheia SALVATĂ: o valoare
+     încă nesalvată n-ar fi testată, deci nu o trimitem pe fir și nu pretindem că am verificat-o. */
+  const pend=($('set-anthropic')&&$('set-anthropic').value||'').trim();
+  if(pend){ showMsg('set-ai-msg','⚠ '+C373t('Salvează întâi cheia, apoi testeaz-o — se verifică doar cheia salvată.')); return; }
+  showMsg('set-ai-msg','⏳ '+C373t('Se testează…'));
   try{
-    const body={ mode:'chat', lang:aiLang(), currency:CUR||'MDL', model:($('set-ai-model')?$('set-ai-model').value:aiModel()), tenant_id:state.tenant, key:k||undefined, input:'Răspunde doar cu: OK' };
+    const body={ mode:'chat', lang:aiLang(), currency:CUR||'MDL', model:($('set-ai-model')?$('set-ai-model').value:aiModel()), tenant_id:state.tenant, input:'Răspunde doar cu: OK' };
     const { data, error }=await sb.functions.invoke('ai',{body:body});
     if(error) throw new Error(error.message);
-    if(data&&data.ok){ showMsg('set-ai-msg','✅ Conexiune reușită'+(data.byok?' (cheie proprie).':'. Folosești cota gratuită a platformei.')); }
+    if(data&&data.ok){ showMsg('set-ai-msg','✅ '+(data.byok?C373t('Conexiune reușită — cheia ta salvată funcționează.'):C373t('Conexiune reușită. Folosești cota gratuită a platformei — nicio cheie proprie salvată.')),'ok'); }
     else { showMsg('set-ai-msg','⚠ '+esc((data&&(data.message||data.detail))||'Eroare')); }
   }catch(e){ showMsg('set-ai-msg','⚠ '+esc(e.message||'eroare')); }
 }
@@ -10313,6 +10317,7 @@ async function renderSetari(){
     +'<div class="field" style="max-width:280px"><label>Model</label><select id="set-ai-model">'+[['claude-haiku-4-5','Haiku 4.5 — rapid și ieftin (recomandat)'],['claude-sonnet-4-6','Sonnet 4.6 — echilibrat'],['claude-opus-4-8','Opus 4.8 — cel mai capabil']].map(o=>'<option value="'+o[0]+'"'+((aiModel()===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'
     +'<button class="btn-primary" onclick="saveSetari()">Salvează</button>'
     +'<div style="font-size:.78rem;color:var(--muted);margin-top:.5rem">Cheia ta nu e vizibilă altor utilizatori și se folosește doar prin serverul nostru securizat către Anthropic.</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem">Testarea verifică doar cheia deja salvată.</div>'
     +'</div></div>'
     +'<div class="panel" style="max-width:660px;margin-top:1.2rem"><div class="panel-head"><h3>🔒 Confidențialitate &amp; date</h3></div><div class="modal-body">'
     +'<p style="color:var(--muted);margin-bottom:1rem">Conform legislației privind datele cu caracter personal, ai control deplin asupra datelor firmei.</p>'

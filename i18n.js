@@ -13,6 +13,12 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── HOTFIX-AI-BYOK-TEST1 — „Testează" verifică EXCLUSIV cheia salvată server-side (D78) ──
+    'Se testează…':{ru:'Идёт проверка…',de:'Wird getestet…',en:'Testing…'},
+    'Salvează întâi cheia, apoi testeaz-o — se verifică doar cheia salvată.':{ru:'Сначала сохраните ключ, затем проверьте его — проверяется только сохранённый ключ.',de:'Speichern Sie den Schlüssel zuerst und testen Sie ihn dann — geprüft wird nur der gespeicherte Schlüssel.',en:'Save the key first, then test it — only the saved key is checked.'},
+    'Conexiune reușită — cheia ta salvată funcționează.':{ru:'Подключение успешно — ваш сохранённый ключ работает.',de:'Verbindung erfolgreich — Ihr gespeicherter Schlüssel funktioniert.',en:'Connection successful — your saved key works.'},
+    'Conexiune reușită. Folosești cota gratuită a platformei — nicio cheie proprie salvată.':{ru:'Подключение успешно. Вы используете бесплатную квоту платформы — собственный ключ не сохранён.',de:'Verbindung erfolgreich. Sie nutzen das kostenlose Kontingent der Plattform — kein eigener Schlüssel gespeichert.',en:'Connection successful. You are using the platform free quota — no own key saved.'},
+    'Testarea verifică doar cheia deja salvată.':{ru:'Проверка тестирует только уже сохранённый ключ.',de:'Der Test prüft nur den bereits gespeicherten Schlüssel.',en:'The test checks only the already-saved key.'},
     // ── FIELD1-A/B-CLOSE — persona de contabil, parcursul șoferului, externul atribuit ──
     'Contabil':{ru:'Бухгалтер',de:'Buchhalter',en:'Accountant'},
     'De încasat':{ru:'К получению',de:'Ausstehend',en:'Outstanding'},
