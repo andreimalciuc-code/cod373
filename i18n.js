@@ -1219,7 +1219,17 @@
     '← Înapoi la șantier':{ru:'← Назад к объекту',de:'← Zurück zur Baustelle',en:'← Back to site'},
     '↻ Reîncearcă':{ru:'↻ Повторить',de:'↻ Erneut versuchen',en:'↻ Retry'},
     '⚙️ Calculează salariile':{ru:'⚙️ Рассчитать зарплаты',de:'⚙️ Löhne berechnen',en:'⚙️ Calculate salaries'},
+    /* SEC-BILLING-SUBSCRIPTIONS1/0191: butonul „✅ Am plătit — activează" a fost eliminat din
+       app.html (firma își confirma singură plata). Cheia rămâne pentru tab-urile vechi
+       servite din cache-ul Service Worker-ului, care încă randează butonul. */
     '✅ Am plătit — activează':{ru:'✅ Я оплатил — активировать',de:'✅ Bezahlt — aktivieren',en:'✅ Paid — activate'},
+    /* SEC-BILLING-SUBSCRIPTIONS1/0192 — segmentele barei de probă (renderTrialBar).
+       Erau concatenate în client, deci imposibil de găsit ca o cheie întreagă. */
+    'expiră azi':{ru:'истекает сегодня',de:'läuft heute ab',en:'expires today'},
+    'zile rămase':{ru:'дн. осталось',de:'Tage verbleibend',en:'days left'},
+    'Abonează-te →':{ru:'Оформить подписку →',de:'Abo abschließen →',en:'Subscribe →'},
+    'Abonează-te ca să continui →':{ru:'Оформите подписку, чтобы продолжить →',de:'Abo abschließen, um fortzufahren →',en:'Subscribe to continue →'},
+    'Plata online se adaugă în curând. Până atunci, abonamentul îl activăm noi după confirmarea plății — nu e nimic de apăsat aici.':{ru:'Онлайн-оплата появится в ближайшее время. До тех пор подписку активируем мы после подтверждения платежа — здесь ничего нажимать не нужно.',de:'Die Online-Zahlung kommt in Kürze. Bis dahin aktivieren wir das Abo nach Zahlungsbestätigung — hier ist nichts anzuklicken.',en:'Online payment is coming soon. Until then we activate the subscription after payment is confirmed — there is nothing to click here.'},
     '✉️ Contactează pentru abonare':{ru:'✉️ Связаться для подписки',de:'✉️ Für Abo kontaktieren',en:'✉️ Contact to subscribe'},
     '⬇ Exportă datele firmei (JSON)':{ru:'⬇ Экспорт данных компании (JSON)',de:'⬇ Firmendaten exportieren (JSON)',en:'⬇ Export company data (JSON)'},
     '🔗 Invită prin link':{ru:'🔗 Пригласить по ссылке',de:'🔗 Per Link einladen',en:'🔗 Invite via link'},

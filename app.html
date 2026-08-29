@@ -892,7 +892,10 @@ async function doCreateCompany(){
   if(error){ $('btn-onboard').disabled=false; showMsg('onb-msg',error.message); return; }
   const addr=($('onb-addr')&&$('onb-addr').value.trim())||'', phone=($('onb-phone')&&$('onb-phone').value.trim())||'';
   if(tid && (addr||phone)){ try{ await sb.from('tenants').update({address:addr||null,phone:phone||null}).eq('id',tid); }catch(e){} }
-  if(tid){ try{ await sb.from('subscriptions').insert({tenant_id:tid, plan_id:'trial', status:'trialing', trial_ends_at:new Date(Date.now()+14*86400000).toISOString()}); }catch(e){} }
+  /* SEC-BILLING-SUBSCRIPTIONS1/0191: abonamentul de probă (trial / trialing / +14 zile) e
+     creat acum de `create_tenant_and_owner`, în aceeași tranzacție cu firma. Scrierea directă
+     de aici era autoritate comercială în mâna clientului (KB#127) și, în plus, își înghițea
+     eroarea — o firmă se putea naște fără abonament fără ca nimeni să afle. */
   $('btn-onboard').disabled=false;
   await boot();
 }
@@ -1998,14 +2001,18 @@ function renderTrialBar(){
   let html='', bg='#ecfdf5', col='#065f46';
   if(s.status==='demo'){ bg='#eef2ff'; col='#3730a3'; html='🎬 <b>'+esc(tz('Cont demo'))+'</b> — '+esc(tz('date de probă, se șterg automat după 7 zile.'))+' <button onclick="openPlans()" style="margin-left:auto;background:var(--primary);color:#fff;border:none;border-radius:8px;padding:.42rem .85rem;font-weight:700;font-size:.86rem;cursor:pointer">'+esc(tz('Creează cont real'))+' →</button>'; }
   else { const d=trialDaysLeft();
-    if(d!=null && d>=0){ html='🎁 <b>Probă gratuită</b> — '+(d===0?'expiră azi':(d+' zile rămase'))+'. <a onclick="openPlans()" style="cursor:pointer;color:var(--primary);font-weight:700">Abonează-te →</a>'; }
-    else { bg='#fef2f2'; col='#991b1b'; html='⏳ <b>Proba a expirat.</b> <a onclick="openPlans()" style="cursor:pointer;color:var(--primary);font-weight:700">Abonează-te ca să continui →</a>'; }
+    /* SEC-BILLING-SUBSCRIPTIONS1/0192: textul se compune din SEGMENTE traduse. Concatenarea
+       `d+' zile rămase'` nu putea fi găsită niciodată în dicționar (cheia e textul RO exact),
+       deci bara rămânea pe jumătate în română în RU/DE/EN. Defectul era latent: până la 0191
+       firmele reale nu aveau rând de abonament, deci bara nu se randa niciodată. */
+    if(d!=null && d>=0){ html='🎁 <b>'+esc(tz('Probă gratuită'))+'</b> — '+(d===0?esc(tz('expiră azi')):(d+' '+esc(tz('zile rămase'))))+'. <a onclick="openPlans()" style="cursor:pointer;color:var(--primary);font-weight:700">'+esc(tz('Abonează-te →'))+'</a>'; }
+    else { bg='#fef2f2'; col='#991b1b'; html='⏳ <b>'+esc(tz('Proba a expirat.'))+'</b> <a onclick="openPlans()" style="cursor:pointer;color:var(--primary);font-weight:700">'+esc(tz('Abonează-te ca să continui →'))+'</a>'; }
   }
   bar.style.cssText='display:flex;align-items:center;gap:.6rem;padding:.5rem 1rem;margin:0 0 .8rem;border-radius:10px;font-size:.86rem;background:'+bg+';color:'+col;
   bar.innerHTML=html;
 }
 function openPlans(){
-  const isOwner=ADMIN_ROLES.includes(state.role); const d=trialDaysLeft(); const isDemo=state.sub&&state.sub.status==='demo';
+  const d=trialDaysLeft(); const isDemo=state.sub&&state.sub.status==='demo';
   const plans=[['Pro','Pentru firme mici-medii','toate modulele, AI, GPS, e-Factură, suport'],['Business','Firme cu echipe multiple','tot din Pro + utilizatori nelimitați + integrări contabile (1C/DATEV/lexoffice/sevdesk)']];
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>⭐ Abonament Cod373</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
     +'<p style="color:var(--muted);font-size:.88rem;margin-top:0">'+(isDemo?esc(tz('Ești în mod demo. Creează-ți un cont real ca să lucrezi cu datele firmei tale — datele de probă nu se transferă (deocamdată).')):(d!=null&&d<0?'Proba gratuită a expirat.':'Ești în proba gratuită'+(d!=null?(' — '+d+' zile rămase'):'')+'.'))+'</p>'
@@ -2013,17 +2020,15 @@ function openPlans(){
     +'<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem">'
     +(isDemo?'<button class="btn-primary" onclick="demoToReal()">📝 '+esc(tz('Creează cont real'))+'</button>':'')
     +'<a class="'+(isDemo?'btn-ghost':'btn-primary')+'" href="mailto:contact@generalconstruct.md?subject=Abonament%20Cod373" style="text-decoration:none">✉️ Contactează pentru abonare</a>'
-    +(isOwner&&!isDemo?'<button class="btn-ghost" onclick="subActivate()">✅ Am plătit — activează</button>':'')+'</div>'
-    +'<div style="font-size:.74rem;color:var(--muted);margin-top:.6rem">Plata online se adaugă în curând; până atunci activarea se face manual după confirmarea plății.</div>'
+    +'</div>'
+    +'<div style="font-size:.74rem;color:var(--muted);margin-top:.6rem">'+esc(tz('Plata online se adaugă în curând. Până atunci, abonamentul îl activăm noi după confirmarea plății — nu e nimic de apăsat aici.'))+'</div>'
     +'</div></div></div>';
 }
-async function subActivate(){
-  if(!ADMIN_ROLES.includes(state.role)) return;
-  if(!confirm('Confirmi că abonamentul a fost plătit și îl activezi?')) return;
-  const pe=new Date(Date.now()+31*86400000).toISOString();
-  try{ if(state.sub){ await sb.from('subscriptions').update({status:'active',current_period_end:pe}).eq('tenant_id',state.tenant); } else { await sb.from('subscriptions').insert({tenant_id:state.tenant,plan_id:'pro',status:'active',current_period_end:pe}); } }catch(e){ toast('Eroare: '+esc(e.message)); return; }
-  closeModal(); toast('✅ Abonament activat.'); subLoad();
-}
+/* SEC-BILLING-SUBSCRIPTIONS1/0191: `subActivate()` a fost ELIMINATĂ. Butonul „✅ Am plătit —
+   activează" scria direct `status='active'` în `subscriptions` — adică firma își confirma
+   singură propria plată. Autoritatea comercială aparține furnizorului, nu tenantului: din 0191
+   singura cale de mutație e `public.subscription_set`, executabilă doar de `service_role`.
+   Nu reintroduce un buton de activare în client: serverul îl va refuza cu 42501. */
 /* Demo → cont real. MVP (Etapa 1): delogare + ecranul de înregistrare normal (datele
    demo NU se transferă). Etapa 2 (planificată): atașare email+parolă pe contul anonim,
    cu păstrarea datelor — după testarea comportamentului updateUser() pe proiect. */
