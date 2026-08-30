@@ -213,7 +213,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='350';
+const APP_BUILD='351';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -886,10 +886,27 @@ async function scrClientFacturi(){
   const mine=(data||[]);
   if(!mine.length){ $('cf').innerHTML='<div class="empty"><div class="ei">💳</div>Nu ai facturi încă.</div>'; return; }
   const st={draft:['Ciornă','grey'],sent:['De plată','amber'],paid:['Plătită','green'],overdue:['Restantă','red'],cancelled:['Anulată','grey']};
-  $('cf').innerHTML=mine.map(i=>{ const s=st[i.status]||['—','grey']; const payable=(i.status==='sent'||i.status==='overdue');
-    return '<div class="card"><div class="row"><div class="grow"><div class="t">Factura '+esc(i.number||'—')+'</div><div class="s">'+(i.due_date?'Scadență '+esc(i.due_date):(i.issue_date?'Emisă '+esc(i.issue_date):''))+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div><div class="row" style="margin-top:.5rem"><div class="grow s">De achitat</div><b>'+money(i.total)+'</b></div>'
-    +(payable?'<button class="btn" style="margin-top:.7rem" onclick="payInvoiceSheet(\''+i.id+'\',\''+esc(i.number||'')+'\','+(+i.total||0)+')">💳 Plătește</button>':'')
-    +(i.status==='paid'?'<button class="btn btn-line" style="margin-top:.7rem" onclick="receipt(\''+esc(i.number||'')+'\','+(+i.total||0)+',\''+esc(i.issue_date||'')+'\')">🧾 Vezi chitanța</button>':'')
+  $('cf').innerHTML=mine.map(i=>{ const s=st[i.status]||['—','grey'];
+    /* ►► KB#110 — „De achitat" arăta `i.total`: o factură de 2.400 cu 900 încasați cerea
+       tot 2.400, iar una achitată integral cerea în continuare suma întreagă. Soldul vine
+       acum de la SERVER (`outstanding`, migrarea 0193), derivat din ACEEAȘI autoritate
+       canonică pe care o folosește biroul (`app.invoice_paid_state` + `app.pay_state`).
+       NU recalculăm nimic aici: `total - paid` ar fi a treia semantică de plată din produs
+       și ar diverge tăcut la prima stornare (`payments.kind='reversal'`).
+       Fallback-ul la total NU e formulă nouă — e exact comportamentul dinainte, păstrat
+       pentru cazul în care un client din cache-ul SW prinde un contract fără câmpurile noi. */
+    const tot=+i.total||0;
+    const rest=(i.outstanding!=null)?(+i.outstanding||0):tot;
+    const paid=(i.paid_to_date!=null)?(+i.paid_to_date||0):0;
+    const partial=(i.pay_state==='partial')||(paid>0.005&&rest>0.005);
+    /* un rest de 0 nu se „plătește": butonul dispare când nu mai e nimic de achitat */
+    const payable=(i.status==='sent'||i.status==='overdue')&&rest>0.005;
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">Factura '+esc(i.number||'—')+'</div><div class="s">'+(i.due_date?'Scadență '+esc(i.due_date):(i.issue_date?'Emisă '+esc(i.issue_date):''))+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div>'
+    +(partial?'<div class="row" style="margin-top:.5rem"><div class="grow s">'+esc(mt('Total factură'))+'</div><span class="s">'+money(tot)+'</span></div>'
+             +'<div class="row"><div class="grow s">'+esc(mt('Achitat până acum'))+'</div><span class="s">'+money(paid)+'</span></div>':'')
+    +'<div class="row" style="margin-top:.5rem"><div class="grow s">'+esc(mt(partial?'Rest de plată':'De achitat'))+'</div><b>'+money(rest)+'</b></div>'
+    +(payable?'<button class="btn" style="margin-top:.7rem" onclick="payInvoiceSheet(\''+i.id+'\',\''+esc(i.number||'')+'\','+rest+')">💳 Plătește</button>':'')
+    +(i.status==='paid'?'<button class="btn btn-line" style="margin-top:.7rem" onclick="receipt(\''+esc(i.number||'')+'\','+(paid||tot)+',\''+esc(i.issue_date||'')+'\')">🧾 Vezi chitanța</button>':'')
     +'</div>'; }).join('');
 }
 function receipt(number,total,issue){

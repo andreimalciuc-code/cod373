@@ -3364,6 +3364,10 @@
     'mixt':{ru:'разн.',de:'gem.',en:'mixed'},
     'TVA%':{ru:'НДС%',de:'MwSt%',en:'VAT%'},
     'De achitat':{ru:'К оплате',de:'Zu zahlen',en:'To pay'},
+    /* KB#110 - soldul real al clientului in ecranul Facturile mele */
+    'Rest de plată':{ru:'Остаток к оплате',de:'Restbetrag',en:'Balance due'},
+    'Total factură':{ru:'Сумма счёта',de:'Rechnungsbetrag',en:'Invoice total'},
+    'Achitat până acum':{ru:'Оплачено на сегодня',de:'Bereits gezahlt',en:'Paid to date'},
     'Sumă de plată':{ru:'Сумма к оплате',de:'Zahlbetrag',en:'Amount due'},
     'Progres lucrare':{ru:'Прогресс работ',de:'Baufortschritt',en:'Work progress'},
     'Pentru șantier':{ru:'Для объекта',de:'Für Baustelle',en:'For site'},
