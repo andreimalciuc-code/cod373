@@ -259,6 +259,9 @@
   .plan h3{font-size:1.05rem;margin-bottom:.3rem}
   .plan .price{font-size:2rem;font-weight:800;letter-spacing:-.02em}
   .plan .price small{font-size:.85rem;font-weight:500;color:var(--muted)}
+  .plan .price-ask{font-size:1.05rem;font-weight:700;letter-spacing:-.01em;color:var(--primary);margin:.15rem 0 .1rem}
+  .plan a.plan-cta{display:block;width:100%;padding:.6rem;border-radius:9px;font-weight:600;font-size:.85rem;cursor:pointer;font-family:inherit;border:1px solid var(--line);background:#fff;color:var(--text);text-align:center;text-decoration:none;box-sizing:border-box}
+  .plan.cur a.plan-cta{background:var(--primary);color:#fff;border-color:var(--primary)}
   .plan ul{list-style:none;margin:1.1rem 0;display:flex;flex-direction:column;gap:.55rem}
   .plan li{font-size:.82rem;color:var(--text);display:flex;gap:.5rem}
   .plan li::before{content:'✓';color:var(--green);font-weight:800}
@@ -1226,7 +1229,7 @@
       <section class="view" id="billing">
         <div class="panel" style="margin-bottom:1.4rem"><div class="panel-head"><h3 data-ro="Abonamentul tău" data-ru="Ваша подписка">Abonamentul tău</h3><a data-ro="Istoric facturi" data-ru="История">Istoric facturi</a></div>
           <div class="panel-body" style="display:flex;align-items:center;gap:2rem;flex-wrap:wrap">
-            <div><div style="font-size:.78rem;color:var(--muted)" data-ro="Plan curent" data-ru="Текущий план">Plan curent</div><div style="font-size:1.4rem;font-weight:800">Pro · 699 MDL/lună</div></div>
+            <div><div style="font-size:.78rem;color:var(--muted)" data-ro="Plan curent" data-ru="Текущий план">Plan curent</div><div style="font-size:1.4rem;font-weight:800">Pro</div></div>
             <div><div style="font-size:.78rem;color:var(--muted)" data-ro="Reînnoire" data-ru="Продление">Reînnoire</div><div style="font-weight:600">18 Iun 2026</div></div>
             <div><div style="font-size:.78rem;color:var(--muted)" data-ro="Metodă plată" data-ru="Оплата">Metodă plată</div><div style="font-weight:600">💳 MAIB ···· 4417</div></div>
             <div style="margin-left:auto"><span class="pill active" data-ro="Activ" data-ru="Активна">Activ</span></div>
@@ -1245,9 +1248,9 @@
         <div class="panel" style="margin-bottom:1.4rem"><div class="panel-head"><h3 data-ro="Schimbă planul" data-ru="Сменить план">Schimbă planul</h3></div>
           <div class="panel-body">
             <div class="plans">
-              <div class="plan"><h3>Starter</h3><div class="price">299 <small>MDL/lună</small></div><ul><li>5 utilizatori</li><li data-ro="3 șantiere active" data-ru="3 объекта">3 șantiere active</li><li data-ro="Module de bază" data-ru="Базовые модули">Module de bază</li></ul><button data-ro="Downgrade" data-ru="Понизить">Downgrade</button></div>
-              <div class="plan cur"><div class="pbadge" data-ro="Planul tău" data-ru="Ваш план">Planul tău</div><h3>Pro</h3><div class="price">699 <small>MDL/lună</small></div><ul><li>15 utilizatori</li><li data-ro="Șantiere nelimitate" data-ru="Без лимита">Șantiere nelimitate</li><li>AI Licitații + Asistent</li><li>GPS, CRM, Portal Client</li></ul><button data-ro="Plan curent" data-ru="Текущий">Plan curent</button></div>
-              <div class="plan"><h3>Business</h3><div class="price">1.490 <small>MDL/lună</small></div><ul><li data-ro="Utilizatori nelimitați" data-ru="Без лимита">Utilizatori nelimitați</li><li>White-label (logo propriu)</li><li>API + integrare 1C</li><li data-ro="Suport dedicat" data-ru="Поддержка">Suport dedicat</li></ul><button data-ro="Upgrade" data-ru="Повысить">Upgrade</button></div>
+              <div class="plan"><h3>Starter</h3><div class="price-ask" data-ro="Preț la cerere" data-ru="Цена по запросу" data-de="Preis auf Anfrage" data-en="Price on request">Preț la cerere</div><ul><li>5 utilizatori</li><li data-ro="3 șantiere active" data-ru="3 объекта">3 șantiere active</li><li data-ro="Module de bază" data-ru="Базовые модули">Module de bază</li></ul><a class="plan-cta" href="mailto:contact@generalconstruct.md?subject=Cerere%20de%20oferta%20Cod373" data-ro="Solicită ofertă" data-ru="Запросить предложение" data-de="Angebot anfordern" data-en="Request a quote">Solicită ofertă</a></div>
+              <div class="plan cur"><div class="pbadge" data-ro="Planul tău" data-ru="Ваш план">Planul tău</div><h3>Pro</h3><div class="price-ask" data-ro="Preț la cerere" data-ru="Цена по запросу" data-de="Preis auf Anfrage" data-en="Price on request">Preț la cerere</div><ul><li>15 utilizatori</li><li data-ro="Șantiere nelimitate" data-ru="Без лимита">Șantiere nelimitate</li><li>AI Licitații + Asistent</li><li>GPS, CRM, Portal Client</li></ul><a class="plan-cta" href="mailto:contact@generalconstruct.md?subject=Cerere%20de%20oferta%20Cod373" data-ro="Solicită ofertă" data-ru="Запросить предложение" data-de="Angebot anfordern" data-en="Request a quote">Solicită ofertă</a></div>
+              <div class="plan"><h3>Business</h3><div class="price-ask" data-ro="Preț la cerere" data-ru="Цена по запросу" data-de="Preis auf Anfrage" data-en="Price on request">Preț la cerere</div><ul><li data-ro="Utilizatori nelimitați" data-ru="Без лимита">Utilizatori nelimitați</li><li>White-label (logo propriu)</li><li>API + integrare 1C</li><li data-ro="Suport dedicat" data-ru="Поддержка">Suport dedicat</li></ul><a class="plan-cta" href="mailto:contact@generalconstruct.md?subject=Cerere%20de%20oferta%20Cod373" data-ro="Solicită ofertă" data-ru="Запросить предложение" data-de="Angebot anfordern" data-en="Request a quote">Solicită ofertă</a></div>
             </div>
           </div>
         </div>
@@ -1257,10 +1260,10 @@
           <table class="tbl">
             <thead><tr><th data-ro="Factură" data-ru="Счёт">Factură</th><th data-ro="Perioadă" data-ru="Период">Perioadă</th><th data-ro="Sumă" data-ru="Сумма">Sumă</th><th data-ro="Stare" data-ru="Статус">Stare</th><th></th></tr></thead>
             <tbody>
-              <tr><td>CF-2026-05</td><td>Mai 2026</td><td>699 MDL</td><td><span class="pill active" style="font-size:.66rem" data-ro="Plătită" data-ru="Оплачен">Plătită</span></td><td><a style="cursor:pointer;color:var(--primary);font-weight:600" onclick="showToast('📄 Demo — descărcarea facturii PDF va fi activă în versiunea finală.')">PDF</a></td></tr>
-              <tr><td>CF-2026-04</td><td>Aprilie 2026</td><td>699 MDL</td><td><span class="pill active" style="font-size:.66rem" data-ro="Plătită" data-ru="Оплачен">Plătită</span></td><td><a style="cursor:pointer;color:var(--primary);font-weight:600" onclick="showToast('📄 Demo — descărcarea facturii PDF.')">PDF</a></td></tr>
-              <tr><td>CF-2026-03</td><td>Martie 2026</td><td>699 MDL</td><td><span class="pill active" style="font-size:.66rem" data-ro="Plătită" data-ru="Оплачен">Plătită</span></td><td><a style="cursor:pointer;color:var(--primary);font-weight:600" onclick="showToast('📄 Demo — descărcarea facturii PDF.')">PDF</a></td></tr>
-              <tr><td>CF-2026-06</td><td>Iunie 2026</td><td>699 MDL</td><td><span class="pill plan" style="font-size:.66rem" data-ro="Programată" data-ru="Запланирован">Programată</span></td><td>—</td></tr>
+              <tr><td>CF-2026-05</td><td>Mai 2026</td><td>—</td><td><span class="pill active" style="font-size:.66rem" data-ro="Plătită" data-ru="Оплачен">Plătită</span></td><td><a style="cursor:pointer;color:var(--primary);font-weight:600" onclick="showToast('📄 Demo — descărcarea facturii PDF va fi activă în versiunea finală.')">PDF</a></td></tr>
+              <tr><td>CF-2026-04</td><td>Aprilie 2026</td><td>—</td><td><span class="pill active" style="font-size:.66rem" data-ro="Plătită" data-ru="Оплачен">Plătită</span></td><td><a style="cursor:pointer;color:var(--primary);font-weight:600" onclick="showToast('📄 Demo — descărcarea facturii PDF.')">PDF</a></td></tr>
+              <tr><td>CF-2026-03</td><td>Martie 2026</td><td>—</td><td><span class="pill active" style="font-size:.66rem" data-ro="Plătită" data-ru="Оплачен">Plătită</span></td><td><a style="cursor:pointer;color:var(--primary);font-weight:600" onclick="showToast('📄 Demo — descărcarea facturii PDF.')">PDF</a></td></tr>
+              <tr><td>CF-2026-06</td><td>Iunie 2026</td><td>—</td><td><span class="pill plan" style="font-size:.66rem" data-ro="Programată" data-ru="Запланирован">Programată</span></td><td>—</td></tr>
             </tbody>
           </table>
         </div>
