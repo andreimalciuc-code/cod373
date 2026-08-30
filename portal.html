@@ -75,7 +75,7 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
   const { data, error }=await sb.rpc('portal_data',{p_token:token});
   if(error){ center('⚠️','A apărut o eroare. Încearcă din nou mai târziu.'); return; }
   if(!data || data.error){
-    const m={invalid:'Link invalid sau revocat.',expired:'Linkul a expirat.',nosite:'Proiectul nu mai este disponibil.'}[data&&data.error]||'Link indisponibil.';
+    const m={invalid:'Link invalid sau revocat.',expired:'Linkul a expirat.',nosite:'Proiectul nu mai este disponibil.',nooffer:'Oferta nu mai este disponibilă.'}[data&&data.error]||'Link indisponibil.';
     center('🔒',m); return;
   }
   CUR=(data.currency||'MDL').toUpperCase();
@@ -149,10 +149,25 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
 function renderOffer(data){
   var o=data.offer||{}, lines=data.lines||[]; var cur=(data.currency||'MDL').toUpperCase();
   function m(n){ return (Math.round((+n||0)*100)/100).toLocaleString('ro-RO')+' '+cur; }
-  var rows=lines.map(function(l){ return '<tr><td>'+esc(l.name)+'</td><td style="text-align:right;white-space:nowrap">'+esc(l.qty)+' '+esc(l.unit||'')+'</td><td style="text-align:right;white-space:nowrap">'+m(l.unit_price)+'</td><td style="text-align:right;white-space:nowrap"><b>'+m(l.total)+'</b></td></tr>'; }).join('');
+  /* ►► HOTFIX-PORTAL-OFFER1 — NU se afișează total pe poziție.
+     `estimate_items` nu stochează un total de linie, iar a-l deriva aici ar însemna să
+     replicăm întreg motorul din `deviz.html`: vat_mode ('none'|'line'|'total'), disc_mode,
+     `disc` pe linie, reducerea și cota proprii ale grupului, skonto. Exact asta făcea 0095,
+     cu formula qty*preț*(1+TVA/100) — o regulă de TVA paralelă, care pe un deviz „Fără TVA"
+     ar fi contrazis, pe același ecran, totalul canonic al documentului.
+     Se arată faptele stocate (cantitate, preț unitar NET — D34), iar totalurile vin
+     VERBATIM din coloanele canonice ale documentului, calculate o singură dată la salvare. */
+  var rows=lines.map(function(l){ return '<tr><td>'+esc(l.name)+'</td><td style="text-align:right;white-space:nowrap">'+esc(l.qty)+' '+esc(l.unit||'')+'</td><td style="text-align:right;white-space:nowrap">'+m(l.unit_price)+'</td></tr>'; }).join('');
   var html='<div class="hero"><div class="lab">Ofertă'+(o.number?(' nr. '+esc(o.number)):'')+'</div><h1>'+esc(o.title||'Ofertă de preț')+'</h1>'+(o.client?'<div class="addr">👤 '+esc(o.client)+'</div>':'')+'</div>'
-    +'<div class="card"><h3>Detaliile ofertei</h3><table style="width:100%;border-collapse:collapse;font-size:.9rem"><thead><tr><th style="text-align:left;padding:.3rem 0">Denumire</th><th style="text-align:right">Cant.</th><th style="text-align:right">Preț</th><th style="text-align:right">Total</th></tr></thead><tbody>'+rows+'</tbody></table>'
-    +'<div style="text-align:right;margin-top:.6rem;font-size:1.15rem"><b>Total: '+m(o.total)+'</b></div>'
+    +'<div class="card"><h3>Detaliile ofertei</h3>'
+    +(data.lines_hidden
+        ? '<div style="color:var(--muted);font-size:.88rem">Pozițiile sunt incluse în manoperă, conform ofertei tipărite.</div>'
+        : '<table style="width:100%;border-collapse:collapse;font-size:.9rem"><thead><tr><th style="text-align:left;padding:.3rem 0">Denumire</th><th style="text-align:right">Cant.</th><th style="text-align:right">Preț unitar</th></tr></thead><tbody>'+rows+'</tbody></table>')
+    +(data.has_discount&&!data.lines_hidden?'<div style="color:var(--muted);font-size:.82rem;margin-top:.45rem">Prețurile pe poziție sunt cele dinainte de reducere. Totalurile de mai jos includ reducerea.</div>':'')
+    +'<div style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.5rem">'
+      +(o.subtotal!=null?'<div style="display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)"><span>Subtotal</span><span>'+m(o.subtotal)+'</span></div>':'')
+      +(o.vat_total!=null?'<div style="display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)"><span>TVA</span><span>'+m(o.vat_total)+'</span></div>':'')
+      +'<div style="display:flex;justify-content:space-between;font-size:1.15rem;margin-top:.3rem"><b>Total</b><b>'+m(o.total)+'</b></div></div>'
     +(o.notes?'<div style="margin-top:.6rem;color:var(--muted);white-space:pre-wrap;font-size:.86rem">'+esc(o.notes)+'</div>':'')+'</div>';
   if(data.accepted){
     html+='<div class="card" style="background:var(--blue-soft);border:none;text-align:center"><b>✅ Ofertă acceptată</b><div style="color:var(--muted);margin-top:.3rem">Lucrarea a pornit. Reîncarcă pagina ca să vezi progresul.</div></div>';
