@@ -466,8 +466,22 @@ function openStage(id, asMilestone){
   if(!STATE.canEdit){ const ov=$('ov'); ov.querySelectorAll('input,select,textarea').forEach(el=>el.disabled=true); const f=ov.querySelector('.modal-f'); if(f) f.innerHTML='<span></span><button class="btn" onclick="closeOv()">Închide</button>'; const h=ov.querySelector('.modal-h h3'); if(h) h.textContent='👁️ '+(st.name||'Detalii etapă'); }
 }
 function closeOv(){ const o=$('ov'); if(o) o.remove(); }
+/* ►► HOTFIX-KB146 — identic cu `app.html`: `Number('')` e **0**, iar „— neatribuit —" devenea
+   primul om din listă. Aici efectul era mai grav decât la creare: `saveStage(id)` face UPDATE,
+   deci editarea unei etape putea SUPRASCRIE executantul stocat. */
+function pickByIndex(list, raw){
+  if(raw===''||raw===null||raw===undefined) return null;
+  const i=Number(raw);
+  if(!Number.isInteger(i)||i<0) return null;
+  const L=list||[];
+  return i<L.length ? L[i] : null;
+}
 function pickNorm(id){ const n=STATE.norms.find(x=>x.id===id); if(!n) return; window._svcSel=null; if($('e-svc')) $('e-svc').value=''; if(!$('e-name').value) $('e-name').value=n.name; $('e-unit').value=n.unit||'m2'; }
-function pickService(i){ const s=(STATE.services||[])[+i]; if(!s) return; window._svcSel=s; if($('e-norm')) $('e-norm').value=''; if(!$('e-name').value) $('e-name').value=s.name; $('e-unit').value=s.unit||'m2'; }
+function pickService(i){ const s=pickByIndex(STATE.services, i);
+  /* La revenirea pe „— alege serviciu —", serviciul trebuie DEZLEGAT: altfel `_svcSel` rămânea
+     cel ales anterior și continua să dicteze `est_cost` la salvare. */
+  if(!s){ window._svcSel=null; return; }
+  window._svcSel=s; if($('e-norm')) $('e-norm').value=''; if(!$('e-name').value) $('e-name').value=s.name; $('e-unit').value=s.unit||'m2'; }
 async function openPhoto(enc){ const path=decodeURIComponent(enc); const { data,error }=await sb.storage.from('docs').createSignedUrl(path,120); if(error){ toast('Eroare poză'); return; } window.open(data.signedUrl,'_blank'); }
 async function uploadPhotos(input){ const out=[]; const files=(input&&input.files)?[...input.files]:[]; for(const f of files){ const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=STATE.site.id+'/'+Date.now()+'_'+safe; const up=await sb.storage.from('docs').upload(path,f,{contentType:f.type||'image/jpeg'}); if(up.error) throw up.error; out.push(path); } return out; }
 async function saveStage(id){
@@ -475,7 +489,7 @@ async function saveStage(id){
   const name=($('e-name').value||'').trim(); if(!name){ $('ov-msg').textContent='Denumirea e obligatorie.'; return; }
   const btn=$('e-save'); btn.disabled=true; btn.textContent='Se salvează…';
   const normId=$('e-norm').value||null; const n=STATE.norms.find(x=>x.id===normId);
-  const x=STATE.execs[+$('e-exec').value]; const qty=+$('e-qty').value||null;
+  const x=pickByIndex(STATE.execs, $('e-exec').value); const qty=+$('e-qty').value||null;
   let existing=id? (STATE.stages.find(s=>String(s.id)===String(id)).photo_urls||[]) : [];
   let added=[]; try{ added=await uploadPhotos($('e-photos')); }catch(e){ $('ov-msg').textContent='Eroare poze: '+e.message; btn.disabled=false; btn.textContent='Salvează'; return; }
   const deps=[...$('e-deps').selectedOptions].map(o=>o.value); const isMs=$('e-ms').checked;

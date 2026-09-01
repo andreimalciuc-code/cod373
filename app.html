@@ -2928,7 +2928,10 @@ async function apptLoadRefs(){
   const r={clients:[],sites:[],emps:[]};
   try{ const {data}=await sb.from('clients').select('id,name').order('name'); r.clients=data||[]; }catch(e){}
   try{ const {data}=await sb.from('sites').select('id,name').order('name'); r.sites=data||[]; }catch(e){}
-  try{ const {data}=await sb.from('employees').select('id,full_name').order('full_name'); r.emps=data||[]; }catch(e){}
+  /* ►► HOTFIX-KB146/C4 — se aduce și `active`: fără ea, selectorul de responsabil nu putea
+     distinge un angajat plecat. Măsurat pe LIVE: oferea 16 persoane, dintre care 3 inactive,
+     față de 13 cât întoarce contractul canonic (`loadRefOptions` cu `forPicking`). */
+  try{ const {data}=await sb.from('employees').select('id,full_name,active').order('full_name'); r.emps=data||[]; }catch(e){}
   window._apptRefs=r; window._apptRefsT=Date.now(); return r;
 }
 function _apptName(id,arr,col){ if(!id) return ''; const x=(arr||[]).find(y=>y.id===id); return x?(x[col]||''):''; }
@@ -2984,7 +2987,12 @@ function apptForm(id){
   const kindOpts=APPT_KINDS.map(x=>'<option value="'+x.k+'" '+(a.kind===x.k?'selected':'')+'>'+x.icon+' '+esc(tz(x.ro))+'</option>').join('');
   const cliOpts='<option value="">—</option>'+refs.clients.map(c=>'<option value="'+c.id+'" '+(a.client_id===c.id?'selected':'')+'>'+esc(c.name||'')+'</option>').join('');
   const siteOpts='<option value="">—</option>'+refs.sites.map(s=>'<option value="'+s.id+'" '+(a.site_id===s.id?'selected':'')+'>'+esc(s.name||'')+'</option>').join('');
-  const empOpts='<option value="">—</option>'+refs.emps.map(e=>'<option value="'+e.id+'" '+(a.assignee===e.id?'selected':'')+'>'+esc(e.full_name||'')+'</option>').join('');
+  /* Aceeași regulă ca `loadRefOptions({forPicking, keepId})`, nu o copie a alteia: pentru o
+     ATRIBUIRE NOUĂ se oferă doar angajați activi, DAR cel deja legat pe programare rămâne în
+     listă și marcat — altfel editarea unei programări vechi i-ar șterge tăcut responsabilul. */
+  const empOpts='<option value="">—</option>'+refs.emps
+    .filter(e=>e.active!==false || a.assignee===e.id)
+    .map(e=>'<option value="'+e.id+'" '+(a.assignee===e.id?'selected':'')+'>'+esc(e.full_name||'')+(e.active===false?' ('+C373t('concediat')+')':'')+'</option>').join('');
   const d=a.starts_at?new Date(a.starts_at):null; const p=n=>String(n).padStart(2,'0');
   const dateV=d?isoLocal(d):coToday();
   const startV=(d&&!a.all_day)?(p(d.getHours())+':'+p(d.getMinutes())):'09:00';
@@ -14051,6 +14059,21 @@ function _iso(d){ return d.toISOString().slice(0,10); }
 function workDays(w){ const q=+w.qty||0,o=+w.daily_output||15; return Math.max(1, Math.ceil((q||o)/o)); }
 
 async function ensureNorms(){ if(!window._norms){ const { data }=await sb.from('norms').select('id,code,name,unit,category,unit_price,daily_output'); window._norms=data||[]; } return window._norms; }
+/* ►► HOTFIX-KB146 — `''` NU e un index. `Number('')` dă **0**, iar `listă[0]` e un om real:
+   „— neatribuit —" ajungea salvat ca primul angajat din listă. PROBAT pe LIVE, prin butonul
+   real: UI „— neatribuit —" → `executor_name: "…"` în `site_stages`. Nu e o eroare de afișare,
+   e o SCRIERE de date pe care nimeni n-a cerut-o.
+   Un singur punct pentru toate selectoarele care folosesc poziția din listă ca valoare.
+   Respinge deopotrivă `''`, `null`, `undefined`, ne-numere (`'__newE'`) și indecși în afara
+   listei — toate înseamnă „nicio alegere", niciodată „primul". */
+function pickByIndex(list, raw){
+  if(raw===''||raw===null||raw===undefined) return null;
+  const i=Number(raw);
+  if(!Number.isInteger(i)||i<0) return null;
+  const L=list||[];
+  return i<L.length ? L[i] : null;
+}
+
 async function ensureExecutors(){
   if(window._execList) return window._execList;
   const [e,s]=await Promise.all([
@@ -14143,7 +14166,7 @@ function wizSetExec(i,xi){
       if(x){ wizCtx.works[i].executor_kind=x.kind; wizCtx.works[i].executor_id=x.id; wizCtx.works[i].executor_name=x.name; if(!wizCtx.works[i].specialty) wizCtx.works[i].specialty=x.specialty; }
       renderWizWorks(); });
     renderWizWorks(); return; }
-  const x=(window._execList||[])[+xi]; if(!x){ wizCtx.works[i].executor_kind=null; wizCtx.works[i].executor_id=null; wizCtx.works[i].executor_name=null; } else { wizCtx.works[i].executor_kind=x.kind; wizCtx.works[i].executor_id=x.id; wizCtx.works[i].executor_name=x.name; if(!wizCtx.works[i].specialty) wizCtx.works[i].specialty=x.specialty; } }
+  const x=pickByIndex(window._execList, xi); if(!x){ wizCtx.works[i].executor_kind=null; wizCtx.works[i].executor_id=null; wizCtx.works[i].executor_name=null; } else { wizCtx.works[i].executor_kind=x.kind; wizCtx.works[i].executor_id=x.id; wizCtx.works[i].executor_name=x.name; if(!wizCtx.works[i].specialty) wizCtx.works[i].specialty=x.specialty; } }
 /* picker lucrări pentru wizard */
 async function openWorkPicker(){
   await ensureNorms();
@@ -14350,10 +14373,15 @@ async function uploadPhotos(input){
     const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'}); if(up.error) throw up.error; out.push(path); }
   return out;
 }
-function asPickNorm(i){ const n=(window._norms||[])[+i]; if(!n) return; if($('as-name'))$('as-name').value=n.name; if($('as-unit'))$('as-unit').value=n.unit||'m2'; window._asCtx.norm=n; }
+function asPickNorm(i){ const n=pickByIndex(window._norms, i);
+  /* Întoarcerea la „— lucrare liberă —" trebuie să DEZLEGE norma. Înainte ieșea din funcție pe
+     `if(!n) return`, iar `_asCtx.norm` rămânea cea aleasă anterior — deci `norm_id` și `est_cost`
+     se salveau pentru o lucrare declarată liberă. */
+  if(!n){ if(window._asCtx) window._asCtx.norm=null; return; }
+  if($('as-name'))$('as-name').value=n.name; if($('as-unit'))$('as-unit').value=n.unit||'m2'; window._asCtx.norm=n; }
 async function saveStageManual(){
   const c=window._asCtx||{}; const name=($('as-name').value||'').trim(); if(!name){ showMsg('as-msg','Denumirea e obligatorie.'); return; }
-  const x=(window._execList||[])[+$('as-exec').value]; const n=c.norm;
+  const x=pickByIndex(window._execList, $('as-exec').value); const n=c.norm;
   const qty=+$('as-qty').value||null;
   const btn=$('as-save'); if(btn){ btn.disabled=true; btn.textContent='Se salvează…'; }
   let photos=[]; try{ photos=await uploadPhotos($('as-photos')); }catch(e){ showMsg('as-msg','Eroare la încărcarea pozelor: '+esc(e.message||e)); if(btn){ btn.disabled=false; btn.textContent='Adaugă'; } return; }
