@@ -2625,11 +2625,16 @@ async function pushSubscribe(){ try{
   const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription();
   if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_b64ToU8(VAPID_PUBLIC)});
   const j=sub.toJSON()||{}; const keys=j.keys||{};
-  const r=await sb.from('push_subscriptions').upsert({tenant_id:state.tenant,user_id:state.session.user.id,endpoint:sub.endpoint,p256dh:keys.p256dh||null,auth:keys.auth||null},{onConflict:'endpoint'});
+  /* ►► SEC-COMMS-RLS1/0199 — abonamentul se scrie prin CONTRACT, nu prin REST direct.
+     Inainte trimiteam `user_id` din browser, iar politica verifica doar `tenant_id` ⇒ orice membru
+     al firmei (inclusiv `client`/`subcontractor`) putea insera endpointul LUI pe `user_id`-ul
+     altcuiva si primea push-ul acelei persoane (KB#143, probat end-to-end).
+     Acum serverul deriva si utilizatorul, si firma; noi trimitem doar ce detine browserul. */
+  const r=await sb.rpc('push_subscription_set',{p_endpoint:sub.endpoint,p_p256dh:keys.p256dh||null,p_auth:keys.auth||null});
   if(r.error){ toast('Eroare: '+esc(r.error.message)); return; }
   toast('🔔 '+tz('Notificări push activate.')); pushRefreshBtn();
 }catch(e){ toast('Eroare: '+esc(e.message||e)); } }
-async function pushUnsubscribe(){ try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} await sub.unsubscribe(); } toast(tz('Notificări push dezactivate.')); pushRefreshBtn(); }catch(e){} }
+async function pushUnsubscribe(){ try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); if(sub){ try{ await sb.rpc('push_subscription_clear',{p_endpoint:sub.endpoint}); }catch(e){} await sub.unsubscribe(); } toast(tz('Notificări push dezactivate.')); pushRefreshBtn(); }catch(e){} }
 
 /* ════ SEIF DE PAROLE & CHEI (zero-knowledge, criptat pe dispozitiv) ════
    Cheia de criptare se derivă din parola-mamă cu PBKDF2 și NU părăsește dispozitivul.

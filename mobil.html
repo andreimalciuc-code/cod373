@@ -213,7 +213,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='351';
+const APP_BUILD='352';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -3963,14 +3963,16 @@ async function mPushSubscribeSave(){
   let sub=await reg.pushManager.getSubscription();
   if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:_b64u8(M_VAPID)});
   const k=(sub.toJSON&&sub.toJSON().keys)||{};
-  const r=await sb.from('push_subscriptions').upsert({tenant_id:S.tenant,user_id:S.session.user.id,endpoint:sub.endpoint,p256dh:k.p256dh||null,auth:k.auth||null},{onConflict:'endpoint'});
+  /* ►► SEC-COMMS-RLS1/0199 — vezi nota din app.html: utilizatorul si firma se deriva
+     SERVER-SIDE; browserul trimite doar endpointul pe care il detine. */
+  const r=await sb.rpc('push_subscription_set',{p_endpoint:sub.endpoint,p_p256dh:k.p256dh||null,p_auth:k.auth||null});
   if(r.error) throw r.error; return sub;
 }
 function pushOff(){ try{ return localStorage.getItem(mLKey('c373_push_off'))==='1'; }catch(e){ return false; } }
 async function mPushToggle(){
   if(!('serviceWorker' in navigator)||!('PushManager' in window)){ toast('Dispozitivul nu suportă notificări push.'); return; }
   try{ const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription();
-    if(sub){ try{ await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} try{ localStorage.setItem(mLKey('c373_push_off'),'1'); }catch(e){} toast('🔕 Notificări dezactivate.'); mPushRefresh(); return; }
+    if(sub){ try{ await sb.rpc('push_subscription_clear',{p_endpoint:sub.endpoint}); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} try{ localStorage.setItem(mLKey('c373_push_off'),'1'); }catch(e){} toast('🔕 Notificări dezactivate.'); mPushRefresh(); return; }
     const perm=await Notification.requestPermission(); if(perm!=='granted'){ toast('Permite notificările din setările telefonului/browserului.'); return; }
     await mPushSubscribeSave(); try{ localStorage.removeItem(mLKey('c373_push_off')); }catch(e){}
     toast('🔔 Notificări push activate.'); mPushRefresh();
