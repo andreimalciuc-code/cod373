@@ -277,9 +277,12 @@ function lineEffVat(l){ const vm=S.inv.vat_mode||'none'; if(vm==='none') return 
 function lineGross(l){ return lineNet(l)*(1+lineEffVat(l)/100); }
 /* ►► FIN-UNIT-GROSS1 — PREȚUL BRUT PE UNITATE. DERIVAT, niciodată stocat: nu există coloană
    nouă în DB și nu se naște un al doilea motor de calcul.
-   Se obține din `lineGross` — adică din motorul canonic — împărțit la cantitate. De aceea
-   `unitGross(l) * qty === lineGross(l)` EXACT, înainte de rotunjire: aceleași reduceri, aceeași
-   cotă efectivă (`lineEffVat`), aceeași ramură pentru grup/document. Zero aritmetică nouă.
+   Se obține din `lineGross` — adică din motorul canonic — împărțit la cantitate: aceleași
+   reduceri, aceeași cotă efectivă (`lineEffVat`), aceeași ramură pentru grup/document. Zero
+   aritmetică nouă, deci `unitGross(l) * qty` reconstituie `lineGross(l)` — dar NU bit-identic:
+   împărțirea și înmulțirea în virgulă mobilă lasă un rest de ordinul 1e-13 (măsurat: 138,996 × 3
+   dă 416,98800000000006 față de 416,988). De aceea valoarea NU se compară niciodată cu `===` și
+   NU se folosește ca sursă pentru vreun total.
    SEMANTICA aleasă e prețul EFECTIV pe unitate, nu cel de catalog: singurele reduceri incluse
    sunt exact cele pe care `lineNet` le include deja, ca valoarea afișată să se reconcilieze cu
    „Total" din același rând. Reducerea de grup/document rămâne în rezumat, unde era — a o
