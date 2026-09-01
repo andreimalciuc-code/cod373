@@ -1053,7 +1053,12 @@ const DUP_ERR={
   DUP_NUMBER_CONFLICT:'Nu am putut genera un număr unic de document. Încearcă din nou.',
   DUP_INTERNAL_ERROR:'Eroare internă la duplicare. Încearcă din nou.'
 };
-function dupErrMsg(e){ const T=window.C373t||function(s){return s;}; const code=((e&&e.message)||'').match(/DUP_[A-Z_]+/); return T((code&&DUP_ERR[code[0]])||'Nu am putut duplica documentul.'); }
+/* KB147-FIN-PREVENT1: garda de invariantă (migr 0200) refuză duplicarea unui document
+   incoerent — altfel copia ar moșteni neconcordanța, cu `updated_at` de azi. Mesajul
+   trebuie să spună CE s-a întâmplat și ce urmează, nu doar că a eșuat. */
+function dupErrMsg(e){ const T=window.C373t||function(s){return s;}; const m=(e&&e.message)||'';
+  if(/DOC_FINANCIAL_INCONSISTENT/.test(m)) return T('Documentul sursă are totaluri care nu se reconstituie din propriile poziții, așa că nu poate fi duplicat — copia ar moșteni aceeași neconcordanță. Deschide-l, verifică pozițiile și salvează-l o dată din editor.');
+  const code=m.match(/DUP_[A-Z_]+/); return T((code&&DUP_ERR[code[0]])||'Nu am putut duplica documentul.'); }
 function dupUUID(){ if(crypto.randomUUID) return crypto.randomUUID(); const b=crypto.getRandomValues(new Uint8Array(16)); b[6]=b[6]&15|64; b[8]=b[8]&63|128; const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join(''); return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20); }
 /* Duplicare factură: RPC tranzacțional idempotent (migr 0118) — copie în ciornă, NEplătită, fără e-Factura.
    După succes navigăm TABUL CURENT la copie. Buton dezactivat cât rulează. */
@@ -1124,6 +1129,7 @@ async function save(thenPdf){
       DOC_UPDATE_BLOCKED:'Antetul nu a putut fi actualizat. Documentul a rămas neschimbat — anunță administratorul.',
       DOC_INSERT_INCOMPLETE:'Nu toate pozițiile au putut fi salvate. Documentul a rămas neschimbat — anunță administratorul.',
       FISCAL_TOTALS_MISMATCH:'Totalurile nu se reconstituie din poziții. Reîncarcă pagina și încearcă din nou.',
+      DOC_FINANCIAL_INCONSISTENT:'Totalurile nu se reconstituie din propriile poziții. Documentul a rămas NESCHIMBAT.',
       WRITES_FROZEN:'Scrierile sunt suspendate temporar pentru recuperarea datelor. Citirea funcționează; încearcă mai târziu.',
       // Contractul de preț v2 (D35): serverul refuză un document a cărui semantică
       // de preț nu poate fi stabilită, în loc să ghicească și să dubleze TVA-ul.

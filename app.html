@@ -14811,7 +14811,7 @@ async function delRecord(key,id){
      restaurarea se face din Coș, prin ambalajul auditat. Un buton care ar eșua mereu e mai
      rău decât un buton care lipsește. */
   if(m.table==='stock'){ toast('🗑 '+tz('Șters.')+' '+C373t('Îl poți restaura din Coșul de gunoi.')); return; }
-  toastUndo('🗑 '+tz('Șters.'), async function(){ if(!saved){ return; } const ins=await sb.from(m.table).insert(saved); if(ins.error){ toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().eq('source_table',m.table).eq('record_id',id); }catch(e){} toast('↩︎ '+tz('Restaurat.')); if(curModuleKey()===key) renderModule(key); });
+  toastUndo('🗑 '+tz('Șters.'), async function(){ if(!saved){ return; } const ins=await sb.from(m.table).insert(saved); if(ins.error){ /* KB147-FIN-PREVENT1: pentru devize/facturi copiii au căzut prin `on delete cascade` și NU    sunt în snapshot, deci reinserarea antetului ar produce un document cu totaluri și zero    poziții. Garda din 0200 o refuză; mesajul explică de ce, în loc să arate codul brut. */ if(/DOC_FINANCIAL_INCONSISTENT/.test(ins.error.message||'')){ toast('⚠️ '+C373t('Documentul nu poate fi readus: pozițiile lui s-au șters odată cu el, iar antetul singur ar rămâne cu totaluri fără acoperire. Recreează-l din editor.')); return; } toast(tz('Nu am putut anula:')+' '+esc(ins.error.message)); return; } try{ await sb.from('trash').delete().eq('source_table',m.table).eq('record_id',id); }catch(e){} toast('↩︎ '+tz('Restaurat.')); if(curModuleKey()===key) renderModule(key); });
 }
 /* ════ 🗑️ COȘ DE GUNOI ════
    Tipuri COMPUSE = au copii cu `ON DELETE CASCADE`. Copiii se pierd la ștergere
