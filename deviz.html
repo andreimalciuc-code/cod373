@@ -33,10 +33,14 @@
   .lines{ width:100%; border-collapse:collapse; }
   .lines th{ text-align:left; font-size:.7rem; text-transform:uppercase; color:var(--muted); padding:.3rem .35rem; border-bottom:1px solid var(--line); }
   .lines td{ padding:.25rem .25rem; vertical-align:top; border-bottom:1px solid #f1f4fa; }
-  /* FIN-UNIT-GROSS1: „Descriere" e singura coloana elastica — toate celelalte au latime fixa.
-     Cu o coloana in plus, la latimi medii (~700–950px) se stringea pana la cativa pixeli.
-     Pragul de mai jos o opreste; surplusul merge in derularea orizontala care exista deja. */
-  .lines th:nth-child(4), .lines td:nth-child(4){ min-width:180px; }
+  /* FIN-UNIT-GROSS1 — „Descriere" e SINGURA coloana elastica: toate celelalte au latime fixa,
+     deci fiecare coloana noua se scade direct din ea. Masurat pe LIVE, la ~768px containerul
+     lasa descrierii 96px fara coloana noua si 18px cu ea — nu se mai poate citi ce scrii.
+     `min-width` NU e o solutie: sub `table-layout:fixed` browserul ignora min/max-width pe
+     celule (verificat: regula se aplica, latimea ramane neschimbata).
+     Regula e deci: coloana INFORMATIVA cedeaza prima. Nu se pierde nimic — „Total cu TVA"
+     ramane pe rand, iar PDF-ul tipareste pretul unitar brut la orice latime. */
+  @media (max-width:1000px){ .lines th.ugh, .lines td.ugc{ display:none; } }
   .lines td input{ padding:.45rem .5rem; }
   .grip{ cursor:grab; color:#c2cbdb; padding:.4rem .1rem; }
   .ta-wrap{ position:relative; }
@@ -479,7 +483,7 @@ function lineRowHtml(i,inGroup,nr){
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
     +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
     +(showVat?'<td>'+vatSelectHtml(i,lineEffVat(l))+'</td>':'')
-    +(showVat?'<td id="ug-'+i+'" style="text-align:right;color:var(--muted);white-space:nowrap" title="Preț pe unitate, cu TVA inclus. Valoare informativă: totalul poziției rămâne cel calculat de document.">'+num2(unitGross(l))+'</td>':'')
+    +(showVat?'<td id="ug-'+i+'" class="ugc" style="text-align:right;color:var(--muted);white-space:nowrap" title="Preț pe unitate, cu TVA inclus. Valoare informativă: totalul poziției rămâne cel calculat de document.">'+num2(unitGross(l))+'</td>':'')
     +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="'+((S.est.vat_mode!=='none')?'Total CU TVA pe poziție — scrie suma și prețul unitar (fără TVA) se recalculează invers':'Total pe poziție — scrie suma și prețul unitar se recalculează invers')+'"/></td>'
     +'<td style="white-space:nowrap"><button class="delx" onclick="lineDetails('+i+')" title="Descriere și poză" style="'+((l.description||l.photo_url)?'color:#2f6bff':'')+'">'+((l.description||l.photo_url)?'📝':'＋')+'</button>'
     +'<button class="delx" onclick="saveLineToCatalog('+i+')" title="Salvează produsul/serviciul în catalog (sau actualizează-l)" style="color:#16a34a">💾</button>'
@@ -490,7 +494,7 @@ function sectionTableHtml(idxs,inGroup,gidv){
   const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=(S.est.vat_mode!=='none');
   const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:84px">Cant.</th><th style="width:84px">UM</th><th style="width:98px">Preț fără TVA</th>'
     +(showDisc?'<th style="width:68px">Red.%</th>':'')+(showVat?'<th style="width:86px">TVA</th>':'')
-    +(showVat?'<th style="width:98px;text-align:right">Preț cu TVA</th>':'')
+    +(showVat?'<th class="ugh" style="width:98px;text-align:right">Preț cu TVA</th>':'')
     +'<th style="width:120px;text-align:right">'+((S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:104px"></th></tr>';
   const rows=idxs.map((i,pos)=>lineRowHtml(i,inGroup,pos+1)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
