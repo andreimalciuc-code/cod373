@@ -8482,7 +8482,15 @@ async function openTaskForm(preset){
   const asg=await taskAssigneesLoad();
   const sites=await tkSitesLoad();
   const me=state.session.user.id;
-  const opts=asg.map(a=>'<option value="'+a.user_id+'" '+(((preset.assignee||me)===a.user_id)?'selected':'')+'>'+esc(a.user_id===me?tz('Eu'):a.label)+'</option>').join('');
+  /* ►► KB140 — „Task nou" era SINGURUL dintre cele trei selectoare de responsabil fără gardă:
+     reatribuirea rapidă (8790) și editorul (9128) filtrau deja prin `tkAsgEligible`, dar
+     formularul de creare oferea pe oricine. Aici se face tocmai operația NOUĂ, deci era exact
+     locul unde conta. `preset.assignee` joacă rolul lui `keepUid`: dacă fluxul vine cu cineva
+     deja propus, el rămâne ofertabil.
+     Eticheta trece acum prin `taskAsgLabel`, ca numele să rămână uman — `task_assignees`
+     (0136:396) cade pe emailul brut pentru cine are fișa inactivă. */
+  const opts=asg.filter(a=>tkAsgEligible(a.user_id, preset.assignee||null))
+    .map(a=>'<option value="'+a.user_id+'" '+(((preset.assignee||me)===a.user_id)?'selected':'')+'>'+esc(a.user_id===me?tz('Eu'):taskAsgLabel(a.user_id))+'</option>').join('');
   /* Șantierul precompletat când taskul pornește DIN șantier: nu-l mai cerem a doua oară.
      Legătura rămâne în `task_links` — nu există `tasks.site_id`. */
   const preSite=(preset.link&&preset.link.entity_type==='site')?preset.link.entity_id:'';
