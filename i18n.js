@@ -13,6 +13,11 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── KB140-OFFICE-AUTH-UX1 — starea operațională în administrarea utilizatorilor ──
+    'Fără acces operațional':{ru:'Нет операционного доступа',de:'Kein operativer Zugang',en:'No operational access'},
+    'Fișa de angajat nu este activă, deci rolurile de teren nu primesc autoritate pe server. Se remediază din „Angajați".':{ru:'Карточка сотрудника неактивна, поэтому полевые роли не получают прав на сервере. Исправляется в разделе «Сотрудники».',de:'Die Mitarbeiterakte ist nicht aktiv, daher erhalten Außendienstrollen serverseitig keine Berechtigung. Zu beheben unter „Mitarbeiter".',en:'The employee record is not active, so field roles receive no server-side authority. Fix it under “Employees”.'},
+    'Permisiunile de module se aplică doar în aplicația de birou. Acest rol folosește aplicația de teren, care nu le citește.':{ru:'Разрешения на модули действуют только в офисном приложении. Эта роль работает в полевом приложении, которое их не читает.',de:'Modulberechtigungen gelten nur in der Büro-App. Diese Rolle nutzt die Außendienst-App, die sie nicht liest.',en:'Module permissions apply only in the office app. This role uses the field app, which does not read them.'},
+
     // ── ADMIN1 / migr 0190 — administrarea firmei, mesaje de autoritate ──
     'Nu îți poți schimba propriul rol.':{ru:'Вы не можете изменить собственную роль.',de:'Sie können Ihre eigene Rolle nicht ändern.',en:'You cannot change your own role.'},
     'Nu te poți dezactiva pe tine.':{ru:'Вы не можете деактивировать себя.',de:'Sie können sich nicht selbst deaktivieren.',en:'You cannot deactivate yourself.'},

@@ -1689,6 +1689,11 @@ const FINANCE_ROLES=['owner','admin','accountant','manager'];
    pornesc din el. Baza impune aceeași limită independent (`catq_guard` = ADMIN
    din migrarea 0131), deci o bifă dată din greșeală în interfață nu deschide
    nimic — RLS-ul rămâne autoritatea finală. */
+/* ►► KB140 — rolurile care NU ajung NICIODATĂ în biroul de desktop: boot-ul le redirecționează
+   spre `mobil.html` înainte de orice randare. Contează pentru interfața de administrare:
+   `perms` e citit EXCLUSIV aici, deci pentru ele setul de module e inert. O singură listă,
+   folosită și de redirect, și de administrare — ca cele două să nu poată diverge. */
+const MOBILE_ONLY_ROLES=['client','subcontractor','worker','driver'];
 const ADMIN_KEYS=['utilizatori','setari','calitate'];
 const ADMIN_ROLES=['owner','admin'];
 /* ►► EMP1 — cine poate concedia. Identic cu autoritatea contractului `employee_terminate`
@@ -1946,7 +1951,7 @@ async function boot(){
   state.tenant = mem.tenant_id; state.role = mem.role; state.perms = mem.perms||null; state.firm = mem.tenants||{name:'Firma'};
   CUR = (state.firm.currency||'MDL').toUpperCase();
   // personele de teren (muncitor/sofer/subcontractant/client) folosesc aplicatia mobila
-  if(['client','subcontractor','worker','driver'].includes(state.role)){ location.replace('mobil.html'); return; }
+  if(MOBILE_ONLY_ROLES.includes(state.role)){ location.replace('mobil.html'); return; }
   const legalName = mem.tenants ? mem.tenants.name : 'Firma';
   const brandName = (mem.tenants&&mem.tenants.automations&&mem.tenants.automations.brand_name)||'';
   const coName = brandName || legalName;
@@ -8412,11 +8417,37 @@ async function taskAssigneesLoad(force){
   return window._taskAsg;
 }
 /* Concediat = `active=false` ȘI cu dată (identic cu regula listei, gate G9). Un rând LEGACY
-   (`active=false`, fără dată) NU e declarat concediere, deci nu blochează atribuirea. */
+   (`active=false`, fără dată) NU e declarat concediere — rămâne „Inactiv", nu „Concediat". */
 function tkAsgTerminated(uid){ const e=(window._taskEmp||{})[uid]; return !!(e && e.a===false && e.t); }
+
+/* ►► KB140-OFFICE-AUTH-UX1 — OGLINDA lui `app.field_operational` (0172, D88).
+   Singura sursă de adevăr din interfață pentru starea operațională, ca biroul să nu mai ofere
+   ce serverul refuză. Regulile sunt copiate din funcția SQL, nu reinventate:
+     • poarta se aplică DOAR rolurilor de teren — `app.has_role` (0173:124) o sare pentru birou.
+       Măsurat pe LIVE: un `manager` cu fișa inactivă are autoritate DEPLINĂ; a-l marca
+       „neoperațional" ar fi fost o minciună nouă în locul celei vechi;
+     • fișă ABSENTĂ ⇒ operațional (D88: poarta e „fișa mă contrazice", nu „fișa lipsește");
+     • data se compară în fusul FIRMEI, prin `coToday()`, iar ziua încheierii încă e lucrată
+       (`zi <= terminated_on`), exact ca în 0172. */
+const FIELD_ROLES=['worker','driver'];
+function empOperational(uid, role){
+  if(FIELD_ROLES.indexOf(role)<0) return true;
+  const e=(window._taskEmp||{})[uid];
+  if(!e) return true;
+  if(e.a===false) return false;
+  if(e.t && coToday()>e.t) return false;
+  return true;
+}
 /* Eligibil pentru o atribuire NOUĂ; `keepUid` = cel deja atribuit, care rămâne mereu ofertabil
    ca `<select>`-ul să nu cadă pe altcineva la editarea unui task existent. */
-function tkAsgEligible(uid, keepUid){ return !tkAsgTerminated(uid) || (keepUid && uid===keepUid); }
+function tkAsgEligible(uid, keepUid){
+  /* Cel deja atribuit rămâne mereu ofertabil: altfel `<select>`-ul ar cădea pe altcineva la
+     editarea unui task existent, iar istoricul s-ar rescrie tăcut. */
+  if(keepUid && uid===keepUid) return true;
+  if(tkAsgTerminated(uid)) return false;
+  const a=(window._taskAsg||[]).find(x=>x.user_id===uid);
+  return empOperational(uid, a && a.role);
+}
 function taskAsgLabel(uid){ if(!uid) return tz('Neatribuit');
   if(state.session&&uid===state.session.user.id) return tz('Eu');
   const a=(window._taskAsg||[]).find(x=>x.user_id===uid);
@@ -10621,6 +10652,15 @@ async function renderUtilizatori(){
        nu o interogare per rând — ca să putem marca vizibil membrii cu politică
        personalizată. Fără acest semn, lista derulantă de rol pare să facă mereu
        același lucru, deși pentru ei se comportă diferit (cazul C). */
+    /* ►► KB140 — fișele de angajat, tot în LOT, în aceeași formă cu harta folosită de taskuri
+       (`window._taskEmp`), ca `empOperational` să funcționeze identic pe ambele suprafețe.
+       `list_members` întoarce doar `active`-ul MEMBERSHIP-ului; starea operațională a rolurilor
+       de teren vine din `employees` și nu era vizibilă nicăieri în birou. */
+    try{
+      const er=await sb.from('employees').select('user_id,full_name,active,terminated_on').not('user_id','is',null);
+      window._taskEmp=window._taskEmp||{};
+      (er.data||[]).forEach(e=>{ window._taskEmp[e.user_id]={n:e.full_name,a:e.active,t:e.terminated_on}; });
+    }catch(e){}
     let _pmap={};
     try{
       const pr=await sb.from('memberships').select('user_id,perms,role').eq('tenant_id',state.tenant);
@@ -10638,9 +10678,21 @@ async function renderUtilizatori(){
       const actTitle=u.active?tz('Dezactivează'):tz('Activează');
       return '<tr'+(self?'':' onclick="memberOptions(\''+u.user_id+'\')" style="cursor:pointer"')+'><td class="tname">'+esc(u.email)+(self?' <small style="color:var(--muted)">(tu)</small>':'')+(u.role==='owner'?' <span class="pill active" title="'+esc(tz('Proprietarul firmei'))+'">👑</span>':'')+'</td>'
       +'<td onclick="event.stopPropagation()"><select '+(lockRole?'disabled title="'+esc(lockRole)+'"':'')+' onchange="changeRole(\''+u.user_id+'\',this.value,this)">'+roleOpts(u.role)+'</select>'+permBadge(u.user_id)+(lockRole?'<div style="font-size:.72rem;color:var(--text);opacity:.9;margin-top:.15rem">🔒 '+esc(lockRole)+'</div>':'')+'</td>'
-      +'<td>'+(u.active?'<span class="pill active">'+esc(tz('Activ'))+'</span>':'<span class="pill cancelled">'+esc(tz('Inactiv'))+'</span>')+'</td>'
+      +'<td>'+(u.active?'<span class="pill active">'+esc(tz('Activ'))+'</span>':'<span class="pill cancelled">'+esc(tz('Inactiv'))+'</span>')
+        /* Două stări DIFERITE, două pastile. „Activ" a rămas ce a fost mereu — contul e membru
+           al firmei. Ce lipsea e a doua: pentru rolurile de teren, `app.has_role` cere în plus o
+           fișă care să nu le contrazică (D88), iar biroul nu vedea nicăieri că ea o face. */
+        +(empOperational(u.user_id,u.role)?'':' <span class="pill cancelled" title="'+esc(tz('Fișa de angajat nu este activă, deci rolurile de teren nu primesc autoritate pe server. Se remediază din „Angajați".'))+'">⏸ '+esc(tz('Fără acces operațional'))+'</span>')+'</td>'
       +'<td><div class="rowact">'
-      +(self?'':'<button class="iconbtn" title="Permisiuni (module accesibile)" onclick="event.stopPropagation();editMemberPerms(\''+u.user_id+'\',\''+u.role+'\',\''+esc(u.email).replace(/\x27/g,"")+'\')">🔐</button>')
+      /* ►► KB140 — control FANTOMĂ, eliminat. `perms` e citit exclusiv în `app.html`
+         (`moduleVisible`/`canDo`/`canSee`), iar rolurile din `MOBILE_ONLY_ROLES` sunt
+         redirecționate spre `mobil.html` înainte de orice randare — unde `perms` are ZERO
+         apariții. Bifele acordate lor nu erau citite de nimeni, niciodată. Rămâne vizibil, dar
+         `disabled` cu motiv: ascunderea ar fi lăsat administratorul să se întrebe unde a dispărut.
+         Același tipar de `<span>` purtător de tooltip ca la butonul de dezactivare, mai jos. */
+      +(self?'':(MOBILE_ONLY_ROLES.includes(u.role)
+          ? '<span title="'+esc(tz('Permisiunile de module se aplică doar în aplicația de birou. Acest rol folosește aplicația de teren, care nu le citește.'))+'" style="display:inline-flex"><button class="iconbtn" disabled style="opacity:.4;cursor:not-allowed;pointer-events:none">🔐</button></span>'
+          : '<button class="iconbtn" title="'+esc(tz('Permisiuni (module accesibile)'))+'" onclick="event.stopPropagation();editMemberPerms(\''+u.user_id+'\',\''+u.role+'\',\''+esc(u.email).replace(/\x27/g,"")+'\')">🔐</button>'))
       +((!self && permBadge(u.user_id))?'<button class="iconbtn" title="'+esc(tz('Resetează la permisiunile rolului'))+'" onclick="event.stopPropagation();resetMemberPermsToRole(\''+u.user_id+'\')">↺</button>':'')
       /* MĂSURAT, nu presupus: un <button disabled> NU emite `mouseover`, iar tooltipul
          aplicației e delegat pe document (i18n.js:4308) ⇒ motivul blocării ar fi
