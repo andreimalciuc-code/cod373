@@ -276,7 +276,11 @@
   .pill.delay{background:var(--red-soft);color:#b42318}
   .pill.paused{background:var(--amber-soft);color:#92400e}
   .pill.done{background:#eef0f5;color:#475467}
-  .pill.cancelled{background:#eef0f5;color:#98a2b3}
+  /* ►► KB140 — textul era `#98a2b3` pe `#eef0f5`: contrast MĂSURAT 2,26:1, sub pragul de 4,5:1.
+     Clasa e folosită pentru stări „stinse" (Inactiv, anulat) — tocmai cele pe care cineva le
+     caută, deci cele care nu-și permit să fie ilizibile. `#5d6b82` dă 4,73:1 și rămâne vizual
+     „stins" față de `--text`. Varianta pentru tema închisă e mai jos, lângă celelalte pastile. */
+  .pill.cancelled{background:#eef0f5;color:#5d6b82}
   /* ── Taskuri (TASK2-A.2) — stare · prioritate · acceptare ─────────────────────
      Culoarea NU e singurul semnal: fiecare pastilă poartă și pictogramă, și text.
      Un daltonist și un ecran alb-negru trebuie să citească aceeași informație. */
