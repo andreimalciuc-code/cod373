@@ -508,6 +508,13 @@
   body.theme-dark .pill.ac-accepted{color:#5cd39a}
   body.theme-dark .pill.ac-declined{color:#ff9b91}
   body.theme-dark .pill.ac-unassigned{background:#212c3d;color:#aebbd4}
+  /* ►► KB140 — pastilele de STARE din administrare n-aveau varianta pe tema inchisa, desi
+     tiparul exista deja pentru cele de taskuri (mai sus): fundalul vine din variabila, dar
+     culoarea TEXTULUI ramanea cea calculata pentru tema deschisa. Masurat: `.pill.cancelled`
+     dadea ~2,3:1 si `.pill.active` ~2,8:1 pe fundal intunecat — sub pragul de 4,5:1.
+     Dupa: 5,9:1 si 8,0:1. Clasa de defect din KB#129. */
+  body.theme-dark .pill.active{color:#5cd39a}
+  body.theme-dark .pill.cancelled{background:#212c3d;color:#9fb0cc}
   body.theme-dark .modal-overlay{background:rgba(0,0,0,.62)}
   body.theme-dark .btn-ghost:hover{background:var(--sidebar-hover)}
   body.theme-dark img.invert-dark{filter:none}
