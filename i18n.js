@@ -13,6 +13,9 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── FIN-UNIT-GROSS1 — preț brut pe unitate în Ofertă/Factură ──
+    'Preț pe unitate, cu TVA inclus. Valoare informativă: totalul poziției rămâne cel calculat de document.':{ru:'Цена за единицу с НДС. Справочное значение: итог по позиции остаётся тем, который рассчитывает документ.',de:'Preis pro Einheit inkl. MwSt. Informativer Wert: die Positionssumme bleibt die vom Dokument berechnete.',en:'Price per unit including VAT. Informative value: the line total remains the one calculated by the document.'},
+
     // ── KB140-OFFICE-AUTH-UX1 — starea operațională în administrarea utilizatorilor ──
     'Fără acces operațional':{ru:'Нет операционного доступа',de:'Kein operativer Zugang',en:'No operational access'},
     'Fișa de angajat nu este activă, deci rolurile de teren nu primesc autoritate pe server. Se remediază din „Angajați".':{ru:'Карточка сотрудника неактивна, поэтому полевые роли не получают прав на сервере. Исправляется в разделе «Сотрудники».',de:'Die Mitarbeiterakte ist nicht aktiv, daher erhalten Außendienstrollen serverseitig keine Berechtigung. Zu beheben unter „Mitarbeiter".',en:'The employee record is not active, so field roles receive no server-side authority. Fix it under “Employees”.'},

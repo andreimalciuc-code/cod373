@@ -313,6 +313,20 @@ function lineEffVat(l){ const vm=S.est.vat_mode||'none'; if(vm==='none') return 
    deci nu are voie să intre în totaluri (paritate cu factura.html, KB#48A). */
 function lineCounts(l){ return !!((l.name||'').trim()); }
 function lineGross(l){ return lineNet(l)*(1+lineEffVat(l)/100); }
+/* ►► FIN-UNIT-GROSS1 — PREȚUL BRUT PE UNITATE. DERIVAT, niciodată stocat: nu există coloană
+   nouă în DB și nu se naște un al doilea motor de calcul.
+   Se obține din `lineGross` — adică din motorul canonic — împărțit la cantitate. De aceea
+   `unitGross(l) * qty === lineGross(l)` EXACT, înainte de rotunjire: aceleași reduceri, aceeași
+   cotă efectivă (`lineEffVat`), aceeași ramură pentru grup/document. Zero aritmetică nouă.
+   SEMANTICA aleasă e prețul EFECTIV pe unitate, nu cel de catalog: singurele reduceri incluse
+   sunt exact cele pe care `lineNet` le include deja, ca valoarea afișată să se reconcilieze cu
+   „Total" din același rând. Reducerea de grup/document rămâne în rezumat, unde era — a o
+   distribui pe unitate ar fi însemnat aritmetică inventată.
+   ROTUNJIRE: valoarea e pentru AFIȘARE. `r2(unitGross) * qty` poate diferi cu un ban de totalul
+   canonic (139,00 × 3 = 417,00 față de 416,99). Totalul NU se recalculează din ea — rămâne
+   rotunjirea sumei, nu suma rotunjirilor (D34/KB#39). */
+function unitGross(l){ const q=+l.qty||0; return q ? lineGross(l)/q : 0; }
+
 /* Selector TVA pe linie: cotele din țara/firma (Setări) + „—" (fără TVA) */
 function vatRates(){ const rs=(S.firm&&S.firm.automations&&S.firm.automations.vat_rates)||[20,8,0]; return rs.map(Number).filter(r=>!isNaN(r)&&r>=0); }
 function vatOptsHtml(cur){ cur=Math.round((+cur||0)*100)/100; let rs=vatRates().filter(r=>r>0); if(cur>0&&rs.indexOf(cur)<0) rs.push(cur); rs=Array.from(new Set(rs)).sort((a,b)=>b-a);
@@ -461,6 +475,7 @@ function lineRowHtml(i,inGroup,nr){
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
     +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
     +(showVat?'<td>'+vatSelectHtml(i,lineEffVat(l))+'</td>':'')
+    +(showVat?'<td id="ug-'+i+'" style="text-align:right;color:var(--muted);white-space:nowrap" title="Preț pe unitate, cu TVA inclus. Valoare informativă: totalul poziției rămâne cel calculat de document.">'+num2(unitGross(l))+'</td>':'')
     +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="'+((S.est.vat_mode!=='none')?'Total CU TVA pe poziție — scrie suma și prețul unitar (fără TVA) se recalculează invers':'Total pe poziție — scrie suma și prețul unitar se recalculează invers')+'"/></td>'
     +'<td style="white-space:nowrap"><button class="delx" onclick="lineDetails('+i+')" title="Descriere și poză" style="'+((l.description||l.photo_url)?'color:#2f6bff':'')+'">'+((l.description||l.photo_url)?'📝':'＋')+'</button>'
     +'<button class="delx" onclick="saveLineToCatalog('+i+')" title="Salvează produsul/serviciul în catalog (sau actualizează-l)" style="color:#16a34a">💾</button>'
@@ -471,6 +486,7 @@ function sectionTableHtml(idxs,inGroup,gidv){
   const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=(S.est.vat_mode!=='none');
   const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:84px">Cant.</th><th style="width:84px">UM</th><th style="width:98px">Preț fără TVA</th>'
     +(showDisc?'<th style="width:68px">Red.%</th>':'')+(showVat?'<th style="width:86px">TVA</th>':'')
+    +(showVat?'<th style="width:98px;text-align:right">Preț cu TVA</th>':'')
     +'<th style="width:120px;text-align:right">'+((S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:104px"></th></tr>';
   const rows=idxs.map((i,pos)=>lineRowHtml(i,inGroup,pos+1)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
   return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
@@ -561,10 +577,14 @@ function renderSummary(){ const t=totals(); const vm=S.est.vat_mode||'none';
   }
   $('sum').innerHTML=h; scheduleDraft();
 }
-function refreshLineTotal(i){ const el=$('tt-'+i); if(el) el.value=num2(lineGross(S.lines[i])); }
+function refreshLineTotal(i){ const el=$('tt-'+i); if(el) el.value=num2(lineGross(S.lines[i]));
+  /* FIN-UNIT-GROSS1 — brutul pe unitate se reîmprospătează din ACELAȘI apel, ca să nu poată
+     rămâne în urma prețului sau a cantității. */
+  const ug=$('ug-'+i); if(ug) ug.textContent=num2(unitGross(S.lines[i])); }
 function lineEdit(i,k,v){ S.lines[i][k]=v; if(k==='unit') return; refreshLineTotal(i); renderSummary(); if(k==='qty') renderBOM(); }
 function lineSetTotal(i,v){ const l=S.lines[i]; const q=+l.qty||0; const dfac=(!l.group && S.est.disc_mode==='line')?(1-(+l.disc||0)/100):1; const eff=lineEffVat(l); const gross=+v||0; const net=eff?gross/(1+eff/100):gross;
   if(q>0 && dfac>0){ l.unit_price=Math.round((net/(q*dfac))*100)/100; const up=$('up-'+i); if(up) up.value=l.unit_price; }
+  const ug=$('ug-'+i); if(ug) ug.textContent=num2(unitGross(l));
   renderSummary(); }
 function addLine(){ S.lines.push(blankLine()); reorderLinesBySection(); renderLines(); }
 /* ---- AI: generează liniile devizului din descriere ---- */
@@ -1385,7 +1405,9 @@ async function pdf(docType,inPlace){
   // Coloana TVA + „Total cu TVA" pe linie apar oriunde există TVA efectiv (mod „pe poziție", „unificat" sau grupuri cu TVA) — ca PDF-ul să fie IDENTIC cu editorul (altfel părea că TVA dispare).
   const anyVat=!isLiv && S.lines.some(l=>(l.name||'').trim() && lineEffVat(l)>0);
   const showVatCol=anyVat;
-  const colsN=isLiv?5:(7+(showDiscCol?1:0)+(showVatCol?1:0));
+  /* FIN-UNIT-GROSS1 — `showVatCol` adaugă DOUĂ coloane acum (TVA% și Preț cu TVA), altfel
+     `colspan` de la rândurile de grup/gol ar rămâne cu una în urmă și tabelul s-ar rupe. */
+  const colsN=isLiv?5:(7+(showDiscCol?1:0)+(showVatCol?2:0));
   let logo=''; if(S.firm.logo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(S.firm.logo_url,600); if(data&&data.signedUrl) logo='<img src="'+data.signedUrl+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }catch(e){} }
   // semneaza pozele de pe linii pentru a aparea in PDF
   const lphotos={}; const ppaths=S.lines.filter(l=>l.photo_url).map(l=>l.photo_url);
@@ -1401,6 +1423,7 @@ async function pdf(docType,inPlace){
     return '<tr><td>'+n+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td>'
       +(showDiscCol?'<td class="r">'+num2(l.disc||0)+'%</td>':'')
       +(showVatCol?'<td class="r">'+num2(eff)+'%</td>':'')
+      +(showVatCol?'<td class="r">'+money(unitGross(l))+'</td>':'')
       +'<td class="r">'+money(lineTot)+'</td>'+photoCell+'</tr>';
   }
   const isRolled = !isLiv && (S.est.materials_mode==='rolled'); // materiale incluse in manopera (ascunse)
@@ -1418,7 +1441,7 @@ async function pdf(docType,inPlace){
   });
   const docTitle=isLiv?T('BON DE LIVRARE'):(docType==='confirmare'?T('CONFIRMARE DE COMANDĂ'):T('OFERTĂ / DEVIZ'));
   const tabHead=isLiv?('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>')
-    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț fără TVA')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+'<th class="r">'+(anyVat?T('Total cu TVA'):T('Total'))+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>');
+    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț fără TVA')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+(showVatCol?'<th class="r">'+T('Preț cu TVA')+'</th>':'')+'<th class="r">'+(anyVat?T('Total cu TVA'):T('Total'))+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>');
   const totBlock=isLiv?'<div style="margin-top:40px;display:flex;justify-content:space-between;gap:30px"><div style="flex:1">'+T('Predat de')+':<br><br>____________________</div><div style="flex:1">'+T('Primit de')+':<br><br>____________________</div></div>'
     :('<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
        +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
