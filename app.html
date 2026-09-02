@@ -1429,7 +1429,7 @@ const MODULES = {
 
   inbox:{ title:'Mesaje primite', sub:'Poze/clipuri trimise pe Telegram & WhatsApp.', icon:'📥', group:'Operațional', custom:true },
 
-  ssm:{ title:'SSM / Securitate', sub:'Instructaje și echipament de protecție.', icon:'🦺', group:'Echipă', table:'ssm_records', hidden:true,
+  ssm:{ title:'SSM / Securitate', sub:'Instructaje și echipament de protecție.', icon:'🦺', group:'Echipă', table:'ssm_records', 
     newLabel:'Înregistrare SSM', orderBy:{col:'created_at',asc:false},
     select:'id,kind,title,valid_until,status,employees(full_name)',
     columns:[
@@ -1476,7 +1476,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['new','watching','preparing','submitted','dismissed']),default:'new'},
       {key:'url',label:'Link',type:'text'} ] },
 
-  jurnal:{ title:'Jurnal de șantier', sub:'Raport zilnic: vreme, echipă, lucrări.', icon:'📓', group:'Operațional', table:'daily_logs', hidden:true,
+  jurnal:{ title:'Jurnal de șantier', sub:'Raport zilnic: vreme, echipă, lucrări.', icon:'📓', group:'Operațional', table:'daily_logs', 
     newLabel:'Raport zilnic', orderBy:{col:'log_date',asc:false},
     select:'id,log_date,weather,crew_count,work_done,sites!site_id(name)',
     columns:[
@@ -1493,7 +1493,7 @@ const MODULES = {
       {key:'work_done',label:'Lucrări efectuate',type:'textarea'},
       {key:'notes',label:'Observații',type:'textarea'} ] },
 
-  situatii:{ title:'Situații de lucrări', sub:'Decontări pe stadiu de execuție.', icon:'📑', group:'Finanțe', table:'work_statements', hidden:true,
+  situatii:{ title:'Situații de lucrări', sub:'Decontări pe stadiu de execuție.', icon:'📑', group:'Finanțe', table:'work_statements', 
     newLabel:'Situație nouă', orderBy:{col:'created_at',asc:false},
     select:'id,number,statement_date,percent,amount,status,sites!site_id(name),estimates!estimate_id(number)',
     columns:[
@@ -1513,7 +1513,7 @@ const MODULES = {
       {key:'status',label:'Stare',type:'select',options:opts(['draft','approved','invoiced']),default:'draft'},
       {key:'note',label:'Observații',type:'textarea'} ] },
 
-  modificari:{ title:'Ordine de modificare', sub:'Change orders / lucrări suplimentare.', icon:'🔁', group:'Altele', table:'change_orders', hidden:true,
+  modificari:{ title:'Ordine de modificare', sub:'Change orders / lucrări suplimentare.', icon:'🔁', group:'Altele', table:'change_orders', 
     newLabel:'Ordin nou', orderBy:{col:'created_at',asc:false},
     select:'id,number,title,amount,status,sites!site_id(name)',
     columns:[
@@ -1530,7 +1530,7 @@ const MODULES = {
       {key:'amount',label:'Valoare (MDL)',type:'number'},
       {key:'status',label:'Stare',type:'select',options:opts(['pending','approved','rejected']),default:'pending'} ] },
 
-  rfi:{ title:'RFI / Dispoziții', sub:'Cereri de informații pe șantier.', icon:'❔', group:'Altele', table:'rfis', hidden:true,
+  rfi:{ title:'RFI / Dispoziții', sub:'Cereri de informații pe șantier.', icon:'❔', group:'Altele', table:'rfis', 
     newLabel:'RFI nou', orderBy:{col:'created_at',asc:false},
     select:'id,number,question,status,sites!site_id(name)',
     columns:[
@@ -1549,7 +1549,7 @@ const MODULES = {
   gantt:{ title:'Grafic Gantt', sub:'Planificarea șantierelor în timp.', icon:'📅', group:'Operațional', custom:true },
   harta:{ title:'Hartă flotă (GPS)', sub:'Localizarea vehiculelor.', icon:'🗺️', group:'Catalog', custom:true },
 
-  etape:{ title:'Etape de lucru', sub:'Fazele șantierelor (pentru grafic și recenzii).', icon:'🪜', group:'Operațional', table:'site_stages', hidden:true,
+  etape:{ title:'Etape de lucru', sub:'Fazele șantierelor (pentru grafic și recenzii).', icon:'🪜', group:'Operațional', table:'site_stages', 
     newLabel:'Etapă nouă', orderBy:{col:'position',asc:true},
     select:'id,name,position,status,progress,start_date,end_date,sites!site_id(name)',
     columns:[
@@ -1567,7 +1567,7 @@ const MODULES = {
       {key:'start_date',label:'Început',type:'date'},
       {key:'end_date',label:'Sfârșit',type:'date'} ] },
 
-  recenzii:{ title:'Recenzii clienți', sub:'Comentarii și note pe etape.', icon:'⭐', group:'Altele', table:'reviews', hidden:true,
+  recenzii:{ title:'Recenzii clienți', sub:'Comentarii și note pe etape.', icon:'⭐', group:'Altele', table:'reviews', 
     newLabel:'Notă internă', orderBy:{col:'created_at',asc:false},
     select:'id,author_name,rating,body,reply,created_at,sites!site_id(name)',
     columns:[
@@ -1598,9 +1598,18 @@ const GROUPS = ['Operațional','Catalog','Finanțe','Echipă','Rapoarte','Altele
    de Devize, Angajați de Subcontractori.
 
    `WS_MODULES` e sursa unică de adevăr și acoperă TOATE cele 55 de chei din
-   MODULES — inclusiv cele 9 `hidden:true`, care nu se randează în meniu, dar
+   MODULES — inclusiv cele `hidden:true`, care nu se randează în meniu, dar
    trebuie să aibă un workspace ca breadcrumb-ul și deep-linkul să știe unde
    se află utilizatorul când ajunge la ele din fișa șantierului sau a angajatului.
+
+   CONSTRUCT-EXPOSE1 (2026-09-02): şapte module de execuţie erau complet
+   implementate, traduse RO/RU/DE/EN şi deja mapate aici, dar purtau `hidden:true`
+   — deci nu apăreau nici în meniu, nici în Ctrl+K, nici în matricea de
+   personalizare. Flagul a fost scos de la `jurnal`, `etape`, `rfi`, `modificari`,
+   `recenzii`, `situatii` şi `ssm`. Rămân ascunse `stoc` (are contract propriu de
+   scriere, SCAN1 — se deschide din fişa şantierului) şi `echipament` (se deschide
+   din fişa angajatului). Ordinea de mai jos urmează fluxul operaţional, nu ordinea
+   în care au fost dezvoltate modulele.
    `wsAudit()` (consola) verifică acoperirea 55/55 și absența dublurilor.
    ════════════════════════════════════════════════════════════════════════════ */
 const WORKSPACES = [
@@ -1616,13 +1625,13 @@ const WORKSPACES = [
 ];
 const WS_MODULES = {
   dashboard:['dashboard'],
-  santiere :['santiere','previzualizare','gantt','plantafel','taskuri','livrari','defecte',
-             'jurnal','etape','rfi','modificari','recenzii'],
+  santiere :['santiere','previzualizare','gantt','plantafel','etape','jurnal',
+             'taskuri','livrari','rfi','modificari','defecte','recenzii'],
   vanzari  :['clienti','devize','calculator','licitatii','emailuri','inbox','programari'],
-  financiar:['facturi','achizitii','restante','platibil','reconciliere','postcalc','situatii'],
+  financiar:['facturi','situatii','achizitii','restante','platibil','reconciliere','postcalc'],
   catalog  :['materiale','servicii','norme','calitate','stoc'],
   achizitii:['furnizori','magazine','depozite','comenzi','transferuri'],
-  personal :['angajati','subcontractori','pontaj','concedii','salarii','pontajsim','echipament','ssm'],
+  personal :['angajati','ssm','subcontractori','pontaj','concedii','salarii','pontajsim','echipament'],
   resurse  :['instrumente','chirii','flota','harta','alimentari','carduri_carburant'],
   admin    :['utilizatori','setari','seif','cos','documente','ghid','cunostinte']
 };
