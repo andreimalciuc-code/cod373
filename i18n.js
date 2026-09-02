@@ -13,6 +13,13 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── SITE-DOCS1 — documentele șantierului ──
+    'Documentele șantierului':{ru:'Документы объекта',de:'Dokumente der Baustelle',en:'Site documents'},
+    'Documentele acestui șantier. Clientul NU le vede.':{ru:'Документы этого объекта. Клиент их НЕ видит.',de:'Die Dokumente dieser Baustelle. Der Kunde sieht sie NICHT.',en:'This site\u2019s documents. The client does NOT see them.'},
+    'Proces-verbal':{ru:'Акт',de:'Protokoll',en:'Report / minutes'},
+    'Certificat':{ru:'Сертификат',de:'Zertifikat',en:'Certificate'},
+    'Fotografie':{ru:'Фотография',de:'Foto',en:'Photo'},
+
     // ── KB147-FIN-PREVENT1 — garda de invariantă financiară (migr 0200) ──
     'Documentul sursă are totaluri care nu se reconstituie din propriile poziții, așa că nu poate fi duplicat — copia ar moșteni aceeași neconcordanță. Deschide-l, verifică pozițiile și salvează-l o dată din editor.':{ru:'Итоги исходного документа не восстанавливаются из его собственных позиций, поэтому его нельзя дублировать — копия унаследовала бы то же расхождение. Откройте его, проверьте позиции и сохраните один раз из редактора.',de:'Die Summen des Ausgangsdokuments lassen sich nicht aus seinen eigenen Positionen rekonstruieren, daher kann es nicht dupliziert werden — die Kopie würde dieselbe Abweichung erben. Öffnen Sie es, prüfen Sie die Positionen und speichern Sie es einmal im Editor.',en:'The source document\u2019s totals cannot be reconstructed from its own line items, so it cannot be duplicated — the copy would inherit the same discrepancy. Open it, check the line items and save it once from the editor.'},
     'Totalurile nu se reconstituie din propriile poziții. Documentul a rămas NESCHIMBAT.':{ru:'Итоги не восстанавливаются из собственных позиций. Документ остался БЕЗ ИЗМЕНЕНИЙ.',de:'Die Summen lassen sich nicht aus den eigenen Positionen rekonstruieren. Das Dokument blieb UNVERÄNDERT.',en:'The totals cannot be reconstructed from the document\u2019s own line items. The document was left UNCHANGED.'},

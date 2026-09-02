@@ -4332,50 +4332,79 @@ async function vehicleLogDel(id, vid, vlabel){ if(!confirm('Ștergi această în
      · numărul/data emiterii/observațiile rămân în titlu dacă utilizatorul le vrea.
    Recomandarea pentru lotul următor: `documents.doc_type text` + `doc_number text` +
    `issued_on date`, plus mutarea prefixului în coloană. */
-const VDOC_KINDS=['Pașaport tehnic','Asigurare','ITP','Autorizație','Leasing','Procură','Service','Altele'];
-const VDOC_ICON={'Pașaport tehnic':'🪪','Asigurare':'🛡️','ITP':'📋','Autorizație':'📜','Leasing':'🏦','Procură':'✍️','Service':'🔧','Altele':'📄'};
-function vdocSplit(name){                       // „Asigurare · RCA 2026" → {kind, title}
-  const s=String(name||''); const i=s.indexOf(' · ');
-  if(i>0){ const k=s.slice(0,i); if(VDOC_KINDS.indexOf(k)>=0) return {kind:k, title:s.slice(i+3)}; }
+/* ════════ SITE-DOCS1 — documentele unei ENTITĂȚI, un singur mecanism ════════
+   FLEET1-B a construit documentele vehiculului peste modelul canonic `documents`
+   (`entity_type` + `entity_id`, din 0004). Șantierul are nevoie de exact același lucru, iar
+   aplicația de TEREN scrie deja `entity_type='site'` (`mobil.html:2353`). Ar fi fost două
+   implementări ale aceluiași contract, așa că aici e UNA singură, parametrizată pe tip.
+   Funcțiile `vehDoc*` rămân ca ambalaje, deci fișa mașinii și `onclick`-urile ei nu se schimbă.
+
+   Ce NU se schimbă: tabela, bucket-ul `docs`, politicile, indexul `(entity_type, entity_id)`.
+   Zero migrare. `entity_type='site'` e deja recunoscut de RLS — există politici dedicate care
+   dau subcontractorului acces DOAR la documentele șantierelor lui.
+
+   ⚠️ Asocierea la șantier NU înseamnă vizibilitate pentru client: rolul `client` nu apare în
+   nicio politică de pe `documents`. Share-ul explicit e un lot separat (CLIENT-SHARE1). */
+const EDOC = {
+  vehicle:{ folder:'fleet', title:'Documente',
+    kinds:['Pașaport tehnic','Asigurare','ITP','Autorizație','Leasing','Procură','Service','Altele'],
+    icon:{'Pașaport tehnic':'🪪','Asigurare':'🛡️','ITP':'📋','Autorizație':'📜','Leasing':'🏦','Procură':'✍️','Service':'🔧','Altele':'📄'} },
+  site:{ folder:'site', title:'Documentele șantierului',
+    kinds:['Contract','Autorizație','Proiect','Deviz','Proces-verbal','Certificat','Fotografie','Altele'],
+    icon:{'Contract':'📝','Autorizație':'📜','Proiect':'📐','Deviz':'📋','Proces-verbal':'🧾','Certificat':'🎖️','Fotografie':'📷','Altele':'📄'} }
+};
+const VDOC_KINDS=EDOC.vehicle.kinds, VDOC_ICON=EDOC.vehicle.icon;   // compatibilitate
+function edocDef(t){ return EDOC[t]||EDOC.vehicle; }
+function vdocSplit(name, type){                 // „Asigurare · RCA 2026" → {kind, title}
+  const s=String(name||''), K=edocDef(type||'vehicle').kinds; const i=s.indexOf(' · ');
+  if(i>0){ const k=s.slice(0,i); if(K.indexOf(k)>=0) return {kind:k, title:s.slice(i+3)}; }
   return {kind:null, title:s};
 }
-function vdocLabel(name){ const p=vdocSplit(name);
-  return (p.kind?(VDOC_ICON[p.kind]+' '+esc(C373t(p.kind))+' · '):'📄 ')+esc(p.title||C373t('Document')); }
-async function vehDocsHtml(vid, vlabel, canU, canD){
+function vdocLabel(name, type){ const d=edocDef(type||'vehicle'), p=vdocSplit(name,type);
+  return (p.kind?((d.icon[p.kind]||'📄')+' '+esc(C373t(p.kind))+' · '):'📄 ')+esc(p.title||C373t('Document')); }
+
+/* Lista de documente a unei entități. `canU`/`canD` vin de la apelant, dar serverul rămâne
+   autoritatea: fiecare scriere verifică rândurile afectate, fiindcă un refuz RLS întoarce
+   ZERO rânduri fără eroare (D22). */
+async function entDocsHtml(type, eid, elabel, canU, canD){
   const r=await sb.from('documents')
     .select('id,name,file_url,mime,size_bytes,valid_until,created_at')
-    .eq('entity_type','vehicle').eq('entity_id',vid)
+    .eq('entity_type',type).eq('entity_id',eid)
     .order('created_at',{ascending:false});
   if(r.error) return '<div style="margin-bottom:.9rem;color:var(--red);font-size:.85rem">'+esc(C373t('Documentele nu au putut fi încărcate.'))+'</div>';
   const docs=r.data||[];
   /* Mai multe documente de ACELAȘI tip sunt legitime (asigurare 2025 + asigurare 2026):
-     nicio unicitate pe (vehicul, tip) — §10. */
+     nicio unicitate pe (entitate, tip) — §10. */
   const rows=docs.length? docs.map(d=>{
-      const ep=encodeURIComponent(d.file_url), en=encodeURIComponent(vdocSplit(d.name).title||'');
+      const ep=encodeURIComponent(d.file_url), en=encodeURIComponent(vdocSplit(d.name,type).title||'');
       return '<div class="vdoc-row" style="display:flex;align-items:center;gap:.5rem;padding:.45rem 0;border-bottom:1px solid var(--line)">'
-        +'<span class="vdoc-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.86rem">'+vdocLabel(d.name)+'</span>'
+        +'<span class="vdoc-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.86rem">'+vdocLabel(d.name,type)+'</span>'
         +'<span class="vdoc-meta" style="font-size:.78rem;white-space:nowrap">'+docValidCell(d)+'</span>'
         +'<button class="iconbtn" title="'+esc(C373t('Previzualizare'))+'" onclick="openDoc(\''+ep+'\',\''+en+'\')">👁</button>'
-        +(canU?'<button class="iconbtn" title="'+esc(C373t('Editează'))+'" onclick="vehDocEdit(\''+d.id+'\',\''+vid+'\',\''+jsArg(vlabel)+'\')">✏️</button>':'')
-        +(canD?'<button class="iconbtn danger" title="'+esc(C373t('Șterge'))+'" onclick="vehDocDel(\''+d.id+'\',\''+vid+'\',\''+jsArg(vlabel)+'\')">🗑</button>':'')
+        +(canU?'<button class="iconbtn" title="'+esc(C373t('Editează'))+'" onclick="entDocAdd(\''+type+'\',\''+eid+'\',\''+jsArg(elabel)+'\',\''+d.id+'\')">✏️</button>':'')
+        +(canD?'<button class="iconbtn danger" title="'+esc(C373t('Șterge'))+'" onclick="entDocDel(\''+type+'\',\''+d.id+'\',\''+eid+'\',\''+jsArg(elabel)+'\')">🗑</button>':'')
         +'</div>'; }).join('')
     : '<div style="color:var(--muted);font-size:.85rem;padding:.35rem 0">'+esc(C373t('Nu sunt documente'))+'.</div>';
   return '<div style="margin-bottom:.9rem"><div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem">'
     +'<span style="font-weight:700">📁 '+esc(C373t('Documente'))+'</span>'
-    +(canU?'<button class="btn-ghost" style="margin-left:auto;padding:.3rem .6rem;font-size:.8rem" onclick="vehDocAdd(\''+vid+'\',\''+jsArg(vlabel)+'\')">＋ '+esc(C373t('Adaugă document'))+'</button>':'')
+    +(canU?'<button class="btn-ghost" style="margin-left:auto;padding:.3rem .6rem;font-size:.8rem" onclick="entDocAdd(\''+type+'\',\''+eid+'\',\''+jsArg(elabel)+'\')">＋ '+esc(C373t('Adaugă document'))+'</button>':'')
     +'</div>'+rows+'</div>';
 }
-/* Formularul de document. Rămâne ÎN fișa mașinii (nu trimite în modulul Documente) — §8. */
-async function vehDocAdd(vid, vlabel, editId){
+async function vehDocsHtml(vid, vlabel, canU, canD){ return entDocsHtml('vehicle', vid, vlabel, canU, canD); }
+
+/* Formularul rămâne ÎN contextul entității (fișa mașinii / documentele șantierului) — §8. */
+async function entDocAdd(type, eid, elabel, editId){
+  const d=edocDef(type);
   let cur=null;
   if(editId){ const r=await sb.from('documents').select('id,name,valid_until,file_url').eq('id',editId).maybeSingle(); cur=r.data||null; }
-  const p=cur?vdocSplit(cur.name):{kind:null,title:''};
-  /* PREFILL din datele pe care firma le are DEJA pe vehicul (§6): dacă alegi ITP sau Asigurare
-     și vehiculul are `itp_until`/`insurance_until`, propunem acea dată. NU o rescriem înapoi —
-     coloanele vehiculului rămân neatinse, iar consolidarea e o datorie documentată. */
-  const vr=await sb.from('vehicles').select('itp_until,insurance_until').eq('id',vid).maybeSingle();
-  window._vdocPrefill={itp:(vr.data&&vr.data.itp_until)||'', ins:(vr.data&&vr.data.insurance_until)||''};
-  const kindOpts=VDOC_KINDS.map(k=>'<option value="'+esc(k)+'"'+(p.kind===k?' selected':'')+'>'+esc(C373t(k))+'</option>').join('');
+  const p=cur?vdocSplit(cur.name,type):{kind:null,title:''};
+  /* PREFILL din datele pe care firma le are DEJA (§6) — doar la vehicul: dacă alegi ITP sau
+     Asigurare și vehiculul are `itp_until`/`insurance_until`, propunem acea dată. NU o rescriem
+     înapoi — coloanele vehiculului rămân neatinse. */
+  window._vdocPrefill={itp:'',ins:''};
+  if(type==='vehicle'){ try{ const vr=await sb.from('vehicles').select('itp_until,insurance_until').eq('id',eid).maybeSingle();
+    window._vdocPrefill={itp:(vr.data&&vr.data.itp_until)||'', ins:(vr.data&&vr.data.insurance_until)||''}; }catch(e){} }
+  const kindOpts=d.kinds.map(k=>'<option value="'+esc(k)+'"'+(p.kind===k?' selected':'')+'>'+esc(C373t(k))+'</option>').join('');
   $('modal-mount').insertAdjacentHTML('beforeend',
     '<div class="modal-overlay" id="vdoc-ov" style="z-index:60" onclick="if(event.target===this)vehDocClose()"><div class="modal" style="max-width:460px">'
     +'<div class="modal-head"><h3>📁 '+esc(C373t(editId?'Editează documentul':'Adaugă document'))+'</h3><button class="x" onclick="vehDocClose()">×</button></div>'
@@ -4388,11 +4417,12 @@ async function vehDocAdd(vid, vlabel, editId){
        ? '<div style="font-size:.8rem;color:var(--muted)">'+esc(C373t('Fișierul rămâne neschimbat.'))+'</div>'
        : '<div class="field"><label>'+esc(C373t('Fișier'))+'</label><input id="vd-file" type="file" accept="application/pdf,image/*"/></div>')
     +'</div><div class="modal-foot"><button class="btn-ghost" onclick="vehDocClose()">'+esc(C373t('Renunță'))+'</button>'
-    +'<button class="btn-primary" id="vd-save" onclick="vehDocSave(\''+vid+'\',\''+jsArg(vlabel)+'\','+(editId?('\''+editId+'\''):'null')+')">'+esc(C373t('Salvează'))+'</button>'
+    +'<button class="btn-primary" id="vd-save" onclick="entDocSave(\''+type+'\',\''+eid+'\',\''+jsArg(elabel)+'\','+(editId?('\''+editId+'\''):'null')+')">'+esc(C373t('Salvează'))+'</button>'
     +'</div></div></div>');
   if(!editId) vehDocKindChange();
 }
-function vehDocEdit(id,vid,vlabel){ vehDocAdd(vid,vlabel,id); }
+async function vehDocAdd(vid, vlabel, editId){ return entDocAdd('vehicle', vid, vlabel, editId); }
+function vehDocEdit(id,vid,vlabel){ entDocAdd('vehicle',vid,vlabel,id); }
 function vehDocClose(){ const el=document.getElementById('vdoc-ov'); if(el) el.remove(); }
 function vehDocKindChange(){
   const k=$('vd-kind')&&$('vd-kind').value, v=$('vd-valid'), pf=window._vdocPrefill||{};
@@ -4400,7 +4430,12 @@ function vehDocKindChange(){
   if(k==='ITP' && pf.itp) v.value=pf.itp;
   else if(k==='Asigurare' && pf.ins) v.value=pf.ins;
 }
-async function vehDocSave(vid, vlabel, editId){
+function entDocBack(type, eid, elabel){
+  if(type==='vehicle'){ vehicleLog(eid, elabel); return; }
+  if(type==='site'){ siteDocs(eid, elabel); return; }
+}
+async function entDocSave(type, eid, elabel, editId){
+  const d=edocDef(type);
   const kind=($('vd-kind')&&$('vd-kind').value)||'Altele';
   const title=(($('vd-title')&&$('vd-title').value)||'').trim();
   const valid=(($('vd-valid')&&$('vd-valid').value)||'')||null;
@@ -4423,12 +4458,12 @@ async function vehDocSave(vid, vlabel, editId){
       /* Cale tenant-safe cu componentă ALEATOARE (KB#57): primul segment e firma — exact ce
          compară politicile de pe `storage.objects` — iar restul nu se poate ghici. */
       const rnd=Math.random().toString(36).slice(2,8);
-      const path=state.tenant+'/fleet/'+vid+'/'+Date.now()+'_'+rnd+'_'+safe;
+      const path=state.tenant+'/'+d.folder+'/'+eid+'/'+Date.now()+'_'+rnd+'_'+safe;
       const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'});
       if(up.error) return fail(C373t('Încărcarea a eșuat')+': '+up.error.message);
       const rec={ tenant_id:state.tenant, name:name, file_url:path, mime:file.type||null,
                   size_bytes:file.size, uploaded_by:state.session.user.id,
-                  entity_type:'vehicle', entity_id:vid, valid_until:valid };
+                  entity_type:type, entity_id:eid, valid_until:valid };
       const r=await sb.from('documents').insert(rec).select('id');
       if(r.error){ try{ await sb.storage.from('docs').remove([path]); }catch(e){}   // refuz EXPLICIT ⇒ curățăm
         return fail(C373t('Eroare')+': '+r.error.message); }
@@ -4436,14 +4471,27 @@ async function vehDocSave(vid, vlabel, editId){
     }
   }catch(e){ return fail(isNetErr(e)?netMsg():((e&&e.message)||String(e))); }
   vehDocClose(); toast('✅ '+C373t('Salvat'));
-  vehicleLog(vid, vlabel);                       // rămânem ÎN fișa mașinii
+  entDocBack(type, eid, elabel);                 // rămânem ÎN contextul entității
 }
-async function vehDocDel(id, vid, vlabel){
+async function vehDocSave(vid, vlabel, editId){ return entDocSave('vehicle', vid, vlabel, editId); }
+async function entDocDel(type, id, eid, elabel){
   if(!confirm(C373t('Ștergi acest document?'))) return;
   /* Trece prin coșul canonic, ca orice ștergere din aplicație (D22): snapshot + recuperabil.
      Blobul din Storage NU se șterge aici — aceeași regulă ca la poze (KB#61): dezlegăm
      referința, nu distrugem obiectul. */
-  await softDelete('documents','documente',id, function(){ vehicleLog(vid, vlabel); });
+  await softDelete('documents','documente',id, function(){ entDocBack(type, eid, elabel); });
+}
+async function vehDocDel(id, vid, vlabel){ return entDocDel('vehicle', id, vid, vlabel); }
+
+/* ── Documentele ȘANTIERULUI: aceeași mecanică, deschisă din hub-ul șantierului ── */
+async function siteDocs(siteId, siteName){
+  const canU=canDo('documente','u'), canD=canDo('documente','d');
+  const html=await entDocsHtml('site', siteId, siteName, canU, canD);
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px">'
+    +'<div class="modal-head"><h3>📁 '+esc(C373t('Documentele șantierului'))+' — '+esc(siteName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body">'
+    +'<p style="color:var(--muted);font-size:.82rem;margin-top:0">'+esc(C373t('Documentele acestui șantier. Clientul NU le vede.'))+'</p>'
+    +html+'</div></div></div>';
 }
 /* ════════ FLEET1-C — pozele vehiculului: categorie, principală, istoric ════════
    Modelul canonic e `vehicle_photos` (0154): un RÂND per poză, cu categorie, descriere,
@@ -5519,6 +5567,9 @@ function siteHub(siteId, siteName){
     +'<div class="modal-body"><p style="color:var(--muted);font-size:.85rem;margin-top:0">Tot ce ține de acest șantier:</p>'
     +(canSee('taskuri')?'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="closeModal();taskFromCtx(\'site\',\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">✅</span> '+esc(C373t('＋ Task pe acest șantier'))+'</button>':'')
     +'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteContents(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📦</span> Ce se află aici (instrumente + materiale)</button>'
+    /* SITE-DOCS1: documentele şantierului, pe modelul canonic `documents` (entity_type='site').
+       Intră ÎNAINTEA locaţiei fiindcă e o acţiune de lucru, nu una de navigare. */
+    +(canSee('documente')?'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteDocs(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📁</span> '+esc(C373t('Documentele șantierului'))+'</button>':'')
     +'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteLocation(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📍</span> '+esc(C373t('Locație / Navigare (GPS)'))+'</button>'
     +btns+'</div></div></div>';
 }
