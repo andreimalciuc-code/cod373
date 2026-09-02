@@ -39,7 +39,10 @@
     --sheet-scrim:rgba(0,0,0,.62);
     color-scheme:dark}
   html,body{height:100%}
-  body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+  /* BRANDBOOK §7 — Inter. Era deja descărcat de la Google Fonts (linia de
+     `<link>` din antet) și niciodată folosit: stiva cădea pe Helvetica/Arial.
+     Cererea de rețea se plătea la fiecare încărcare, pe teren, degeaba. */
+  body{font-family:"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
   button,input,select,textarea{font-family:inherit}
   /* KB#109 — plasa de siguranță: câmpurile desenate din JS n-au clasa `.fld`, iar fără
      fundal explicit rămâneau ALBE pe tema închisă, cu text deschis peste ele. */
@@ -57,7 +60,16 @@
   #splash .sp{margin:1.1rem auto 0;width:26px;height:26px;border:3px solid rgba(255,255,255,.18);border-top-color:#2f6bff;border-radius:50%;animation:c373spin .8s linear infinite}
   .login{flex:1;display:flex;flex-direction:column;justify-content:center;padding:2rem 1.5rem;background:linear-gradient(160deg,#0f1c33,#1a2b4a);min-height:100vh}
   .login .logo{display:flex;align-items:center;gap:.6rem;margin-bottom:2rem;justify-content:center}
-  .login .lg{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.8rem}
+  /* CLIENT-BRAND1 — badge-ul de brand, conform BRANDBOOK §5: bleumarin cu „373"
+     portocaliu, rx = latura ÷ 4. Era un pătrat cu gradient albastru și textul
+     „C373", adică a treia randare a aceleiași mărci pe traseul unui client
+     (portal / acces / teren). Regula e scopată la `.login`, folosită o singură
+     dată (linia de mai jos) ⇒ nicio altă suprafață de teren nu e atinsă.
+     Contrast măsurat: portocaliu pe bleumarin = 7,31:1. */
+  /* Ecranul de login al terenului e el însuși bleumarin, deci badge-ul primește
+     un contur fin ca să nu se topească în fundal — aceeași soluție ca pe tema
+     închisă din `acces.html`. */
+  .login .lg{width:44px;height:44px;border-radius:11px;background:var(--ink);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--accent);font-size:.8rem;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
   .login .nm{font-weight:800;font-size:1.5rem;color:#fff}.login .nm span{color:var(--accent)}
   .login .card{background:var(--surface);border-radius:18px;padding:1.6rem}
   .login h2{font-size:1.15rem;margin-bottom:.3rem}.login .sub{color:var(--muted);font-size:.85rem;margin-bottom:1.2rem}
@@ -173,7 +185,7 @@
 
   <!-- LOGIN -->
   <div id="login" class="login hidden">
-    <div class="logo"><div class="lg">C373</div><div class="nm noi18n">Cod<span>373</span></div></div>
+    <div class="logo"><div class="lg" aria-hidden="true">373</div><div class="nm noi18n" translate="no">Cod<span>373</span></div></div>
     <div class="card">
       <div id="cfg-warn" class="cfg-warn hidden"></div>
       <h2>Aplicația de teren</h2>
@@ -213,7 +225,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='352';
+const APP_BUILD='353';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -346,7 +358,17 @@ async function boot(){
   if(!session){$('app').classList.add('hidden');$('login').classList.remove('hidden');hideSplash();return;}
   S.session=session;
   mApplyTheme();                     /* cheia devine `c373_prefs:<user-id>` abia acum */
-  const _mr=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url,currency)').eq('user_id',session.user.id).eq('active',true);
+  /* ►► CLIENT-BRAND1 — marca COMERCIALĂ, nu doar denumirea juridică.
+     Biroul afișează `automations.brand_name` (app.html:1976) și documentele
+     tipărite la fel (`brand || f.name`, deviz.html:1472), dar terenul cerea doar
+     `tenants(name,...)` ⇒ clientul unei firme care lucrează sub marcă îi vedea
+     denumirea juridică pe telefon și marca pe factură. Aceeași informație, două
+     răspunsuri.
+     Se cere DOAR cheia necesară (`automations->>brand_name`), nu blobul întreg:
+     `automations` ține configurație de business (reguli CRM, prețuri) și, pe
+     firmele nemigrate încă la `tenant_secrets` (0169), chei legacy. Un client
+     n-are ce primi din el. */
+  const _mr=await sb.from('memberships').select('tenant_id,role,tenants(name,logo_url,currency,brand_name:automations->>brand_name)').eq('user_id',session.user.id).eq('active',true);
   // SAFETY: la eroare (rețea) NU deloga — arată reîncărcare (altfel un membru valid ar fi dat afară degeaba)
   if(_mr.error){ $('screen')&&($('screen').innerHTML=''); $('app').classList.add('hidden'); $('login').classList.remove('hidden'); lmsg('Problemă de conexiune. Reîncarcă pagina (trage în jos) sau încearcă din nou.','err'); hideSplash(); return; }
   const _rank=r=>{const i=['owner','admin','manager','accountant','driver','worker','subcontractor','client'].indexOf(r);return i<0?999:i;};
@@ -358,7 +380,11 @@ async function boot(){
   try{ const {data:prof}=await sb.from('profiles').select('full_name,phone').eq('id',session.user.id).maybeSingle(); if(prof&&prof.full_name){ S.uname=prof.full_name; } S.profile=prof||{}; }catch(e){}
   $('av').textContent=((S.uname||email)[0]||'U').toUpperCase();
   $('who-n').textContent=S.uname||email;
-  $('who-r').textContent=(mem.tenants?mem.tenants.name:'Firma');
+  /* Marca comercială are prioritate; denumirea juridică rămâne rezerva —
+     exact contractul de fallback deja probat pe documentele tipărite. */
+  { const _t=mem.tenants||{}; const _disp=(_t.brand_name||'').trim()||_t.name||'Firma';
+    const _r=$('who-r'); _r.textContent=_disp;
+    _r.title=(_t.brand_name&&_t.name&&_t.brand_name!==_t.name)?_t.name:''; }
   CUR=((mem.tenants&&mem.tenants.currency)||'MDL').toUpperCase();
   const _lp=mem.tenants&&mem.tenants.logo_url; if(_lp){ try{ const {data:lu}=await sb.storage.from('docs').createSignedUrl(_lp,86400); if(lu&&lu.signedUrl){ const im=$('firm-logo'); im.src=lu.signedUrl; im.style.display=''; } }catch(e){} }
   // Rolurile de teren sunt BLOCATE pe interfața lor (clientul vede doar ce e al lui, muncitorul doar interfața lui etc.);

@@ -3,61 +3,104 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light" />
 <title>Cod373 — Portal client</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="client-shell.css" />
 <style>
+  /* ── Tokenii locali se MAPEAZĂ din cei canonici (`client-shell.css`). Regulile
+       de mai jos, scrise înainte de shell, continuă să meargă neschimbate, iar
+       valorile au un singur loc unde trăiesc. ── */
+  :root{--bg:var(--c373-bg);--surface:var(--c373-surface);--ink:var(--c373-ink);--muted:var(--c373-muted);--line:var(--c373-line);--primary:var(--c373-primary);--accent:var(--c373-accent);--green:var(--c373-green);--green-soft:var(--c373-green-soft);--amber-soft:var(--c373-amber-soft);--blue-soft:var(--c373-primary-soft)}
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  :root{--bg:#f4f6fb;--surface:#fff;--ink:#0f1c33;--muted:#6b7793;--line:#e5e9f2;--primary:#2f6bff;--accent:#ff8a3d;--green:#16b364;--green-soft:#e3f8ee;--amber-soft:#fdf2dd;--blue-soft:#e8f0ff}
-  body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:680px;margin:0 auto;padding:1.5rem 1.1rem 4rem}
-  .top{display:flex;align-items:center;gap:.6rem;padding:.4rem 0 1.4rem}
-  .lg{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--primary),#5b8dff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.68rem}
-  .nm{font-weight:800;font-size:1.15rem}.nm span{color:var(--accent)}
-  .hero{background:linear-gradient(135deg,#0f1c33,#1a2b4a);color:#fff;border-radius:18px;padding:1.6rem;margin-bottom:1.2rem}
-  .hero .lab{font-size:.8rem;color:#9fb0d4;text-transform:uppercase;letter-spacing:.05em}
-  .hero h1{font-size:1.5rem;margin:.3rem 0 .2rem}
-  .hero .addr{color:#cdd7 ;color:#aab8d6;font-size:.9rem}
-  .hero .pwrap{margin-top:1.2rem}
-  .hero .ptrack{height:12px;background:rgba(255,255,255,.15);border-radius:10px;overflow:hidden}
-  .hero .pfill{height:100%;background:linear-gradient(90deg,var(--accent),#ffb27a);border-radius:10px;transition:width .6s}
-  .hero .pmeta{display:flex;justify-content:space-between;margin-top:.5rem;font-size:.85rem;color:#cdd9f2}
-  .pill{display:inline-block;padding:.2rem .7rem;border-radius:20px;font-size:.78rem;font-weight:600;background:rgba(255,255,255,.16);color:#fff}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:1.2rem;margin-bottom:1rem}
-  .card h3{font-size:1rem;margin-bottom:.9rem}
+  /* BRANDBOOK §7 — Inter. Era deja descărcat de la Google Fonts și niciodată
+     folosit: `body` cădea pe Helvetica/Arial. */
+  body{font-family:var(--c373-font);background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:680px;margin:0 auto;padding:1.25rem 1.1rem 3rem}
+
+  /* ── Graficul etapelor — specific portalului, nu face parte din shell ── */
   .stage{display:flex;align-items:center;gap:.8rem;padding:.7rem 0;border-bottom:1px solid var(--line)}
   .stage:last-child{border-bottom:none}
   .dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
-  .dot.done{background:var(--green-soft);color:var(--green)}.dot.active{background:var(--blue-soft);color:var(--primary)}.dot.plan{background:#eef0f5;color:var(--muted)}.dot.delayed{background:var(--amber-soft);color:#92400e}
-  .stage .g{flex:1}.stage .t{font-weight:600}.stage .s{font-size:.8rem;color:var(--muted)}
-  .stage .pc{font-weight:700;color:var(--primary)}
-  .tlrow{display:grid;grid-template-columns:128px 1fr 42px;gap:.6rem;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--line)}
+  .dot.done{background:var(--green-soft);color:var(--c373-green-ink)}.dot.active{background:var(--blue-soft);color:var(--primary)}.dot.plan{background:var(--c373-slate-soft);color:var(--c373-slate-ink)}.dot.delayed{background:var(--amber-soft);color:var(--c373-amber-ink)}
+  .stage .g{flex:1;min-width:0}.stage .t{font-weight:600}.stage .s{font-size:.8rem;color:var(--muted)}
+  .stage .pc{font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums}
+  .tlrow{display:grid;grid-template-columns:minmax(88px,128px) 1fr 42px;gap:.6rem;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--line)}
   .tlrow:last-child{border-bottom:none}
-  .tlname{font-weight:600;font-size:.85rem;line-height:1.25}.tlname small{display:block;color:var(--muted);font-weight:400;font-size:.71rem;margin-top:.1rem}
-  .track{position:relative;height:20px;background:#f1f4fa;border-radius:6px}
+  .tlname{font-weight:600;font-size:.85rem;line-height:1.25;min-width:0;overflow-wrap:anywhere}
+  .tlname small{display:block;color:var(--muted);font-weight:400;font-size:.71rem;margin-top:.1rem;font-variant-numeric:tabular-nums}
+  .track{position:relative;height:20px;background:var(--c373-surface-2);border:1px solid var(--line);border-radius:6px;min-width:0}
   .bar{position:absolute;top:0;height:100%;border-radius:6px;min-width:5px;overflow:hidden}
   .bar.done{background:rgba(22,179,100,.3)}.bar.active{background:rgba(47,107,255,.3)}.bar.plan{background:rgba(148,163,184,.35)}.bar.delayed{background:rgba(239,68,68,.3)}
   .bar .prog{position:absolute;left:0;top:0;height:100%}
-  .bar.done .prog{background:var(--green)}.bar.active .prog{background:var(--primary)}.bar.plan .prog{background:#94a3b8}.bar.delayed .prog{background:#ef4444}
+  .bar.done .prog{background:var(--green)}.bar.active .prog{background:var(--primary)}.bar.plan .prog{background:var(--c373-slate)}.bar.delayed .prog{background:var(--c373-red)}
   .ms{position:absolute;top:50%;width:13px;height:13px;transform:translate(-50%,-50%) rotate(45deg);background:var(--ink);border:2px solid #fff;border-radius:2px}
-  .tlpc{font-weight:700;font-size:.8rem;text-align:right;color:var(--muted)}
+  .tlpc{font-weight:700;font-size:.8rem;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
   .lgnd{margin-top:.7rem;display:flex;gap:.9rem;flex-wrap:wrap;font-size:.72rem;color:var(--muted);align-items:center}
   .lgnd i{width:11px;height:11px;border-radius:3px;display:inline-block;margin-right:.25rem;vertical-align:middle}
-  .kv{display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line);font-size:.92rem}
-  .kv:last-child{border-bottom:none}.kv .k{color:var(--muted)}
-  .center{text-align:center;padding:4rem 1.5rem;color:var(--muted)}
-  .center .ei{font-size:3rem;margin-bottom:1rem}
-  .foot{text-align:center;color:var(--muted);font-size:.8rem;margin-top:1.5rem}
-  .loading{text-align:center;padding:4rem;color:var(--muted)}
+
+  /* ── Tabelul ofertei — derulare proprie, ca pagina să nu derulze lateral ── */
+  .otbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -.25rem;padding:0 .25rem}
+  .otbl{width:100%;border-collapse:collapse;font-size:.9rem;min-width:19rem}
+  .otbl th{text-align:right;padding:.3rem 0 .45rem;font-size:.78rem;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line)}
+  .otbl th:first-child{text-align:left}
+  .otbl td{padding:.4rem 0;border-bottom:1px solid var(--line);vertical-align:top}
+  .otbl tr:last-child td{border-bottom:none}
+  /* Gutter explicit între coloane: fără el, o cantitate scurtă („1 set") și un
+     preț lung („28.400 MDL") se lipeau într-un singur bloc ilizibil. */
+  .otbl th+th,.otbl td+td{padding-left:.85rem}
+  .otbl .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+  .media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:.5rem}
+  .media-grid img,.media-grid video{width:100%;height:110px;object-fit:cover;border-radius:var(--c373-r-sm);border:1px solid var(--line);display:block}
+  .media-grid img{cursor:zoom-in}
+  .media-grid video{background:#000}
+  .ord{border:1px solid var(--line);border-radius:var(--c373-r-sm);padding:.55rem .7rem;margin:.4rem 0}
+  .ord-h{font-size:.78rem;color:var(--muted);margin-bottom:.25rem}
+  .ord-i{display:flex;justify-content:space-between;gap:.75rem;font-size:.88rem;padding:.12rem 0}
+  .hrow{display:flex;justify-content:space-between;gap:.75rem;font-size:.9rem;padding:.3rem 0;border-bottom:1px solid var(--line)}
+  .hrow:last-child{border-bottom:none}
+  .err-msg{color:var(--c373-red-ink);font-size:.85rem;min-height:1rem}
 </style>
 </head>
-<body>
+<body class="cs-scope">
 <div class="wrap">
-  <div class="top"><div class="lg">C373</div><div class="nm">Cod<span>373</span> · Portal client</div></div>
-  <div id="content"><div class="loading">Se încarcă…</div></div>
-  <div class="foot">Pagină generată de Cod373 — vizualizare pentru client, fără cost.</div>
+  <!-- ANTET. Slotul de identitate a firmei (`.cs-firm`) se injectează de
+       `renderHead()` DOAR când contractul îl furnizează; azi `portal_data`
+       citește din tabela firmei o singură coloană (`currency`), deci antetul
+       cade pe marca platformei. Vezi `docs/domains/CLIENT.md`. -->
+  <header class="cs-head" id="head">
+    <span class="cs-brand" translate="no"><span class="cs-brand-badge" aria-hidden="true">373</span><span class="cs-brand-name">Cod<span>373</span></span></span>
+    <span class="cs-surface-label" id="surface-label">Portal client</span>
+  </header>
+
+  <main id="content">
+    <div class="cs-skel cs-skel-hero" aria-hidden="true"></div>
+    <div class="cs-skel cs-skel-card" aria-hidden="true"></div>
+    <div class="cs-skel cs-skel-card" aria-hidden="true"></div>
+    <p class="cs-state-text" role="status">Se încarcă…</p>
+  </main>
+
+  <footer class="cs-foot">
+    <div class="cs-foot-firm" id="foot-firm"></div>
+    <div class="cs-foot-platform">
+      <span class="cs-brand" translate="no"><span class="cs-brand-badge" aria-hidden="true">373</span><span class="cs-brand-name">Cod<span>373</span></span></span>
+      <span>Pagină pentru client, fără cost.</span>
+    </div>
+  </footer>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- i18n se încarcă ÎNAINTEA scriptului de randare, nu după.
+     `window.C373t` se atribuie sincron la evaluarea IIFE-ului, deci `T()` are ce
+     apela chiar dacă răspunsul serverului vine imediat (cache cald, rețea rapidă).
+     Măsurat pe harness: cu ordinea veche, un răspuns rezolvat într-un microtask
+     randa ÎNAINTE ca `i18n.js` să fie evaluat, iar eticheta compusă
+     „Ofertă nr. OF-…" rămânea în română pe DE/EN — nu e cheie de dicționar, deci
+     nici observatorul nu o mai putea repara. `init()` rămâne amânat la
+     `DOMContentLoaded`, deci observatorul pornește la fel ca înainte. -->
+<script src="i18n.js"></script>
 <script>
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
@@ -67,18 +110,72 @@ const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR
 function money(n){return n==null?'':Number(n).toLocaleString('ro-RO')+' '+(CURSYM[CUR]||CUR);}
 const SL={planned:['Planificat'],active:['În execuție'],paused:['În pauză'],done:['Finalizat'],cancelled:['Anulat']};
 const STG={plan:'plan',active:'active',done:'done',delayed:'delayed'};
-function center(ic,msg){document.getElementById('content').innerHTML='<div class="center"><div class="ei">'+ic+'</div>'+esc(msg)+'</div>';}
+/* Traducere pentru textul compus în JS. `i18n.js` traduce DOM-ul prin observator,
+   dar o etichetă concatenată cu o valoare („Termen: 12.03.26") nu poate fi cheie
+   de dicționar — se traduce eticheta SEPARAT și se compune după. */
+function T(s){ return (window.C373t?window.C373t(s):s); }
+
+/* `<html lang>` nu era actualizat niciodată: pagina se declara în română și când
+   conținutul era RU/DE/EN. Contează pentru cititoarele de ecran și pentru
+   silabisire. `<title>` nu e în DOM-ul observat de i18n, deci se trece explicit. */
+function applyLang(){
+  try{
+    const l=(window.C373lang?window.C373lang():'ro');
+    document.documentElement.lang=l;
+    document.title=T('Cod373 — Portal client');
+  }catch(e){}
+}
+
+/* O singură formă pentru toate stările terminale (link mort, expirat, eroare).
+   Înainte, aceeași clasă de eveniment se randa ca text gri centrat aici și ca
+   text gri SAU casetă roșie în `acces.html`. */
+function center(ic,msg,title){
+  document.getElementById('content').innerHTML=
+    '<div class="cs-state cs-rise"><div class="cs-state-icon" aria-hidden="true">'+ic+'</div>'
+    +(title?'<div class="cs-state-title">'+esc(title)+'</div>':'')
+    +'<div class="cs-state-text">'+esc(msg)+'</div></div>';
+}
+
+/* Slotul de identitate a firmei. Se randează DOAR pe date reale — niciodată un
+   antet gol sau un loc rezervat vizibil. Când contractul portalului va întoarce
+   firma, aici nu se schimbă decât sursa. */
+function renderFirm(firm){
+  if(!firm || !(firm.name||firm.logo)) return;
+  const head=document.getElementById('head');
+  const label=document.getElementById('surface-label');
+  const el=document.createElement('div');
+  el.className='cs-firm';
+  el.innerHTML=(firm.logo?'<img class="cs-firm-logo" src="'+esc(firm.logo)+'" alt="">':'')
+    +'<div class="cs-firm-text"><div class="cs-firm-name" translate="no">'+esc(firm.name||'')+'</div>'
+    +(firm.legal_name&&firm.legal_name!==firm.name?'<div class="cs-firm-sub" translate="no">'+esc(firm.legal_name)+'</div>':'')
+    +'</div>';
+  head.insertBefore(el,head.firstChild);
+  /* Firma devine identitatea principală ⇒ marca platformei coboară în subsol. */
+  const brand=head.querySelector('.cs-brand'); if(brand) brand.remove();
+  if(label) label.classList.add('cs-firm-sub');
+  const foot=document.getElementById('foot-firm');
+  if(foot){
+    const bits=[];
+    if(firm.name) bits.push('<b translate="no">'+esc(firm.name)+'</b>');
+    if(firm.phone) bits.push(esc(firm.phone));
+    if(firm.email) bits.push(esc(firm.email));
+    foot.innerHTML=bits.join(' · ');
+  }
+}
 
 (async function(){
   const token=new URLSearchParams(location.search).get('token');
-  if(!token){ center('🔒','Link invalid. Cere firmei un link valid de acces.'); return; }
+  if(!token){ center('🔒',T('Cere firmei un link valid de acces.'),T('Link invalid')); return; }
   const { data, error }=await sb.rpc('portal_data',{p_token:token});
-  if(error){ center('⚠️','A apărut o eroare. Încearcă din nou mai târziu.'); return; }
+  if(error){ center('⚠️',T('Încearcă din nou mai târziu.'),T('A apărut o eroare.')); return; }
   if(!data || data.error){
     const m={invalid:'Link invalid sau revocat.',expired:'Linkul a expirat.',nosite:'Proiectul nu mai este disponibil.',nooffer:'Oferta nu mai este disponibilă.'}[data&&data.error]||'Link indisponibil.';
-    center('🔒',m); return;
+    center('🔒',T(m),T('Fără acces')); return;
   }
   CUR=(data.currency||'MDL').toUpperCase();
+  /* Contractul nu întoarce azi identitatea firmei; apelul rămâne aici ca slotul
+     să se umple singur când o va întoarce, fără altă schimbare de client. */
+  renderFirm(data.firm);
   const fmtd=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0].slice(2)):d; };
   if(data.mode==='offer'){ renderOffer(data); return; }
   const s=data.site, stages=data.stages||[];
@@ -94,7 +191,7 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
         const cls=STG[st.status]||'plan'; let bar='';
         if(st.start_date&&st.end_date){
           const l=(+new Date(st.start_date)-min)/span*100;
-          if(st.is_milestone){ bar='<span class="ms" style="left:'+l+'%" title="Jalon"></span>'; }
+          if(st.is_milestone){ bar='<span class="ms" style="left:'+l+'%" title="'+esc(T('Jalon'))+'"></span>'; }
           else { const w=Math.max(2,((+new Date(st.end_date)-+new Date(st.start_date))/span)*100);
             bar='<div class="bar '+cls+'" style="left:'+l+'%;width:'+w+'%"><div class="prog" style="width:'+(st.progress||0)+'%"></div></div>'; }
         }
@@ -103,52 +200,54 @@ function center(ic,msg){document.getElementById('content').innerHTML='<div class
           +'<div class="track">'+bar+'</div>'
           +'<div class="tlpc">'+(st.is_milestone?'◆':((st.progress||0)+'%'))+'</div></div>';
       }).join('')+'</div>'
-      +'<div class="lgnd"><span><i style="background:var(--green)"></i>Finalizat</span><span><i style="background:var(--primary)"></i>În lucru</span><span><i style="background:#94a3b8"></i>Planificat</span><span><i style="background:#ef4444"></i>Întârziat</span><span>◆ Jalon</span></div>';
+      +'<div class="lgnd"><span><i style="background:var(--green)"></i>Finalizat</span><span><i style="background:var(--primary)"></i>În lucru</span><span><i style="background:var(--c373-slate)"></i>Planificat</span><span><i style="background:var(--c373-red)"></i>Întârziat</span><span>◆ Jalon</span></div>';
     } else {
       body=stages.map(st=>{ const cls=STG[st.status]||'plan'; const ic=st.status==='done'?'✓':st.status==='active'?'●':st.status==='delayed'?'!':'○';
         return '<div class="stage"><div class="dot '+cls+'">'+ic+'</div><div class="g"><div class="t">'+esc(st.name)+'</div></div><div class="pc">'+(st.progress||0)+'%</div></div>'; }).join('');
     }
-    stagesHtml='<div class="card"><h3>Graficul lucrărilor</h3>'+body+'</div>';
+    stagesHtml='<div class="cs-card cs-rise cs-rise-1"><h3 class="cs-card-title">Graficul lucrărilor</h3>'+body+'</div>';
   }
   let costHtml='';
   if(data.show_costs && s.budget!=null){
-    costHtml='<div class="card"><h3>Detalii financiare</h3><div class="kv"><span class="k">Buget contractat</span><b>'+money(s.budget)+'</b></div></div>';
+    costHtml='<div class="cs-card cs-rise cs-rise-4"><h3 class="cs-card-title">Detalii financiare</h3><div class="cs-kv"><span class="cs-kv-k">Buget contractat</span><span class="cs-kv-v">'+money(s.budget)+'</span></div></div>';
   }
   let photoHtml='';
   if(data.photos && data.photos.length){
-    photoHtml='<div class="card"><h3>Poze / video de pe șantier</h3><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem">'
+    photoHtml='<div class="cs-card cs-rise cs-rise-2"><h3 class="cs-card-title">Poze / video de pe șantier</h3><div class="media-grid">'
       +data.photos.map(function(u){ var isV=/\.(mp4|mov|webm|m4v|avi|mkv|3gp|ogv)(\?|$)/i.test(String(u).split('?')[0]);
-        if(isV) return '<video src="'+esc(u)+'" controls preload="metadata" playsinline style="width:100%;height:110px;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#000"></video>';
-        return '<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" loading="lazy" style="width:100%;height:110px;object-fit:cover;border-radius:10px;border:1px solid var(--line);cursor:zoom-in"></a>'; }).join('')
+        if(isV) return '<video src="'+esc(u)+'" controls preload="metadata" playsinline></video>';
+        return '<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" loading="lazy" alt=""></a>'; }).join('')
       +'</div></div>';
   }
   let ordersHtml='';
   if(data.orders && data.orders.length){
     const OST={sent:'Comandat',confirmed:'Confirmat',received:'Livrat'};
-    ordersHtml='<div class="card"><h3>Materiale comandate</h3>'+data.orders.map(function(o){
-      const items=(o.items||[]).map(function(it){ return '<div style="display:flex;justify-content:space-between;font-size:.88rem;padding:.12rem 0"><span>'+esc(it.name)+'</span><b>'+esc(it.qty)+' '+esc(it.unit||'')+'</b></div>'; }).join('');
-      return '<div style="border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;margin:.4rem 0"><div style="font-size:.78rem;color:var(--muted);margin-bottom:.25rem">'+(o.number?('#'+esc(o.number)+' · '):'')+esc(OST[o.status]||o.status)+(o.expected_at?(' · livrare ~'+fmtd(o.expected_at)):'')+'</div>'+items+'</div>';
+    ordersHtml='<div class="cs-card cs-rise cs-rise-3"><h3 class="cs-card-title">Materiale comandate</h3>'+data.orders.map(function(o){
+      const items=(o.items||[]).map(function(it){ return '<div class="ord-i"><span>'+esc(it.name)+'</span><b>'+esc(it.qty)+' '+esc(it.unit||'')+'</b></div>'; }).join('');
+      return '<div class="ord"><div class="ord-h">'+(o.number?('#'+esc(o.number)+' · '):'')+esc(T(OST[o.status]||o.status))+(o.expected_at?(' · '+T('livrare')+' ~'+fmtd(o.expected_at)):'')+'</div>'+items+'</div>';
     }).join('')+'</div>';
   }
   let hoursHtml='';
   if(data.hours && data.hours.length){
     var tot=data.hours.reduce(function(a,h){ return a+(+h.hours||0); },0);
-    hoursHtml='<div class="card"><h3>Ore de lucru pe șantier</h3><div style="font-size:.84rem;color:var(--muted);margin-bottom:.4rem">Total: <b>'+(Math.round(tot*10)/10)+' ore</b></div>'
-      +data.hours.map(function(h){ return '<div style="display:flex;justify-content:space-between;font-size:.9rem;padding:.25rem 0;border-bottom:1px solid var(--line)"><span>👷 '+esc(h.name||'—')+'</span><b>'+(Math.round((+h.hours||0)*10)/10)+' h'+(h.days?(' · '+h.days+' zile'):'')+'</b></div>'; }).join('')+'</div>';
+    hoursHtml='<div class="cs-card cs-rise cs-rise-4"><h3 class="cs-card-title">Ore de lucru pe șantier</h3><div style="font-size:.84rem;color:var(--muted);margin-bottom:.4rem">'+T('Total')+': <b>'+(Math.round(tot*10)/10)+' '+T('ore')+'</b></div>'
+      +data.hours.map(function(h){ return '<div class="hrow"><span>👷 '+esc(h.name||'—')+'</span><b>'+(Math.round((+h.hours||0)*10)/10)+' h'+(h.days?(' · '+h.days+' '+T('zile')):'')+'</b></div>'; }).join('')+'</div>';
   }
   document.getElementById('content').innerHTML=
-    '<div class="hero"><div class="lab">Proiectul dumneavoastră</div><h1>'+esc(s.name)+'</h1>'
-    +(s.address?'<div class="addr">📍 '+esc(s.address)+'</div>':'')
-    +'<div class="pwrap"><div class="ptrack"><div class="pfill" style="width:'+(s.progress||0)+'%"></div></div>'
-    +'<div class="pmeta"><span>Progres lucrări</span><span><b>'+(s.progress||0)+'%</b></span></div></div>'
-    +'<div style="margin-top:1rem"><span class="pill">'+esc((SL[s.status]||['—'])[0])+'</span>'
-    +(s.deadline?' <span class="pill">Termen: '+esc(s.deadline)+'</span>':'')+'</div></div>'
+    '<div class="cs-hero cs-rise"><div class="cs-hero-eyebrow">Proiectul dumneavoastră</div><h1 class="cs-hero-title">'+esc(s.name)+'</h1>'
+    +(s.address?'<div class="cs-hero-meta">📍 '+esc(s.address)+'</div>':'')
+    +'<div class="cs-prog"><div class="cs-prog-track"><div class="cs-prog-fill" style="width:'+(s.progress||0)+'%"></div></div>'
+    +'<div class="cs-prog-meta"><span>Progres lucrări</span><span><b>'+(s.progress||0)+'%</b></span></div></div>'
+    +'<div class="cs-hero-pills"><span class="cs-pill cs-pill-on-dark">'+esc(T((SL[s.status]||['—'])[0]))+'</span>'
+    +(s.deadline?'<span class="cs-pill cs-pill-on-dark"><span>Termen<span>: '+esc(fmtd(s.deadline))+'</span></span></span>':'')+'</div></div>'
     +stagesHtml+photoHtml+ordersHtml+hoursHtml+costHtml
-    +'<div class="card" style="background:var(--blue-soft);border:none"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
+    +'<div class="cs-card cs-card-note cs-rise cs-rise-4"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
+  applyLang();
 })();
 function renderOffer(data){
   var o=data.offer||{}, lines=data.lines||[]; var cur=(data.currency||'MDL').toUpperCase();
   function m(n){ return (Math.round((+n||0)*100)/100).toLocaleString('ro-RO')+' '+cur; }
+  var label=document.getElementById('surface-label'); if(label) label.textContent='Ofertă';
   /* ►► HOTFIX-PORTAL-OFFER1 — NU se afișează total pe poziție.
      `estimate_items` nu stochează un total de linie, iar a-l deriva aici ar însemna să
      replicăm întreg motorul din `deviz.html`: vat_mode ('none'|'line'|'total'), disc_mode,
@@ -157,40 +256,42 @@ function renderOffer(data){
      ar fi contrazis, pe același ecran, totalul canonic al documentului.
      Se arată faptele stocate (cantitate, preț unitar NET — D34), iar totalurile vin
      VERBATIM din coloanele canonice ale documentului, calculate o singură dată la salvare. */
-  var rows=lines.map(function(l){ return '<tr><td>'+esc(l.name)+'</td><td style="text-align:right;white-space:nowrap">'+esc(l.qty)+' '+esc(l.unit||'')+'</td><td style="text-align:right;white-space:nowrap">'+m(l.unit_price)+'</td></tr>'; }).join('');
-  var html='<div class="hero"><div class="lab">Ofertă'+(o.number?(' nr. '+esc(o.number)):'')+'</div><h1>'+esc(o.title||'Ofertă de preț')+'</h1>'+(o.client?'<div class="addr">👤 '+esc(o.client)+'</div>':'')+'</div>'
-    +'<div class="card"><h3>Detaliile ofertei</h3>'
+  var rows=lines.map(function(l){ return '<tr><td>'+esc(l.name)+'</td><td class="num">'+esc(l.qty)+' '+esc(l.unit||'')+'</td><td class="num">'+m(l.unit_price)+'</td></tr>'; }).join('');
+  var html='<div class="cs-hero cs-rise"><div class="cs-hero-eyebrow">Ofertă'+(o.number?('<span> '+T('nr.')+' '+esc(o.number)+'</span>'):'')+'</div><h1 class="cs-hero-title">'+esc(o.title||'Ofertă de preț')+'</h1>'+(o.client?'<div class="cs-hero-meta">👤 '+esc(o.client)+'</div>':'')+'</div>'
+    +'<div class="cs-card cs-rise cs-rise-1"><h3 class="cs-card-title">Detaliile ofertei</h3>'
     +(data.lines_hidden
         ? '<div style="color:var(--muted);font-size:.88rem">Pozițiile sunt incluse în manoperă, conform ofertei tipărite.</div>'
-        : '<table style="width:100%;border-collapse:collapse;font-size:.9rem"><thead><tr><th style="text-align:left;padding:.3rem 0">Denumire</th><th style="text-align:right">Cant.</th><th style="text-align:right">Preț unitar</th></tr></thead><tbody>'+rows+'</tbody></table>')
+        : '<div class="otbl-wrap"><table class="otbl"><thead><tr><th>Denumire</th><th>Cant.</th><th>Preț unitar</th></tr></thead><tbody>'+rows+'</tbody></table></div>')
     +(data.has_discount&&!data.lines_hidden?'<div style="color:var(--muted);font-size:.82rem;margin-top:.45rem">Prețurile pe poziție sunt cele dinainte de reducere. Totalurile de mai jos includ reducerea.</div>':'')
-    +'<div style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.5rem">'
-      +(o.subtotal!=null?'<div style="display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)"><span>Subtotal</span><span>'+m(o.subtotal)+'</span></div>':'')
-      +(o.vat_total!=null?'<div style="display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)"><span>TVA</span><span>'+m(o.vat_total)+'</span></div>':'')
-      +'<div style="display:flex;justify-content:space-between;font-size:1.15rem;margin-top:.3rem"><b>Total</b><b>'+m(o.total)+'</b></div></div>'
-    +(o.notes?'<div style="margin-top:.6rem;color:var(--muted);white-space:pre-wrap;font-size:.86rem">'+esc(o.notes)+'</div>':'')+'</div>';
+    +'<div style="margin-top:.85rem;border-top:1px solid var(--line);padding-top:.6rem">'
+      +(o.subtotal!=null?'<div class="cs-kv" style="border-bottom:none;padding:.2rem 0"><span class="cs-kv-k">Subtotal</span><span class="cs-kv-v" style="font-weight:500;color:var(--muted)">'+m(o.subtotal)+'</span></div>':'')
+      +(o.vat_total!=null?'<div class="cs-kv" style="border-bottom:none;padding:.2rem 0"><span class="cs-kv-k">TVA</span><span class="cs-kv-v" style="font-weight:500;color:var(--muted)">'+m(o.vat_total)+'</span></div>':'')
+      +'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem;margin-top:.45rem"><b>Total</b><b class="cs-amount cs-amount-lg">'+m(o.total)+'</b></div></div>'
+    +(o.notes?'<div style="margin-top:.7rem;color:var(--muted);white-space:pre-wrap;font-size:.86rem">'+esc(o.notes)+'</div>':'')+'</div>';
   if(data.accepted){
-    html+='<div class="card" style="background:var(--blue-soft);border:none;text-align:center"><b>✅ Ofertă acceptată</b><div style="color:var(--muted);margin-top:.3rem">Lucrarea a pornit. Reîncarcă pagina ca să vezi progresul.</div></div>';
+    html+='<div class="cs-card cs-card-note cs-rise cs-rise-2" style="text-align:center"><b>✅ Ofertă acceptată</b><div style="color:var(--muted);margin-top:.3rem">Lucrarea a pornit. Reîncarcă pagina ca să vezi progresul.</div></div>';
   } else {
-    html+='<div class="card"><h3>Accept și pornește lucrarea</h3>'
-      +'<div style="color:var(--muted);font-size:.88rem;margin-bottom:.6rem">Dacă ești de acord cu oferta, scrie-ți numele și apasă butonul. Lucrarea va începe, iar aici vei urmări progresul.</div>'
-      +'<input id="acc-name" placeholder="Numele tău" style="width:100%;padding:.7rem;border:1px solid var(--line);border-radius:10px;margin-bottom:.6rem;font-size:1rem">'
-      +'<div id="acc-msg" style="color:#dc2626;font-size:.85rem;min-height:1rem"></div>'
-      +'<button id="acc-btn" onclick="acceptOffer()" style="width:100%;padding:.9rem;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:1rem;font-weight:700;cursor:pointer">✅ Accept și pornește lucrarea</button></div>';
+    html+='<div class="cs-card cs-rise cs-rise-2"><h3 class="cs-card-title">Accept și pornește lucrarea</h3>'
+      +'<div style="color:var(--muted);font-size:.88rem;margin-bottom:.7rem">Dacă ești de acord cu oferta, scrie-ți numele și apasă butonul. Lucrarea va începe, iar aici vei urmări progresul.</div>'
+      +'<label for="acc-name" style="display:block;font-size:.8rem;font-weight:600;margin-bottom:.3rem">Numele tău</label>'
+      +'<input id="acc-name" class="cs-field" placeholder="Numele tău" autocomplete="name" style="margin-bottom:.6rem">'
+      +'<div id="acc-msg" class="err-msg" role="alert"></div>'
+      +'<button id="acc-btn" class="cs-btn cs-btn-primary cs-btn-block" onclick="acceptOffer()">✅ Accept și pornește lucrarea</button></div>';
   }
   document.getElementById('content').innerHTML=html;
+  applyLang();
 }
 async function acceptOffer(){
   var token=new URLSearchParams(location.search).get('token');
   var name=(document.getElementById('acc-name').value||'').trim();
-  if(!name){ document.getElementById('acc-msg').textContent='Scrie-ți numele ca să confirmi acceptarea.'; return; }
-  var b=document.getElementById('acc-btn'); if(b){ b.disabled=true; b.textContent='Se procesează…'; }
+  if(!name){ document.getElementById('acc-msg').textContent=T('Scrie-ți numele ca să confirmi acceptarea.'); return; }
+  var b=document.getElementById('acc-btn'); if(b){ b.disabled=true; b.textContent=T('Se procesează…'); }
   try{ var r=await sb.rpc('portal_accept_offer',{p_token:token, p_signer:name});
     if(r.error || (r.data && r.data.error)) throw new Error('fail');
     location.reload();
-  }catch(e){ var mEl=document.getElementById('acc-msg'); if(mEl) mEl.textContent='A apărut o eroare. Încearcă din nou.'; if(b){ b.disabled=false; b.textContent='✅ Accept și pornește lucrarea'; } }
+  }catch(e){ var mEl=document.getElementById('acc-msg'); if(mEl) mEl.textContent=T('A apărut o eroare. Încearcă din nou.'); if(b){ b.disabled=false; b.textContent='✅ '+T('Accept și pornește lucrarea'); } }
 }
 </script>
-<script src="i18n.js"></script>
+<script>applyLang();</script>
 </body>
 </html>

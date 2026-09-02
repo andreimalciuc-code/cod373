@@ -13,6 +13,24 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── CLIENT-BRAND1 — shell-ul client (portal anonim, stări, antet/subsol) ──
+    'Cod373 — Portal client':{ru:'Cod373 — Клиентский портал',de:'Cod373 — Kundenportal',en:'Cod373 — Client portal'},
+    'Link invalid':{ru:'Недействительная ссылка',de:'Ungültiger Link',en:'Invalid link'},
+    'Cere firmei un link valid de acces.':{ru:'Попросите у компании действующую ссылку доступа.',de:'Bitten Sie das Unternehmen um einen gültigen Zugangslink.',en:'Ask the company for a valid access link.'},
+    'A apărut o eroare.':{ru:'Произошла ошибка.',de:'Es ist ein Fehler aufgetreten.',en:'An error occurred.'},
+    'Încearcă din nou mai târziu.':{ru:'Попробуйте позже.',de:'Bitte versuchen Sie es später erneut.',en:'Please try again later.'},
+    'Fără acces':{ru:'Нет доступа',de:'Kein Zugriff',en:'No access'},
+    'Linkul a expirat.':{ru:'Срок действия ссылки истёк.',de:'Der Link ist abgelaufen.',en:'The link has expired.'},
+    'Link indisponibil.':{ru:'Ссылка недоступна.',de:'Link nicht verfügbar.',en:'Link unavailable.'},
+    'Pagină pentru client, fără cost.':{ru:'Страница для клиента, бесплатно.',de:'Seite für den Kunden, kostenlos.',en:'Client page, free of charge.'},
+    'În execuție':{ru:'В работе',de:'In Ausführung',en:'In progress'},
+    'Poze / video de pe șantier':{ru:'Фото / видео со стройплощадки',de:'Fotos / Videos von der Baustelle',en:'Site photos / videos'},
+    'Materiale comandate':{ru:'Заказанные материалы',de:'Bestellte Materialien',en:'Ordered materials'},
+    'Confirmat':{ru:'Подтверждено',de:'Bestätigt',en:'Confirmed'},
+    'Livrat':{ru:'Доставлено',de:'Geliefert',en:'Delivered'},
+    'livrare':{ru:'доставка',de:'Lieferung',en:'delivery'},
+    'Ore de lucru pe șantier':{ru:'Часы работы на объекте',de:'Arbeitsstunden auf der Baustelle',en:'Work hours on site'},
+    'nr.':{ru:'№',de:'Nr.',en:'no.'},
     // ── SITE-DOCS1 — documentele șantierului ──
     'Documentele șantierului':{ru:'Документы объекта',de:'Dokumente der Baustelle',en:'Site documents'},
     'Documentele acestui șantier. Clientul NU le vede.':{ru:'Документы этого объекта. Клиент их НЕ видит.',de:'Die Dokumente dieser Baustelle. Der Kunde sieht sie NICHT.',en:'This site\u2019s documents. The client does NOT see them.'},

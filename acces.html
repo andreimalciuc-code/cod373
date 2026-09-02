@@ -7,14 +7,20 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="robots" content="noindex" />
 <title>Acces — Cod373</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="client-shell.css" />
 <style>
-  :root{--bg:#f4f6fb;--surface:#fff;--line:#e3e8f0;--text:#0f1c33;--muted:#6b7793;--primary:#2f6bff;--red:#dc2626;--green:#16a34a}
+  /* Tokenii locali se mapează din cei canonici (`client-shell.css`). Înainte,
+     `acces.html` nu declara deloc `--accent`, iar cifra „373" din marcă ieșea
+     ALBASTRĂ aici și PORTOCALIE în `portal.html` — două culori pentru același
+     logo, pe două ecrane consecutive ale aceluiași client. */
+  :root{--bg:var(--c373-bg);--surface:var(--c373-surface);--line:var(--c373-line);--text:var(--c373-ink);--muted:var(--c373-muted);--primary:var(--c373-primary);--red:var(--c373-red);--green:var(--c373-green)}
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.1rem}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;max-width:380px;width:100%;padding:1.4rem 1.3rem 1.5rem;box-shadow:0 10px 40px rgba(15,28,51,.07)}
+  body{margin:0;font-family:var(--c373-font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.1rem}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--c373-r-lg);max-width:380px;width:100%;padding:1.4rem 1.3rem 1.5rem;box-shadow:var(--c373-shadow-2)}
   .logo{display:flex;align-items:center;gap:.5rem;justify-content:center;margin-bottom:1rem}
-  .logo .lg{background:var(--primary);color:#fff;font-weight:800;border-radius:9px;padding:.25rem .5rem;font-size:.92rem;letter-spacing:.02em}
-  .logo .nm{font-weight:800;font-size:1.15rem}.logo .nm span{color:var(--primary)}
   h2{font-size:1.15rem;margin:.2rem 0 .15rem;text-align:center}
   .sub{color:var(--muted);font-size:.86rem;text-align:center;margin:0 0 1rem}
   .banner{background:#eef2ff;border:1px solid var(--primary);border-radius:12px;padding:.7rem .85rem;margin-bottom:.9rem}
@@ -48,7 +54,14 @@
   :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
   /* ── DARK MODE: acces.html n-avea deloc. Doar variabile — zero redesign de login. ── */
   @media (prefers-color-scheme: dark){
+    /* Se rescriu tokenii CANONICI, nu doar cei locali: componentele partajate
+       din `client-shell.css` citesc `--c373-*`, iar marca ar fi rămas altfel pe
+       bleumarinul temei deschise, invizibilă pe fundal întunecat (clasa KB#129). */
+    :root{--c373-bg:#0f1420;--c373-surface:#161d2c;--c373-line:#2a3446;--c373-ink:#e8edf7;--c373-muted:#94a2bd;--c373-surface-2:#1b2333}
     :root{--bg:#0f1420;--surface:#161d2c;--line:#2a3446;--text:#e8edf7;--muted:#94a2bd}
+    /* Badge-ul mărcii își păstrează bleumarinul de brand și pe tema închisă;
+       fără bordură s-ar topi în fundal. */
+    .cs-brand-badge{box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
     input{background:#0f1420;color:var(--text)}
     input[readonly]{background:#0c111b}
     .banner{background:#17233f}
@@ -62,7 +75,10 @@
 </head>
 <body>
   <div class="card">
-    <div class="logo"><div class="lg">C373</div><div class="nm">Cod<span>373</span></div></div>
+    <!-- `translate="no"` e obligatoriu: `'Cod'` e cheie reală în dicționar
+         (`i18n.js` → {ru:'Код'}), iar nodul de text „Cod" e separat de „373",
+         deci observatorul din i18n traducea numele produsului în „Код373". -->
+    <div class="logo"><span class="cs-brand" translate="no"><span class="cs-brand-badge" aria-hidden="true">373</span><span class="cs-brand-name">Cod<span>373</span></span></span></div>
     <div id="box"><div class="sub">Se încarcă…</div></div>
   </div>
 
