@@ -225,7 +225,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='353';
+const APP_BUILD='354';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -2061,7 +2061,11 @@ async function scrDefecte(){
 }
 async function sheetDefect(){
   const {data:sites}=await mSel('sites','id,name').order('name');
-  const so=(sites||[]).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  /* `S.dsite` era scris la :1532 și :1917 („🔧 Defect" din fișa șantierului) și NU era
+     citit niciodată — butonul contextual deschidea formularul pe „— fără —". Acum
+     preselectează, ceea ce contează dublu de la 0205: șantierul e și contextul căii. */
+  const pre=S.dsite||''; S.dsite=null;
+  const so=(sites||[]).map(s=>'<option value="'+s.id+'"'+(s.id===pre?' selected':'')+'>'+esc(s.name)+'</option>').join('');
   openSheet('Raportează un defect',
     '<div id="smsg"></div>'
     +'<div class="fld"><label>Titlu</label><input id="d-title" placeholder="ex: fisură în perete"/></div>'
@@ -2072,15 +2076,32 @@ async function sheetDefect(){
 }
 async function saveDefect(){
   const title=$('d-title').value.trim(); if(!title){$('smsg').innerHTML='<div class="msg err">Scrie un titlu.</div>';return;}
+  /* Șantierul se citește O SINGURĂ DATĂ și alimentează ȘI calea blobului, ȘI rândul —
+     altfel cele două ar putea diverge dacă utilizatorul schimbă selectul între ele. */
+  const dsite=$('d-site').value||'';
+  /* Subcontractorul NU poate raporta un defect fără șantier: `sub_ins` din 0025 cere
+     `site_id in my_sub_site_ids()`, deci serverul l-ar refuza oricum — dar cu o eroare
+     brută, după ce a așteptat încărcarea pozei. Îl oprim aici, cu un motiv. */
+  if(!dsite && (S.memberRole||S.role)==='subcontractor'){ $('smsg').innerHTML='<div class="msg err">Alege șantierul — fără el problema nu poate fi trimisă.</div>'; return; }
   $('d-save').disabled=true;
   let photoPath=null; const pf=$('d-photo');
   if(pf && pf.files && pf.files[0]){
     let file=pf.files[0]; file=await compressImage(file,1600,0.72); const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-    photoPath=S.tenant+'/defects/'+Date.now()+'_'+safe;
+    /* ►► HOTFIX-SUBCONTRACT-DEFECT-UPLOAD1 — calea poartă ȘANTIERUL.
+       Un singur generator, pentru toate rolurile care raportează defecte
+       (`worker` și `subcontractor`, NAV la :556). Forma contextuală
+       `<tenant>/defects/<site_id>/…` e exact cea a pozelor de șantier, iar
+       politica de Storage o verifică server-side contra `my_sub_site_ids()`:
+       prefixul singur nu mai e autoritate (0205/D136).
+       Fără șantier rămâne forma plată — un `worker` raportează legitim un defect
+       negăsit pe un șantier anume (`defects.site_id` e nullable din 0002), iar
+       contractul lui de Storage e mai larg. Pentru subcontractor lipsa
+       șantierului e oprită mai sus, în formular. */
+    photoPath=S.tenant+'/defects/'+(dsite?dsite+'/':'')+Date.now()+'_'+safe;
     const up=await sb.storage.from('docs').upload(photoPath,file,{contentType:file.type||'image/jpeg'});
     if(up.error){ $('smsg').innerHTML='<div class="msg err">Eroare poză: '+esc(up.error.message)+'</div>'; $('d-save').disabled=false; return; }
   }
-  const {error}=await sb.from('defects').insert({tenant_id:S.tenant,title,site_id:$('d-site').value||null,priority:$('d-prio').value,status:'open',photo_url:photoPath,created_by:S.session.user.id});
+  const {error}=await sb.from('defects').insert({tenant_id:S.tenant,title,site_id:dsite||null,priority:$('d-prio').value,status:'open',photo_url:photoPath,created_by:S.session.user.id});
   $('d-save').disabled=false;
   if(error){$('smsg').innerHTML='<div class="msg err">'+esc(error.message)+'</div>';return;}
   closeSheet();toast('✅ Defect raportat'+(photoPath?' cu poză.':'.'));scrDefecte();
