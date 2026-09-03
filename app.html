@@ -15794,7 +15794,10 @@ async function removeFromTeam(id,siteId){
 /* ════ PORTAL CLIENT — generează link partajabil ════ */
 async function genPortal(siteId){
   let site={},cl={}; try{ const sr=await sb.from('sites').select('name,clients(name,phone,email)').eq('id',siteId).single(); site=sr.data||{}; cl=(site&&site.clients)||{}; }catch(e){}
-  const { data, error }=await sb.from('client_portal_links').insert({ tenant_id:state.tenant, site_id:siteId, show_costs:false }).select('token').single();
+  /* ►► CLIENT-LINK-LIFETIME1 — expirarea se scrie EXPLICIT, ca valoarea sa fie
+     intentionata si vizibila. Baza are si `default now() + 30 days` (0206), deci
+     un link ramane cu termen chiar daca o cale viitoare uita s-o seteze. */
+  const { data, error }=await sb.from('client_portal_links').insert({ tenant_id:state.tenant, site_id:siteId, show_costs:false, expires_at:linkExpiryISO() }).select('token,expires_at').single();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   const url=appBase()+'portal.html?token='+data.token;
   window._portalLink={ token:data.token, url:url, siteId:siteId, phone:(cl.phone||''), email:(cl.email||''), site:(site.name||''), client:(cl.name||'') };
@@ -15811,6 +15814,7 @@ async function genPortal(siteId){
       +'<label style="display:flex;align-items:center;gap:.5rem;margin:.25rem 0;cursor:pointer"><input type="checkbox" id="portal-costs" onchange="portalSetFlag(\'show_costs\',this.checked)"> 💰 '+esc(tz('Bugetul contractat (detalii financiare)'))+'</label>'
     +'</div>'
     +'<div class="field"><label style="font-size:.8rem;color:var(--muted)">'+esc(tz('Link'))+'</label><input id="portal-url" readonly value="'+esc(url)+'" style="font-size:.82rem"/></div>'
+    +portalLifecycleHtml(data.expires_at)
     +'<div style="font-weight:700;font-size:.84rem;margin:.6rem 0 .4rem">'+esc(tz('Trimite clientului'))+(cl.name?(' — '+esc(cl.name)):'')+'</div>'
     +'<div style="display:flex;gap:.5rem;flex-wrap:wrap">'
       +sendBtn('🟢','WhatsApp','portalSend(\'wa\')',true)
@@ -15828,7 +15832,7 @@ function portalMsg(){ const p=window._portalLink||{}; const hi=(p.client?('Bună
   return hi+'Urmăriți progresul lucrării'+(p.site?(' „'+p.site+'"'):'')+' aici: '+p.url; }
 async function genOfferPortal(estimateId){
   let est={},cl={}; try{ const er=await sb.from('estimates').select('number,title,client_id,clients(name,phone,email)').eq('id',estimateId).single(); est=er.data||{}; cl=(est&&est.clients)||{}; }catch(e){}
-  const { data, error }=await sb.from('client_portal_links').insert({ tenant_id:state.tenant, estimate_id:estimateId, show_stages:true }).select('token').single();
+  const { data, error }=await sb.from('client_portal_links').insert({ tenant_id:state.tenant, estimate_id:estimateId, show_stages:true, expires_at:linkExpiryISO() }).select('token,expires_at').single();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   const url=appBase()+'portal.html?token='+data.token;
   const label=est.title||(est.number?('Oferta '+est.number):'Oferta');
@@ -15839,6 +15843,7 @@ async function genOfferPortal(estimateId){
     +'<div class="modal-body">'
     +'<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem;margin-bottom:.8rem;font-size:.88rem">'+esc(tz('Clientul deschide linkul, vede oferta (poziții + total) și apasă „Accept și pornește lucrarea". Atunci oferta devine acceptată, se creează automat șantierul (activ, cu etape din ofertă) și portalul îi arată progresul.'))+'</div>'
     +'<div class="field"><label style="font-size:.8rem;color:var(--muted)">'+esc(tz('Link'))+'</label><input id="portal-url" readonly value="'+esc(url)+'" style="font-size:.82rem"/></div>'
+    +portalLifecycleHtml(data.expires_at)
     +'<div style="font-weight:700;font-size:.84rem;margin:.6rem 0 .4rem">'+esc(tz('Trimite clientului'))+(cl.name?(' — '+esc(cl.name)):'')+'</div>'
     +'<div style="display:flex;gap:.5rem;flex-wrap:wrap">'
       +sendBtn('🟢','WhatsApp','portalSend(\'wa\')',true)
@@ -15853,6 +15858,29 @@ function portalSend(how){ const p=window._portalLink||{}; const txt=portalMsg();
   if(how==='wa'){ const ph=(p.phone||'').replace(/[^0-9]/g,''); window.open('https://wa.me/'+ph+'?text='+encodeURIComponent(txt),'_blank'); }
   else if(how==='sms'){ location.href='sms:'+(p.phone||'')+'?&body='+encodeURIComponent(txt); }
   else if(how==='email'){ location.href='mailto:'+(p.email||'')+'?subject='+encodeURIComponent('Acces la lucrarea'+(p.site?(' „'+p.site+'"'):''))+'&body='+encodeURIComponent(txt); }
+}
+/* ══ CLIENT-LINK-LIFETIME1 — ciclul de viata al linkului client ══════════════
+   Termenul se calculeaza intr-un singur loc; interfata si baza spun acelasi lucru.
+   Data se AFISEAZA in fusul FIRMEI (`fmtDate`), nu in cel al browserului. */
+const LINK_TTL_DAYS=30;
+function linkExpiryISO(){ const d=new Date(); d.setDate(d.getDate()+LINK_TTL_DAYS); return d.toISOString(); }
+function portalLifecycleHtml(exp){
+  const t=exp?fmtDate(String(exp).slice(0,10)):'—';
+  return '<div id="portal-life" style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-size:.85rem;margin:.5rem 0 .2rem">'
+    +'<span class="pill" style="background:var(--green-soft);color:var(--green)">'+esc(tz('Activ'))+'</span>'
+    +'<span style="color:var(--muted)">'+esc(tz('Expiră la'))+' <b>'+esc(t)+'</b></span>'
+    +'<button class="btn-ghost" style="color:var(--red);margin-left:auto" onclick="portalRevoke()">'+esc(tz('Revocă linkul'))+'</button></div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:.6rem">'+esc(tz('După revocare, linkul nu mai deschide portalul și nu se mai emit poze. Un link trimis deja nu poate fi retras din mesaje — de aceea are termen.'))+'</div>';
+}
+async function portalRevoke(){
+  const p=window._portalLink||{}; if(!p.token) return;
+  if(!confirm(tz('Revoci acest link? Clientul nu va mai putea deschide portalul.'))) return;
+  const { error }=await sb.from('client_portal_links').update({ revoked_at:new Date().toISOString() }).eq('token',p.token);
+  if(error){ toast('Eroare: '+esc(error.message)); return; }
+  const box=$('portal-life');
+  if(box) box.innerHTML='<span class="pill" style="background:var(--red-soft);color:var(--red)">'+esc(tz('Revocat'))+'</span>'
+    +'<span style="color:var(--muted)">'+esc(tz('Linkul nu mai funcționează.'))+'</span>';
+  toast('✅ '+tz('Link revocat.'));
 }
 function portalSetFlag(flag,on){ const p=window._portalLink||{}; if(!p.token) return; const upd={}; upd[flag]=!!on; sb.from('client_portal_links').update(upd).eq('token',p.token).then(({error})=>{ if(error){ toast('Eroare: '+esc(error.message)); return; } toast('✅ '+tz('Salvat')); }); }
 async function portalSetPhotos(on){ const p=window._portalLink||{}; if(!p.token) return; const pick=$('portal-photos-pick');
@@ -15873,12 +15901,22 @@ async function portalSavePhotos(){
   const p=window._portalLink||{}; const paths=window._ppkPaths||[];
   const sel=Array.from(document.querySelectorAll('.ppk-cb')).filter(c=>c.checked).map(c=>paths[+c.dataset.i]).filter(Boolean);
   toast('⏳ '+tz('Pregătesc pozele…'));
-  let photos=[]; if(sel.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(sel, 60*60*24*60); photos=(su.data||[]).map(x=>x&&x.signedUrl).filter(Boolean); }catch(e){} }
-  const { error }=await sb.from('client_portal_links').update({show_photos:photos.length>0, photo_urls:photos.length?photos:null}).eq('token',p.token);
+  /* ►► CLIENT-LINK-LIFETIME1 — se salveaza CAI, nu URL-uri semnate.
+     Inainte: `createSignedUrls(sel, 60*60*24*60)` = 60 de zile, semnate aici, in
+     browserul unui angajat, si persistate ca URL-uri complete. Tokenul portalului
+     nu intra niciodata in acea semnare, deci nici revocarea, nici expirarea, nici
+     macar ascunderea pozelor nu le puteau opri: erau capacitati purtatoare,
+     emise in afara benzii.
+     Acum coloana tine caile (`site_stages.photo_urls` sunt CAI — atentie la
+     omonimia cu `client_portal_links.photo_urls`, care tinea URL-uri), iar
+     URL-urile scurte se emit la cerere de functia `portal-media`, dupa ce
+     revalideaza tokenul. `photo_urls` se goleste: nu mai are cine s-o citeasca. */
+  const { error }=await sb.from('client_portal_links').update({show_photos:sel.length>0, photo_paths:sel.length?sel:null, photo_urls:null}).eq('token',p.token);
+  const photos=sel;
   const ov=$('ppk'); if(ov) ov.remove();
   if(error){ toast('Eroare: '+esc(error.message)); return; }
   if(!photos.length){ const c=$('portal-photos'); if(c) c.checked=false; const pk=$('portal-photos-pick'); if(pk) pk.style.display='none'; toast(tz('Nicio poză selectată — pozele rămân ascunse.')); return; }
-  toast('✅ '+photos.length+' '+tz('poze vizibile clientului (valabile ~60 zile).'));
+  toast('✅ '+photos.length+' '+tz('poze vizibile clientului.'));
 }
 function copyPortal(){ const i=$('portal-url'); i.select(); try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); } toast('📋 '+tz('Link copiat.')); }
 

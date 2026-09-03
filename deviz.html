@@ -1239,7 +1239,7 @@ function planDrag(panel, handle){ let sx=0,sy=0,sl=0,st=0,drag=false;
 async function sendOfferPortal(){
   if(!S.id){ toast('Salvează întâi oferta, apoi trimite-o clientului.'); return; }
   let cl={}; try{ if(S.est.client_id){ const c=await sb.from('clients').select('name,phone,email').eq('id',S.est.client_id).single(); cl=c.data||{}; } }catch(e){}
-  const ins=await sb.from('client_portal_links').insert({tenant_id:S.tenant, estimate_id:S.id, show_stages:true}).select('token').single();
+  const ins=await sb.from('client_portal_links').insert({tenant_id:S.tenant, estimate_id:S.id, show_stages:true, expires_at:(function(){var d=new Date();d.setDate(d.getDate()+30);return d.toISOString();})()}).select('token').single();
   if(ins.error){ toast('Eroare: '+(ins.error.message||ins.error)); return; }
   const url=base()+'portal.html?token='+ins.data.token;
   const label=S.est.title||(S.est.number?('Oferta '+S.est.number):'Oferta');

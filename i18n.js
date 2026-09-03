@@ -13,6 +13,16 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── CLIENT-LINK-LIFETIME1 — expirarea și revocarea linkurilor client ──
+    'Expiră la':{ru:'Истекает',de:'Läuft ab am',en:'Expires on'},
+    'Revocă linkul':{ru:'Отозвать ссылку',de:'Link widerrufen',en:'Revoke link'},
+    'După revocare, linkul nu mai deschide portalul și nu se mai emit poze. Un link trimis deja nu poate fi retras din mesaje — de aceea are termen.':{ru:'После отзыва ссылка больше не открывает портал и фото не выдаются. Уже отправленную ссылку нельзя забрать из сообщений — поэтому у неё есть срок.',de:'Nach dem Widerruf öffnet der Link das Portal nicht mehr und es werden keine Fotos mehr ausgegeben. Ein bereits gesendeter Link kann nicht aus Nachrichten zurückgeholt werden — deshalb hat er eine Frist.',en:'After revoking, the link no longer opens the portal and no photos are issued. A link already sent cannot be taken back out of messages — that is why it has an expiry.'},
+    'Revoci acest link? Clientul nu va mai putea deschide portalul.':{ru:'Отозвать эту ссылку? Клиент больше не сможет открыть портал.',de:'Diesen Link widerrufen? Der Kunde kann das Portal dann nicht mehr öffnen.',en:'Revoke this link? The client will no longer be able to open the portal.'},
+    'Revocat':{ru:'Отозвано',de:'Widerrufen',en:'Revoked'},
+    'Linkul nu mai funcționează.':{ru:'Ссылка больше не работает.',de:'Der Link funktioniert nicht mehr.',en:'The link no longer works.'},
+    'Link revocat.':{ru:'Ссылка отозвана.',de:'Link widerrufen.',en:'Link revoked.'},
+    'poze vizibile clientului.':{ru:'фото видны клиенту.',de:'Fotos für den Kunden sichtbar.',en:'photos visible to the client.'},
+    'Linkul a fost revocat de firmă.':{ru:'Ссылка отозвана компанией.',de:'Der Link wurde vom Unternehmen widerrufen.',en:'The link was revoked by the company.'},
     // ── CLIENT-BRAND1 — shell-ul client (portal anonim, stări, antet/subsol) ──
     'Cod373 — Portal client':{ru:'Cod373 — Клиентский портал',de:'Cod373 — Kundenportal',en:'Cod373 — Client portal'},
     'Link invalid':{ru:'Недействительная ссылка',de:'Ungültiger Link',en:'Invalid link'},

@@ -169,7 +169,7 @@ function renderFirm(firm){
   const { data, error }=await sb.rpc('portal_data',{p_token:token});
   if(error){ center('⚠️',T('Încearcă din nou mai târziu.'),T('A apărut o eroare.')); return; }
   if(!data || data.error){
-    const m={invalid:'Link invalid sau revocat.',expired:'Linkul a expirat.',nosite:'Proiectul nu mai este disponibil.',nooffer:'Oferta nu mai este disponibilă.'}[data&&data.error]||'Link indisponibil.';
+    const m={invalid:'Link invalid sau revocat.',revoked:'Linkul a fost revocat de firmă.',expired:'Linkul a expirat.',nosite:'Proiectul nu mai este disponibil.',nooffer:'Oferta nu mai este disponibilă.'}[data&&data.error]||'Link indisponibil.';
     center('🔒',T(m),T('Fără acces')); return;
   }
   CUR=(data.currency||'MDL').toUpperCase();
@@ -211,10 +211,28 @@ function renderFirm(firm){
   if(data.show_costs && s.budget!=null){
     costHtml='<div class="cs-card cs-rise cs-rise-4"><h3 class="cs-card-title">Detalii financiare</h3><div class="cs-kv"><span class="cs-kv-k">Buget contractat</span><span class="cs-kv-v">'+money(s.budget)+'</span></div></div>';
   }
+  /* ►► CLIENT-LINK-LIFETIME1 — media se cere la DESCHIDERE, nu se poartă în link.
+     `photo_paths` sunt CĂI; URL-urile scurte (TTL 300 s) vin de la funcția
+     `portal-media`, care revalidează tokenul înainte să semneze. Un link revocat
+     sau expirat nu mai obține niciun URL.
+     `data.photos` rămâne calea VECHE (URL-uri absolute persistate). Azi e goală
+     pe toate cele 12 linkuri din producție — se păstrează doar ca să nu rupem un
+     link istoric care ar avea-o. */
+  let mediaUrls=[];
+  if(data.photo_paths && data.photo_paths.length){
+    try{
+      const mr=await fetch(SUPABASE_URL+'/functions/v1/portal-media',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token:token})});
+      const mj=await mr.json();
+      if(mj && mj.ok && Array.isArray(mj.urls)) mediaUrls=mj.urls;
+    }catch(e){}
+  }
+  if(!mediaUrls.length && data.photos && data.photos.length) mediaUrls=data.photos;
   let photoHtml='';
-  if(data.photos && data.photos.length){
+  if(mediaUrls.length){
     photoHtml='<div class="cs-card cs-rise cs-rise-2"><h3 class="cs-card-title">Poze / video de pe șantier</h3><div class="media-grid">'
-      +data.photos.map(function(u){ var isV=/\.(mp4|mov|webm|m4v|avi|mkv|3gp|ogv)(\?|$)/i.test(String(u).split('?')[0]);
+      +mediaUrls.map(function(u){ var isV=/\.(mp4|mov|webm|m4v|avi|mkv|3gp|ogv)(\?|$)/i.test(String(u).split('?')[0]);
         if(isV) return '<video src="'+esc(u)+'" controls preload="metadata" playsinline></video>';
         return '<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" loading="lazy" alt=""></a>'; }).join('')
       +'</div></div>';
