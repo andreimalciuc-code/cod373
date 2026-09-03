@@ -57,6 +57,18 @@
   .media-grid img,.media-grid video{width:100%;height:110px;object-fit:cover;border-radius:var(--c373-r-sm);border:1px solid var(--line);display:block}
   .media-grid img{cursor:zoom-in}
   .media-grid video{background:#000}
+  /* ►► CLIENT-SHARE1 — lista documentelor partajate. `min-width:0` + `overflow-wrap`
+     pe coloana elastică: un nume de fișier lung e exact tiparul care împinge pagina
+     lateral pe 320 px, la fel ca tabelul ofertei (rezolvat cu `.otbl-wrap`). */
+  .doc-row{display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--line)}
+  .doc-row:last-child{border-bottom:none}
+  .doc-ic{flex:0 0 auto;font-size:1.1rem;line-height:1}
+  .doc-main{flex:1 1 auto;min-width:0}
+  .doc-name{font-size:.9rem;font-weight:600;overflow-wrap:anywhere;color:var(--ink)}
+  .doc-meta{font-size:.78rem;color:var(--muted);margin-top:.1rem;overflow-wrap:anywhere}
+  .doc-open{flex:0 0 auto;border:1px solid var(--line);background:var(--c373-surface-2);color:var(--ink);
+            border-radius:var(--c373-r-pill);padding:.4rem .8rem;font-size:.82rem;font-weight:600;cursor:pointer;min-height:2.25rem}
+  .doc-open:disabled{opacity:.55;cursor:default}
   .ord{border:1px solid var(--line);border-radius:var(--c373-r-sm);padding:.55rem .7rem;margin:.4rem 0}
   .ord-h{font-size:.78rem;color:var(--muted);margin-bottom:.25rem}
   .ord-i{display:flex;justify-content:space-between;gap:.75rem;font-size:.88rem;padding:.12rem 0}
@@ -139,6 +151,51 @@ function center(ic,msg,title){
 /* Slotul de identitate a firmei. Se randează DOAR pe date reale — niciodată un
    antet gol sau un loc rezervat vizibil. Când contractul portalului va întoarce
    firma, aici nu se schimbă decât sursa. */
+/* ►► CLIENT-SHARE1 — ajutoare pentru lista de documente partajate. */
+function fmtSize(b){ if(b==null) return ''; if(b<1024) return b+' B';
+  if(b<1048576) return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+function docIcon(mime,name){
+  const m=String(mime||'').toLowerCase(), n=String(name||'').toLowerCase();
+  if(m.indexOf('pdf')>=0 || /\.pdf$/.test(n)) return '📕';
+  if(m.indexOf('image/')===0 || /\.(jpe?g|png|gif|webp|heic|bmp)$/.test(n)) return '🖼️';
+  if(m.indexOf('video/')===0 || /\.(mp4|mov|webm|m4v|avi|mkv)$/.test(n)) return '🎬';
+  if(/(word|document|officedocument\.wordprocessing)/.test(m) || /\.docx?$/.test(n)) return '📝';
+  if(/(sheet|excel|spreadsheet)/.test(m) || /\.(xlsx?|csv)$/.test(n)) return '📊';
+  return '📎';
+}
+/* Semnarea se face LA CLIC, nu la randare. Un URL semnat trăiește 300 s (D137): dacă
+   l-am pune în `href` la încărcare, ar fi mort pe o pagină lăsată deschisă cinci
+   minute. Browserul trimite un IDENTIFICATOR de document — niciodată o cale.
+   Fereastra se deschide SINCRON, în gestul de clic: după `await`, `window.open` e
+   blocat de browser ca pop-up nesolicitat. */
+async function openSharedDoc(btn){
+  const id=btn && btn.getAttribute('data-doc'); if(!id) return;
+  const err=document.getElementById('docs-err'); if(err) err.textContent='';
+  const tk=new URLSearchParams(location.search).get('token'); if(!tk) return;
+  const w=window.open('','_blank');
+  const label=btn.textContent;
+  btn.disabled=true; btn.textContent=T('Se deschide…');
+  try{
+    const r=await fetch(SUPABASE_URL+'/functions/v1/portal-media',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token:tk, document_id:id})});
+    const j=await r.json();
+    if(j && j.ok && j.url){ if(w) w.location.href=j.url; else location.href=j.url; }
+    else {
+      if(w) w.close();
+      /* Un refuz e o STARE DE PRODUS, nu o eroare tehnică: partajarea a fost oprită
+         între randare și clic, ori linkul a expirat între timp. */
+      const M={revoked:'Linkul a fost revocat de firmă.',expired:'Linkul a expirat.',
+               invalid:'Link invalid sau revocat.',forbidden:'Documentul nu mai este disponibil.'};
+      if(err) err.textContent=T(M[j&&j.error]||'Documentul nu a putut fi deschis.');
+    }
+  }catch(e){
+    if(w) w.close();
+    if(err) err.textContent=T('Încearcă din nou mai târziu.');
+  }
+  btn.disabled=false; btn.textContent=label;
+}
+
 function renderFirm(firm){
   if(!firm || !(firm.name||firm.logo)) return;
   const head=document.getElementById('head');
@@ -218,6 +275,16 @@ function renderFirm(firm){
      `data.photos` rămâne calea VECHE (URL-uri absolute persistate). Azi e goală
      pe toate cele 12 linkuri din producție — se păstrează doar ca să nu rupem un
      link istoric care ar avea-o. */
+  /* ►► CLIENT-SHARE1 — documentele partajate EXPLICIT cu clientul acestui șantier.
+     Cererea pleacă ÎNAINTE de blocul de media, ca cele două tururi de rețea să se
+     suprapună: toată pagina se compune într-un singur `innerHTML` mai jos, deci
+     orice așteptare serializată ar întârzia inclusiv eroul și graficul.
+     Degradare TĂCUTĂ, ca la media: dacă migrarea nu e încă aplicată, RPC-ul
+     răspunde cu eroare PostgREST și secțiunea pur și simplu nu apare. */
+  const docsP = sb.rpc('portal_shared_documents',{p_token:token}).then(function(r){
+    return (r && !r.error && r.data && r.data.ok && Array.isArray(r.data.docs)) ? r.data.docs : [];
+  }).catch(function(){ return []; });
+
   let mediaUrls=[];
   if(data.photo_paths && data.photo_paths.length){
     try{
@@ -236,6 +303,25 @@ function renderFirm(firm){
         if(isV) return '<video src="'+esc(u)+'" controls preload="metadata" playsinline></video>';
         return '<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" loading="lazy" alt=""></a>'; }).join('')
       +'</div></div>';
+  }
+  /* Secțiunea se construiește DOAR pe date reale — la zero documente rămâne string
+     gol și concatenarea o înghite, exact ca celelalte secțiuni ale portalului.
+     Se afișează strict metadata client-safe întoarsă de contract: NICIUN `file_url`,
+     nicio cale de Storage, nicio notă internă. Numele fișierului poartă
+     `translate="no"`: observatorul i18n traduce orice text care se potrivește exact
+     cu o cheie de dicționar, iar un document numit „Contract" ar fi tradus. */
+  let docsHtml='';
+  const sharedDocs=await docsP;
+  if(sharedDocs.length){
+    docsHtml='<div class="cs-card cs-rise cs-rise-3"><h3 class="cs-card-title">Documente partajate</h3><div class="docs-list">'
+      +sharedDocs.map(function(d){
+        const meta=[fmtSize(d.size_bytes), d.valid_until?(T('Valabil până la')+' '+fmtd(d.valid_until)):''].filter(Boolean).join(' · ');
+        return '<div class="doc-row"><span class="doc-ic" aria-hidden="true">'+docIcon(d.mime,d.name)+'</span>'
+          +'<span class="doc-main"><span class="doc-name" translate="no">'+esc(d.name||'')+'</span>'
+          +(meta?'<span class="doc-meta">'+esc(meta)+'</span>':'')+'</span>'
+          +'<button class="doc-open" type="button" data-doc="'+esc(d.id)+'" onclick="openSharedDoc(this)">'+esc(T('Deschide'))+'</button>'
+          +'</div>'; }).join('')
+      +'</div><div class="err-msg" id="docs-err"></div></div>';
   }
   let ordersHtml='';
   if(data.orders && data.orders.length){
@@ -258,7 +344,7 @@ function renderFirm(firm){
     +'<div class="cs-prog-meta"><span>Progres lucrări</span><span><b>'+(s.progress||0)+'%</b></span></div></div>'
     +'<div class="cs-hero-pills"><span class="cs-pill cs-pill-on-dark">'+esc(T((SL[s.status]||['—'])[0]))+'</span>'
     +(s.deadline?'<span class="cs-pill cs-pill-on-dark"><span>Termen<span>: '+esc(fmtd(s.deadline))+'</span></span></span>':'')+'</div></div>'
-    +stagesHtml+photoHtml+ordersHtml+hoursHtml+costHtml
+    +stagesHtml+photoHtml+docsHtml+ordersHtml+hoursHtml+costHtml
     +'<div class="cs-card cs-card-note cs-rise cs-rise-4"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
   applyLang();
 })();

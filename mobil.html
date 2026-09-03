@@ -225,7 +225,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='354';
+const APP_BUILD='355';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -554,7 +554,11 @@ const NAV={
      șantier neatribuit nu apare fiindcă serverul nu-l întoarce, nu fiindcă îl ascundem noi.
      `acte` intră aici pentru că `documents` are deja politica lui scopată pe aceleași șantiere. */
   subcontractor:[['acasa','🏗️','Lucrările mele'],['poze','📷','Poze'],['acte','📁','Documente'],['defecte','🔧','Probleme']],
-  client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['poze','📷','Poze']]
+  /* ►► CLIENT-SHARE1 — cheia e `cdocs`, DISTINCTĂ de `acte`. `acte` (`scrDocs`) citește
+     direct `public.documents`, unde rolul `client` e DENY din 0188; clientul își vede
+     documentele exclusiv prin contractul de share (`my_client_shared_documents`).
+     Aceeași grijă ca la contabil mai sus: două suprafețe de documente, două chei. */
+  client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['cdocs','📁','Documente'],['poze','📷','Poze']]
 };
 function mCtx(){ return S.ctx||{}; }
 function mCap(c){ const a=mCtx().caps; return !!(a && a.indexOf(c)>=0); }
@@ -663,7 +667,7 @@ function render(){
   const OUTSIDE=['taskuri','scan','chat'];
   if(!nav.find(n=>n[0]===S.view) && OUTSIDE.indexOf(S.view)<0) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,echipa:scrEchipa,depozit:scrDepozit,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs}[S.view];
+  const fn={acasa:scrAcasa,echipa:scrEchipa,depozit:scrDepozit,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs,cdocs:scrClientDocs}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
   const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
@@ -934,6 +938,61 @@ async function scrClientFacturi(){
     +(payable?'<button class="btn" style="margin-top:.7rem" onclick="payInvoiceSheet(\''+i.id+'\',\''+esc(i.number||'')+'\','+rest+')">💳 Plătește</button>':'')
     +(i.status==='paid'?'<button class="btn btn-line" style="margin-top:.7rem" onclick="receipt(\''+esc(i.number||'')+'\','+(paid||tot)+',\''+esc(i.issue_date||'')+'\')">🧾 Vezi chitanța</button>':'')
     +'</div>'; }).join('');
+}
+/* ►► CLIENT-SHARE1 · D139 — documentele partajate cu clientul autentificat.
+   NU se citește `public.documents`: rolul `client` e DENY acolo din 0188. Sursa e
+   contractul self-scoped `my_client_shared_documents()`, care se legitimează prin
+   `app.my_client_ids()` — deci NU are nevoie de niciun token de portal. */
+async function scrClientDocs(){
+  $('screen').innerHTML='<div class="scr-title">📁 '+esc(mt('Documentele mele'))+'</div><div id="cd"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  const {data,error}=await sb.rpc('my_client_shared_documents');
+  if(error){ $('cd').innerHTML='<div class="empty"><div class="ei">⚠️</div>'+esc(mt('Nu am putut încărca documentele.'))+'</div>'; return; }
+  const rows=data||[];
+  if(!rows.length){ $('cd').innerHTML='<div class="empty"><div class="ei">📁</div>'+esc(mt('Nu ai documente partajate încă.'))+'</div>'; return; }
+  $('cd').innerHTML=rows.map(function(d){
+    const meta=[mDocSize(d.size_bytes), d.site_name?esc(d.site_name):'',
+                d.valid_until?(esc(mt('Valabil până la'))+' '+esc(d.valid_until)):''].filter(Boolean).join(' · ');
+    return '<div class="card"><div class="row"><div class="grow">'
+      +'<div class="t" translate="no">'+mDocIcon(d.mime,d.name)+' '+esc(d.name||'')+'</div>'
+      +(meta?'<div class="s">'+meta+'</div>':'')+'</div></div>'
+      +'<button class="btn btn-line" style="margin-top:.6rem" onclick="openClientDoc(this,\''+esc(d.id)+'\')">👁 '+esc(mt('Deschide'))+'</button>'
+      +'</div>'; }).join('')
+    +'<div class="s" id="cd-err" style="color:var(--red);min-height:1rem;margin-top:.4rem"></div>';
+}
+function mDocSize(b){ if(b==null) return ''; if(b<1024) return b+' B';
+  if(b<1048576) return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+function mDocIcon(mime,name){
+  const m=String(mime||'').toLowerCase(), n=String(name||'').toLowerCase();
+  if(m.indexOf('pdf')>=0||/\.pdf$/.test(n)) return '📕';
+  if(m.indexOf('image/')===0||/\.(jpe?g|png|gif|webp|heic|bmp)$/.test(n)) return '🖼️';
+  if(m.indexOf('video/')===0||/\.(mp4|mov|webm|m4v|avi|mkv)$/.test(n)) return '🎬';
+  return '📎';
+}
+/* Semnarea trece prin ACELAȘI emitent ca portalul anonim (`portal-media`), fiindcă
+   rolul `client` nu poate semna nimic din browser: 0202 îl exclude de pe bucketul
+   `docs`, iar 0203 îi lasă exact un obiect — logoul firmei. `sb.functions.invoke`
+   atașează singur JWT-ul sesiunii; funcția Edge îl PROPAGĂ către PostgREST, care îi
+   verifică semnătura. Fără sesiune validă, cererea cade pe `anon` ⇒ refuz. */
+async function openClientDoc(btn,id){
+  const err=document.getElementById('cd-err'); if(err) err.textContent='';
+  const label=btn.innerHTML; btn.disabled=true; btn.textContent='⏳ '+mt('Se deschide…');
+  try{
+    const {data,error}=await sb.functions.invoke('portal-media',{body:{document_id:id}});
+    if(error||!data||!data.ok||!data.url){
+      if(err) err.textContent=mt(((data&&data.error)==='forbidden')?'Documentul nu mai este disponibil.':'Documentul nu a putut fi deschis.');
+    } else {
+      openDocUrl(data.url, id);
+    }
+  }catch(e){ if(err) err.textContent=mt('Verifică conexiunea la internet.'); }
+  btn.disabled=false; btn.innerHTML=label;
+}
+/* Aceeași rutare pe tip ca `openDoc`, dar pornind de la un URL DEJA semnat de server
+   (clientul nu poate produce unul singur). */
+function openDocUrl(url, id){
+  const u=String(url).split('?')[0].toLowerCase();
+  if(/\.(jpe?g|png|gif|webp|heic|bmp)$/.test(u)){ openLightbox([url],0); return; }
+  if(/\.(mp4|mov|webm|m4v)$/.test(u) && typeof mVidPlay==='function'){ mVidPlay(url); return; }
+  window.open(url,'_blank');
 }
 function receipt(number,total,issue){
   openSheet('Chitanță',

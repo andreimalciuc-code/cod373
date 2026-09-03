@@ -13,6 +13,29 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    // ── CLIENT-SHARE1 — partajarea explicită a unui document cu clientul ──
+    'Partajat':{ru:'Доступен',de:'Freigegeben',en:'Shared'},
+    'Partajat cu clientul':{ru:'Доступен клиенту',de:'Für den Kunden freigegeben',en:'Shared with the client'},
+    'Partajează cu clientul':{ru:'Открыть доступ клиенту',de:'Für den Kunden freigeben',en:'Share with the client'},
+    'Oprește partajarea':{ru:'Закрыть доступ',de:'Freigabe beenden',en:'Stop sharing'},
+    'Document partajat cu clientul.':{ru:'Документ открыт клиенту.',de:'Dokument für den Kunden freigegeben.',en:'Document shared with the client.'},
+    'Partajarea a fost oprită.':{ru:'Доступ закрыт.',de:'Die Freigabe wurde beendet.',en:'Sharing stopped.'},
+    'Oprești partajarea acestui document? Clientul nu îl va mai vedea.':{ru:'Закрыть доступ к этому документу? Клиент больше его не увидит.',de:'Freigabe für dieses Dokument beenden? Der Kunde sieht es dann nicht mehr.',en:'Stop sharing this document? The client will no longer see it.'},
+    'Clientul vede DOAR documentele partajate explicit.':{ru:'Клиент видит ТОЛЬКО документы, которым явно открыт доступ.',de:'Der Kunde sieht NUR ausdrücklich freigegebene Dokumente.',en:'The client sees ONLY explicitly shared documents.'},
+    'Clientul vede doar documentele partajate. Partajarea o face un administrator.':{ru:'Клиент видит только документы с открытым доступом. Доступ открывает администратор.',de:'Der Kunde sieht nur freigegebene Dokumente. Die Freigabe erteilt ein Administrator.',en:'The client sees only shared documents. Sharing is done by an administrator.'},
+    'Șantierul nu are un client atribuit, deci nu există cui partaja.':{ru:'У объекта нет закреплённого клиента, поэтому делиться не с кем.',de:'Der Baustelle ist kein Kunde zugeordnet, es gibt also niemanden zum Freigeben.',en:'This site has no client assigned, so there is nobody to share with.'},
+    'Nu ai dreptul să partajezi documente.':{ru:'У вас нет права открывать доступ к документам.',de:'Sie dürfen keine Dokumente freigeben.',en:'You are not allowed to share documents.'},
+    'Doar documentele legate de un șantier pot fi partajate.':{ru:'Делиться можно только документами, привязанными к объекту.',de:'Nur Dokumente, die einer Baustelle zugeordnet sind, können freigegeben werden.',en:'Only documents attached to a site can be shared.'},
+    'Șantierul nu a fost găsit.':{ru:'Объект не найден.',de:'Die Baustelle wurde nicht gefunden.',en:'Site not found.'},
+    'Șantierul nu are un client atribuit.':{ru:'У объекта нет закреплённого клиента.',de:'Der Baustelle ist kein Kunde zugeordnet.',en:'This site has no client assigned.'},
+    'Acțiunea nu a putut fi făcută.':{ru:'Действие не выполнено.',de:'Die Aktion konnte nicht ausgeführt werden.',en:'The action could not be completed.'},
+    'Documente partajate':{ru:'Доступные документы',de:'Freigegebene Dokumente',en:'Shared documents'},
+    'Documentele mele':{ru:'Мои документы',de:'Meine Dokumente',en:'My documents'},
+    'Nu ai documente partajate încă.':{ru:'Вам пока не открыт доступ ни к одному документу.',de:'Es wurden Ihnen noch keine Dokumente freigegeben.',en:'No documents have been shared with you yet.'},
+    'Nu am putut încărca documentele.':{ru:'Не удалось загрузить документы.',de:'Die Dokumente konnten nicht geladen werden.',en:'Could not load the documents.'},
+    'Documentul nu mai este disponibil.':{ru:'Документ больше недоступен.',de:'Das Dokument ist nicht mehr verfügbar.',en:'This document is no longer available.'},
+    'Se deschide…':{ru:'Открывается…',de:'Wird geöffnet …',en:'Opening…'},
+    'Verifică conexiunea la internet.':{ru:'Проверьте подключение к интернету.',de:'Prüfen Sie Ihre Internetverbindung.',en:'Check your internet connection.'},
     // ── CLIENT-LINK-LIFETIME1 — expirarea și revocarea linkurilor client ──
     'Expiră la':{ru:'Истекает',de:'Läuft ab am',en:'Expires on'},
     'Revocă linkul':{ru:'Отозвать ссылку',de:'Link widerrufen',en:'Revoke link'},

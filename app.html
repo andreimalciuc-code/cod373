@@ -4366,21 +4366,29 @@ function vdocLabel(name, type){ const d=edocDef(type||'vehicle'), p=vdocSplit(na
 /* Lista de documente a unei entități. `canU`/`canD` vin de la apelant, dar serverul rămâne
    autoritatea: fiecare scriere verifică rândurile afectate, fiindcă un refuz RLS întoarce
    ZERO rânduri fără eroare (D22). */
-async function entDocsHtml(type, eid, elabel, canU, canD){
+async function entDocsHtml(type, eid, elabel, canU, canD, shareCtx){
   const r=await sb.from('documents')
     .select('id,name,file_url,mime,size_bytes,valid_until,created_at')
     .eq('entity_type',type).eq('entity_id',eid)
     .order('created_at',{ascending:false});
   if(r.error) return '<div style="margin-bottom:.9rem;color:var(--red);font-size:.85rem">'+esc(C373t('Documentele nu au putut fi încărcate.'))+'</div>';
   const docs=r.data||[];
-  /* Mai multe documente de ACELAȘI tip sunt legitime (asigurare 2025 + asigurare 2026):
-     nicio unicitate pe (entitate, tip) — §10. */
+  /* CLIENT-SHARE1: `shareCtx` e OPȚIONAL și există doar pentru șantier — fișa mașinii
+     cheamă aceeași funcție fără el și rămâne neschimbată. Partajarea NU e dreptul de
+     upload: `canU`/`canD` vin din permisiunea de modul (`documente`), pe care o poate
+     avea și un lucrător, pe când decizia comercială „ce vede clientul" e MGMT. */
+  const sc=shareCtx||null, shr=(sc&&sc.shares)||{};
   const rows=docs.length? docs.map(d=>{
       const ep=encodeURIComponent(d.file_url), en=encodeURIComponent(vdocSplit(d.name,type).title||'');
+      const isShared=!!shr[d.id];
       return '<div class="vdoc-row" style="display:flex;align-items:center;gap:.5rem;padding:.45rem 0;border-bottom:1px solid var(--line)">'
         +'<span class="vdoc-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.86rem">'+vdocLabel(d.name,type)+'</span>'
+        +(isShared?'<span class="pill active" title="'+esc(C373t('Partajat cu clientul'))+'">'+esc(C373t('Partajat'))+'</span>':'')
         +'<span class="vdoc-meta" style="font-size:.78rem;white-space:nowrap">'+docValidCell(d)+'</span>'
         +'<button class="iconbtn" title="'+esc(C373t('Previzualizare'))+'" onclick="openDoc(\''+ep+'\',\''+en+'\')">👁</button>'
+        +((sc&&sc.canShare&&sc.clientId)
+            ? '<button class="iconbtn" title="'+esc(C373t(isShared?'Oprește partajarea':'Partajează cu clientul'))+'" onclick="siteDocShareToggle(\''+d.id+'\','+(isShared?1:0)+',\''+eid+'\',\''+jsArg(elabel)+'\')">'+(isShared?'🚫':'🔗')+'</button>'
+            : '')
         +(canU?'<button class="iconbtn" title="'+esc(C373t('Editează'))+'" onclick="entDocAdd(\''+type+'\',\''+eid+'\',\''+jsArg(elabel)+'\',\''+d.id+'\')">✏️</button>':'')
         +(canD?'<button class="iconbtn danger" title="'+esc(C373t('Șterge'))+'" onclick="entDocDel(\''+type+'\',\''+d.id+'\',\''+eid+'\',\''+jsArg(elabel)+'\')">🗑</button>':'')
         +'</div>'; }).join('')
@@ -4484,14 +4492,73 @@ async function entDocDel(type, id, eid, elabel){
 async function vehDocDel(id, vid, vlabel){ return entDocDel('vehicle', id, vid, vlabel); }
 
 /* ── Documentele ȘANTIERULUI: aceeași mecanică, deschisă din hub-ul șantierului ── */
+/* ►► CLIENT-SHARE1 · D139 — autoritatea de partajare.
+   MGMT, nu dreptul de upload: `documents` e scriibil și de `worker`/`driver`, dar
+   „ce vede clientul" e o decizie COMERCIALĂ. Aceeași mulțime ca poarta din bază
+   (`client_share_document`), ca UI-ul să nu ofere un buton pe care serverul îl refuză. */
+const SHARE_ROLES=['owner','admin','manager'];
+function canShareDocs(){ return SHARE_ROLES.includes(state.role); }
 async function siteDocs(siteId, siteName){
   const canU=canDo('documente','u'), canD=canDo('documente','d');
-  const html=await entDocsHtml('site', siteId, siteName, canU, canD);
+  /* Destinatarul NU se alege în interfață: e clientul șantierului. Îl citim doar ca să
+     știm dacă are sens să oferim acțiunea — serverul îl re-derivă oricum din șantier. */
+  let clientId=null, clientName='';
+  try{
+    /* Două citiri simple în loc de un `select` cu relație încorporată: o relație
+       nerezolvată de PostgREST NU aruncă, întoarce `error` — iar șantierul ar părea
+       fals „fără client", adică exact starea în care ascundem butonul. */
+    const s=await sb.from('sites').select('client_id').eq('id',siteId).maybeSingle();
+    if(s.data) clientId=s.data.client_id||null;
+    if(clientId){
+      const c=await sb.from('clients').select('name').eq('id',clientId).maybeSingle();
+      clientName=(c.data&&c.data.name)||'';
+    }
+  }catch(e){}
+  /* Starea de partajare. Politica `cds_sel` o dă biroului (owner/admin/manager/contabil);
+     pentru celelalte roluri lista vine goală și pur și simplu nu apare niciun indicator. */
+  const shares={};
+  try{
+    const sh=await sb.from('client_document_shares').select('document_id')
+      .eq('site_id',siteId).is('revoked_at',null);
+    (sh.data||[]).forEach(x=>{ shares[x.document_id]=true; });
+  }catch(e){}
+  const canShare=canShareDocs();
+  const html=await entDocsHtml('site', siteId, siteName, canU, canD, {clientId:clientId, shares:shares, canShare:canShare});
+  /* Subtitlul spune ADEVĂRUL curent, în trei situații distincte. Cel vechi („Clientul NU
+     le vede") a devenit fals prin acest lot și nu se mai folosește nicăieri. */
+  const sub = !clientId
+      ? C373t('Șantierul nu are un client atribuit, deci nu există cui partaja.')
+      : (canShare ? C373t('Clientul vede DOAR documentele partajate explicit.')
+                  : C373t('Clientul vede doar documentele partajate. Partajarea o face un administrator.'));
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px">'
     +'<div class="modal-head"><h3>📁 '+esc(C373t('Documentele șantierului'))+' — '+esc(siteName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
     +'<div class="modal-body">'
-    +'<p style="color:var(--muted);font-size:.82rem;margin-top:0">'+esc(C373t('Documentele acestui șantier. Clientul NU le vede.'))+'</p>'
+    +'<p style="color:var(--muted);font-size:.82rem;margin-top:0">'+esc(sub)
+      +(clientId&&clientName?' <span style="color:var(--text)">'+esc(C373t('Client'))+': <b>'+esc(clientName)+'</b></span>':'')
+    +'</p>'
     +html+'</div></div></div>';
+}
+/* Partajarea și oprirea ei trec EXCLUSIV prin cele două RPC-uri: destinatarul se derivă
+   server-side din șantier, iar poarta de rol e verificată din nou în bază. Ambele întorc
+   `json`, deci un refuz de business NU apare în `r.error` — se citește din `r.data.error`. */
+const SHARE_ERR={
+  SHARE_FORBIDDEN:'Nu ai dreptul să partajezi documente.',
+  DOC_NOT_SITE:'Doar documentele legate de un șantier pot fi partajate.',
+  SITE_NOT_FOUND:'Șantierul nu a fost găsit.',
+  SITE_NO_CLIENT:'Șantierul nu are un client atribuit.'
+};
+async function siteDocShareToggle(docId, isShared, siteId, siteName){
+  const off=!!Number(isShared);
+  if(off && !confirm(C373t('Oprești partajarea acestui document? Clientul nu îl va mai vedea.'))) return;
+  let r;
+  try{
+    r=await sb.rpc(off?'client_unshare_document':'client_share_document',{p_document_id:docId});
+  }catch(e){ toast('⚠️ '+(isNetErr(e)?netMsg():((e&&e.message)||String(e)))); return; }
+  if(r.error){ toast('⚠️ '+(isNetErr(r.error)?netMsg():r.error.message)); return; }
+  const d=r.data||{};
+  if(d.error){ toast('⚠️ '+C373t(SHARE_ERR[d.error]||'Acțiunea nu a putut fi făcută.')); return; }
+  toast('✅ '+C373t(off?'Partajarea a fost oprită.':'Document partajat cu clientul.'));
+  siteDocs(siteId, siteName);                    // re-citire din server, nu din memorie
 }
 /* ════════ FLEET1-C — pozele vehiculului: categorie, principală, istoric ════════
    Modelul canonic e `vehicle_photos` (0154): un RÂND per poză, cu categorie, descriere,
