@@ -202,7 +202,7 @@ async function genNumber(){ const yr=new Date().getFullYear(); const pref='OF-'+
   try{ const { data }=await sb.from('estimates').select('number').like('number',pref+'%').limit(10000);
     let max=0; (data||[]).forEach(r=>{ const m=String(r.number||'').match(/(\d+)\s*$/); if(m){ const n=parseInt(m[1],10)||0; if(n>max) max=n; } });
     return pref+String(max+1).padStart(4,'0'); }catch(e){ return pref+Math.floor(Math.random()*9000+1000); } }
-function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), disc:0, group:'', kind:'service', norm_code:null, description:'', photo_url:null,
+function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, disc_active:true, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), disc:0, group:'', kind:'service', norm_code:null, description:'', photo_url:null,
   sub_id:null, sub_price_id:null, sub_price_at:null, sub_price_amount:null, sub_price_currency:null, sub_price_name:null, sub_price_unit:null }; }
 
 async function loadCatalog(){
@@ -236,7 +236,7 @@ async function loadEstimate(id){
   if(it.error){ docLoadFailed('Pozițiile ofertei nu au putut fi citite.', it.error.message); return; }
   const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); const cid=x.material_id||x.service_id||null; const csrc=x.material_id?'material':(x.service_id?'service':null);
     const cat=cid?S.catalog.find(z=>z.id===cid&&z.src===csrc):null;
-    return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null,
+    return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, /* FIN-GROUP-DISCOUNT1 — starea de activare se reîncarcă cu TREI valori. `null` din bază TREBUIE să rămână `undefined` (moștenit), NU `false`: altfel o linie negrupată și-ar pierde reducerea la simpla redeschidere a documentului. */ disc_active:(x.disc_active===true||x.disc_active===false)?x.disc_active:undefined, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null,
       // legătura la catalog e acum PERSISTENTĂ (migr 0127): se reface la fiecare
       // deschidere, deci „Actualizează produsul existent" rămâne disponibilă
       cat_id:cid, cat_src:csrc,
@@ -328,7 +328,18 @@ function lineGross(l){ return lineNet(l)*(1+lineEffVat(l)/100); }
    reducerea GRUPULUI. Nu „relaxa" regula aici: garda `app.doc_assert_financial` (0200)
    reconstituie antetul din pozițiile stocate prin ACELAȘI motor, deci un client care ar
    aplica `disc` în grup ar primi `DOC_FINANCIAL_INCONSISTENT` la fiecare salvare. */
-function lineDiscFactor(l){ return (!l.group && S.est.disc_mode==='line') ? (1-(+l.disc||0)/100) : 1; }
+/* ►► FIN-GROUP-DISCOUNT1 — reducerea pe poziție se aplică ACESTEI linii?
+   Oglinda exactă a lui `app.line_disc_on` (0211). Stare cu TREI valori, ca în bază:
+     `disc_active` true/false → declarația EXPLICITĂ a utilizatorului, oriunde ar fi linia;
+     absent/null              → semantica MOȘTENITĂ: activă doar în afara grupurilor.
+   Nu se deduce NICIODATĂ din `disc > 0`: o valoare istorică nu e consimțământ. */
+function lineDiscOn(l){ const a=l&&l.disc_active; return (a===true||a===false)? a : !(l&&l.group); }
+/* Factorul de reducere EFECTIV. Motorul canonic aplică `disc` exact când modul documentului
+   e „pe poziție" ȘI activarea liniei o permite — de la 0211 și în interiorul grupurilor. */
+function lineDiscFactor(l){ return (S.est.disc_mode==='line' && lineDiscOn(l)) ? (1-(+l.disc||0)/100) : 1; }
+/* O poziție care poartă o reducere pe care motorul NU o aplică: valoare moștenită, adormită.
+   Se arată explicit și se poate activa printr-un control real — nu se activează singură. */
+function lineDiscDormant(l){ return (S.est.disc_mode==='line') && (+((l&&l.disc)||0) > 0) && !lineDiscOn(l); }
 /* ►► FIN-UNIT-GROSS1 — PREȚUL BRUT PE UNITATE. DERIVAT, niciodată stocat: nu există coloană
    nouă în DB și nu se naște un al doilea motor de calcul.
    Se obține din `lineGross` — adică din motorul canonic — împărțit la cantitate: aceleași
@@ -361,20 +372,24 @@ function lineSetVat(i,v){ const rate=(v===''?0:+v||0); const l=S.lines[i]; if(!l
 /* FIN1 — subtotalul grupului folosește ACEEAȘI regulă ca documentul (`lineEffVat`).
    Înainte nu consulta deloc `vat_mode`: un deviz „Fără TVA" cu grupuri producea TVA, iar
    TVA unificat nu ajungea niciodată în grup. */
-function groupTotals(grp){ let net=0, vat=0; const f=(1-(+grp.disc||0)/100);
-  S.lines.forEach(l=>{ if(l.group===grp.id && lineCounts(l)){ const g=(+l.qty||0)*(+l.unit_price||0); net+=g; vat+=g*f*lineEffVat(l)/100; } });
-  const base=net*f; return { net:net, base:base, vat:vat, total:base+vat }; }
+/* FIN-GROUP-DISCOUNT1 — ordinea contractuală, identică cu `app.calc_totals`:
+   reducerea POZIȚIEI se aplică poziției, subtotalul grupului se formează din pozițiile
+   deja reduse, iar reducerea GRUPULUI se aplică peste. `net` rămâne brutul dinaintea
+   oricărei reduceri (așa îl consumă rezumatul), exact ca `gnet` pe server. */
+function groupTotals(grp){ let net=0, red=0, vat=0; const f=(1-(+grp.disc||0)/100);
+  S.lines.forEach(l=>{ if(l.group===grp.id && lineCounts(l)){ const g=(+l.qty||0)*(+l.unit_price||0); const lf=lineDiscFactor(l); net+=g; red+=g*lf; vat+=g*lf*f*lineEffVat(l)/100; } });
+  const base=red*f; return { net:net, base:base, vat:vat, total:base+vat }; }
 function totals(){
   const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none';
   let gross=0, base=0, disc=0, vat=0;
   // poziții fără grup (mod document)
   const ung=S.lines.filter(l=>!l.group && lineCounts(l));
-  let uGross=0,uNet=0; ung.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); uGross+=g; uNet+=(dm==='line'? g*(1-(+l.disc||0)/100):g); });
+  let uGross=0,uNet=0; ung.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); uGross+=g; uNet+=g*lineDiscFactor(l); });   /* FIN-GROUP-DISCOUNT1: prin helper, nu prin formulă copiată */
   const uF=(dm==='total')?(1-(+S.est.disc_value||0)/100):1; const uBase=uNet*uF;
   gross+=uGross; base+=uBase; disc+=(uGross-uBase);
   /* FIN1 — o singură ramură: cota efectivă vine din `lineEffVat`, deci 'line'/'total'/'none'
      se rezolvă identic aici și în grup. Pentru 'total', Σ(net×vv) == uBase×vv. */
-  ung.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); const net=(dm==='line'? g*(1-(+l.disc||0)/100):g)*uF; vat+=net*lineEffVat(l)/100; });
+  ung.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); const net=g*lineDiscFactor(l)*uF; vat+=net*lineEffVat(l)/100; });
   // grupuri (TVA/reducere proprii)
   S.groups.forEach(grp=>{ const gt=groupTotals(grp); gross+=gt.net; base+=gt.base; disc+=(gt.net-gt.base); vat+=gt.vat; });
   return { gross:gross, sub:base, disc:disc, vat:vat, total:base+vat };
@@ -476,7 +491,9 @@ function setVatMode(v){ const snap=grossAnchorSnap(); S.est.vat_mode=v; grossAnc
 function setDiscVal(v){ S.est.disc_value=+v||0; renderSummary(); }
 function setVatVal(v){ const snap=grossAnchorSnap(); S.est.vat_value=+v||0; grossAnchorApply(snap); renderSummary(); }
 function lineRowHtml(i,inGroup,nr){
-  const l=S.lines[i]; const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=(S.est.vat_mode!=='none'); const lt=lineGross(l);
+  /* FIN-GROUP-DISCOUNT1 — `showDisc` nu mai depinde de `inGroup`: reducerea pe poziție
+     e disponibilă și în grup, deci coloana apare peste tot unde modul o permite. */
+  const l=S.lines[i]; const showDisc=(S.est.disc_mode==='line'), showVat=(S.est.vat_mode!=='none'); const lt=lineGross(l);
   const thumb=l.photo_url
     ? (S.lineThumbs[l.photo_url]
         ? '<img onclick="lineDetails('+i+')" src="'+S.lineThumbs[l.photo_url]+'" title="Apasă pentru a edita descrierea/poza" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:pointer;vertical-align:middle">'
@@ -493,7 +510,12 @@ function lineRowHtml(i,inGroup,nr){
     +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
     +'<td>'+unitSelectHtml(i,l.unit)+'</td>'
     +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
-    +(showDisc?'<td><input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"/></td>':'')
+    +(showDisc?('<td style="white-space:nowrap">'
+        +'<input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"'
+        +(lineDiscDormant(l)?' style="width:calc(100% - 22px);border-color:#f59e0b;color:var(--muted)" title="Reducere moștenită, care NU se aplică — apasă ⚠ ca să o activezi pentru această poziție."':'')
+        +'/>'
+        +(lineDiscDormant(l)?'<button class="delx" onclick="lineDiscActivate('+i+')" title="Activează această reducere" style="color:#f59e0b;padding:0 2px">⚠</button>':'')
+      +'</td>'):'')
     +(showVat?'<td>'+vatSelectHtml(i,lineEffVat(l))+'</td>':'')
     +(showVat?'<td class="ugc" style="text-align:right;white-space:nowrap"><input id="ug-'+i+'" type="number" step="any" value="'+num2(unitGross(l))+'" style="text-align:right" oninput="lineSetUnitGross('+i+',this.value)" title="Preț pe unitate, cu TVA. Scrie aici și prețul fără TVA se recalculează după cota poziției."/></td>':'')
     +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="'+((S.est.vat_mode!=='none')?'Total CU TVA pe poziție — scrie suma și prețul unitar (fără TVA) se recalculează invers':'Total pe poziție — scrie suma și prețul unitar se recalculează invers')+'"/></td>'
@@ -503,7 +525,7 @@ function lineRowHtml(i,inGroup,nr){
     +'<button class="delx" onclick="delLine('+i+')" title="Șterge linia">×</button></td></tr>';
 }
 function sectionTableHtml(idxs,inGroup,gidv){
-  const showDisc=!inGroup&&S.est.disc_mode==='line', showVat=(S.est.vat_mode!=='none');
+  const showDisc=(S.est.disc_mode==='line'), showVat=(S.est.vat_mode!=='none');
   const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:84px">Cant.</th><th style="width:84px">UM</th><th style="width:98px">Preț fără TVA</th>'
     +(showDisc?'<th style="width:68px">Red.%</th>':'')+(showVat?'<th style="width:86px">TVA</th>':'')
     +(showVat?'<th class="ugh" style="width:98px;text-align:right">Preț cu TVA</th>':'')
@@ -567,9 +589,9 @@ function rebuildLinesFromDOM(){
   /* FIN-GROUP-PARITY1 — apartenența de DINAINTE de rescriere, ca să știm cine tocmai a intrat
      într-un grup (`l.group` e suprascris chiar în bucla de mai jos). */
   const before=new Map((S.lines||[]).map(l=>[l, l.group||'']));
+  freezeDiscOnMove(S.lines);   /* FIN-GROUP-DISCOUNT1 — glisarea nu schimbă nicio reducere */
   document.querySelectorAll('#lines-wrap .lbody').forEach(tb=>{ const g=tb.getAttribute('data-g')||''; tb.querySelectorAll('tr[data-i]').forEach(tr=>{ const oi=+tr.getAttribute('data-i'); const l=S.lines[oi]; if(l){ l.group=g; nl.push(l); } }); });
   if(nl.length===S.lines.length) S.lines=nl;
-  noticeGroupedDisc(S.lines.filter(l=>!before.get(l) && l.group));
   renderLines(); renderSummary(); renderBOM();
 }
 function rebuildGroupsFromDOM(){
@@ -578,19 +600,16 @@ function rebuildGroupsFromDOM(){
   reorderLinesBySection(); renderLines(); renderSummary();
 }
 /* ── grupuri ── */
-/* ►► FIN-GROUP-PARITY1 — o poziție care intră într-un grup își pierde reducerea PROPRIE:
-   motorul aplică în grup doar reducerea grupului. Pierderea era complet tăcută. O anunțăm
-   exact când se întâmplă, în loc să ștergem valoarea — scoasă din grup, linia își redobândește
-   reducerea, iar nicio dată introdusă de utilizator nu e distrusă. */
-function noticeGroupedDisc(moved){
-  if((S.est.disc_mode||'none')!=='line') return;
-  if(!(moved||[]).some(l=>l && l.group && (+l.disc||0)>0)) return;
-  const T=window.C373t||function(s){return s;};
-  toast('ℹ️ '+T('Reducerea pe poziție nu se aplică în grup — folosește „Red. %" din antetul grupului.'));
-}
+/* ►► FIN-GROUP-DISCOUNT1 — mutarea unei poziții între containere e NEUTRĂ financiar.
+   Din 0211 reducerea pe poziție funcționează și în grup, deci nu se mai pierde nimic la
+   intrare. Rămâne un singur caz de tratat: linia MOȘTENITĂ (`disc_active` absent), a cărei
+   activare se deducea din container — ea și-ar schimba starea doar fiindcă a fost trasă cu
+   mouse-ul. Înghețăm deci starea EFECTIVĂ dinaintea mutării: ce era aplicat rămâne aplicat,
+   ce era adormit rămâne adormit. O mutare nu acordă și nu retrage o reducere. */
+function freezeDiscOnMove(moved){ (moved||[]).forEach(l=>{ if(l && l.disc_active!==true && l.disc_active!==false) l.disc_active=lineDiscOn(l); }); }
 function newGroup(){ S.groups.push({id:gid(),name:'Grup '+(S.groups.length+1),vat:(S.firm.vat_rate!=null?+S.firm.vat_rate:20),disc:0}); renderLines(); renderSummary(); }
-function groupSelection(){ const sel=S.lines.filter(l=>l._sel); if(!sel.length){ toast('Bifează întâi pozițiile.'); return; } const id=gid(); S.groups.push({id:id,name:'Grup '+(S.groups.length+1),vat:(S.firm.vat_rate!=null?+S.firm.vat_rate:20),disc:0}); sel.forEach(l=>{ l.group=id; l._sel=false; }); reorderLinesBySection(); renderLines(); renderSummary(); toast('🗂️ Grup creat din '+sel.length+' poziții.'); noticeGroupedDisc(sel); }
-function addSelToGroup(id){ const sel=S.lines.filter(l=>l._sel); if(!sel.length){ toast('Bifează întâi pozițiile.'); return; } sel.forEach(l=>{ l.group=id; l._sel=false; }); reorderLinesBySection(); renderLines(); renderSummary(); noticeGroupedDisc(sel); }
+function groupSelection(){ const sel=S.lines.filter(l=>l._sel); if(!sel.length){ toast('Bifează întâi pozițiile.'); return; } const id=gid(); S.groups.push({id:id,name:'Grup '+(S.groups.length+1),vat:(S.firm.vat_rate!=null?+S.firm.vat_rate:20),disc:0}); freezeDiscOnMove(sel); sel.forEach(l=>{ l.group=id; l._sel=false; }); reorderLinesBySection(); renderLines(); renderSummary(); toast('🗂️ Grup creat din '+sel.length+' poziții.'); }
+function addSelToGroup(id){ const sel=S.lines.filter(l=>l._sel); if(!sel.length){ toast('Bifează întâi pozițiile.'); return; } freezeDiscOnMove(sel); sel.forEach(l=>{ l.group=id; l._sel=false; }); reorderLinesBySection(); renderLines(); renderSummary(); }
 function setGroupName(id,v){ const g=S.groups.find(x=>x.id===id); if(g) g.name=v; scheduleDraft(); }
 function setGroupVat(id,v){ const g=S.groups.find(x=>x.id===id); if(g){ g.vat=+v||0; const el=$('gtot-'+id); if(el) el.textContent=money(groupTotals(g).total); } renderSummary(); }
 function applyGroupVat(id,v){ const g=S.groups.find(x=>x.id===id); if(!g) return; const snap=grossAnchorSnap(); g.vat=+v||0; S.lines.forEach(l=>{ if(l.group===id) l.vat_rate=+v||0; }); grossAnchorApply(snap); renderLines(); renderSummary(); }
@@ -636,6 +655,9 @@ function refreshLineTotal(i){ const l=S.lines[i]; if(!l) return;
   setFieldVal($('ug-'+i), num2(unitGross(l))); }
 function lineEdit(i,k,v){ S.lines[i][k]=v; if(k==='unit') return;
   if(k==='unit_price') S.lines[i]._pxAnchor='net';   /* FIN-GROUP-PARITY1 — ultimul preț explicit e NETUL */
+  /* FIN-GROUP-DISCOUNT1 — a scrie în câmpul de reducere E consimțământul explicit cerut
+     de contract. Doar aici, niciodată dintr-o valoare deja stocată. */
+  if(k==='disc') S.lines[i].disc_active=true;
   refreshLineTotal(i); renderSummary(); if(k==='qty') renderBOM(); }
 function lineSetTotal(i,v){ const l=S.lines[i]; const q=+l.qty||0; const dfac=lineDiscFactor(l); const eff=lineEffVat(l); const gross=+v||0; const net=eff?gross/(1+eff/100):gross;
   /* FIN-GROUP-PARITY1 — totalul poziției scrie tot NETUL unitar, deci valoarea explicită care
@@ -668,6 +690,11 @@ function lineSetUnitGross(i,v){ const l=S.lines[i]; if(!l) return;
   l._pxAnchor='gross';
   if(dfac>0) l.unit_price=VATX.r2(VATX.net(+v||0, lineEffVat(l))/dfac);
   refreshLineTotal(i); renderSummary(); scheduleDraft(); }
+/* FIN-GROUP-DISCOUNT1 — activarea unei reduceri moștenite, printr-un gest explicit. */
+function lineDiscActivate(i){ const l=S.lines[i]; if(!l) return; l.disc_active=true;
+  renderLines(); renderSummary(); scheduleDraft();
+  const T=window.C373t||function(s){return s;};
+  toast('✅ '+T('Reducerea acestei poziții este acum aplicată.')); }
 function addLine(){ S.lines.push(blankLine()); reorderLinesBySection(); renderLines(); }
 /* ---- AI: generează liniile devizului din descriere ---- */
 function aiOffer(){
@@ -1428,7 +1455,7 @@ async function save(thenPdf){
     // Legătura la catalog (migr 0127) merge în aceeași tranzacție. Linia își
     // păstrează snapshotul propriu — legătura NU transformă documentul într-o
     // vedere dinamică: prețul și denumirea rămân cele folosite în acest deviz.
-    const items=valid.map(l=>({kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,group_id:l.group||null,description:l.description||null,photo_url:l.photo_url||null,
+    const items=valid.map(l=>({kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,disc_active:lineDiscOn(l),group_id:l.group||null,description:l.description||null,photo_url:l.photo_url||null,
       material_id:(l.cat_src==='material'?(l.cat_id||null):null), service_id:(l.cat_src==='service'?(l.cat_id||null):null),
       // sursa prețului + snapshotul ei (migr 0128). Serverul derivă `subcontractor_id`
       // din tarif dacă lipsește și refuză orice referință din altă firmă.
@@ -1515,7 +1542,7 @@ async function pdf(docType,inPlace){
          stocat pe linie, așa că documentul ANUNȚA clientului o reducere pe care nu i-o acorda
          (măsurat pe LIVE: 50,00 MDL × 1 buc, coloana „Reducere 10%", total tipărit 60,00 MDL —
          adică exact prețul întreg). */
-      +(showDiscCol?'<td class="r">'+(l.group?'—':num2(l.disc||0)+'%')+'</td>':'')
+      +(showDiscCol?'<td class="r">'+(lineDiscOn(l)?num2(l.disc||0)+'%':'—')+'</td>':'')
       +(showVatCol?'<td class="r">'+num2(eff)+'%</td>':'')
       +(showVatCol?'<td class="r">'+money(unitGross(l))+'</td>':'')
       +'<td class="r">'+money(lineTot)+'</td>'+photoCell+'</tr>';

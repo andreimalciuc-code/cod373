@@ -78,7 +78,9 @@
 
     // ── FIN-UNIT-GROSS1 — preț brut pe unitate în Ofertă/Factură ──
     'Preț pe unitate, cu TVA. Scrie aici și prețul fără TVA se recalculează după cota poziției.':{ru:'Цена за единицу с НДС. Введите её здесь — цена без НДС пересчитается по ставке позиции.',de:'Preis pro Einheit inkl. MwSt. Hier eingeben — der Nettopreis wird nach dem Satz der Position neu berechnet.',en:'Price per unit including VAT. Type it here and the net price is recalculated using the line VAT rate.'},
-    'Reducerea pe poziție nu se aplică în grup — folosește „Red. %" din antetul grupului.':{ru:'Скидка по позиции не действует внутри группы — используйте «Скидка %» в заголовке группы.',de:'Der Positionsrabatt gilt innerhalb einer Gruppe nicht — verwenden Sie „Rab. %" in der Gruppenkopfzeile.',en:'A per-line discount does not apply inside a group — use "Disc. %" in the group header.'},
+    'Reducere moștenită, care NU se aplică — apasă ⚠ ca să o activezi pentru această poziție.':{ru:'Унаследованная скидка, которая НЕ применяется — нажмите ⚠, чтобы включить её для этой позиции.',de:'Geerbter Rabatt, der NICHT angewendet wird — mit ⚠ für diese Position aktivieren.',en:'Inherited discount that is NOT applied — press ⚠ to activate it for this line.'},
+    'Activează această reducere':{ru:'Включить эту скидку',de:'Diesen Rabatt aktivieren',en:'Activate this discount'},
+    'Reducerea acestei poziții este acum aplicată.':{ru:'Скидка по этой позиции теперь применяется.',de:'Der Rabatt dieser Position wird jetzt angewendet.',en:'The discount on this line is now applied.'},
 
     // ── KB140-OFFICE-AUTH-UX1 — starea operațională în administrarea utilizatorilor ──
     'Fără acces operațional':{ru:'Нет операционного доступа',de:'Kein operativer Zugang',en:'No operational access'},
