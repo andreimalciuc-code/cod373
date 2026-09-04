@@ -1,0 +1,1733 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cod373 — Ofertă / Deviz</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sortable.min.js"></script>
+<style>
+  :root{ --ink:#0f1c33; --muted:#6b7793; --line:#e6eaf2; --primary:#2f6bff; --bg:#f4f6fb; --red:#dc2626; --green:#16a34a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; color:var(--ink); background:var(--bg); font-size:14px; }
+  header{ background:#fff; border-bottom:1px solid var(--line); padding:.7rem 1rem; display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; position:sticky; top:0; z-index:30; }
+  header h1{ font-size:1.05rem; margin:0; } .spacer{ flex:1; }
+  .pill{ font-size:.72rem; padding:.18rem .6rem; border-radius:999px; font-weight:700; }
+  .pill.draft{ background:#eef2ff; color:#3730a3; } .pill.sent{ background:#fef9c3; color:#854d0e; } .pill.accepted{ background:#dcfce7; color:#15803d; } .pill.rejected{ background:#fee2e2; color:#b91c1c; }
+  .btn{ border:1px solid var(--line); background:#fff; border-radius:9px; padding:.5rem .8rem; font-size:.85rem; cursor:pointer; color:var(--ink); white-space:nowrap; }
+  .btn:hover{ background:#f1f5f9; } .btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); } .btn.primary:hover{ filter:brightness(1.05); }
+  .btn:disabled{ opacity:.4; cursor:default; } .btn:disabled:hover{ background:#fff; }
+  .hbtn{ padding:.42rem .6rem; font-size:1rem; line-height:1; }
+  .wrap{ max-width:1440px; margin:0 auto; padding:1.1rem; display:grid; grid-template-columns:1fr 320px; gap:1.1rem; align-items:start; }
+  .lines{ table-layout:fixed; }
+  @media(max-width:1200px){ .wrap{ grid-template-columns:1fr; } }
+  .panel{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:1.1rem; margin-bottom:1.1rem; }
+  .panel h3{ margin:0 0 .8rem; font-size:.95rem; }
+  .right{ position:sticky; top:72px; }
+  .field{ margin-bottom:.7rem; } label{ display:block; font-size:.78rem; font-weight:600; margin-bottom:.25rem; color:#46506a; }
+  input,select,textarea{ width:100%; padding:.5rem .65rem; border:1px solid var(--line); border-radius:9px; font-size:.88rem; font-family:inherit; outline:none; background:#fff; }
+  input[type=number]{ -moz-appearance:textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  input:focus,select:focus,textarea:focus{ border-color:var(--primary); }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+  .lines{ width:100%; border-collapse:collapse; }
+  .lines th{ text-align:left; font-size:.7rem; text-transform:uppercase; color:var(--muted); padding:.3rem .35rem; border-bottom:1px solid var(--line); }
+  .lines td{ padding:.25rem .25rem; vertical-align:top; border-bottom:1px solid #f1f4fa; }
+  /* FIN-UNIT-GROSS1 — „Descriere" e SINGURA coloana elastica: toate celelalte au latime fixa,
+     deci fiecare coloana noua se scade direct din ea. Masurat pe LIVE, la ~768px containerul
+     lasa descrierii 96px fara coloana noua si 18px cu ea — nu se mai poate citi ce scrii.
+     `min-width` NU e o solutie: sub `table-layout:fixed` browserul ignora min/max-width pe
+     celule (verificat: regula se aplica, latimea ramane neschimbata).
+     Regula e deci: coloana INFORMATIVA cedeaza prima. Nu se pierde nimic — „Total cu TVA"
+     ramane pe rand, iar PDF-ul tipareste pretul unitar brut la orice latime. */
+  @media (max-width:1000px){ .lines th.ugh, .lines td.ugc{ display:none; } }
+  .lines td input{ padding:.45rem .5rem; }
+  .grip{ cursor:grab; color:#c2cbdb; padding:.4rem .1rem; }
+  .ta-wrap{ position:relative; }
+  .lines td textarea.lname{ width:100%; padding:.45rem .5rem; resize:none; overflow:hidden; line-height:1.3; min-height:2.2em; white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:.88rem; }
+  .dd{ position:absolute; z-index:40; left:0; right:0; top:100%; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 30px rgba(15,28,51,.14); max-height:280px; overflow:auto; margin-top:2px; }
+  .dd .it{ padding:.5rem .7rem; cursor:pointer; display:flex; gap:.5rem; align-items:center; font-size:.85rem; border-bottom:1px solid #f4f6fb; }
+  .dd .it:hover, .dd .it.active{ background:#eff4ff; }
+  .dd .it .nm{ flex:1; } .dd .it .pr{ color:var(--muted); font-size:.78rem; white-space:nowrap; }
+  .dd .add{ color:var(--primary); font-weight:700; }
+  .sub{ color:var(--muted); font-size:.8rem; }
+  .totrow{ display:flex; justify-content:space-between; padding:.35rem 0; }
+  .totrow.g{ font-size:1.15rem; font-weight:800; border-top:2px solid var(--ink); margin-top:.4rem; padding-top:.6rem; }
+  .delx{ background:none; border:none; color:#c2452f; cursor:pointer; font-size:1.1rem; padding:.3rem; }
+  .legend{ font-size:.72rem; color:var(--muted); margin-top:.4rem; }
+  .center{ text-align:center; padding:3rem 1rem; color:var(--muted); }
+  .toast{ position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:.6rem 1rem; border-radius:10px; font-size:.85rem; z-index:80; opacity:0; transition:.2s; }
+  .toast.show{ opacity:1; }
+  .ov{ position:fixed; inset:0; background:rgba(15,28,51,.5); display:flex; align-items:center; justify-content:center; z-index:90; padding:1rem; }
+  .modal{ background:#fff; border-radius:14px; width:100%; max-width:420px; padding:1.1rem; }
+  .modal h3{ margin:0 0 .8rem; }
+  .addline{ background:none; border:1px dashed var(--line); color:var(--primary); border-radius:9px; padding:.5rem .8rem; cursor:pointer; font-size:.85rem; margin-top:.5rem; }
+</style>
+</head>
+<body data-mediu="RECOVERY">
+<header>
+  <h1>📋 Ofertă / Deviz</h1>
+  <span id="hd-num" class="sub"></span>
+  <span id="hd-status"></span>
+  <div class="spacer"></div>
+  <button class="btn" onclick="goBack()">↩ Înapoi</button>
+  <button class="btn hbtn" type="button" id="btn-undo" onclick="historyUndo()" title="Anulează ultima modificare" aria-label="Anulează ultima modificare" disabled>↶</button>
+  <button class="btn hbtn" type="button" id="btn-redo" onclick="historyRedo()" title="Refă modificarea anulată" aria-label="Refă modificarea anulată" disabled>↷</button>
+  <button class="btn" id="btn-plan" onclick="togglePlan()">📐 Plan</button>
+  <button class="btn" id="btn-prev" onclick="pdf()">👁 Previzualizare</button>
+  <button class="btn" id="btn-sendcl" onclick="sendOfferPortal()">🤝 Trimite clientului</button>
+  <button class="btn" id="btn-dup" onclick="dupEstimate()" style="display:none">⧉ Duplică oferta</button>
+  <button class="btn primary" id="btn-save" onclick="save()">💾 Salvează</button>
+</header>
+<div id="root"><div class="center">Se încarcă…</div></div>
+<div id="toast" class="toast"></div>
+<div id="modal-mount"></div>
+
+<script>
+const SUPABASE_URL='https://iuhtzkloanbyfwuohvux.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1aHR6a2xvYW5ieWZ3dW9odnV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNzgzMTcsImV4cCI6MjEwMjk1NDMxN30._3bCH3emQTADMVo9-CD3wYBCdLDs6_UT2Z82_1TpNCw';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CURSYM={MDL:'MDL',EUR:'€',RON:'lei',USD:'$',UAH:'₴',GBP:'£'}; let CUR='MDL';
+const money=n=>new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(+n||0)+' '+(CURSYM[CUR]||CUR);
+const num2=n=>{ const r=Math.round((+n||0)*100)/100; return r%1===0?r:r.toFixed(2); };
+/* Semantica preț/TVA — identică cu `app.html` și `factura.html` (KB#39, D34).
+   `estimate_items.unit_price` este ÎNTOTDEAUNA net. Rotunjirea la 2 zecimale se
+   face doar la afișare și la valorile scrise înapoi într-un câmp; totalurile
+   rămân rotunjirea sumei, nu suma rotunjirilor. */
+const VATX = {
+  r2(n){ return Math.round((+n||0)*100)/100; },
+  gross(net, rate){ return (+net||0)*(1+(+rate||0)/100); },
+  net(gross, rate){ const r=+rate||0; return r ? (+gross||0)/(1+r/100) : (+gross||0); },
+  vat(net, rate){ return (+net||0)*(+rate||0)/100; }
+};
+// Contractul de pret v2 (D35). Clientul DECLARA explicit ce semantica au
+// preturile pe care le trimite, ca serverul sa nu mai ghiceasca din setarea
+// firmei. In v356+ campul cu `id="f-<key>"` este INTOTDEAUNA cel fara TVA
+// (D34), deci valoarea trimisa e mereu NETA, indiferent de `prices_incl_vat`.
+// Se trimite in interiorul JSONB-ului, nu ca parametru nou: semnatura RPC
+// ramane neschimbata, deci un tab vechi ramas pe cache nu se rupe.
+const PRICE_CONTRACT = { price_contract_version:'2', price_input_mode:'net' };
+function withPriceContract(o){ return Object.assign({}, o||{}, PRICE_CONTRACT); }
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
+function param(k){ return new URLSearchParams(location.search).get(k); }
+function goBack(){ if(history.length>1) history.back(); else location.href='app.html'; }
+function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
+
+const STATUS={draft:'Ciornă',sent:'Trimisă',accepted:'Acceptată',rejected:'Respinsă'};
+/* `T` e LOCAL în fiecare funcție a acestui fișier, nu global — helperii de stare
+   rulează la nivel de modul, deci au nevoie de propriul traducător. */
+function TS(x){ return (window.C373t? window.C373t(x) : x); }
+const ST_ICON={draft:'✎',sent:'➤',accepted:'✓',rejected:'✕'};
+/* Expirarea e o proprietate a DATEI, nu o stare pe care o alege cineva. */
+function estIsExpired(){ return (S.est.status==='sent') && S.est.valid_until
+  && String(S.est.valid_until).slice(0,10) < (typeof coToday==='function'?coToday():new Date().toISOString().slice(0,10)); }
+function stPill(){
+  if(estIsExpired()) return '<span class="pill sent" title="Valabilitatea a trecut">⏳ '+TS('Expirată')+'</span>';
+  const k=S.est.status||'draft';
+  return '<span class="pill '+k+'">'+(ST_ICON[k]||'')+' '+TS(STATUS[k]||'')+'</span>';
+}
+/* Doar tranzițiile care au sens din starea curentă. Nu umplem antetul cu butoane. */
+function stActions(){
+  if(!S.canEdit || !S.id) return '';
+  const k=S.est.status||'draft'; let b='';
+  const btn=(act,lab,st)=>'<button class="btn" style="padding:.2rem .55rem;font-size:.75rem;margin-left:.35rem'+(st||'')+'" onclick="stSet(\''+act+'\')">'+TS(lab)+'</button>';
+  if(k==='draft')  b+=btn('sent','Marchează ca trimisă');
+  if(k==='sent'){  b+=btn('accepted','Acceptată',';color:var(--green)')+btn('rejected','Refuzată',';color:#dc2626'); }
+  return b;
+}
+/* Schimbarea trece prin contractul server-side, cu jetonul CAS. La succes
+   RESINCRONIZĂM `S._updatedAt` — altfel următoarea salvare pică pe DOC_CONFLICT
+   (capcana documentată în factura.html după înregistrarea unei încasări). */
+const ST_ERR={ DOC_CONFLICT:'Documentul a fost modificat în altă parte. Reîncarcă-l.',
+  STATUS_FORBIDDEN:'Nu ai dreptul să schimbi starea acestui document.',
+  ESTIMATE_ACCEPTED_LOCKED:'Oferta a generat deja un șantier; starea nu se mai poate schimba.',
+  STATUS_INVALID:'Stare necunoscută.', DOC_NOT_FOUND:'Documentul nu a fost găsit.' };
+async function stSet(st){
+  if(!S.id){ toast('Salvează documentul întâi.'); return; }
+  const {data,error}=await sb.rpc('estimate_set_status',
+    {p_estimate_id:S.id, p_status:st, p_expected_updated_at:S._updatedAt||null});
+  if(error){ const c=String(error.message||'').split(':')[0].trim();
+    toast('⛔ '+(ST_ERR[c]||error.message)); return; }
+  S.est.status=data.status; S._updatedAt=data.updated_at;
+  S.est.sent_at=data.sent_at; S.est.accepted_at=data.accepted_at; S.est.rejected_at=data.rejected_at;
+  toast('✅ '+TS('Stare actualizată')); render();
+}
+const FIN=['owner','admin','manager','accountant'];
+let S={ id:null, role:null, canEdit:false, firm:{}, est:{status:'draft',number:'',client_id:'',title:'',issue_date:new Date().toISOString().slice(0,10),valid_until:'',notes:'',disc_mode:'none',disc_value:0,vat_mode:'line',vat_value:0,materials_mode:'detailed',skonto_off:false,skonto_pct:null},
+        lines:[], groups:[], clients:[], catalog:[], normMat:{}, _activeDD:null, lineThumbs:{} };
+function gid(){ return 'g'+Date.now().toString(36)+Math.floor(Math.random()*1000); }
+function coDateFmt(){ return (S.firm&&S.firm.automations&&S.firm.automations.date_fmt)||'DD.MM.YYYY'; }
+function fmtDate(iso){ if(!iso) return ''; const s=String(iso).slice(0,10); const p=s.split('-'); if(p.length<3) return s; const y=p[0],m=p[1],d=p[2]; const f=coDateFmt(); return f==='YYYY-MM-DD'?s:f==='DD/MM/YYYY'?(d+'/'+m+'/'+y):f==='MM/DD/YYYY'?(m+'/'+d+'/'+y):(d+'.'+m+'.'+y); }
+/* ── schiță auto-salvată (ofertă nouă) ── */
+let _dzT=null;
+function dkey(){ return 'c373_draft_deviz_'+(S.tenant||''); }
+function getDraftDz(){ try{ const r=localStorage.getItem(dkey()); return r?JSON.parse(r):null; }catch(e){ return null; } }
+function saveDraftDz(){ if(S.id) return; try{ const has=(S.lines||[]).some(l=>(l.name||'').trim()||(+l.unit_price>0)); if(!has){ localStorage.removeItem(dkey()); return; } localStorage.setItem(dkey(), JSON.stringify({t:Date.now(), est:S.est, lines:S.lines.map(l=>{ const o=Object.assign({},l); delete o._pxAnchor; return o; }), groups:S.groups})); }catch(e){} }
+function clearDraftDz(){ try{ localStorage.removeItem(dkey()); }catch(e){} }
+function scheduleDraft(){ if(S.id) return; clearTimeout(_dzT); _dzT=setTimeout(saveDraftDz,600); }
+
+async function boot(){
+  const { data:{ session } }=await sb.auth.getSession();
+  if(!session){ $('root').innerHTML='<div class="center">🔒 Trebuie să fii autentificat.<br><br><a class="btn primary" href="app.html">Deschide aplicația</a></div>'; return; }
+  const mem=await sb.from('memberships').select('role, tenant_id, tenants(name,idno,address,phone,vat_rate,currency,logo_url,automations)').eq('active',true).limit(1).maybeSingle();
+  S.role=mem.data?mem.data.role:null; S.tenant=mem.data?mem.data.tenant_id:null; S.firm=(mem.data&&mem.data.tenants)||{}; S.canEdit=FIN.includes(S.role); CUR=(S.firm.currency||'MDL').toUpperCase();
+  if(!S.canEdit){ $('root').innerHTML='<div class="center">🔒 Doar proprietar/administrator/manager/contabil pot crea oferte.</div>'; return; }
+  await loadCatalog();
+  const id=param('id');
+  if(id){ const _b=$('btn-save'); if(_b) _b.disabled=true; await loadEstimate(id); }
+  else { S.est.number=await genNumber(); S._autoNum=S.est.number; if(param('client')) S.est.client_id=param('client'); S.lines=[blankLine()];
+    S.est.vat_value=(S.firm.vat_rate!=null?S.firm.vat_rate:20); S.est.vat_mode=(S.firm.vat_rate?'line':'none');
+    if(param('prefill')){ try{ const pf=JSON.parse(localStorage.getItem('c373_offer_prefill')||'null'); if(pf && pf.lines && pf.lines.length){ S.lines=pf.lines.map(l=>Object.assign(blankLine(),{name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20))})); S._restored=true; } localStorage.removeItem('c373_offer_prefill'); }catch(e){} }
+    else if(!param('survey')){ const dr=getDraftDz(); if(dr && dr.lines && dr.lines.length){ if(dr.est) S.est=Object.assign(S.est,dr.est); S.lines=dr.lines; if(Array.isArray(dr.groups)) S.groups=dr.groups; reorderLinesBySection(); S._restored=true; } } }
+  // din fisa de previzualizare
+  if(param('survey')) await fromSurvey(param('survey'));
+  if(param('print')){ await pdf(param('doctype')||'oferta', true); return; }
+  render();
+  signLineThumbs();
+  historyInit();
+  document.addEventListener('input',scheduleDraft); document.addEventListener('change',scheduleDraft);
+  if(S._restored) toast('↩️ Schiță nesalvată restaurată.');
+}
+/* semneaza pozele liniilor pentru previzualizare in editor (cache), apoi re-randeaza liniile */
+async function signLineThumbs(){
+  const paths=S.lines.filter(l=>l.photo_url && !S.lineThumbs[l.photo_url]).map(l=>l.photo_url);
+  if(!paths.length){ return; }
+  try{ const su=await sb.storage.from('docs').createSignedUrls(paths,3600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) S.lineThumbs[paths[idx]]=x.signedUrl; }); }catch(e){}
+  renderLines();
+}
+async function genNumber(){ const yr=new Date().getFullYear(); const pref='OF-'+yr+'-';
+  // Următorul număr = MAX existent din anul curent + 1 (nu „count+1", care se dubla la ștergeri/goluri).
+  try{ const { data }=await sb.from('estimates').select('number').like('number',pref+'%').limit(10000);
+    let max=0; (data||[]).forEach(r=>{ const m=String(r.number||'').match(/(\d+)\s*$/); if(m){ const n=parseInt(m[1],10)||0; if(n>max) max=n; } });
+    return pref+String(max+1).padStart(4,'0'); }catch(e){ return pref+Math.floor(Math.random()*9000+1000); } }
+function blankLine(){ return { name:'', qty:1, unit:'buc', unit_price:0, disc_active:true, vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20), disc:0, group:'', kind:'service', norm_code:null, description:'', photo_url:null,
+  sub_id:null, sub_price_id:null, sub_price_at:null, sub_price_amount:null, sub_price_currency:null, sub_price_name:null, sub_price_unit:null }; }
+
+async function loadCatalog(){
+  const [cl, svc, nrm, mat, nm]=await Promise.all([
+    sb.from('clients').select('id,name').order('name'),
+    sb.from('services').select('id,name,unit,price,vat_rate,description,photo_url').eq('active',true),
+    sb.from('norms').select('id,code,name,unit,category,unit_price'),
+    sb.from('materials').select('id,name,unit,last_price,vat_rate,description,photo_url').eq('active',true),
+    sb.from('norm_materials').select('norm_code,material_name,unit,qty_per_unit,kind')
+  ]);
+  S.clients=cl.data||[];
+  S.catalog=[].concat(
+    (svc.data||[]).map(x=>({src:'service',id:x.id,icon:'🧰',name:x.name,unit:x.unit||'buc',price:+x.price||0,vat:(x.vat_rate!=null?+x.vat_rate:20),kind:'service',desc:x.description||'',photo:x.photo_url||null})),
+    (nrm.data||[]).map(x=>({src:'norm',icon:'📐',name:x.name,unit:x.unit||'m2',price:+x.unit_price||0,vat:20,kind:'service',norm_code:x.code,cat:x.category})),
+    (mat.data||[]).map(x=>({src:'material',id:x.id,icon:'📦',name:x.name,unit:x.unit||'buc',price:+x.last_price||0,vat:(x.vat_rate!=null?+x.vat_rate:20),kind:'material',desc:x.description||'',photo:x.photo_url||null}))
+  );
+  S.normMat={}; (nm.data||[]).forEach(x=>{ (S.normMat[x.norm_code]=S.normMat[x.norm_code]||[]).push(x); });
+}
+async function loadEstimate(id){
+  const e=await sb.from('estimates').select('*').eq('id',id).single();
+  if(e.error){ docLoadFailed('Oferta nu a putut fi citită.', e.error.message); return; }
+  S.id=id; S._updatedAt=e.data.updated_at; S.est={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
+    /* FIN2 — marcajele de lifecycle vin de la server; `select('*')` le aducea deja, dar
+       maparea le arunca, deci starea clientului le avea mereu null. */
+    sent_at:e.data.sent_at||null, accepted_at:e.data.accepted_at||null, rejected_at:e.data.rejected_at||null,
+    issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), valid_until:e.data.valid_until||'', notes:e.data.notes||'',
+    disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null),
+    signature_url:e.data.signature_url||null, signer_name:e.data.signer_name||null, signed_at:e.data.signed_at||null, plan_url:e.data.plan_url||null };
+  S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})):[];
+  const it=await sb.from('estimate_items').select('*').eq('estimate_id',id);
+  if(it.error){ docLoadFailed('Pozițiile ofertei nu au putut fi citite.', it.error.message); return; }
+  const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); const cid=x.material_id||x.service_id||null; const csrc=x.material_id?'material':(x.service_id?'service':null);
+    const cat=cid?S.catalog.find(z=>z.id===cid&&z.src===csrc):null;
+    return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null,
+      // legătura la catalog e acum PERSISTENTĂ (migr 0127): se reface la fiecare
+      // deschidere, deci „Actualizează produsul existent" rămâne disponibilă
+      cat_id:cid, cat_src:csrc,
+      // sursa prețului de la subcontractor + SNAPSHOTUL ei (migr 0128): se reîncarcă
+      // exact cum a fost salvată, indiferent ce s-a întâmplat între timp cu tariful
+      sub_id:x.subcontractor_id||null, sub_price_id:x.subcontractor_price_id||null,
+      sub_price_at:x.sub_price_at||null,
+      sub_price_amount:(x.sub_price_amount==null?null:+x.sub_price_amount),
+      sub_price_currency:x.sub_price_currency||null, sub_price_name:x.sub_price_name||null,
+      sub_price_unit:x.sub_price_unit||null,
+      _catName:cat?cat.name:undefined, _catPrice:cat?+cat.price||0:undefined, _catUnit:cat?cat.unit:undefined,
+      _catDesc:cat?(cat.desc||''):undefined, _catPhoto:cat?(cat.photo||null):undefined }; });
+  /* CDI1: fără „auto-curățare" pe amprentă — două linii legitime pot fi identice (KB#114);
+     dedup-ul de client transforma deschiderea într-o editare distructivă. Coruperea se
+     detectează STRUCTURAL (poziții duplicate) și blochează Save-ul, nu șterge linii. */
+  S.lines=mapped; reorderLinesBySection();
+  // dacă documentul are prețuri luate de la subcontractori, se încarcă tarifele
+  // ca să putem arăta numele lor și dacă tariful s-a schimbat între timp
+  if(S.lines.some(l=>l.sub_id||l.sub_price_id)) loadSubPrices().then(()=>renderLines());
+  if(!S.lines.length) S.lines=[blankLine()];
+  if(!docLoadTripwire(it.data, e.data)) return;
+  S._loaded=true; const _b=$('btn-save'); if(_b) _b.disabled=false;
+}
+async function fromSurvey(sid){
+  const sv=await sb.from('site_surveys').select('name,client_id,area_m2').eq('id',sid).single();
+  const m=await sb.from('survey_measurements').select('*').eq('survey_id',sid);
+  if(sv.data){ if(sv.data.client_id) S.est.client_id=sv.data.client_id; if(sv.data.name && !S.est.title) S.est.title=sv.data.name; }
+  const meas=(m.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
+  if(!meas.length) return;
+  const dv=(S.firm.vat_rate!=null?+S.firm.vat_rate:20);
+  // încarcă serviciile legate + rețetele lor + prețurile materialelor
+  const svcIds=[...new Set(meas.map(x=>x.service_id).filter(Boolean))];
+  let svcById={}, recBy={}, matById={};
+  if(svcIds.length){
+    const svc=((await sb.from('services').select('id,name,unit,price,vat_rate,description').in('id',svcIds)).data)||[];
+    svc.forEach(s=>svcById[s.id]=s);
+    const sm=((await sb.from('service_materials').select('*').in('service_id',svcIds)).data)||[];
+    const matIds=[...new Set(sm.map(r=>r.material_id).filter(Boolean))];
+    if(matIds.length){ const mats=((await sb.from('materials').select('id,name,unit,last_price,vat_rate,description,photo_url').in('id',matIds)).data)||[]; mats.forEach(x=>matById[x.id]=x); }
+    sm.forEach(r=>{ (recBy[r.service_id]=recBy[r.service_id]||[]).push(r); });
+  }
+  const lines=[], groups=[];
+  meas.forEach((x,gi)=>{
+    const q=+x.qty||1;
+    const svc=x.service_id?svcById[x.service_id]:null;
+    if(svc){
+      const gv='g'+Date.now().toString(36)+gi+Math.floor(Math.random()*1000);
+      groups.push({ id:gv, name:svc.name||x.label, vat:(svc.vat_rate!=null?+svc.vat_rate:dv), disc:0 });
+      // manopera = prețul serviciului
+      lines.push(Object.assign(blankLine(),{ name:svc.name||x.label, qty:q, unit:x.unit||svc.unit||'buc', unit_price:+svc.price||0, vat_rate:(svc.vat_rate!=null?+svc.vat_rate:dv), kind:'service', description:x.note||svc.description||'', group:gv, cat_id:svc.id, cat_src:'service', _catName:svc.name, _catPrice:+svc.price||0, _catUnit:svc.unit||'' }));
+      // materiale din rețetă (consum × (1+pierdere%) × volum)
+      (recBy[x.service_id]||[]).sort((a,b)=>(a.position||0)-(b.position||0)).forEach(r=>{
+        const mat=r.material_id?matById[r.material_id]:null;
+        const mq=q*(+r.qty_per_unit||0)*(1+(+r.waste_pct||0)/100);
+        lines.push(Object.assign(blankLine(),{ name:(mat&&mat.name)||r.material_name||'Material', qty:+mq.toFixed(3), unit:(mat&&mat.unit)||r.unit||'buc', unit_price:(mat?+mat.last_price||0:0), vat_rate:(mat&&mat.vat_rate!=null?+mat.vat_rate:dv), kind:'material', description:(mat&&mat.description)||'', photo_url:(mat&&mat.photo_url)||null, group:gv, cat_id:r.material_id||null, cat_src:r.material_id?'material':'', _catName:(mat&&mat.name)||r.material_name||'', _catPrice:(mat?+mat.last_price||0:0), _catUnit:(mat&&mat.unit)||r.unit||'', _catDesc:(mat&&mat.description)||'', _catPhoto:(mat&&mat.photo_url)||'' }));
+      });
+    } else {
+      lines.push(Object.assign(blankLine(),{ name:x.label, qty:q, unit:x.unit||'m2', unit_price:0, vat_rate:dv, kind:'service', description:x.note||'', group:'' }));
+    }
+  });
+  S.lines=lines; S.groups=groups; reorderLinesBySection();
+  if(typeof signLineThumbs==='function') signLineThumbs();
+}
+
+/* păstrează S.lines ordonate: fără grup întâi, apoi pe grupuri (în ordinea S.groups) */
+function reorderLinesBySection(){
+  const known=new Set(S.groups.map(g=>g.id));
+  S.lines.forEach(l=>{ if(l.group && !known.has(l.group)) l.group=''; });
+  let arr=S.lines.filter(l=>!l.group);
+  S.groups.forEach(g=>{ arr=arr.concat(S.lines.filter(l=>l.group===g.id)); });
+  S.lines=arr;
+}
+function lineNet(l){ return (+l.qty||0)*(+l.unit_price||0)*lineDiscFactor(l); }
+/* ►► FIN1 — SINGURA regulă de selecție a cotei, pentru TOATE pozițiile, în grup sau nu.
+   Modul documentului decide: 'none' → 0 · 'total' → cota UNIFICATĂ · 'line' → cota liniei.
+   Clauza `if(inGroup) return l.vat_rate` de dinainte făcea ca o poziție din grup să nu vadă
+   NICIODATĂ modul documentului: TVA unificat 20% peste un grup la 8% dădea 8%. Cotele
+   individuale NU se distrug — rămân în `l.vat_rate` și redevin efective când modul revine
+   la „pe poziție". */
+function lineEffVat(l){ const vm=S.est.vat_mode||'none'; if(vm==='none') return 0; if(vm==='total') return +S.est.vat_value||0; return +l.vat_rate||0; }
+/* FIN1 — o linie fără denumire NU e salvată de `save()` și e ignorată de `app.calc_totals`,
+   deci nu are voie să intre în totaluri (paritate cu factura.html, KB#48A). */
+function lineCounts(l){ return !!((l.name||'').trim()); }
+function lineGross(l){ return lineNet(l)*(1+lineEffVat(l)/100); }
+/* ►► FIN-GROUP-PARITY1 — factorul de reducere EFECTIV al unei poziții, extras ca SINGURĂ
+   definiție fiindcă era copiat identic în `lineNet` și în `lineSetTotal`. Regula nu e a
+   clientului, ci a motorului canonic: `app.calc_totals` (0160) aplică `disc` DOAR liniilor
+   negrupate — subinterogarea grupurilor nici nu selectează coloana. Într-un grup lucrează
+   reducerea GRUPULUI. Nu „relaxa" regula aici: garda `app.doc_assert_financial` (0200)
+   reconstituie antetul din pozițiile stocate prin ACELAȘI motor, deci un client care ar
+   aplica `disc` în grup ar primi `DOC_FINANCIAL_INCONSISTENT` la fiecare salvare. */
+/* ►► FIN-GROUP-DISCOUNT1 — reducerea pe poziție se aplică ACESTEI linii?
+   Oglinda exactă a lui `app.line_disc_on` (0211). Stare cu TREI valori, ca în bază:
+     `disc_active` true/false → declarația EXPLICITĂ a utilizatorului, oriunde ar fi linia;
+     absent/null              → semantica MOȘTENITĂ: activă doar în afara grupurilor.
+   Nu se deduce NICIODATĂ din `disc > 0`: o valoare istorică nu e consimțământ. */
+function lineDiscOn(l){ const a=l&&l.disc_active; return (a===true||a===false)? a : !(l&&l.group); }
+/* Factorul de reducere EFECTIV. Motorul canonic aplică `disc` exact când modul documentului
+   e „pe poziție" ȘI activarea liniei o permite — de la 0211 și în interiorul grupurilor. */
+function lineDiscFactor(l){ return (S.est.disc_mode==='line' && lineDiscOn(l)) ? (1-(+l.disc||0)/100) : 1; }
+/* O poziție care poartă o reducere pe care motorul NU o aplică: valoare moștenită, adormită.
+   Se arată explicit și se poate activa printr-un control real — nu se activează singură. */
+function lineDiscDormant(l){ return (S.est.disc_mode==='line') && (+((l&&l.disc)||0) > 0) && !lineDiscOn(l); }
+/* ►► FIN-UNIT-GROSS1 — PREȚUL BRUT PE UNITATE. DERIVAT, niciodată stocat: nu există coloană
+   nouă în DB și nu se naște un al doilea motor de calcul.
+   Se obține din `lineGross` — adică din motorul canonic — împărțit la cantitate: aceleași
+   reduceri, aceeași cotă efectivă (`lineEffVat`), aceeași ramură pentru grup/document. Zero
+   aritmetică nouă, deci `unitGross(l) * qty` reconstituie `lineGross(l)` — dar NU bit-identic:
+   împărțirea și înmulțirea în virgulă mobilă lasă un rest de ordinul 1e-13 (măsurat: 138,996 × 3
+   dă 416,98800000000006 față de 416,988). De aceea valoarea NU se compară niciodată cu `===` și
+   NU se folosește ca sursă pentru vreun total.
+   SEMANTICA aleasă e prețul EFECTIV pe unitate, nu cel de catalog: singurele reduceri incluse
+   sunt exact cele pe care `lineNet` le include deja, ca valoarea afișată să se reconcilieze cu
+   „Total" din același rând. Reducerea de grup/document rămâne în rezumat, unde era — a o
+   distribui pe unitate ar fi însemnat aritmetică inventată.
+   ROTUNJIRE: valoarea e pentru AFIȘARE. `r2(unitGross) * qty` poate diferi cu un ban de totalul
+   canonic (139,00 × 3 = 417,00 față de 416,99). Totalul NU se recalculează din ea — rămâne
+   rotunjirea sumei, nu suma rotunjirilor (D34/KB#39). */
+function unitGross(l){ const q=+l.qty||0; return q ? lineGross(l)/q : 0; }
+
+/* Selector TVA pe linie: cotele din țara/firma (Setări) + „—" (fără TVA) */
+function vatRates(){ const rs=(S.firm&&S.firm.automations&&S.firm.automations.vat_rates)||[20,8,0]; return rs.map(Number).filter(r=>!isNaN(r)&&r>=0); }
+function vatOptsHtml(cur){ cur=Math.round((+cur||0)*100)/100; let rs=vatRates().filter(r=>r>0); if(cur>0&&rs.indexOf(cur)<0) rs.push(cur); rs=Array.from(new Set(rs)).sort((a,b)=>b-a);
+  return '<option value="0"'+(cur===0?' selected':'')+'>—</option>'+rs.map(r=>'<option value="'+r+'"'+(r===cur?' selected':'')+'>'+num2(r)+'%</option>').join(''); }
+function vatSelectHtml(i,cur){ return '<select id="vt-'+i+'" onchange="lineSetVat('+i+',this.value)" style="width:100%;font-weight:600">'+vatOptsHtml(cur)+'</select>'; }
+/* FIN1 — în mod unificat, editarea cotei pe ORICE poziție (în grup sau nu) schimbă rata
+   documentului. Nu mai stampilăm `x.vat_rate` peste liniile fără grup: cotele individuale
+   se PĂSTREAZĂ și redevin efective la întoarcerea pe „pe poziție". */
+function lineSetVat(i,v){ const rate=(v===''?0:+v||0); const l=S.lines[i]; if(!l) return;
+  const snap=grossAnchorSnap();   /* FIN-GROUP-PARITY1 — vezi `grossAnchorSnap` */
+  if((S.est.vat_mode||'none')==='total'){ S.est.vat_value=rate; grossAnchorApply(snap); render(); }
+  else { l.vat_rate=rate; grossAnchorApply(snap); refreshLineTotal(i); renderSummary(); } }
+/* FIN1 — subtotalul grupului folosește ACEEAȘI regulă ca documentul (`lineEffVat`).
+   Înainte nu consulta deloc `vat_mode`: un deviz „Fără TVA" cu grupuri producea TVA, iar
+   TVA unificat nu ajungea niciodată în grup. */
+/* FIN-GROUP-DISCOUNT1 — ordinea contractuală, identică cu `app.calc_totals`:
+   reducerea POZIȚIEI se aplică poziției, subtotalul grupului se formează din pozițiile
+   deja reduse, iar reducerea GRUPULUI se aplică peste. `net` rămâne brutul dinaintea
+   oricărei reduceri (așa îl consumă rezumatul), exact ca `gnet` pe server. */
+function groupTotals(grp){ let net=0, red=0, vat=0; const f=(1-(+grp.disc||0)/100);
+  S.lines.forEach(l=>{ if(l.group===grp.id && lineCounts(l)){ const g=(+l.qty||0)*(+l.unit_price||0); const lf=lineDiscFactor(l); net+=g; red+=g*lf; vat+=g*lf*f*lineEffVat(l)/100; } });
+  const base=red*f; return { net:net, base:base, vat:vat, total:base+vat }; }
+function totals(){
+  const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none';
+  let gross=0, base=0, disc=0, vat=0;
+  // poziții fără grup (mod document)
+  const ung=S.lines.filter(l=>!l.group && lineCounts(l));
+  let uGross=0,uNet=0; ung.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); uGross+=g; uNet+=g*lineDiscFactor(l); });   /* FIN-GROUP-DISCOUNT1: prin helper, nu prin formulă copiată */
+  const uF=(dm==='total')?(1-(+S.est.disc_value||0)/100):1; const uBase=uNet*uF;
+  gross+=uGross; base+=uBase; disc+=(uGross-uBase);
+  /* FIN1 — o singură ramură: cota efectivă vine din `lineEffVat`, deci 'line'/'total'/'none'
+     se rezolvă identic aici și în grup. Pentru 'total', Σ(net×vv) == uBase×vv. */
+  ung.forEach(l=>{ const g=(+l.qty||0)*(+l.unit_price||0); const net=g*lineDiscFactor(l)*uF; vat+=net*lineEffVat(l)/100; });
+  // grupuri (TVA/reducere proprii)
+  S.groups.forEach(grp=>{ const gt=groupTotals(grp); gross+=gt.net; base+=gt.base; disc+=(gt.net-gt.base); vat+=gt.vat; });
+  return { gross:gross, sub:base, disc:disc, vat:vat, total:base+vat };
+}
+function prepayNote(total){
+  const au=(S.firm&&S.firm.automations)||{};
+  if(au.prepay_show===false) return null;
+  if(S.est.skonto_off) return null;
+  const pct=(S.est.skonto_pct!=null && S.est.skonto_pct!=='') ? +S.est.skonto_pct : (au.prepay_pct!=null?+au.prepay_pct:3);
+  if(!(pct>0)||!(total>0)) return null;
+  const save=Math.round(total*pct/100*100)/100;
+  return { pct:pct, save:save, after:Math.round((total-save)*100)/100 };
+}
+/* Subsol detaliat cu date de companie (stil sevdesk/lexoffice) — mărunt, 3 coloane */
+function companyFooterHtml(){ var T=window.C373t||function(s){return s;}; var f=S.firm||{}; var au=f.automations||{}; var s=au.social||{};
+  var legal=f.name||''; var brand=au.brand_name||''; var idLabel=au.id_label||'IDNO';
+  function col(title,lines){ lines=lines.filter(Boolean); if(!lines.length) return ''; return '<div style="flex:1;min-width:160px"><div style="font-weight:700;color:#334155;margin-bottom:2px">'+T(title)+'</div>'+lines.join('<br>')+'</div>'; }
+  function addrStr(a){ return [a.address,[a.zip,a.city].filter(Boolean).join(' ')].filter(Boolean).join(', '); }
+  var firmLines=[]; if(legal) firmLines.push('<b>'+esc(legal)+'</b>');
+  if(au.director) firmLines.push('<b>'+T('Director:')+'</b> '+esc(au.director));
+  var prim=addrStr({address:f.address,zip:au.zip,city:au.city}); if(prim) firmLines.push('<b>'+T('Adresă juridică:')+'</b> '+esc(prim));
+  (Array.isArray(au.addresses)?au.addresses:[]).forEach(function(a){ var line=addrStr(a); if(line) firmLines.push((a.label?('<b>'+esc(a.label)+':</b> '):'')+esc(line)); });
+  var colFirma=col('Companie', firmLines);
+  var contactLines=[]; if(f.phone) contactLines.push(T('Tel:')+' '+esc(f.phone));
+  (Array.isArray(au.contacts)?au.contacts:[]).forEach(function(c){ if(c.phone) contactLines.push((c.label?esc(c.label)+': ':'')+esc(c.phone)); });
+  if(au.email) contactLines.push('✉ '+esc(au.email)); if(s.website) contactLines.push('🌐 '+esc(String(s.website).replace(/^https?:\/\//,'')));
+  var colContact=col('Contact', contactLines);
+  var bankLines=[]; if(Array.isArray(au.bank_list)&&au.bank_list.length){ au.bank_list.slice(0,2).forEach(function(a){ if(a.bank) bankLines.push('<b>'+esc(a.bank)+'</b>'); if(a.iban) bankLines.push('<b>IBAN:</b> '+esc(a.iban)); if(a.swift) bankLines.push('<b>BIC:</b> '+esc(a.swift)); }); }
+  else if(au.iban){ bankLines.push('<b>IBAN:</b> '+esc(au.iban)); if(au.bic) bankLines.push('<b>BIC:</b> '+esc(au.bic)); }
+  var colFiscal=col('Date fiscale & bancă',[f.idno?('<b>'+esc(idLabel)+':</b> '+esc(f.idno)):'', au.vat_id?('<b>'+T('Cod TVA')+':</b> '+esc(au.vat_id)):''].concat(bankLines));
+  var cols=[colFirma,colContact,colFiscal].filter(Boolean); if(!cols.length) return '';
+  return '<div style="margin-top:22px;border-top:1px solid #e5e9f2;padding-top:8px;display:flex;gap:20px;flex-wrap:wrap;font-size:9px;line-height:1.5;color:#94a3b8">'+cols.join('')+'</div>'; }
+function skontoToggle(off){ S.est.skonto_off=!!off; render(); }
+function skontoPct(v){ S.est.skonto_pct=(v===''?null:+v); }
+
+function render(){
+  const t=totals();
+  $('hd-num').textContent=S.est.number||'';
+  if($('btn-dup')) $('btn-dup').style.display=S.id?'':'none';
+  /* ►► FIN2 — starea stă lângă identitatea documentului, cu PICTOGRAMĂ (culoarea nu
+     e singurul semnal), iar „Expirată" e DERIVATĂ din `valid_until`, nu o a cincea
+     valoare stocată. */
+  $('hd-status').innerHTML=stPill()+stActions();
+  const clientOpts='<option value="">— alege client —</option>'+S.clients.map(c=>'<option value="'+c.id+'" '+(S.est.client_id===c.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
+  $('root').innerHTML=(S._restored?'<div style="max-width:1240px;margin:0 auto;padding:.5rem 1.1rem 0"><div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:.5rem .8rem;font-size:.84rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem"><span>↩️ Schiță nesalvată restaurată.</span><a onclick="clearDraftDz();location.href=\'deviz.html\'" style="cursor:pointer;text-decoration:underline">Începe gol</a></div></div>':'')+'<div class="wrap"><div class="left">'
+    +'<div class="panel"><h3>Detalii ofertă</h3>'
+      +'<div class="field"><label>Client</label><div style="display:flex;gap:.4rem"><select id="f-client" style="flex:1" onchange="S.est.client_id=this.value">'+clientOpts+'</select><button class="btn" onclick="newClient()">＋ nou</button></div></div>'
+      +'<div class="field"><label>Titlu / ce lucrări (apare în listă)</label><input id="f-title" value="'+esc(S.est.title||'')+'" placeholder="Ex: Manoperă gard vecin" oninput="S.est.title=this.value"/></div>'
+      +'<div class="row2"><div class="field"><label>Număr</label><input id="f-num" value="'+esc(S.est.number)+'" oninput="S.est.number=this.value"/></div>'
+      /* FIN2 — nu mai există dropdown liber de stare: `accepted → draft` era o salvare
+         legală. Starea se schimbă doar din acțiunile contextuale ale antetului, prin
+         `estimate_set_status`, care validează tranziția și marchează timestampul. */
+      +'<div class="field"><label>Stare</label><div style="padding:.45rem 0">'+stPill()+'</div></div></div>'
+      +'<div class="row2"><div class="field"><label>Data emiterii</label><input type="date" id="f-issue" value="'+esc(S.est.issue_date||'')+'" oninput="S.est.issue_date=this.value"/></div>'
+      +'<div class="field"><label>Valabil până la</label><input type="date" id="f-valid" value="'+esc(S.est.valid_until||'')+'" oninput="S.est.valid_until=this.value"/></div></div>'
+    +'</div>'
+    +'<div class="panel"><h3>Linii ofertă <span class="sub" style="font-weight:400">— tastează ca să cauți (sau „＋ Adaugă nou" dacă lipsește) · apasă 📝 pe o linie pentru descriere și poză</span></h3>'
+      +'<div id="lines-wrap"></div>'
+      +'<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem">'
+        +'<button class="addline" onclick="addLine()">＋ adaugă linie</button>'
+        +'<button class="addline" onclick="newGroup()">🗂️ grup nou</button>'
+        +'<button class="addline" onclick="groupSelection()">📑 grupează selecția (bifate)</button>'
+        +'<button class="addline" onclick="catalogNew()">📦 material/serviciu nou în catalog</button>'
+        +'<button class="addline" onclick="aiOffer()">🧠 generează din descriere (AI)</button>'
+      +'</div>'
+      +optBar()
+    +'</div>'
+    +'<div class="panel"><h3 style="display:flex;align-items:center;gap:.5rem">Note / condiții <button type="button" id="notes-ai" class="btn" style="padding:.12rem .5rem;font-size:.76rem;font-weight:600" onclick="aiNotes()">✨ AI</button> <span id="notes-msg" class="muted" style="font-size:.74rem;font-weight:400"></span></h3><textarea id="f-notes" rows="3" placeholder="Ex: Prețurile sunt orientative, valabile 30 de zile. Termen de execuție convenit la semnare." oninput="S.est.notes=this.value">'+esc(S.est.notes||'')+'</textarea></div>'
+    +'</div>'
+    +'<div class="right">'
+      +'<div class="panel"><h3>Sumar</h3><div id="sum"></div>'
+        +'<button class="btn primary" style="width:100%;margin-top:.8rem" onclick="save()">💾 Salvează oferta</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="save(true)">🖨 Salvează & PDF ofertă</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="pdf(\'confirmare\')">📄 Confirmare de comandă (PDF)</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="pdf(\'livrare\')">🚚 Bon de livrare (PDF)</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="signPad()">✍️ '+(S.est.signature_url?'Semnătură client ✓':'Semnătură client (acceptare)')+'</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="toInvoice()">🧾 Convertește în factură</button>'
+        +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="toSite()">🏗️ Creează șantier</button>'
+      +'</div>'
+      +'<div class="panel"><h3>Materiale estimate</h3><div id="bom"></div></div>'
+    +'</div></div>';
+  renderLines(); renderSummary(); renderBOM();
+}
+function optBar(){
+  const dm=S.est.disc_mode||'none', vm=S.est.vat_mode||'none', mm=S.est.materials_mode||'detailed';
+  const opt=(cur,val,lab)=>'<option value="'+val+'" '+(cur===val?'selected':'')+'>'+lab+'</option>';
+  return '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;margin-top:.8rem;padding-top:.7rem;border-top:1px dashed var(--line);font-size:.82rem">'
+    +'<span style="color:var(--muted);font-weight:600">Poziții fără grup —</span>'
+    +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">Reducere: <select onchange="setDiscMode(this.value)" style="width:auto">'+opt(dm,'none','Fără')+opt(dm,'line','Pe poziție')+opt(dm,'total','La final')+'</select></label>'
+    +(dm==='total'?'<label style="display:flex;align-items:center;gap:.3rem"><input type="number" step="any" value="'+esc(S.est.disc_value||0)+'" oninput="setDiscVal(this.value)" style="width:78px"/> %</label>':'')
+    +'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a">TVA: <select onchange="setVatMode(this.value)" style="width:auto">'+opt(vm,'none','Fără')+opt(vm,'line','Pe poziție')+opt(vm,'total','Unificat')+'</select></label>'
+    +(vm==='total'?'<label style="display:flex;align-items:center;gap:.3rem">TVA <select onchange="S.est.vat_value=(+this.value||0);render()" style="width:80px;font-weight:600">'+vatOptsHtml(+S.est.vat_value||0)+'</select></label>':'')
+    +(S.groups.length?'<label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#46506a" title="În PDF: detaliat = materialele apar ca linii separate sub serviciu; incluse = materialele se ascund și costul lor se adaugă în prețul manoperei (totalul rămâne același).">Materiale în PDF: <select onchange="setMatMode(this.value)" style="width:auto">'+opt(mm,'detailed','Detaliate')+opt(mm,'rolled','Incluse în manoperă')+'</select></label>':'')
+    +'</div>';
+}
+function setMatMode(v){ S.est.materials_mode=v; render(); }
+function setDiscMode(v){ S.est.disc_mode=v; render(); }
+function setVatMode(v){ const snap=grossAnchorSnap(); S.est.vat_mode=v; grossAnchorApply(snap); render(); }
+function setDiscVal(v){ S.est.disc_value=+v||0; renderSummary(); }
+function setVatVal(v){ const snap=grossAnchorSnap(); S.est.vat_value=+v||0; grossAnchorApply(snap); renderSummary(); }
+function lineRowHtml(i,inGroup,nr){
+  /* FIN-GROUP-DISCOUNT1 — `showDisc` nu mai depinde de `inGroup`: reducerea pe poziție
+     e disponibilă și în grup, deci coloana apare peste tot unde modul o permite. */
+  const l=S.lines[i]; const showDisc=(S.est.disc_mode==='line'), showVat=(S.est.vat_mode!=='none'); const lt=lineGross(l);
+  const thumb=l.photo_url
+    ? (S.lineThumbs[l.photo_url]
+        ? '<img onclick="lineDetails('+i+')" src="'+S.lineThumbs[l.photo_url]+'" title="Apasă pentru a edita descrierea/poza" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:pointer;vertical-align:middle">'
+        : '<span onclick="lineDetails('+i+')" style="display:inline-flex;width:40px;height:40px;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:6px;cursor:pointer">📷</span>')
+    : '<button class="delx" onclick="lineDetails('+i+')" title="Adaugă poză / descriere" style="opacity:.4;font-size:1.05rem">📷</button>';
+  return '<tr data-i="'+i+'">'
+    +'<td style="text-align:center"><input type="checkbox" '+(l._sel?'checked':'')+' onchange="toggleSel('+i+',this.checked)" title="bifează pentru grupare"></td>'
+    +'<td class="grip" style="color:var(--muted);font-size:.74rem;text-align:center;line-height:1.05">'+(nr?nr+'<br>':'')+'≡</td>'
+    +'<td style="text-align:center;vertical-align:middle">'+thumb+'</td>'
+    +'<td><div class="ta-wrap"><textarea class="lname" rows="1" placeholder="Caută sau scrie…" oninput="lineSearch('+i+',this.value);taGrow(this)" onfocus="lineSearch('+i+',this.value)" onblur="hideDD('+i+')" onkeydown="if(event.key===\'Enter\'){event.preventDefault();}" autocomplete="off">'+esc(l.name)+'</textarea><div class="dd" id="dd-'+i+'" style="display:none"></div></div>'
+    +(l.description?'<div onclick="lineDetails('+i+')" title="Apasă pentru a edita" style="cursor:pointer;margin-top:5px;font-size:11.5px;color:#6b7793;line-height:1.35;white-space:pre-wrap">'+esc(l.description)+'</div>':'')
+    +subSourceHtml(l)
+    +'</td>'
+    +'<td><input id="qy-'+i+'" type="number" step="any" value="'+esc(l.qty)+'" oninput="lineEdit('+i+',\'qty\',this.value)"/></td>'
+    +'<td>'+unitSelectHtml(i,l.unit)+'</td>'
+    +'<td><input id="up-'+i+'" type="number" step="any" value="'+esc(l.unit_price)+'" oninput="lineEdit('+i+',\'unit_price\',this.value)"/></td>'
+    +(showDisc?('<td style="white-space:nowrap">'
+        +'<input id="ds-'+i+'" type="number" step="any" value="'+esc(l.disc||0)+'" oninput="lineEdit('+i+',\'disc\',this.value)"'
+        +(lineDiscDormant(l)?' style="width:calc(100% - 22px);border-color:#f59e0b;color:var(--muted)" title="Reducere moștenită, care NU se aplică — apasă ⚠ ca să o activezi pentru această poziție."':'')
+        +'/>'
+        +(lineDiscDormant(l)?'<button class="delx" onclick="lineDiscActivate('+i+')" title="Activează această reducere" style="color:#f59e0b;padding:0 2px">⚠</button>':'')
+      +'</td>'):'')
+    +(showVat?'<td>'+vatSelectHtml(i,lineEffVat(l))+'</td>':'')
+    +(showVat?'<td class="ugc" style="text-align:right;white-space:nowrap"><input id="ug-'+i+'" type="number" step="any" value="'+num2(unitGross(l))+'" style="text-align:right" oninput="lineSetUnitGross('+i+',this.value)" title="Preț pe unitate, cu TVA. Scrie aici și prețul fără TVA se recalculează după cota poziției."/></td>':'')
+    +'<td><input id="tt-'+i+'" type="number" step="any" value="'+num2(lt)+'" style="text-align:right;font-weight:700" oninput="lineSetTotal('+i+',this.value)" title="'+((S.est.vat_mode!=='none')?'Total CU TVA pe poziție — scrie suma și prețul unitar (fără TVA) se recalculează invers':'Total pe poziție — scrie suma și prețul unitar se recalculează invers')+'"/></td>'
+    +'<td style="white-space:nowrap"><button class="delx" onclick="lineDetails('+i+')" title="Descriere și poză" style="'+((l.description||l.photo_url)?'color:#2f6bff':'')+'">'+((l.description||l.photo_url)?'📝':'＋')+'</button>'
+    +'<button class="delx" onclick="saveLineToCatalog('+i+')" title="Salvează produsul/serviciul în catalog (sau actualizează-l)" style="color:#16a34a">💾</button>'
+    +'<button class="delx" onclick="openSubPicker('+i+')" title="'+(l.sub_price_id?'Prețul vine de la un subcontractor — apasă ca să compari din nou':'Compară prețurile subcontractorilor pentru această lucrare')+'" style="'+(l.sub_price_id?'color:#2f6bff':'')+'">🧑‍🔧</button>'
+    +'<button class="delx" onclick="delLine('+i+')" title="Șterge linia">×</button></td></tr>';
+}
+function sectionTableHtml(idxs,inGroup,gidv){
+  const showDisc=(S.est.disc_mode==='line'), showVat=(S.est.vat_mode!=='none');
+  const head='<tr><th style="width:24px"></th><th style="width:16px"></th><th style="width:48px;text-align:center">Poză</th><th>Descriere</th><th style="width:84px">Cant.</th><th style="width:84px">UM</th><th style="width:98px">Preț fără TVA</th>'
+    +(showDisc?'<th style="width:68px">Red.%</th>':'')+(showVat?'<th style="width:86px">TVA</th>':'')
+    +(showVat?'<th class="ugh" style="width:98px;text-align:right">Preț cu TVA</th>':'')
+    +'<th style="width:120px;text-align:right">'+((S.est.vat_mode!=='none')?'Total cu TVA':'Total')+'</th><th style="width:104px"></th></tr>';
+  const rows=idxs.map((i,pos)=>lineRowHtml(i,inGroup,pos+1)).join('') || (inGroup?'<tr class="ph"><td colspan="20" style="color:var(--muted);padding:.5rem .6rem;font-size:.8rem">— gol — trage poziții aici sau apasă „＋ linie" —</td></tr>':'');
+  return '<table class="lines"><thead>'+head+'</thead><tbody class="lbody" data-g="'+(gidv||'')+'">'+rows+'</tbody></table>';
+}
+function uomOptions(){ return uomList().map(u=>'<option value="'+esc(u)+'"></option>').join(''); }
+/* Unități de măsură: lista din bază + Setări (automations.units) + catalog + adăugate în sesiune */
+function uomList(){ const base=['buc','set','m','ml','m2','m3','kg','t','l','pachet','rolă','sac','placă','foaie','găleată','tub','oră','zi','punct']; const cu=(S.firm&&S.firm.automations&&S.firm.automations.units)||[]; const cat=(S.catalog||[]).map(c=>c.unit).filter(Boolean); const ex=window._extraUnits||[]; return Array.from(new Set(base.concat(cu).concat(cat).concat(ex))); }
+function unitOptsHtml(cur){ cur=(cur||'').trim(); let us=uomList(); if(cur && us.indexOf(cur)<0) us=[cur].concat(us); return us.map(u=>'<option value="'+esc(u)+'"'+(u===cur?' selected':'')+'>'+esc(u)+'</option>').join('')+'<option value="__new">＋ alta…</option>'; }
+function unitSelectHtml(i,cur){ return '<select onchange="lineSetUnit('+i+',this.value)" style="width:100%">'+unitOptsHtml(cur)+'</select>'; }
+async function persistUnit(u){ try{ const au=Object.assign({}, S.firm.automations||{}); const units=Array.isArray(au.units)?au.units.slice():[]; if(units.indexOf(u)>=0) return; units.push(u); au.units=units; S.firm.automations=au; const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id; if(tid) await sb.from('tenants').update({automations:au}).eq('id',tid); }catch(e){} }
+function lineSetUnit(i,v){ const l=S.lines[i]; if(!l) return; if(v==='__new'){ const u=(prompt('Unitate de măsură nouă (ex: ml, oră, sac):')||'').trim(); if(!u){ render(); return; } window._extraUnits=window._extraUnits||[]; if(window._extraUnits.indexOf(u)<0) window._extraUnits.push(u); l.unit=u; persistUnit(u); render(); return; } l.unit=v; scheduleDraft(); }
+function vatListHtml(){ const rs=(S.firm&&S.firm.automations&&S.firm.automations.vat_rates)||[20,8,0]; return '<datalist id="vat-list">'+rs.map(r=>'<option value="'+esc(r)+'"></option>').join('')+'</datalist>'; }
+function renderLines(){
+  const ungIdx=S.lines.map((l,i)=>i).filter(i=>!S.lines[i].group);
+  let html='<datalist id="uom-list">'+uomOptions()+'</datalist>'+vatListHtml()+'<div class="lsec">'+sectionTableHtml(ungIdx,false,'')+'</div>';
+  html+='<div id="groups-wrap">';
+  S.groups.forEach(g=>{ const gi=S.lines.map((l,i)=>i).filter(i=>S.lines[i].group===g.id); const gt=groupTotals(g);
+    html+='<div class="lgroup" data-g="'+g.id+'" style="border:1px solid var(--line);border-radius:11px;margin-top:.8rem">'
+      +'<div class="lghead" style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;background:#eef2ff;padding:.5rem .7rem;border-bottom:1px solid var(--line);border-radius:10px 10px 0 0">'
+        +'<span class="ggrip" style="cursor:grab;color:#94a3b8;font-size:1.1rem">≡</span>'
+        +'<input value="'+esc(g.name||'')+'" placeholder="Nume grup (ex: Manoperă, Materiale, 12 mai)" oninput="setGroupName(\''+g.id+'\',this.value)" style="flex:1;min-width:150px;font-weight:700"/>'
+        +(((S.est.vat_mode||'none')==='line')?(function(){ const rs=[...new Set(S.lines.filter(l=>l.group===g.id).map(l=>Math.round((+l.vat_rate||0)*100)/100))]; const shown=(rs.length===1?rs[0]:''); const mixed=rs.length>1;
+          return '<label style="font-size:.76rem;color:#46506a;display:flex;align-items:center;gap:.25rem" title="'+(mixed?'liniile din grup au cote TVA diferite — scrie o cotă ca să o aplici tuturor':'aplică acest TVA tuturor liniilor din grup (poți edita apoi pe fiecare linie)')+'">TVA toate <input type="number" step="any" value="'+esc(shown)+'" placeholder="'+(mixed?'mixt':'0')+'" onchange="applyGroupVat(\''+g.id+'\',this.value)" style="width:58px'+(mixed?';border-color:#f59e0b':'')+'"/>%</label>'; })():'')
+        +'<label style="font-size:.76rem;color:#46506a;display:flex;align-items:center;gap:.25rem">Red. <input type="number" step="any" value="'+esc(g.disc||0)+'" oninput="setGroupDisc(\''+g.id+'\',this.value)" style="width:58px"/>%</label>'
+        +'<span id="gtot-'+g.id+'" style="font-size:.84rem;font-weight:800;min-width:90px;text-align:right">'+money(gt.total)+'</span>'
+        +'<button class="btn" style="padding:.25rem .5rem;font-size:.78rem" onclick="addLineG(\''+g.id+'\')">＋ linie</button>'
+        +'<button class="btn" style="padding:.25rem .5rem;font-size:.78rem" onclick="addSelToGroup(\''+g.id+'\')" title="adaugă pozițiile bifate în acest grup">📑 selecția</button>'
+        +'<button class="delx" onclick="delGroup(\''+g.id+'\')" title="șterge grupul (pozițiile rămân)">🗑</button>'
+      +'</div>'
+      +'<div style="padding:.25rem .5rem">'+sectionTableHtml(gi,true,g.id)+'</div>'
+    +'</div>';
+  });
+  html+='</div>';
+  $('lines-wrap').innerHTML=html;
+  initLineSort(); lnameSize();
+}
+function taGrow(el){ if(!el) return; el.style.height='auto'; el.style.height=(el.scrollHeight)+'px'; }
+function lnameSize(){ try{ document.querySelectorAll('.lines textarea.lname').forEach(taGrow); }catch(e){} }
+/* ►► HOTFIX-FIN-REORDER1 — biblioteca de glisare e LOCALĂ (`sortable.min.js`, precache SW),
+   nu de pe CDN. Cauza reprodusă: dacă `Sortable` lipsea la încărcare, `initLineSort` arunca,
+   pagina se randa PERFECT normal, dar nu mai glisa NIMIC — nici poziții, nici grupuri — și
+   fără niciun mesaj. Un editor care tace când o capabilitate a dispărut e mai rău decât unul
+   care se plânge: utilizatorul crede că trage greșit. De aceea garda de mai jos raportează.
+   Service worker-ul NU interceptează cross-origin (`sw.js`), deci scriptul de pe CDN nu era
+   niciodată în cache: pagina venea din cache, biblioteca nu venea deloc. */
+function initLineSort(){
+  if(typeof Sortable==='undefined'){
+    const T=window.C373t||function(s){return s;};
+    try{ toast('⚠️ '+T('Reordonarea pozițiilor nu s-a putut activa. Reîncarcă pagina.')); }catch(e){}
+    try{ console.error('initLineSort: Sortable indisponibil'); }catch(e){}
+    return;
+  }
+  document.querySelectorAll('#lines-wrap .lbody').forEach(tb=>{ Sortable.create(tb,{ group:'dzlines', handle:'.grip', animation:150, onEnd:rebuildLinesFromDOM }); });
+  const gw=$('groups-wrap'); if(gw) Sortable.create(gw,{ handle:'.ggrip', animation:150, onEnd:rebuildGroupsFromDOM });
+}
+function rebuildLinesFromDOM(){
+  const nl=[];
+  /* FIN-GROUP-PARITY1 — apartenența de DINAINTE de rescriere, ca să știm cine tocmai a intrat
+     într-un grup (`l.group` e suprascris chiar în bucla de mai jos). */
+  const before=new Map((S.lines||[]).map(l=>[l, l.group||'']));
+  freezeDiscOnMove(S.lines);   /* FIN-GROUP-DISCOUNT1 — glisarea nu schimbă nicio reducere */
+  document.querySelectorAll('#lines-wrap .lbody').forEach(tb=>{ const g=tb.getAttribute('data-g')||''; tb.querySelectorAll('tr[data-i]').forEach(tr=>{ const oi=+tr.getAttribute('data-i'); const l=S.lines[oi]; if(l){ l.group=g; nl.push(l); } }); });
+  if(nl.length===S.lines.length) S.lines=nl;
+  renderLines(); renderSummary(); renderBOM();
+}
+function rebuildGroupsFromDOM(){
+  const order=[]; document.querySelectorAll('#groups-wrap .lgroup').forEach(d=>{ const g=S.groups.find(x=>x.id===d.getAttribute('data-g')); if(g) order.push(g); });
+  if(order.length===S.groups.length) S.groups=order;
+  reorderLinesBySection(); renderLines(); renderSummary();
+}
+/* ── grupuri ── */
+/* ►► FIN-GROUP-DISCOUNT1 — mutarea unei poziții între containere e NEUTRĂ financiar.
+   Din 0211 reducerea pe poziție funcționează și în grup, deci nu se mai pierde nimic la
+   intrare. Rămâne un singur caz de tratat: linia MOȘTENITĂ (`disc_active` absent), a cărei
+   activare se deducea din container — ea și-ar schimba starea doar fiindcă a fost trasă cu
+   mouse-ul. Înghețăm deci starea EFECTIVĂ dinaintea mutării: ce era aplicat rămâne aplicat,
+   ce era adormit rămâne adormit. O mutare nu acordă și nu retrage o reducere. */
+function freezeDiscOnMove(moved){ (moved||[]).forEach(l=>{ if(l && l.disc_active!==true && l.disc_active!==false) l.disc_active=lineDiscOn(l); }); }
+function newGroup(){ S.groups.push({id:gid(),name:'Grup '+(S.groups.length+1),vat:(S.firm.vat_rate!=null?+S.firm.vat_rate:20),disc:0}); renderLines(); renderSummary(); }
+function groupSelection(){ const sel=S.lines.filter(l=>l._sel); if(!sel.length){ toast('Bifează întâi pozițiile.'); return; } const id=gid(); S.groups.push({id:id,name:'Grup '+(S.groups.length+1),vat:(S.firm.vat_rate!=null?+S.firm.vat_rate:20),disc:0}); freezeDiscOnMove(sel); sel.forEach(l=>{ l.group=id; l._sel=false; }); reorderLinesBySection(); renderLines(); renderSummary(); toast('🗂️ Grup creat din '+sel.length+' poziții.'); }
+function addSelToGroup(id){ const sel=S.lines.filter(l=>l._sel); if(!sel.length){ toast('Bifează întâi pozițiile.'); return; } freezeDiscOnMove(sel); sel.forEach(l=>{ l.group=id; l._sel=false; }); reorderLinesBySection(); renderLines(); renderSummary(); }
+function setGroupName(id,v){ const g=S.groups.find(x=>x.id===id); if(g) g.name=v; scheduleDraft(); }
+function setGroupVat(id,v){ const g=S.groups.find(x=>x.id===id); if(g){ g.vat=+v||0; const el=$('gtot-'+id); if(el) el.textContent=money(groupTotals(g).total); } renderSummary(); }
+function applyGroupVat(id,v){ const g=S.groups.find(x=>x.id===id); if(!g) return; const snap=grossAnchorSnap(); g.vat=+v||0; S.lines.forEach(l=>{ if(l.group===id) l.vat_rate=+v||0; }); grossAnchorApply(snap); renderLines(); renderSummary(); }
+function setGroupDisc(id,v){ const g=S.groups.find(x=>x.id===id); if(g){ g.disc=+v||0; const el=$('gtot-'+id); if(el) el.textContent=money(groupTotals(g).total); } renderSummary(); }
+function delGroup(id){ S.lines.forEach(l=>{ if(l.group===id) l.group=''; }); S.groups=S.groups.filter(x=>x.id!==id); reorderLinesBySection(); renderLines(); renderSummary(); }
+function addLineG(id){ const l=blankLine(); l.group=id; S.lines.push(l); reorderLinesBySection(); renderLines(); }
+function toggleSel(i,c){ if(S.lines[i]) S.lines[i]._sel=c; }
+function renderSummary(){ const t=totals(); const vm=S.est.vat_mode||'none';
+  let h='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.gross)+'</b></div>';
+  if(t.disc>0.005) h+='<div class="totrow"><span class="sub">Reducere</span><b style="color:var(--green)">−'+money(t.disc)+'</b></div>';
+  h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.est.vat_value)?(' '+num2(S.est.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
+  h+='<div class="totrow g"><span>Total</span><span>'+money(t.total)+'</span></div>';
+  // Avertizare: liniile au cote TVA dar modul „Fără" le ignoră — altfel TVA „dispare" silențios din PDF
+  if(vm==='none' && S.lines.some(l=>(l.name||'').trim() && (+l.vat_rate||0)>0)){
+    h+='<div style="margin-top:.55rem;padding:.5rem .6rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;font-size:.76rem;color:#9a3412;line-height:1.5">⚠️ Liniile au cote TVA, dar TVA e pe „Fără" — cotele nu se aplică. <a onclick="setVatMode(\'line\')" style="cursor:pointer;text-decoration:underline;font-weight:700">Aplică TVA pe poziție</a></div>';
+  }
+  /* FIN1 — rata unificată e efectivă și în grupuri; spune-o, ca utilizatorul să nu caute
+     cotele pe linii degeaba. */
+  if(vm==='total' && S.groups.length){
+    h+='<div style="margin-top:.55rem;padding:.45rem .6rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;font-size:.75rem;color:#1e40af;line-height:1.5">\u2139\uFE0F TVA unificat se aplică tuturor pozițiilor, inclusiv celor din grupuri.</div>';
+  }
+  const au=(S.firm&&S.firm.automations)||{};
+  if(au.prepay_show!==false){
+    if(S.est.skonto_off){ h+='<div style="margin-top:.55rem;font-size:.74rem;color:var(--muted)">💸 Skonto dezactivat pe acest document · <a onclick="skontoToggle(false)" style="cursor:pointer;color:var(--primary)">reactivează</a></div>'; }
+    else { const pn=prepayNote(t.total); const cur=(S.est.skonto_pct!=null&&S.est.skonto_pct!=='')?S.est.skonto_pct:(au.prepay_pct!=null?au.prepay_pct:3);
+      h+='<div style="position:relative;margin-top:.55rem;padding:.5rem 1.3rem .5rem .6rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:.76rem;color:#065f46;line-height:1.55">'
+        +'<span onclick="skontoToggle(true)" title="Exclude pe acest document" style="position:absolute;top:.2rem;right:.35rem;cursor:pointer;font-weight:800;opacity:.55;font-size:.95rem">×</span>'
+        +'💸 La plata 100% în avans: −<input type="number" step="any" value="'+esc(cur)+'" oninput="skontoPct(this.value)" onchange="renderSummary()" onfocus="this.select()" style="width:48px;padding:.05rem .2rem;font-size:.76rem;border:1px solid #a7f3d0;border-radius:5px;text-align:right"/>%'
+        +(pn?' <span style="white-space:nowrap">(−<b>'+money(pn.save)+'</b> → <b>'+money(pn.after)+'</b>)</span>':'')
+        +'</div>'; }
+  }
+  $('sum').innerHTML=h; scheduleDraft();
+}
+/* ►► FIN-GROUP-PARITY1 — un câmp derivat NU se rescrie cât timp utilizatorul scrie în el.
+   Cele trei câmpuri de preț ale poziției (fără TVA · cu TVA · total) se derivă unul din
+   celălalt, deci orice recalculare le-ar rescrie pe toate — inclusiv pe cel cu cursorul în el.
+   Efectul ar fi exact cel interzis de contract: „valoarea sare în timp ce tastezi" (scrii
+   „12", handlerul rescrie „1"). Singura regulă necesară e să sărim elementul focusat. */
+function setFieldVal(el,val){ if(el && el!==document.activeElement) el.value=val; }
+function refreshLineTotal(i){ const l=S.lines[i]; if(!l) return;
+  setFieldVal($('up-'+i), l.unit_price);
+  setFieldVal($('tt-'+i), num2(lineGross(l)));
+  setFieldVal($('ug-'+i), num2(unitGross(l))); }
+function lineEdit(i,k,v){ S.lines[i][k]=v; if(k==='unit') return;
+  if(k==='unit_price') S.lines[i]._pxAnchor='net';   /* FIN-GROUP-PARITY1 — ultimul preț explicit e NETUL */
+  /* FIN-GROUP-DISCOUNT1 — a scrie în câmpul de reducere E consimțământul explicit cerut
+     de contract. Doar aici, niciodată dintr-o valoare deja stocată. */
+  if(k==='disc') S.lines[i].disc_active=true;
+  refreshLineTotal(i); renderSummary(); if(k==='qty') renderBOM(); }
+function lineSetTotal(i,v){ const l=S.lines[i]; const q=+l.qty||0; const dfac=lineDiscFactor(l); const eff=lineEffVat(l); const gross=+v||0; const net=eff?gross/(1+eff/100):gross;
+  /* FIN-GROUP-PARITY1 — totalul poziției scrie tot NETUL unitar, deci valoarea explicită care
+     supraviețuiește rămâne cea fără TVA: ancora revine pe NET (comportament neschimbat). */
+  l._pxAnchor='net';
+  if(q>0 && dfac>0) l.unit_price=Math.round((net/(q*dfac))*100)/100;
+  refreshLineTotal(i);
+  renderSummary(); }
+/* ►► FIN-GROUP-PARITY1 — ANCORA de preț. Perechea „fără TVA ↔ cu TVA" are o SINGURĂ sursă
+   persistentă: `unit_price`, mereu NET (D34). Brutul rămâne derivat — nu se naște a doua
+   coloană care ar putea diverge. Când se schimbă cota, una dintre cele două valori afișate
+   trebuie să cedeze; contractul spune că cedează cea pe care utilizatorul NU a scris-o
+   ultima. `_pxAnchor==='gross'` înseamnă „am tastat prețul cu TVA — ține-l pe el".
+   Ancora se consultă DOAR la schimbarea cotei. O reducere sau o cantitate au voie să mute
+   brutul efectiv — o reducere care nu scade prețul afișat ar fi absurdă — de aceea
+   instantaneul se ia din starea CURENTĂ, nu dintr-o valoare memorată care ar rămâne în urmă.
+   Ancora NU se persistă nicăieri: nu e în `HIST_LINE`, nu e în payload-ul de salvare și e
+   ștearsă din schița locală ⇒ deschiderea documentului, reload-ul și Undo o resetează pe NET. */
+function grossAnchorSnap(){ return (S.lines||[]).map(l=> l._pxAnchor==='gross' ? unitGross(l) : null); }
+function grossAnchorApply(snap){ (S.lines||[]).forEach((l,k)=>{ const g=snap[k]; if(g==null) return;
+  const dfac=lineDiscFactor(l); if(dfac>0) l.unit_price=VATX.r2(VATX.net(g, lineEffVat(l))/dfac);
+  refreshLineTotal(k); }); }
+/* „Preț/unitate cu TVA" devine EDITABIL, simetric cu prețul fără TVA. Inversarea trece prin
+   `VATX` (contractul unic de conversie, D34) și prin ACELAȘI factor de reducere ca `lineNet`,
+   deci `unitGross()` reconstituie exact ce s-a tastat. Cantitatea se simplifică — brutul pe
+   unitate nu depinde de `qty` — deci inversarea e stabilă la orice cantitate. Se scrie înapoi
+   DOAR netul; totalurile rămân ale motorului canonic, nu se recalculează din valoarea brută. */
+function lineSetUnitGross(i,v){ const l=S.lines[i]; if(!l) return;
+  const dfac=lineDiscFactor(l);
+  l._pxAnchor='gross';
+  if(dfac>0) l.unit_price=VATX.r2(VATX.net(+v||0, lineEffVat(l))/dfac);
+  refreshLineTotal(i); renderSummary(); scheduleDraft(); }
+/* FIN-GROUP-DISCOUNT1 — activarea unei reduceri moștenite, printr-un gest explicit. */
+function lineDiscActivate(i){ const l=S.lines[i]; if(!l) return; l.disc_active=true;
+  renderLines(); renderSummary(); scheduleDraft();
+  const T=window.C373t||function(s){return s;};
+  toast('✅ '+T('Reducerea acestei poziții este acum aplicată.')); }
+function addLine(){ S.lines.push(blankLine()); reorderLinesBySection(); renderLines(); }
+/* ---- AI: generează liniile devizului din descriere ---- */
+function aiOffer(){
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:520px"><h3>🧠 Generează din descriere</h3>'
+    +'<div style="font-size:.84rem;color:var(--muted);margin-bottom:.4rem">Descrie lucrarea în câteva cuvinte — AI propune liniile devizului (le poți edita după).</div>'
+    +'<textarea id="ai-input" rows="4" placeholder="Ex: Renovare baie 6 m² — hidroizolație, gresie și faianță, instalație sanitară, tavan rigips."></textarea>'
+    +'<div id="ai-msg" style="color:var(--red);font-size:.82rem;margin-top:.3rem"></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="ai-go" onclick="aiOfferRun()">Generează</button></div>'
+    +'<div style="font-size:.72rem;color:var(--muted);margin-top:.5rem">Necesită cheia AI configurată de administrator (Setări).</div></div></div>';
+  setTimeout(()=>{ const t=$('ai-input'); if(t) t.focus(); },60);
+}
+async function aiOfferRun(){
+  const input=($('ai-input').value||'').trim(); if(!input){ $('ai-msg').textContent='Scrie o descriere.'; return; }
+  const btn=$('ai-go'); if(btn){ btn.disabled=true; btn.textContent='Se generează…'; }
+  try{
+    const lang=(window.C373lang||'ro');
+    const cur=(S.firm&&S.firm.currency)||'MDL';
+    const au=(S.firm&&S.firm.automations)||{};
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'offer', input, lang, currency:cur, tenant_id:S.tenant, key:au.anthropic_key||undefined, model:au.ai_model||'claude-haiku-4-5' } });
+    if(error) throw new Error(error.message||'Eroare apel AI');
+    if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
+    let txt=(data&&data.text)||''; const m=txt.match(/\{[\s\S]*\}/); if(m) txt=m[0];
+    const parsed=JSON.parse(txt); const lines=(parsed.lines||parsed||[]);
+    if(!Array.isArray(lines)||!lines.length) throw new Error('Niciun rezultat. Reformulează descrierea.');
+    const vr=(S.firm.vat_rate!=null?S.firm.vat_rate:20);
+    const added=lines.slice(0,25).map(x=>({ name:(x.name||'').toString().slice(0,200), qty:+x.qty||1, unit:(x.unit||'buc').toString().slice(0,12), unit_price:+x.price||+x.unit_price||0, vat_rate:vr, kind:'service', norm_code:null, description:'', photo_url:null }));
+    if(S.lines.length===1 && !S.lines[0].name) S.lines=added; else S.lines=S.lines.concat(added); reorderLinesBySection();
+    closeM(); toast('✅ '+added.length+' linii generate. Verifică prețurile.'); renderLines(); renderSummary(); renderBOM();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Generează'; }
+    let msg=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(msg)) msg='AI nu este încă configurat. Administratorul trebuie să publice funcția „ai" și să adauge cheia API în Supabase (vezi instrucțiunile).';
+    $('ai-msg').textContent=msg;
+  }
+}
+async function ldAiDesc(i){
+  const l=S.lines[i]; if(!l) return; const name=(l.name||'').trim(); const ta=$('ld-desc'); if(!ta) return;
+  const msg=$('ld-msg');
+  if(!name){ if(msg) msg.textContent='Scrie întâi denumirea liniei.'; return; }
+  const btn=$('ld-ai'); if(btn){ btn.disabled=true; btn.textContent='✨ …'; } if(msg) msg.textContent='';
+  const cur=(ta.value||'').trim();
+  try{
+    const lang=(window.C373lang||'ro'); const au=(S.firm&&S.firm.automations)||{};
+    const prompt='Scrie o descriere comercială scurtă (1-2 propoziții), profesională, pentru poziția de deviz dintr-o firmă de construcții: "'+name+'".'+(cur?(' Îmbunătățește textul existent: "'+cur+'".'):'')+' Spune ce include / la ce folosește. Răspunde DOAR cu descrierea, fără titlu și fără ghilimele.';
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'chat', input:prompt, lang, currency:(S.firm&&S.firm.currency)||'MDL', tenant_id:S.tenant, key:au.anthropic_key||undefined, model:au.ai_model||'claude-haiku-4-5' } });
+    if(error) throw new Error(error.message||'Eroare AI');
+    if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
+    const txt=((data&&data.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt) ta.value=txt; else if(msg) msg.textContent='AI nu a returnat text.';
+  }catch(e){ let m=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(m)) m='AI nu este configurat (vezi Setări).'; if(msg) msg.textContent=m; }
+  if(btn){ btn.disabled=false; btn.textContent='✨ AI'; }
+}
+async function aiNotes(){
+  const ta=$('f-notes'); if(!ta) return; const msg=$('notes-msg'); const btn=$('notes-ai');
+  if(btn){ btn.disabled=true; btn.textContent='✨ …'; } if(msg) msg.textContent='';
+  const cur=(ta.value||'').trim();
+  const cli=(S.est&&S.est.client_name)?(' Client: "'+S.est.client_name+'".'):'';
+  try{
+    const lang=(window.C373lang||'ro'); const au=(S.firm&&S.firm.automations)||{};
+    const prompt='Scrie note/condiții profesionale pentru o ofertă (deviz) a unei firme de construcții — termen de valabilitate, condiții de plată/avans, termen de execuție, garanție. 2-4 propoziții scurte.'+cli+(cur?(' Pornește de la / îmbunătățește textul existent: "'+cur+'".'):'')+' Răspunde DOAR cu textul, fără titlu și fără ghilimele.';
+    const { data, error }=await sb.functions.invoke('ai',{ body:{ mode:'chat', input:prompt, lang, currency:(S.firm&&S.firm.currency)||'MDL', tenant_id:S.tenant, key:au.anthropic_key||undefined, model:au.ai_model||'claude-haiku-4-5' } });
+    if(error) throw new Error(error.message||'Eroare AI');
+    if(data && data.ok!==true) throw new Error(data.message||data.detail||data.error||'Eroare AI');
+    const txt=((data&&data.text)||'').trim().replace(/^["„]+|["”]+$/g,''); if(txt){ ta.value=txt; S.est.notes=txt; } else if(msg) msg.textContent='AI nu a returnat text.';
+  }catch(e){ let m=(e&&e.message)||String(e); if(/configur|ANTHROPIC|neconfig|not found|404|Failed to send|Edge Function|non-2xx|FunctionsFetch/i.test(m)) m='AI nu este configurat (vezi Setări).'; if(msg) msg.textContent=m; }
+  if(btn){ btn.disabled=false; btn.textContent='✨ AI'; }
+}
+function delLine(i){ S.lines.splice(i,1); if(!S.lines.length) S.lines=[blankLine()]; renderLines(); renderSummary(); renderBOM(); }
+/* descriere + poza per pozitie */
+async function lineDetails(i){
+  const l=S.lines[i]; let thumb='';
+  if(l.photo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(l.photo_url,600); if(data&&data.signedUrl) thumb='<img src="'+data.signedUrl+'" style="max-width:100%;max-height:170px;border-radius:8px;border:1px solid var(--line);margin:.4rem 0;display:block">'; }catch(e){} }
+  // Acest formular schimbă DOAR poziția din ofertă — niciodată catalogul.
+  // Înainte butonul lui spunea generic „Salvează", iar utilizatorul completa aici
+  // descrierea și poza crezând că actualizează materialul din nomenclator.
+  const inCat=!!l.cat_id;
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>📝 Detaliile poziției din ofertă</h3>'
+    +'<div style="font-weight:600;margin-bottom:.25rem">'+esc(l.name||'(fără denumire)')+'</div>'
+    +'<div style="font-size:.8rem;color:var(--muted);border-left:3px solid var(--primary);padding:.3rem .5rem;margin-bottom:.55rem">Modificările de aici se aplică <b>numai acestei oferte</b>. Catalogul (Materiale / Servicii) rămâne neschimbat.'
+      +(inCat?' Ca să schimbi și produsul din catalog, folosește butonul 💾 de pe rândul poziției.':'')+'</div>'
+    +'<div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.4rem"><div class="field" style="flex:1;margin:0"><label>Preț fără TVA</label><input id="ld-net" type="number" step="any" value="'+esc(l.unit_price||0)+'" oninput="ldSync(\'net\')"/></div>'
+    +'<div class="field" style="flex:1;margin:0"><label>Preț cu TVA</label><input id="ld-gross" type="number" step="any" value="'+esc(Math.round((+l.unit_price||0)*(1+(+l.vat_rate||0)/100)*100)/100)+'" oninput="ldSync(\'gross\')"/></div>'
+    +'<div class="field" style="width:78px;margin:0"><label>TVA %</label><input id="ld-vat" list="vat-list" type="number" step="any" value="'+esc(l.vat_rate!=null?l.vat_rate:20)+'" oninput="ldSync(\'net\')"/></div></div>'
+    +'<div class="field"><label>Descriere (apare pe ofertă, sub denumire) <button type="button" id="ld-ai" class="btn" style="padding:.12rem .5rem;font-size:.76rem;font-weight:600" onclick="ldAiDesc('+i+')">✨ AI</button></label><textarea id="ld-desc" rows="3" placeholder="Ex: Inclusiv pregătirea suprafeței și amorsa. Material: glet de finisaj.">'+esc(l.description||'')+'</textarea></div>'
+    +'<div class="field"><label>Poză (opțional)</label>'+thumb
+    +(l.photo_url?'<button class="btn" onclick="lineRemovePhoto('+i+')" style="margin-bottom:.4rem">🗑 Șterge poza</button><br>':'')
+    +'<input id="ld-photo" type="file" accept="image/*"/></div>'
+    +'<div id="ld-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="ld-save" onclick="saveLineDetails('+i+')">Adaugă în ofertă</button></div></div></div>';
+  setTimeout(()=>$('ld-desc')&&$('ld-desc').focus(),50);
+}
+function lineRemovePhoto(i){ S.lines[i].photo_url=null; lineDetails(i); }
+function ldSync(which){ const vr=+($('ld-vat').value)||0, ne=$('ld-net'), ge=$('ld-gross'); if(!ne||!ge) return;
+  if(which==='net'){ ge.value = ne.value===''?'':Math.round((+ne.value||0)*(1+vr/100)*100)/100; }
+  else { ne.value = ge.value===''?'':(vr?Math.round((+ge.value||0)/(1+vr/100)*100)/100:(+ge.value||0)); } }
+function umFx(el){ el.dataset.prev=el.value; el.value=""; }
+function umBl(el){ if(!el.value && el.dataset.prev!=null) el.value=el.dataset.prev; }
+function isNetErr(e){ const m=((e&&(e.message||e))||'').toString().toLowerCase(); return !navigator.onLine || /load failed|failed to fetch|networkerror|network error|timeout|aborted/.test(m); }
+/* O operație server-side (semnarea) a REUȘIT sau are rezultat incert, dar starea canonică
+   (`updated_at`, pus de trigger cu now() al serverului) nu a putut fi citită înapoi.
+   NU repetăm operația și NU raportăm eșec. Invalidăm tokenul de concurență: 0117 tratează
+   `p_expected_updated_at is null` ca DOC_CONFLICT, deci salvarea e refuzată de SERVER, nu doar
+   de interfață. În plus dezactivăm „Salvează" și oferim o reîncărcare controlată. */
+/* ════ CDI1 (D105) — contractul `loaded-complete` + tripwire la deschidere ════
+   Un document existent se poate salva DOAR după ce antetul ȘI pozițiile s-au încărcat
+   complet. O eroare de încărcare NU devine un formular gol salvabil: blocăm Save-ul și
+   cerem reîncărcarea. Pozițiile DUPLICATE (aceeași `position` > 0) sunt dovada unei
+   coruperi anterioare (KB#114) — documentul se deschide pentru citire, nu se salvează.
+   Totalurile din antet care nu se reconstituie din poziții sunt DOAR avertisment:
+   măsurat pe producție, 7/79 documente istorice (pre-0133/0160, KB#95) nu se reconstituie
+   legitim — un blocaj ar fi fals pozitiv; blocajul aparține FIN-REVISION1. */
+function docLoadFailed(msg, detail){
+  S._loaded=false; S._updatedAt=null; S._needsReload=true;
+  const b=$('btn-save'); if(b) b.disabled=true;
+  const T=window.C373t||function(s){return s;};
+  toast('⚠️ '+T(msg)+(detail?' ('+detail+')':''));
+  $('modal-mount').innerHTML='<div class="ov"><div class="modal" style="max-width:460px"><h3>⚠️ '+esc(T('Documentul nu s-a încărcat complet'))+'</h3>'
+    +'<p style="font-size:.88rem;line-height:1.5;margin:.2rem 0 .9rem">'+esc(T(msg)+(detail?' ('+detail+')':'')+' '+T('Salvarea este dezactivată ca să nu se piardă poziții. Reîncarcă documentul.'))+'</p>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end"><button class="btn primary" onclick="location.reload()">🔄 '+esc(T('Reîncarcă documentul'))+'</button></div></div></div>';
+}
+function docLoadTripwire(rawItems, hdr){
+  const T=window.C373t||function(s){return s;};
+  const seen={}; let dup=0;
+  (rawItems||[]).forEach(x=>{ const p=+x.position||0; if(p>0){ if(seen[p]) dup++; seen[p]=1; } });
+  if(dup>0){ docLoadFailed('Documentul are poziții duplicate (corupere anterioară). Poate fi citit, dar nu salvat din această filă — anunță administratorul.'); return false; }
+  try{ const t=totals(); const tol=0.02;
+    if(Math.abs((+hdr.subtotal||0)-t.sub)>tol || Math.abs((+hdr.vat_total||0)-t.vat)>tol || Math.abs((+hdr.total||0)-t.total)>tol){
+      setTimeout(function(){ toast('⚠️ '+T('Totalurile salvate nu se reconstituie din poziții (document istoric sau modificat în afara editorului). Verifică pozițiile înainte de a salva.')); },600);
+    } }catch(e){}
+  return true;
+}
+function docStale(ceAReusit){
+  S._updatedAt=null; S._needsReload=true;
+  const b=$('btn-save'); if(b) b.disabled=true;
+  const T=window.C373t||function(s){return s;};
+  const cont=T('Documentul trebuie reîncărcat înainte de a continua editarea.');
+  toast('⚠️ '+T(ceAReusit)+' '+cont);
+  $('modal-mount').innerHTML='<div class="ov"><div class="modal" style="max-width:460px"><h3>🔄 '+esc(T('Reîncarcă documentul'))+'</h3>'
+    +'<p style="font-size:.88rem;line-height:1.5;margin:.2rem 0 .9rem">'+esc(T(ceAReusit)+' '+cont)+'</p>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end"><button class="btn" onclick="closeM()">'+esc(T('Închide'))+'</button>'
+    +'<button class="btn primary" onclick="location.reload()">🔄 '+esc(T('Reîncarcă documentul'))+'</button></div></div></div>';
+}
+async function saveLineDetails(i){
+  const l=S.lines[i]; l.description=($('ld-desc').value||'').trim()||'';
+  if($('ld-net')) l.unit_price=+($('ld-net').value)||0; if($('ld-vat')) l.vat_rate=+($('ld-vat').value)||0;
+  const f=$('ld-photo');
+  if(f && f.files && f.files[0]){
+    const btn=$('ld-save'); if(btn) btn.disabled=true; $('ld-msg').textContent='Se încarcă poza…';
+    try{
+      const file=f.files[0]; const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const mq=await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle();
+      if(mq.error) throw mq.error;
+      const tid=mq.data&&mq.data.tenant_id; if(!tid) throw new Error('Sesiune expirată. Reîncarcă pagina.');
+      const path=tid+'/lines/'+Date.now()+'_'+safe;
+      // reîncearcă automat dacă rețeaua pică (util pe telefon / 4G)
+      let up, attempt=0;
+      while(true){ up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
+        if(!up.error || !isNetErr(up.error) || attempt>=2) break;
+        attempt++; $('ld-msg').textContent='📡 Conexiune slabă — reîncerc ('+attempt+')…'; await new Promise(s=>setTimeout(s,700*attempt)); }
+      if(up.error) throw up.error;
+      l.photo_url=path;
+    }catch(e){ if($('ld-save'))$('ld-save').disabled=false;
+      $('ld-msg').textContent = isNetErr(e) ? '📡 Conexiune întreruptă — verifică internetul și apasă din nou.' : ('Eroare: '+(e.message||e)); return; }
+  }
+  closeM(); toast('✅ Poziția din ofertă a fost actualizată. Catalogul a rămas neschimbat.'); renderLines(); signLineThumbs();
+}
+
+/* ---- AUTOCOMPLETE ---- */
+function lineSearch(i,q){ S.lines[i].name=q; const dd=$('dd-'+i); if(!dd) return;
+  const ql=(q||'').toLowerCase().trim();
+  let list = ql ? S.catalog.filter(c=>c.name.toLowerCase().includes(ql)).slice(0,8) : S.catalog.slice(0,8);
+  let html=list.map((c,ci)=>{ const idx=S.catalog.indexOf(c);
+    return '<div class="it" onmousedown="event.preventDefault();pickCatalog('+i+','+idx+')"><span>'+c.icon+'</span><span class="nm">'+esc(c.name)+'</span><span class="pr">'+esc(c.unit)+' · '+money(c.price)+'</span></div>'; }).join('');
+  // UN SINGUR îndemn, formulat ca acțiunea reală
+  if(ql && !S.catalog.some(c=>c.name.toLowerCase()===ql)){ html+='<div class="it add" onmousedown="event.preventDefault();quickAddService('+i+')"><span>＋</span><span class="nm">Adaugă material nou în catalog „'+esc(q)+'"</span></div>'; }
+  dd.innerHTML=html||'<div class="it sub">Niciun rezultat.</div>'; dd.style.display='';
+}
+function hideDD(i){ setTimeout(()=>{ const dd=$('dd-'+i); if(dd) dd.style.display='none'; },150); }
+function pickCatalog(i,ci){ const c=S.catalog[ci]; if(!c) return; const l=S.lines[i];
+  l.name=c.name; l.unit=c.unit; l.unit_price=c.price; l.vat_rate=c.vat; l.kind=c.kind; l.norm_code=c.norm_code||null;
+  if(c.desc) l.description=l.description||c.desc;
+  if(c.photo) l.photo_url=l.photo_url||c.photo;
+  if((c.src==='service'||c.src==='material') && c.id){ l.cat_id=c.id; l.cat_src=c.src; l._catName=c.name; l._catPrice=+c.price||0; l._catUnit=c.unit; l._catDesc=c.desc||''; l._catPhoto=c.photo||null; }
+  renderLines(); renderSummary(); renderBOM(); signLineThumbs(); }
+
+/* ══ Prețurile subcontractorilor: comparație pe aceeași lucrare (Lotul 0C2) ══
+   Înainte, tarifele lor erau un câmp de text liber în fișa subcontractorului:
+   nu puteau fi căutate, comparate sau aduse într-un Deviz. Acum se aleg de aici,
+   iar linia păstrează SNAPSHOTUL sursei — o schimbare ulterioară a tarifului NU
+   rescrie documentul salvat, iar o modificare a prețului aici NU atinge tariful. */
+function subMoney(n,cur){ if(n==null||n==='') return '—';
+  return Number(n).toLocaleString('ro-RO',{minimumFractionDigits:0,maximumFractionDigits:2})+' '+esc(cur||'MDL'); }
+function subToday(){ return new Date().toISOString().slice(0,10); }
+function subActive(p){ const t=subToday();
+  return p.active && (!p.valid_from||p.valid_from<=t) && (!p.valid_to||p.valid_to>=t); }
+function subUnitSame(a,b){ return String(a||'').trim().toLowerCase()===String(b||'').trim().toLowerCase(); }
+function subSourceHtml(l){
+  if(!l.sub_id && !l.sub_price_id) return '';
+  const who=(S.subs||[]).find(s=>s.id===l.sub_id);
+  const changed = l.sub_price_amount!=null && (+l.unit_price||0)!==(+l.sub_price_amount||0);
+  const live=(S.subPrices||[]).find(p=>p.id===l.sub_price_id);
+  let note='';
+  if(!l.sub_price_id) note=' · tariful a fost șters';
+  else if(!live) note=' · tariful nu mai e disponibil';
+  else if(+live.unit_price!==(+l.sub_price_amount||0)) note=' · tariful curent e '+subMoney(live.unit_price,live.currency);
+  else if(live && !subActive(live)) note=' · tariful nu mai e activ';
+  return '<div style="margin-top:4px;font-size:11px;color:#2f6bff;line-height:1.35">🧑‍🔧 '
+    +esc(who?who.name:(l.sub_price_name||'subcontractor'))
+    +' · '+subMoney(l.sub_price_amount,l.sub_price_currency)+'/'+esc(l.sub_price_unit||'')
+    +(changed?'<span style="color:#dc2626"> · preț modificat în deviz</span>':'')
+    +'<span style="color:#6b7793">'+esc(note)+'</span></div>';
+}
+async function loadSubPrices(){
+  if(S.subPrices) return;
+  try{
+    const [a,b]=await Promise.all([
+      sb.from('subcontractors').select('id,name,specialty'),
+      sb.from('subcontractor_prices').select('*')
+    ]);
+    S.subs=a.data||[]; S.subPrices=b.data||[];
+  }catch(e){ S.subs=S.subs||[]; S.subPrices=S.subPrices||[]; }
+}
+async function openSubPicker(i){
+  await loadSubPrices();
+  const l=S.lines[i]; if(!l) return;
+  SUBP={ i:i, q:(l.name||''), cat:'', qty:(+l.qty||1), unit:(l.unit||'') };
+  renderSubPicker();
+}
+let SUBP=null;
+function subpSet(k,v){ if(!SUBP) return; SUBP[k]=v; renderSubPicker(); }
+function subpRows(){
+  const q=(SUBP.q||'').toLowerCase().trim();
+  let rows=(S.subPrices||[]).filter(p=>subActive(p));
+  if(SUBP.cat) rows=rows.filter(p=>(p.category||'')===SUBP.cat);
+  if(q) rows=rows.filter(p=>((p.name||'')+' '+(p.code||'')+' '+(p.description||'')+' '+(p.category||'')).toLowerCase().includes(q));
+  const nm=s=>(S.subs||[]).find(x=>x.id===s);
+  rows=rows.map(p=>Object.assign({},p,{_sub:nm(p.subcontractor_id)}));
+  rows.sort((a,b)=>(+a.unit_price||0)-(+b.unit_price||0));
+  return rows;
+}
+function renderSubPicker(){
+  if(!SUBP) return;
+  const T=window.C373t||function(s){return s;};
+  const rows=subpRows();
+  const cats=Array.from(new Set((S.subPrices||[]).filter(subActive).map(p=>p.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const anyPrices=(S.subPrices||[]).length>0;
+  let h='<div class="ov" onclick="if(event.target===this)closeSubPicker()"><div class="modal" style="max-width:760px">'
+   +'<h3>🧑‍🔧 '+esc(T('Prețurile subcontractorilor'))+'</h3>'
+   +'<div style="font-size:12px;color:#6b7793;margin:-4px 0 10px">Alege lucrarea, pune volumul și compară. Prețul se ia DOAR când apeși „Alege" — nimic nu se selectează automat, nici măcar cel mai ieftin.</div>'
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">'
+     +'<div style="flex:2;min-width:180px"><label style="font-size:11px;color:#6b7793">Lucrarea</label>'
+       +'<input value="'+esc(SUBP.q)+'" oninput="subpSet(\'q\',this.value)" placeholder="caută după denumire, cod…" style="width:100%"/></div>'
+     +'<div style="min-width:140px"><label style="font-size:11px;color:#6b7793">Categorie</label>'
+       +'<select onchange="subpSet(\'cat\',this.value)" style="width:100%"><option value="">toate</option>'
+       +cats.map(c=>'<option value="'+esc(c)+'" '+(SUBP.cat===c?'selected':'')+'>'+esc(c)+'</option>').join('')+'</select></div>'
+     +'<div style="width:110px"><label style="font-size:11px;color:#6b7793">Volum</label>'
+       +'<input type="number" step="any" value="'+esc(SUBP.qty)+'" oninput="subpSet(\'qty\',this.value)" style="width:100%"/></div>'
+     +'<div style="width:100px"><label style="font-size:11px;color:#6b7793">U.M. linie</label>'
+       +'<input value="'+esc(SUBP.unit)+'" oninput="subpSet(\'unit\',this.value)" style="width:100%"/></div>'
+   +'</div>';
+  if(!anyPrices){
+    h+='<div style="color:#6b7793;font-size:13px;padding:10px 0">Niciun subcontractor nu are încă tarife introduse. Le adaugi în modulul <b>Subcontractori</b> → fișa lui → <b>💰 Prețuri / Tarife</b>.</div>';
+  } else if(!rows.length){
+    h+='<div style="color:#6b7793;font-size:13px;padding:10px 0">Niciun tarif activ nu corespunde căutării. Încearcă alt cuvânt sau golește filtrele.</div>';
+  } else {
+    const q=+SUBP.qty||0;
+    h+='<div style="max-height:52vh;overflow:auto"><table class="tbl" style="width:100%;font-size:12.5px"><thead><tr>'
+      +'<th>Subcontractor</th><th>Lucrare</th><th>U.M.</th><th style="text-align:right">Preț unitar</th>'
+      +'<th style="text-align:right">Total la volum</th><th>TVA</th><th>Valabil</th><th></th></tr></thead><tbody>';
+    rows.forEach((p,ri)=>{
+      const same=subUnitSame(p.unit, SUBP.unit) || !String(SUBP.unit||'').trim();
+      const tot=same?(q*(+p.unit_price||0)):null;
+      h+='<tr>'
+        +'<td><b>'+esc(p._sub?p._sub.name:'—')+'</b>'+(p._sub&&p._sub.specialty?'<div style="color:#6b7793;font-size:11px">'+esc(p._sub.specialty)+'</div>':'')+'</td>'
+        +'<td>'+esc(p.name)+(p.code?'<div style="color:#6b7793;font-size:11px">'+esc(p.code)+'</div>':'')
+          +(p.category?'<div style="color:#6b7793;font-size:11px">'+esc(p.category)+'</div>':'')
+          +(p.notes?'<div style="color:#6b7793;font-size:11px">📝 '+esc(p.notes)+'</div>':'')+'</td>'
+        +'<td>'+esc(p.unit)+'</td>'
+        +'<td style="text-align:right;white-space:nowrap"><b>'+subMoney(p.unit_price,p.currency)+'</b></td>'
+        +'<td style="text-align:right;white-space:nowrap">'
+          +(same?('<b>'+subMoney(tot,p.currency)+'</b>')
+                :'<span style="color:#dc2626">unități diferite<br>('+esc(p.unit)+' vs '+esc(SUBP.unit)+')</span>')+'</td>'
+        +'<td style="white-space:nowrap">'+(p.vat_rate!=null?(p.vat_rate+'%'+(p.price_includes_vat?' inclus':'')):'—')+'</td>'
+        +'<td style="white-space:nowrap;font-size:11px">'+esc((p.valid_from||'…')+' → '+(p.valid_to||'…'))+'</td>'
+        +'<td><button class="addline" onclick="pickSubPrice('+ri+')">Alege</button></td>'
+        +'</tr>';
+    });
+    h+='</tbody></table></div>';
+    if(rows.some(p=>!subUnitSame(p.unit,SUBP.unit) && String(SUBP.unit||'').trim()))
+      h+='<div style="margin-top:8px;font-size:12px;color:#dc2626">⚠️ Tarifele cu altă unitate de măsură nu se convertesc automat și nu li se calculează totalul. Schimbă unitatea liniei sau alege un tarif în aceeași unitate; dacă alegi totuși unul, unitatea liniei devine cea a tarifului.</div>';
+  }
+  h+='<div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px">'
+    +'<button class="btn-ghost" onclick="closeSubPicker()">'+esc(T('Închide'))+'</button></div></div></div>';
+  $('modal-mount').innerHTML=h;
+}
+function closeSubPicker(){ SUBP=null; closeM(); }
+function pickSubPrice(ri){
+  if(!SUBP) return;
+  const T=window.C373t||function(s){return s;};
+  const rows=subpRows(); const p=rows[ri]; if(!p) return;
+  const l=S.lines[SUBP.i]; if(!l) return;
+  l.name = p.name || l.name;
+  l.unit = p.unit || l.unit;
+  /* KB#39 / D34: `subcontractor_prices.price_includes_vat` e un marcaj PER TARIF,
+     independent de setarea firmei. Selectorul îl afișa („inclus"), dar prețul
+     intra în linie neconvertit, iar `lineGross()` i-ar fi adăugat TVA a doua
+     oară. Linia păstrează mereu valoarea NETĂ. */
+  { const pv = (p.vat_rate!=null) ? +p.vat_rate : 0;
+    l.unit_price = p.price_includes_vat ? VATX.r2(VATX.net(+p.unit_price||0, pv)) : (+p.unit_price||0); }
+  if(p.vat_rate!=null) l.vat_rate = +p.vat_rate;
+  if(+SUBP.qty>0) l.qty = +SUBP.qty;
+  if(p.description && !l.description) l.description = p.description;
+  // SNAPSHOT: ce spunea tariful în clipa alegerii. Rămâne neatins de orice
+  // schimbare ulterioară a tarifului — și nu se rescrie dacă editezi prețul aici.
+  l.sub_id = p.subcontractor_id;
+  l.sub_price_id = p.id;
+  l.sub_price_at = p.updated_at || null;
+  l.sub_price_amount = +p.unit_price||0;
+  l.sub_price_currency = p.currency || null;
+  l.sub_price_name = p.name || null;
+  l.sub_price_unit = p.unit || null;
+  closeSubPicker();
+  renderLines(); renderSummary(); renderBOM();
+  toast('🧑‍🔧 '+T('Preț preluat de la')+' '+(p._sub?p._sub.name:'subcontractor')+'.');
+}
+// Lista EXACTĂ a câmpurilor pe care le-ar schimba actualizarea catalogului.
+// Cerință: acțiunea explicită trebuie să arate ce modifică, nu doar să întrebe.
+function lcDiffHtml(l){
+  const d=[];
+  if(l.name!==l._catName) d.push(['Denumire',l._catName,l.name]);
+  if((+l.unit_price||0)!==(+l._catPrice||0)) d.push(['Preț fără TVA',money(+l._catPrice||0),money(+l.unit_price||0)]);
+  if(l.unit!==l._catUnit) d.push(['UM',l._catUnit,l.unit]);
+  if((l.description||'')!==(l._catDesc||'')) d.push(['Descriere',(l._catDesc||'—'),(l.description||'—')]);
+  if((l.photo_url||null)!==(l._catPhoto||null)) d.push(['Poză',(l._catPhoto?'existentă':'—'),(l.photo_url?'nouă':'—')]);
+  if(!d.length) return '<span style="color:var(--muted)">nimic</span>';
+  return d.map(x=>'• '+esc(x[0])+': <span style="color:var(--muted)">'+esc(String(x[1]).slice(0,40))+'</span> → <b>'+esc(String(x[2]).slice(0,40))+'</b>').join('<br>');
+}
+function lineCatalogChanged(l){ if(!l.cat_id) return false; return l.name!==l._catName || (+l.unit_price!==+l._catPrice) || l.unit!==l._catUnit || (l.description||'')!==(l._catDesc||'') || (l.photo_url||null)!==(l._catPhoto||null); }
+function saveLineToCatalog(i){ const l=S.lines[i]; if(!l||!(l.name||'').trim()){ toast('Scrie întâi denumirea liniei.'); return; }
+  const changed=lineCatalogChanged(l); const inCat=!!l.cat_id;
+  const kind=(l.cat_src==='material'||l.kind==='material')?'material':'service';
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>💾 Salvează în catalog</h3>'
+    +'<div style="font-size:.85rem;color:var(--muted);margin-bottom:.5rem">„'+esc(l.name)+'"</div>'
+    +(inCat&&!changed?'<div style="font-size:.82rem;color:#16a34a;margin-bottom:.5rem">✓ Deja în catalog (identic). Poți salva o copie nouă.</div>':'')
+    +'<div class="field"><label>Tip</label><select id="lc-kind"><option value="service"'+(kind==='service'?' selected':'')+'>🧰 Serviciu</option><option value="material"'+(kind==='material'?' selected':'')+'>📦 Material</option></select></div>'
+    +'<div id="lc-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem">'
+      +((inCat&&changed)?('<div style="font-size:.82rem;border:1px solid var(--line);border-radius:9px;padding:.5rem;margin-bottom:.5rem"><b>Actualizarea va schimba în catalog:</b><br>'+lcDiffHtml(l)+'</div>'
+        +'<button class="btn primary" onclick="lcSave('+i+',\'update\')">🔄 Actualizează produsul existent</button>'):'')
+      +'<button class="btn'+((inCat&&changed)?'':' primary')+'" onclick="lcNew('+i+')">➕ Adaugă ca produs nou în catalog…</button>'
+      +'<button class="btn" onclick="closeM()">Renunță</button>'
+    +'</div></div></div>';
+}
+/* „Adaugă ca produs nou" NU mai are formular propriu: deschide formularul
+   canonic, precompletat din poziția ofertei. Altfel ar fi rămas o a doua cale
+   care creează rânduri fără categorie și fără TVA introdus de om. */
+function lcNew(i){
+  const l=S.lines[i]; if(!l) return;
+  const kindSel=($('lc-kind')&&$('lc-kind').value)||l.cat_src||l.kind||'service';
+  quickAddService(i,{ kind:kindSel, name:l.name, unit:l.unit, price:+l.unit_price||0,
+    vat_rate:(l.vat_rate!=null?+l.vat_rate:(S.firm.vat_rate!=null?S.firm.vat_rate:20)),
+    description:l.description||'', photo_url:l.photo_url||null });
+}
+async function lcSave(i,mode){ const l=S.lines[i]; if(!l) return;
+  const kindSel=($('lc-kind')&&$('lc-kind').value)||l.cat_src||l.kind||'service';
+  const isMat=(mode==='update')?(l.cat_src==='material'):(kindSel==='material'); const tbl=isMat?'materials':'services'; const vat=+l.vat_rate||(S.firm.vat_rate!=null?S.firm.vat_rate:20);
+  const payload=isMat?{name:l.name,unit:l.unit,last_price:+l.unit_price||0,vat_rate:vat,description:l.description||null,photo_url:l.photo_url||null}:{name:l.name,unit:l.unit,price:+l.unit_price||0,vat_rate:vat,description:l.description||null,photo_url:l.photo_url||null};
+  try{
+    if(mode==='update'){ if(!l.cat_id) throw new Error('Linia nu e legată de catalog.');
+      // rowcount verificat: un refuz RLS întoarce 0 rânduri fără eroare ⇒ fără succes fals
+      await catalogUpdate(isMat?'material':'service', l.cat_id, payload);
+      const c=S.catalog.find(x=>x.id===l.cat_id&&x.src===l.cat_src); if(c){ c.name=l.name; c.unit=l.unit; c.price=+l.unit_price||0; c.vat=vat; c.desc=l.description||''; c.photo=l.photo_url||null; }
+    } else { // creare: aceeași cale server-side ca formularul canonic (cod generat, duplicate refuzate, idempotent)
+      const res=await catalogCreate(isMat?'material':'service', payload);
+      const d=res.row;
+      l.cat_id=d.id; l.cat_src=isMat?'material':'service'; if(!l.kind) l.kind=l.cat_src;
+      S.catalog.unshift({src:l.cat_src,id:d.id,icon:(isMat?'📦':'🧰'),name:d.name,unit:d.unit,price:+l.unit_price||0,vat:vat,kind:l.cat_src,desc:d.description||'',photo:d.photo_url||null,cat:d.category||''});
+      window._lcSku=res.sku;
+    }
+    l._catName=l.name; l._catPrice=+l.unit_price||0; l._catUnit=l.unit; l._catDesc=l.description||''; l._catPhoto=l.photo_url||null;
+    closeM(); toast(mode==='update'?'✅ Produs actualizat în catalog.':('✅ Produs nou salvat în catalog ('+(window._lcSku||'fără cod')+').')); renderLines();
+  }catch(e){ $('lc-msg').textContent=catalogErrMsg(e); }
+}
+/* ── Catalogul: aceeași cale server-side ca formularul canonic (migr 0127) ──
+   Formularul rapid rămâne compact, dar NU mai afișează câmpuri pe care le
+   ignoră: tot ce se completează aici ajunge în catalog, iar restul câmpurilor
+   avansate se completează în modulul Materiale/Servicii, printr-un link direct. */
+const CATALOG_ERR={
+  CATALOG_SKU_DUPLICATE:    'Codul intern (SKU) este deja folosit de alt element din catalog.',
+  CATALOG_FORBIDDEN:        'Nu ai dreptul să adaugi sau să modifici elemente în catalog.',
+  CATALOG_INVALID_INPUT:    'Datele trimise nu sunt valide.',
+  CATALOG_DEPENDENCY_MISSING:'Un furnizor sau magazin ales nu mai există sau nu aparține firmei tale.',
+  CATALOG_SKU_EXHAUSTED:    'S-au epuizat codurile automate. Scrie un cod manual.',
+  CATALOG_NOT_FOUND:        'Elementul din catalog nu mai există sau nu aparține firmei tale.',
+  // Contractul de preț v2 (D35). Serverul refuză o scriere a cărei semantică
+  // nu poate fi stabilită — mai bine un refuz clar decât un preț salvat greșit.
+  PRICE_SEMANTICS_REQUIRED:  'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_CONTRACT_UNSUPPORTED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_MODE_INVALID:        'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+  PRICE_SUBTARIFF_GROSS_NOT_CONVERTED:'Tariful subcontractorului este cu TVA inclus și nu a fost convertit. Reîncarcă pagina (Ctrl+R) și alege tariful din nou.'
+};
+function catalogErrMsg(e){ const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  for(const k in CATALOG_ERR){ if(m.indexOf(k)>=0) return CATALOG_ERR[k]; }
+  return (typeof isNetErr==='function'&&isNetErr(e))?'Conexiune slabă — încearcă din nou.':(m||'Eroare la salvare.'); }
+// Jurnalul refuzurilor de semantică se scrie din CLIENT, nu din refuz: un
+// `insert` urmat de `raise` s-ar pierde, pentru că excepția anulează tranzacția.
+// Un client v357 declară mereu contractul, deci NU ar trebui refuzat niciodată.
+// ⚠ Un client ≤v356 nu cunoaște funcția ⇒ un jurnal gol NU dovedește că nu mai
+//   există taburi vechi în circulație.
+const PRICE_CODES=['PRICE_SEMANTICS_REQUIRED','PRICE_CONTRACT_UNSUPPORTED','PRICE_MODE_INVALID'];
+function priceReject(e, surface){
+  const m=(((e&&(e.message||e.details||e.hint))||e)||'').toString();
+  const code=PRICE_CODES.find(k=>m.indexOf(k)>=0); if(!code) return;
+  try{ sb.rpc('price_reject_report',{ p_tenant_id:S.tenant, p_surface:String(surface||'necunoscut').slice(0,64), p_reason:code }).then(()=>{},()=>{}); }catch(_){}
+}
+let _catBusy=null;
+async function catalogCreate(kind, payload){
+  // Dublu clic REAL: a doua apelare nu pornește o cerere nouă, ci așteaptă
+  // rezultatul primei. `request_id` singur nu ajută aici — două apeluri
+  // independente ar avea două ID-uri diferite și ar crea două rânduri.
+  // Formularul de catalog e modal, deci nu există două creări legitime simultan.
+  if(_catBusy) return _catBusy;
+  _catBusy=catalogCreateOnce(kind, payload);
+  try{ return await _catBusy; } finally { _catBusy=null; }
+}
+async function catalogCreateOnce(kind, payload){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body={ p_tenant_id:S.tenant, p_kind:kind, p_payload:withPriceContract(payload), p_request_id:rid };
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc('catalog_item_create', body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!(typeof isNetErr==='function'&&isNetErr(r.error)) || i===2) break;  // doar erorile de rețea, cu ACELAȘI request_id
+    await new Promise(x=>setTimeout(x,600*(i+1)));
+  }
+  priceReject(last,'catalog_item_create');
+  // `err.net` păstrează NATURA erorii dincolo de traducerea mesajului: cine decide
+  // curățarea unui obiect Storage trebuie să știe dacă serverul a refuzat explicit
+  // (sigur nu s-a creat nimic) sau dacă doar s-a pierdut răspunsul (incert) — KB#60.
+  const err=new Error(catalogErrMsg(last)); err.catalog=true;
+  err.net=(typeof isNetErr==='function' && isNetErr(last)); throw err;
+}
+// Actualizarea unui element de catalog trece prin ACELASI contract ca si crearea
+// (D35). Pana acum crearea mergea prin `catalog_item_create`, iar MODIFICAREA
+// pretului se facea cu `sb.from(tabela).update(...)` direct — aceeasi coloana,
+// dar fara nicio validare de semantica si fara conversie brut->net. Serverul
+// converteste dupa semantica DECLARATA si verifica rowcount-ul, deci un refuz
+// RLS nu mai poate trece drept succes.
+async function catalogUpdate(kind, id, payload){
+  const rid=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(16).slice(2)+'-0000-0000-000000000000');
+  const body={ p_tenant_id:S.tenant, p_kind:kind, p_id:id, p_payload:withPriceContract(payload), p_request_id:rid };
+  let last=null;
+  for(let i=0;i<3;i++){
+    let r; try{ r=await sb.rpc('catalog_item_update', body); }catch(e){ r={error:e}; }
+    if(!r.error) return r.data;
+    last=r.error;
+    if(!(typeof isNetErr==='function'&&isNetErr(r.error)) || i===2) break;   // doar erorile de retea, cu ACELASI request_id
+    await new Promise(x=>setTimeout(x,600*(i+1)));
+  }
+  priceReject(last,'catalog_item_update');
+  // `err.net` păstrează NATURA erorii dincolo de traducerea mesajului: cine decide
+  // curățarea unui obiect Storage trebuie să știe dacă serverul a refuzat explicit
+  // (sigur nu s-a creat nimic) sau dacă doar s-a pierdut răspunsul (incert) — KB#60.
+  const err=new Error(catalogErrMsg(last)); err.catalog=true;
+  err.net=(typeof isNetErr==='function' && isNetErr(last)); throw err;
+}
+// Uploadul se face ÎNAINTE de RPC. Dacă RPC-ul eșuează, obiectul proaspăt încărcat
+// se șterge — altfel ar rămâne orfan în Storage.
+//
+// ⚠️ CALEA TREBUIE SĂ FIE UNICĂ. Până în UX2 era `<tenant>/cat_<nume-fișier>`, cu
+// `upsert:true` și fără marcaj de timp: două materiale create din documente cu
+// fișiere numite la fel — `IMG_0001.jpg`, `poza.jpg`, implicitul telefoanelor —
+// ajungeau pe ACELAȘI obiect, iar al doilea îl suprascria tăcut pe primul.
+// Materialul A rămânea cu poza materialului B. Comentariul de atunci spunea
+// „deterministă pe cerere"; era deterministă pe NUMELE fișierului.
+async function catalogPhotoUp(file, tag){
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path=S.tenant+'/catalog/'+tag+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'image/jpeg'});
+  if(up.error) throw new Error('Poza nu s-a încărcat: '+(up.error.message||up.error));
+  return path;
+}
+// Poza de pe poziția documentului trăiește sub `<tenant>/lines/…` și aparține
+// DOCUMENTULUI: e ștearsă/înlocuită după regulile lui, nu ale catalogului. La
+// „Salvează în catalog" facem o COPIE catalog-owned, ca articolul din catalog să
+// rămână cu imagine validă indiferent ce se întâmplă ulterior cu documentul.
+// Un obiect în plus (imagine comprimată) e mai ieftin decât un catalog care
+// pierde imagini când cineva curăță `lines/`.
+async function catalogPhotoAdopt(srcPath){
+  if(!srcPath) return null;
+  const base=String(srcPath).split('/').pop()||'poza.jpg';
+  const dst=S.tenant+'/catalog/cat_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+base;
+  const cp=await sb.storage.from('docs').copy(srcPath,dst);
+  if(cp.error) throw new Error('Poza nu s-a copiat în catalog: '+(cp.error.message||cp.error));
+  return dst;
+}
+// Codul propus de server (`catalog_next_sku`, migr 0127): pornește de la MAXIMUL
+// real și sare peste codurile ocupate. Rămâne o propunere — serverul refuză
+// duplicatele oricum. Exact ca în modulul Materiale/Servicii din app.html.
+async function catalogNextSku(kind){
+  try{ const r=await sb.rpc('catalog_next_sku',{p_tenant_id:S.tenant,p_kind:kind});
+    return (!r.error && r.data) ? r.data : null; }catch(e){ return null; }
+}
+/* Colecțiile-copil canonice — ACELEAȘI ca în modulul Materiale/Servicii.
+   Un Material creat din ofertă trebuie să se poată descrie la fel de complet ca
+   unul creat din catalog: altfel „același formular peste tot" e doar o vorbă.
+   Editorul lor e în `catalog-form.js`; aici doar datele și RPC-ul. */
+async function cfChildrenData(){
+  const [sup,sto,mats]=await Promise.all([
+    sb.from('suppliers').select('id,name').order('name'),
+    sb.from('stores').select('id,name').order('name'),
+    sb.from('materials').select('id,name,unit,last_price').order('name')
+  ]);
+  return { suppliers:{options:(sup.data||[]),rows:[]},
+           stores:{options:(sto.data||[]),rows:[]},
+           recipe:{materials:(mats.data||[]),rows:[]} };
+}
+async function cfSaveChildren(kind,id,data){
+  const call=async(fn,args)=>{ const r=await sb.rpc(fn,args); if(r.error) throw r.error; return r.data; };
+  if(kind==='service') await call('service_recipe_set',{p_service_id:id,p_rows:data.recipe||[]});
+  else await call('material_prices_set',{p_material_id:id,p_suppliers:data.suppliers||[],p_stores:data.stores||[]});
+}
+function catalogNew(){ const l=blankLine(); S.lines.push(l); reorderLinesBySection(); const i=S.lines.indexOf(l); renderLines(); quickAddService(i); }
+/* Formularul CANONIC de creare în catalog, deschis din ofertă (Lotul 0C1A).
+   Înainte existau două formulare paralele care pretindeau că adaugă materialul:
+   acesta (minimal, cu un câmp ambiguu „Preț") și „➕ Salvează ca produs nou" din
+   💾, care nu cerea deloc categoria sau TVA. Acum e unul singur, cu exact
+   câmpurile formularului canonic din modulul Materiale/Servicii, iar prețul e
+   explicit fără/cu TVA — niciodată un „Preț" fără precizare. */
+/* ── UX2: formularul canonic, comun cu app.html si factura.html ──
+   Inainte, fiecare editor avea propriul formular redus. Diferentele reale pe care
+   le-a produs duplicarea: `deviz` accepta un preset si precompleta categoria,
+   `factura` nu. Si, in ambele, fotografia preluata de pe pozitie era retinuta
+   intern dar NU se afisa — utilizatorul vedea un camp gol si credea ca s-a pierdut.
+   Contractul server (catalogCreate/catalogUpdate, price contract v2, request_id,
+   garda de dublu clic) ramane AICI, in gazda; formularul imprumuta doar UI-ul. */
+function cfHost(i){
+  return {
+    mount:'modal-mount',
+    units:(S.firm&&S.firm.automations&&S.firm.automations.units)||[],
+    categories:Array.from(new Set((S.catalog||[]).map(c=>c.cat).filter(Boolean))),
+    vatDefault:(S.firm.vat_rate!=null?S.firm.vat_rate:20),
+    preferGross:!!(S.firm&&S.firm.automations&&S.firm.automations.prices_incl_vat),
+    signUrl:async function(pth){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(pth,3600); return (data&&data.signedUrl)||''; }catch(e){ return ''; } },
+    upload:function(f){ return catalogPhotoUp(f,'cat'); },
+    adopt:catalogPhotoAdopt,
+    nextSku:catalogNextSku,
+    children:S._cfChildren||null, saveChildren:cfSaveChildren,
+    create:function(k,pl){ return catalogCreate(k,pl); },
+    update:function(k,id,pl){ return catalogUpdate(k,id,pl); },
+    // Ștergem copia DOAR când serverul a refuzat explicit (eroare de aplicație):
+    // atunci e sigur că articolul NU există. La o eroare de rețea nu se poate ști
+    // dacă cererea a ajuns — iar dacă a ajuns, ștergerea ar lăsa articolul cu
+    // imagine ruptă. Un obiect orfan e mult mai puțin grav (vezi KB#60).
+    removeUpload:function(pth, err){
+      if(err && (err.net || (typeof isNetErr==='function' && isNetErr(err)))) return Promise.resolve();
+      return sb.storage.from('docs').remove([pth]);
+    },
+    errMsg:catalogErrMsg,
+    ctx:{ i:i },
+    onSaved:cfLinkLine
+  };
+}
+/* Ce se intampla DUPA salvare e treaba documentului, nu a formularului. */
+function cfLinkLine(res, ctx){
+  const d=res.row, type=res.kind;
+  const p=(type==='material'?+d.last_price:+d.price)||0;
+  S.catalog.unshift({src:type,id:d.id,icon:(type==='material'?'📦':'🧰'),name:d.name,unit:d.unit,price:p,vat:+d.vat_rate,kind:type,desc:d.description||'',photo:d.photo_url||null,cat:d.category||''});
+  let l=S.lines[ctx.i]; if(!l){ S.lines.push(blankLine()); l=S.lines[S.lines.length-1]; }
+  // linia primeste valorile CANONICE intoarse de server, plus legatura persistenta
+  l.name=d.name; l.unit=d.unit; l.unit_price=p; l.vat_rate=+d.vat_rate; l.kind=type; l.norm_code=null;
+  if(d.description && !l.description) l.description=d.description;
+  if(d.photo_url && !l.photo_url) l.photo_url=d.photo_url;
+  l.cat_id=d.id; l.cat_src=type; l._catName=d.name; l._catPrice=p; l._catUnit=d.unit; l._catDesc=d.description||''; l._catPhoto=d.photo_url||null;
+  toast('✅ Adăugat în catalog ('+(res.sku||'fără cod')+') și pe ofertă.');
+  renderLines(); renderSummary(); renderBOM();
+}
+async function quickAddService(i,preset){
+  const l=S.lines[i]||{}; const p=preset||{};
+  const kind=p.kind||((l.cat_src==='material'||l.kind==='material')?'material':'service');
+  try{ S._cfChildren=await cfChildrenData(); }catch(e){ S._cfChildren=null; }
+  CatalogForm.open(Object.assign(cfHost(i),{
+    kind:kind, mode:'create',
+    saveLabel:'Salvează în catalog și adaugă în ofertă',
+    draft:{
+      name:(p.name!=null?p.name:(l.name||'')),
+      unit:(p.unit||l.unit||''),
+      price:(p.price!=null?+p.price:(+l.unit_price||0)),
+      vat_rate:(p.vat_rate!=null?+p.vat_rate:(l.vat_rate!=null?+l.vat_rate:null)),
+      description:(p.description!=null?p.description:(l.description||'')),
+      category:(p.category||''),
+      // ►► fotografia poziției ajunge în formular ȘI SE VEDE
+      photo_url:(p.photo_url!==undefined?p.photo_url:(l.photo_url||null)),
+      // …dar rămâne a DOCUMENTULUI: catalogul primește o copie proprie la salvare
+      photo_borrowed:true
+    }
+  }));
+}
+function closeM(){ $('modal-mount').innerHTML=''; }
+/* ── Planul casei: panou flotant (mutabil/redimensionabil) în editor ── */
+function togglePlan(){ if(!S.est.plan_url){ planPick(); return; } const p=$('plan-panel'); if(p){ p.remove(); return; } showPlanPanel(); }
+function planPick(){ const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.png,.jpg,.jpeg,.svg,.plan,image/*,application/pdf,image/svg+xml'; inp.onchange=function(){ if(inp.files&&inp.files[0]) attachPlan(inp.files[0]); }; inp.click(); }
+async function attachPlan(file){
+  toast('⏳ Se încarcă planul…');
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=S.tenant+'/plans/'+Date.now()+'_'+safe;
+  const up=await sb.storage.from('docs').upload(path,file,{contentType:file.type||'application/octet-stream'}); if(up.error){ toast('Eroare: '+(up.error.message||up.error)); return; }
+  S.est.plan_url=path;
+  if(S.id){ try{ await sb.from('estimates').update({plan_url:path}).eq('id',S.id); }catch(e){} }
+  toast('✅ Plan atașat.'); showPlanPanel();
+}
+async function showPlanPanel(){
+  const path=S.est.plan_url; if(!path) return;
+  let url=''; try{ const {data}=await sb.storage.from('docs').createSignedUrl(path,3600); url=(data&&data.signedUrl)||''; }catch(e){}
+  const ext=(path.split('.').pop()||'').toLowerCase(); const isImg=['png','jpg','jpeg','gif','webp','svg'].indexOf(ext)>=0;
+  let body;
+  if(ext==='pdf') body='<iframe src="'+esc(url)+'" style="width:100%;height:100%;border:0;background:#fff"></iframe>';
+  else if(isImg) body='<div style="width:100%;height:100%;overflow:auto;background:#1b1b1b;display:flex;align-items:flex-start;justify-content:center"><img id="plan-img" src="'+esc(url)+'" style="max-width:100%;transform-origin:top center"></div>';
+  else body='<div style="padding:1rem;color:#bbb;font-size:.85rem">Fișier atașat (.'+esc(ext)+') — nu poate fi previzualizat aici. <a href="'+esc(url)+'" target="_blank" style="color:#7fb0ff">Deschide</a></div>';
+  let p=$('plan-panel'); if(p) p.remove();
+  const bt='style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:14px"';
+  p=document.createElement('div'); p.id='plan-panel';
+  p.style.cssText='position:fixed;right:16px;bottom:16px;width:min(460px,88vw);height:min(540px,72vh);min-width:240px;min-height:200px;background:#fff;border:1px solid #c8cfdb;border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.35);z-index:9000;display:flex;flex-direction:column;overflow:hidden;resize:both';
+  p.innerHTML='<div id="plan-hd" style="display:flex;align-items:center;gap:.35rem;padding:.4rem .55rem;background:#0f1c33;color:#fff;cursor:move;font-size:.84rem;font-weight:600;flex-shrink:0">📐 Planul casei'
+    +'<span style="margin-left:auto;display:flex;gap:.3rem">'
+    +(isImg?('<button '+bt+' title="Mărește" onclick="planZoom(0.25)">＋</button><button '+bt+' title="Micșorează" onclick="planZoom(-0.25)">−</button>'):'')
+    +'<button '+bt+' title="Schimbă planul" onclick="planPick()">🔄</button>'
+    +'<button '+bt+' title="Închide" onclick="var e=document.getElementById(\'plan-panel\');if(e)e.remove()">×</button></span></div>'
+    +'<div style="flex:1;overflow:hidden">'+body+'</div>';
+  document.body.appendChild(p); window._planZoom=1; planDrag(p, $('plan-hd'));
+}
+function planZoom(d){ window._planZoom=Math.min(6,Math.max(0.25,(window._planZoom||1)+d)); const im=$('plan-img'); if(im){ im.style.maxWidth='none'; im.style.transform='scale('+window._planZoom+')'; } }
+function planDrag(panel, handle){ let sx=0,sy=0,sl=0,st=0,drag=false;
+  const start=(x,y)=>{ drag=true; sx=x; sy=y; const r=panel.getBoundingClientRect(); sl=r.left; st=r.top; panel.style.right='auto'; panel.style.bottom='auto'; panel.style.left=sl+'px'; panel.style.top=st+'px'; };
+  const move=(x,y)=>{ if(!drag)return; panel.style.left=(sl+x-sx)+'px'; panel.style.top=Math.max(0,st+y-sy)+'px'; };
+  handle.addEventListener('mousedown',e=>{ if(e.target.tagName==='BUTTON')return; start(e.clientX,e.clientY); e.preventDefault(); });
+  window.addEventListener('mousemove',e=>move(e.clientX,e.clientY)); window.addEventListener('mouseup',()=>{drag=false;});
+  handle.addEventListener('touchstart',e=>{ if(e.target.tagName==='BUTTON')return; const t=e.touches[0]; start(t.clientX,t.clientY); },{passive:true});
+  handle.addEventListener('touchmove',e=>{ const t=e.touches[0]; move(t.clientX,t.clientY); },{passive:true});
+  handle.addEventListener('touchend',()=>{drag=false;},{passive:true});
+}
+async function sendOfferPortal(){
+  if(!S.id){ toast('Salvează întâi oferta, apoi trimite-o clientului.'); return; }
+  let cl={}; try{ if(S.est.client_id){ const c=await sb.from('clients').select('name,phone,email').eq('id',S.est.client_id).single(); cl=c.data||{}; } }catch(e){}
+  const ins=await sb.from('client_portal_links').insert({tenant_id:S.tenant, estimate_id:S.id, show_stages:true, expires_at:(function(){var d=new Date();d.setDate(d.getDate()+30);return d.toISOString();})()}).select('token').single();
+  if(ins.error){ toast('Eroare: '+(ins.error.message||ins.error)); return; }
+  const url=base()+'portal.html?token='+ins.data.token;
+  const label=S.est.title||(S.est.number?('Oferta '+S.est.number):'Oferta');
+  const msg='Bună ziua'+(cl.name?(', '+cl.name):'')+'! Vă trimit oferta „'+label+'". O puteți vedea și accepta aici: '+url;
+  const ph=(cl.phone||'').replace(/[^0-9]/g,'');
+  const wa='https://wa.me/'+ph+'?text='+encodeURIComponent(msg);
+  const sms='sms:'+(cl.phone||'')+'?&body='+encodeURIComponent(msg);
+  const mail='mailto:'+(cl.email||'')+'?subject='+encodeURIComponent('Ofertă '+(S.est.number||''))+'&body='+encodeURIComponent(msg);
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>🤝 Trimite oferta clientului</h3>'
+    +'<p style="color:#6b7793;font-size:.86rem;margin:.2rem 0 .6rem">Clientul vede oferta în portal și o poate accepta — atunci se pornește automat șantierul (cu etapele din ofertă) și portalul îi arată progresul.</p>'
+    +'<input readonly value="'+esc(url)+'" style="width:100%;font-size:.82rem" onclick="this.select()"/>'
+    +'<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem">'
+      +'<a class="btn" href="'+esc(wa)+'" target="_blank">🟢 WhatsApp</a>'
+      +(cl.email?'<a class="btn" href="'+esc(mail)+'">✉️ Email</a>':'')
+      +(cl.phone?'<a class="btn" href="'+esc(sms)+'">💬 SMS</a>':'')
+      +'<button class="btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(url)+');toast(\'📋 Link copiat.\')">📋 Copiază</button>'
+      +'<button class="btn" onclick="window.open('+JSON.stringify(url)+',\'_blank\')">👁 Deschide</button>'
+    +'</div>'
+    +'<div style="text-align:right;margin-top:.8rem"><button class="btn" onclick="closeM()">Închide</button></div>'
+    +'</div></div>';
+}
+function newClient(){
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal"><h3>＋ Client nou</h3><div id="nc-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div class="field"><label>Denumire / nume *</label><input id="nc-name"/></div>'
+    +'<div class="row2"><div class="field"><label>Telefon</label><input id="nc-phone"/></div><div class="field"><label>IDNO</label><input id="nc-idno"/></div></div>'
+    +'<div class="field"><label>Adresă</label><input id="nc-addr"/></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" onclick="saveNewClient()">Creează</button></div></div></div>';
+  geoAttach($('nc-addr'));
+  setTimeout(()=>$('nc-name')&&$('nc-name').focus(),50);
+}
+function geoFmt(p){ p=p||{}; var a=[]; if(p.name&&!p.street)a.push(p.name); if(p.street)a.push(p.street+(p.housenumber?(' '+p.housenumber):'')); var l=((p.postcode?p.postcode+' ':'')+(p.city||p.town||p.village||p.county||'')).trim(); if(l)a.push(l); if(p.country)a.push(p.country); return a.filter(Boolean).join(', '); }
+function geoAttach(input){ if(!input||input._geo)return; input._geo=true; input.setAttribute('autocomplete','off');
+  var wrap=input.parentNode; if(wrap)wrap.style.position='relative';
+  var box=document.createElement('div'); box.className='geo-dd'; box.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:9000;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(15,28,51,.16);max-height:240px;overflow:auto;margin-top:3px;display:none'; if(wrap)wrap.appendChild(box);
+  var t=null,ctrl=null;
+  input.addEventListener('input',function(){ var q=input.value.trim(); clearTimeout(t); if(q.length<3){box.style.display='none';return;}
+    t=setTimeout(async function(){ try{if(ctrl)ctrl.abort();}catch(e){} ctrl=('AbortController'in window)?new AbortController():null;
+      try{ var lang=(window.C373lang&&C373lang())||'ro'; var r=await fetch('https://photon.komoot.io/api/?limit=6&lang='+lang+'&q='+encodeURIComponent(q),ctrl?{signal:ctrl.signal}:{}); var j=await r.json(); var fs=(j&&j.features)||[];
+        if(!fs.length){box.style.display='none';return;} box._fs=fs;
+        box.innerHTML=fs.map(function(f,i){return '<div class="geo-it" data-i="'+i+'" style="padding:.5rem .7rem;cursor:pointer;font-size:.85rem;border-bottom:1px solid #f2f5fb">📍 '+esc(geoFmt(f.properties))+'</div>';}).join(''); box.style.display='';
+      }catch(e){box.style.display='none';} },350); });
+  box.addEventListener('mousedown',function(e){ var it=e.target.closest('.geo-it'); if(!it||!box._fs)return; e.preventDefault(); var f=box._fs[+it.dataset.i]; if(f)input.value=geoFmt(f.properties); box.style.display='none'; });
+  input.addEventListener('blur',function(){ setTimeout(function(){box.style.display='none';},180); });
+}
+async function saveNewClient(){
+  const name=($('nc-name').value||'').trim(); if(!name){ $('nc-msg').textContent='Denumirea e obligatorie.'; return; }
+  const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
+  const rec={tenant_id:tid,name,phone:($('nc-phone').value||'').trim()||null,idno:($('nc-idno').value||'').trim()||null,address:($('nc-addr').value||'').trim()||null};
+  const ins=await sb.from('clients').insert(rec).select('id,name').single();
+  if(ins.error){ $('nc-msg').textContent='Eroare: '+ins.error.message; return; }
+  S.clients.push({id:ins.data.id,name:ins.data.name}); S.clients.sort((a,b)=>a.name.localeCompare(b.name));
+  S.est.client_id=ins.data.id; closeM(); toast('✅ Client creat.'); render();
+}
+
+/* ---- BOM ---- */
+function renderBOM(){
+  const agg={};
+  S.lines.forEach(l=>{ if(!l.norm_code) return; const q=+l.qty||0; if(!q) return; (S.normMat[l.norm_code]||[]).forEach(m=>{ const k=m.material_name+'|'+m.unit; if(!agg[k]) agg[k]={name:m.material_name,unit:m.unit,qty:0}; agg[k].qty+=q*(+m.qty_per_unit||0); }); });
+  const arr=Object.values(agg).sort((a,b)=>a.name.localeCompare(b.name));
+  $('bom').innerHTML=arr.length? '<table style="width:100%;border-collapse:collapse;font-size:.82rem">'+arr.map(b=>'<tr><td style="padding:.3rem 0;border-bottom:1px solid #f1f4fa">🧱 '+esc(b.name)+'</td><td style="text-align:right;white-space:nowrap;border-bottom:1px solid #f1f4fa"><b>'+num2(b.qty)+'</b> '+esc(b.unit)+'</td></tr>').join('')+'</table><div class="legend">Estimat din liniile bazate pe norme.</div>'
+    : '<div class="sub">Apare când adaugi lucrări din norme.</div>';
+}
+
+/* ---- SAVE ---- */
+const DUP_ERR={
+  DUP_SOURCE_NOT_FOUND:'Documentul sursă nu există sau nu ai acces la el.',
+  DUP_FORBIDDEN:'Nu ai dreptul să creezi documente în această firmă.',
+  DUP_INVALID_REQUEST_ID:'Cerere de duplicare invalidă. Reîncarcă pagina și încearcă din nou.',
+  DUP_NUMBER_CONFLICT:'Nu am putut genera un număr unic de document. Încearcă din nou.',
+  DUP_INTERNAL_ERROR:'Eroare internă la duplicare. Încearcă din nou.'
+};
+/* KB147-FIN-PREVENT1: garda de invariantă (migr 0200) refuză duplicarea unui document
+   incoerent — altfel copia ar moșteni neconcordanța, cu `updated_at` de azi. Mesajul
+   trebuie să spună CE s-a întâmplat și ce urmează, nu doar că a eșuat. */
+function dupErrMsg(e){ const T=window.C373t||function(s){return s;}; const m=(e&&e.message)||'';
+  if(/DOC_FINANCIAL_INCONSISTENT/.test(m)) return T('Documentul sursă are totaluri care nu se reconstituie din propriile poziții, așa că nu poate fi duplicat — copia ar moșteni aceeași neconcordanță. Deschide-l, verifică pozițiile și salvează-l o dată din editor.');
+  const code=m.match(/DUP_[A-Z_]+/); return T((code&&DUP_ERR[code[0]])||'Nu am putut duplica documentul.'); }
+function dupUUID(){ if(crypto.randomUUID) return crypto.randomUUID(); const b=crypto.getRandomValues(new Uint8Array(16)); b[6]=b[6]&15|64; b[8]=b[8]&63|128; const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join(''); return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20); }
+/* Duplicare ofertă: RPC tranzacțional idempotent (migr 0118) — p_request_id nou per acțiune intenționată.
+   După succes navigăm TABUL CURENT la copie (originalul e salvat și neatins). Buton dezactivat cât rulează. */
+async function dupEstimate(){
+  if(!S.id){ toast('Salvează întâi oferta.'); return; }
+  if(S._dup) return;
+  const T=window.C373t||function(s){return s;};
+  if(!confirm(T('Se va crea o ofertă nouă, în ciornă, cu aceleași poziții și date comerciale (număr nou, data de azi). Originalul rămâne neschimbat. Continui?'))) return;
+  S._dup=true; const b=$('btn-dup'); if(b) b.disabled=true;
+  try{
+    const r=await sb.rpc('duplicate_estimate',{p_source_id:S.id,p_request_id:dupUUID()});
+    if(r.error) throw r.error;
+    const row=Array.isArray(r.data)?r.data[0]:r.data;
+    if(!row||!row.id) throw new Error('DUP_INTERNAL_ERROR');
+    toast('✅ '+T('Oferta a fost duplicată')+': '+esc(row.number||''));
+    location.href='deviz.html?id='+row.id;
+    return; // navigăm — nu mai reactivăm butonul
+  }catch(e){ console.error('dupEstimate', e); toast('❌ '+dupErrMsg(e)); }
+  S._dup=false; if(b) b.disabled=false;
+}
+async function save(thenPdf){
+  if(S._needsReload){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul trebuie reîncărcat înainte de a continua editarea.')); return; }
+  if(S.id && !S._loaded){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Documentul nu s-a încărcat complet. Reîncarcă documentul.')); return; }
+  if(!S.est.client_id){ toast('Alege un client.'); return; }
+  const valid=S.lines.filter(l=>(l.name||'').trim()); if(!valid.length){ toast('Adaugă cel puțin o linie.'); return; }
+  $('btn-save').disabled=true;
+  try{ const {data:{session:_s}}=await sb.auth.getSession(); if(_s&&_s.expires_at&&_s.expires_at*1000<Date.now()+60000){ await sb.auth.refreshSession(); } }catch(e){}
+  const t=totals();
+  const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
+  const rec={ tenant_id:tid, client_id:S.est.client_id||null, number:S.est.number||null, status:S.est.status, title:S.est.title||null,
+    issue_date:S.est.issue_date||null, valid_until:S.est.valid_until||null, notes:S.est.notes||null,
+    groups:S.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})),
+    disc_mode:S.est.disc_mode||'none', disc_value:+S.est.disc_value||0, vat_mode:S.est.vat_mode||'none', vat_value:+S.est.vat_value||0, materials_mode:S.est.materials_mode||'detailed', skonto_off:!!S.est.skonto_off, skonto_pct:(S.est.skonto_pct!=null&&S.est.skonto_pct!==''?+S.est.skonto_pct:null),
+    subtotal:t.sub, vat_total:t.vat, total:t.total, plan_url:S.est.plan_url||null };
+  try{
+    // Salvare ATOMICĂ (migr 0117): antet + toate pozițiile într-o SINGURĂ tranzacție (RPC save_estimate),
+    // cu optimistic concurrency pe updated_at — fereastra „zero poziții" a vechiului delete+insert dispare.
+    // Legătura la catalog (migr 0127) merge în aceeași tranzacție. Linia își
+    // păstrează snapshotul propriu — legătura NU transformă documentul într-o
+    // vedere dinamică: prețul și denumirea rămân cele folosite în acest deviz.
+    const items=valid.map(l=>({kind:l.kind||'service',name:l.name,qty:+l.qty||1,unit:l.unit||'buc',unit_price:+l.unit_price||0,vat_rate:+l.vat_rate||0,disc:+l.disc||0,disc_active:lineDiscOn(l),group_id:l.group||null,description:l.description||null,photo_url:l.photo_url||null,
+      material_id:(l.cat_src==='material'?(l.cat_id||null):null), service_id:(l.cat_src==='service'?(l.cat_id||null):null),
+      // sursa prețului + snapshotul ei (migr 0128). Serverul derivă `subcontractor_id`
+      // din tarif dacă lipsește și refuză orice referință din altă firmă.
+      subcontractor_id:l.sub_id||null, subcontractor_price_id:l.sub_price_id||null,
+      sub_price_at:l.sub_price_at||null, sub_price_amount:(l.sub_price_amount==null?null:+l.sub_price_amount),
+      sub_price_currency:l.sub_price_currency||null, sub_price_name:l.sub_price_name||null,
+      sub_price_unit:l.sub_price_unit||null}));
+    const r=await sb.rpc('save_estimate',{ p_document_id:S.id||null, p_tenant_id:tid, p_document:withPriceContract(rec), p_items:items,
+      p_expected_updated_at:S._updatedAt||null, p_number_manual:(S.id?true:!!((S.est.number||'')&&S.est.number!==S._autoNum)) });
+    if(r.error) throw r.error;
+    const row=Array.isArray(r.data)?r.data[0]:r.data;
+    S.id=row.id; S.est.number=row.number||''; S._updatedAt=row.updated_at;
+    S._loaded=true;   // CDI1: starea din editor E completă după un save reușit — resalvarea fără reload nu se blochează
+    const nel=$('f-num'); if(nel) nel.value=S.est.number;
+    history.replaceState(null,'',base()+'deviz.html?id='+S.id);
+    if($('btn-dup')) $('btn-dup').style.display='';
+    historyReset();   // starea salvată devine noul punct de bază: nu se poate anula peste ea
+    clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Ofertă salvată.'+(dp>0?' Reducere '+dp+'%':''));
+    /* FIN2 — la PRIMA salvare `S.id` tocmai a apărut, dar antetul fusese randat când era
+       încă null, deci acțiunile de lifecycle lipseau până la un render ulterior.
+       Rescriem exact antetul, nu tot ecranul: nu vrem să pierdem focusul din formular. */
+    { const el=$('hd-status'); if(el) el.innerHTML=stPill()+stActions(); }
+    if(thenPdf) pdf();
+  }catch(e){
+    $('btn-save').disabled=false; console.error('save_estimate', e);
+    const T=window.C373t||function(s){return s;};
+    const code=(((e&&e.message)||'').match(/(?:DOC|FISCAL|WRITES)_[A-Z_]+/)||[])[0];
+    const M={DOC_CONFLICT:'Documentul a fost modificat într-o altă filă sau de alt utilizator. Reîncarcă documentul înainte de a continua.',
+      DOC_NUMBER_CONFLICT:'Numărul există deja la altă ofertă. Schimbă numărul.',
+      DOC_FORBIDDEN:'Nu ai dreptul să salvezi documente în această firmă.',
+      DOC_NOT_FOUND:'Documentul nu mai există.',
+      DOC_INVALID_CLIENT:'Clientul ales nu e valid.',
+      DOC_INVALID_SITE:'Șantierul ales nu e valid.',
+      DOC_INVALID_ITEMS:'Pozițiile documentului nu sunt valide.',
+      DOC_INVALID_TENANT:'Firma activă nu e validă. Reîncarcă pagina.',
+      DOC_SAVE_FAILED:'Salvarea nu a reușit. Verifică datele și încearcă din nou.',
+      // CDI1 (D104/D105): contractul e fail-closed pe fiecare verb — documentul a rămas NEATINS.
+      DOC_ITEMS_DELETE_BLOCKED:'Pozițiile vechi nu au putut fi înlocuite. Documentul a rămas neschimbat — anunță administratorul.',
+      DOC_UPDATE_BLOCKED:'Antetul nu a putut fi actualizat. Documentul a rămas neschimbat — anunță administratorul.',
+      DOC_INSERT_INCOMPLETE:'Nu toate pozițiile au putut fi salvate. Documentul a rămas neschimbat — anunță administratorul.',
+      FISCAL_TOTALS_MISMATCH:'Totalurile nu se reconstituie din poziții. Reîncarcă pagina și încearcă din nou.',
+      DOC_FINANCIAL_INCONSISTENT:'Totalurile nu se reconstituie din propriile poziții. Documentul a rămas NESCHIMBAT.',
+      WRITES_FROZEN:'Scrierile sunt suspendate temporar pentru recuperarea datelor. Citirea funcționează; încearcă mai târziu.',
+      // Contractul de preț v2 (D35): serverul refuză un document a cărui semantică
+      // de preț nu poate fi stabilită, în loc să ghicească și să dubleze TVA-ul.
+      PRICE_SEMANTICS_REQUIRED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+      PRICE_CONTRACT_UNSUPPORTED:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+      PRICE_MODE_INVALID:'Aplicația ta este o versiune veche și nu poate salva prețuri în siguranță. Reîncarcă pagina (Ctrl+R) și încearcă din nou.',
+      PRICE_SUBTARIFF_GROSS_NOT_CONVERTED:'Tariful subcontractorului este cu TVA inclus și nu a fost convertit. Reîncarcă pagina (Ctrl+R) și alege tariful din nou.'};
+    priceReject(e,'save_estimate');
+    toast(code&&M[code]?('⚠️ '+T(M[code])+(code==='DOC_NUMBER_CONFLICT'?' ('+esc(S.est.number||'')+')':'')):('Eroare: '+(e.message||e)));
+  }
+}
+
+/* ---- PDF (docType: oferta | confirmare | livrare) ---- */
+async function pdf(docType,inPlace){
+  docType=docType||'oferta'; const isLiv=docType==='livrare';
+  // Deschidem fereastra SINCRON (în gestul de click), înainte de orice await — altfel browserul/PWA blochează pop-up-ul după createSignedUrl și nu se deschide nimic.
+  let w=null; if(!inPlace){ w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF…</title><style>body{font-family:system-ui,-apple-system,Arial;color:#0f1c33;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;font-size:15px}</style><div>⏳ Se pregătește documentul…</div>'); }catch(e){} }
+  const t=totals(); const cl=S.clients.find(c=>c.id===S.est.client_id)||{};
+  const showDiscCol=S.est.disc_mode==='line', vmode=S.est.vat_mode||'none';
+  // Coloana TVA + „Total cu TVA" pe linie apar oriunde există TVA efectiv (mod „pe poziție", „unificat" sau grupuri cu TVA) — ca PDF-ul să fie IDENTIC cu editorul (altfel părea că TVA dispare).
+  const anyVat=!isLiv && S.lines.some(l=>(l.name||'').trim() && lineEffVat(l)>0);
+  const showVatCol=anyVat;
+  /* FIN-UNIT-GROSS1 — `showVatCol` adaugă DOUĂ coloane acum (TVA% și Preț cu TVA), altfel
+     `colspan` de la rândurile de grup/gol ar rămâne cu una în urmă și tabelul s-ar rupe. */
+  const colsN=isLiv?5:(7+(showDiscCol?1:0)+(showVatCol?2:0));
+  let logo=''; if(S.firm.logo_url){ try{ const {data}=await sb.storage.from('docs').createSignedUrl(S.firm.logo_url,600); if(data&&data.signedUrl) logo='<img src="'+data.signedUrl+'" style="max-height:56px;max-width:200px;margin-bottom:8px;object-fit:contain"><br>'; }catch(e){} }
+  // semneaza pozele de pe linii pentru a aparea in PDF
+  const lphotos={}; const ppaths=S.lines.filter(l=>l.photo_url).map(l=>l.photo_url);
+  if(ppaths.length){ try{ const su=await sb.storage.from('docs').createSignedUrls(ppaths,600); (su.data||[]).forEach((x,idx)=>{ if(x.signedUrl) lphotos[ppaths[idx]]=x.signedUrl; }); }catch(e){} }
+  let sigHtml=''; if(S.est.signature_url && docType!=='livrare'){ try{ const {data:sd}=await sb.storage.from('docs').createSignedUrl(S.est.signature_url,600); if(sd&&sd.signedUrl){ const Ts=window.C373t||function(s){return s;}; sigHtml='<div style="margin-top:30px"><div style="color:#6b7793;font-size:11px">'+Ts('Acceptat de client')+(S.est.signer_name?' — '+esc(S.est.signer_name):'')+(S.est.signed_at?' · '+esc(String(S.est.signed_at).slice(0,10)):'')+'</div><img src="'+sd.signedUrl+'" style="height:80px;margin-top:4px"></div>'; } }catch(e){} }
+  const f=S.firm; const brand=(f.automations&&f.automations.brand_name)||''; const idLabel=(f.automations&&f.automations.id_label)||'IDNO'; const legalNote=(f.automations&&f.automations.legal_note)||'';
+  const T=window.C373t||function(s){return s;}; const L=(window.C373lang&&window.C373lang())||'ro';
+  function pdfRow(l,n){ const net=lineNet(l); const eff=lineEffVat(l); const lineTot=anyVat?net*(1+eff/100):net;
+    const extra=(l.description?'<div style="color:#6b7793;font-size:11px;margin-top:3px">'+esc(l.description).replace(/\n/g,'<br>')+'</div>':'');
+    const hasPhoto=l.photo_url&&lphotos[l.photo_url];
+    const photoCell='<td style="text-align:center;vertical-align:middle">'+(hasPhoto?'<img src="'+lphotos[l.photo_url]+'" onclick="zoom(this.src)" title="'+(window.C373t?window.C373t('Apasă pentru a mări'):'Apasă pentru a mări')+'" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid #e5e9f2;cursor:zoom-in">':'')+'</td>';
+    if(isLiv) return '<tr><td>'+n+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td>'+photoCell+'</tr>';
+    return '<tr><td>'+n+'</td><td>'+esc(l.name)+extra+'</td><td class="r">'+num2(l.qty)+'</td><td>'+esc(l.unit)+'</td><td class="r">'+money(l.unit_price)+'</td>'
+      /* ►► FIN-GROUP-PARITY1 — tipărim reducerea DOAR acolo unde motorul o APLICĂ. Pentru o
+         poziție din grup `app.calc_totals` (și `lineNet`) ignoră `disc`; lucrează reducerea
+         grupului, care apare deja pe rândul „Subtotal grup". Coloana tipărea totuși procentul
+         stocat pe linie, așa că documentul ANUNȚA clientului o reducere pe care nu i-o acorda
+         (măsurat pe LIVE: 50,00 MDL × 1 buc, coloana „Reducere 10%", total tipărit 60,00 MDL —
+         adică exact prețul întreg). */
+      +(showDiscCol?'<td class="r">'+(lineDiscOn(l)?num2(l.disc||0)+'%':'—')+'</td>':'')
+      +(showVatCol?'<td class="r">'+num2(eff)+'%</td>':'')
+      +(showVatCol?'<td class="r">'+money(unitGross(l))+'</td>':'')
+      +'<td class="r">'+money(lineTot)+'</td>'+photoCell+'</tr>';
+  }
+  const isRolled = !isLiv && (S.est.materials_mode==='rolled'); // materiale incluse in manopera (ascunse)
+  let _n=0, rows='';
+  S.lines.filter(l=>(l.name||'').trim() && !l.group).forEach(l=>{ rows+=pdfRow(l,++_n); });
+  S.groups.forEach(g=>{ const gl=S.lines.filter(l=>(l.name||'').trim() && l.group===g.id); if(!gl.length && !(g.name||'').trim()) return;
+    rows+='<tr><td colspan="'+colsN+'" style="background:#eef2ff;font-weight:800">'+esc(g.name||T('Grup'))+'</td></tr>';
+    if(isRolled){
+      const mats=gl.filter(l=>l.kind==='material'), labor=gl.filter(l=>l.kind!=='material');
+      const matGross=mats.reduce((s,l)=>s+(+l.qty||0)*(+l.unit_price||0),0);
+      if(labor.length){ labor.forEach((l,idx)=>{ const cl=Object.assign({},l); const q=+cl.qty||0; const own=q*(+cl.unit_price||0); const gross=own+(idx===0?matGross:0); cl.unit_price=q?gross/q:gross; rows+=pdfRow(cl,++_n); }); }
+      else { rows+=pdfRow(Object.assign(blankLine(),{name:g.name||T('Materiale'),qty:1,unit:'set',unit_price:matGross,vat_rate:(mats.length?(+mats[0].vat_rate||0):(+g.vat||0)),group:g.id}),++_n); }
+    } else { gl.forEach(l=>{ rows+=pdfRow(l,++_n); }); }
+    if(!isLiv){ const gt=groupTotals(g); rows+='<tr><td colspan="'+(colsN-2)+'" style="text-align:right;color:#6b7793;font-size:11px;padding-right:10px">'+T('Subtotal grup')+(g.disc?(' −'+num2(g.disc)+'%'):'')+(gt.vat>0.005?(' · '+T('TVA:')+' '+money(gt.vat)):'')+'</td><td class="r"><b>'+money(gt.total)+'</b></td><td></td></tr>'; }
+  });
+  const docTitle=isLiv?T('BON DE LIVRARE'):(docType==='confirmare'?T('CONFIRMARE DE COMANDĂ'):T('OFERTĂ / DEVIZ'));
+  const tabHead=isLiv?('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>')
+    :('<tr><th>#</th><th>'+T('Denumire')+'</th><th class="r">'+T('Cant.')+'</th><th>'+T('UM')+'</th><th class="r">'+T('Preț fără TVA')+'</th>'+(showDiscCol?'<th class="r">'+T('Reducere')+'</th>':'')+(showVatCol?'<th class="r">'+T('TVA')+'</th>':'')+(showVatCol?'<th class="r">'+T('Preț cu TVA')+'</th>':'')+'<th class="r">'+(anyVat?T('Total cu TVA'):T('Total'))+'</th><th style="width:108px;text-align:center">'+T('Foto')+'</th></tr>');
+  const totBlock=isLiv?'<div style="margin-top:40px;display:flex;justify-content:space-between;gap:30px"><div style="flex:1">'+T('Predat de')+':<br><br>____________________</div><div style="flex:1">'+T('Primit de')+':<br><br>____________________</div></div>'
+    :('<div class="tot"><div><span>'+T('Subtotal:')+'</span><b>'+money(t.gross)+'</b></div>'
+       +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
+       +'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.est.vat_value)?(' '+num2(S.est.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>'
+       +'<div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div></div>'
+       +(()=>{ const pn=prepayNote(t.total); return pn?'<div style="margin-top:12px;margin-left:auto;width:380px;padding:11px 13px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:12px;color:#065f46;line-height:1.5">💸 '+T('La achitarea 100% în avans beneficiați de o reducere suplimentară de')+' <b>'+num2(pn.pct)+'%</b> '+T('din suma finală')+' ('+T('economisiți')+' <b>'+money(pn.save)+'</b>). '+T('Total cu avans:')+' <b>'+money(pn.after)+'</b></div>':''; })()
+       +(legalNote?'<div class="muted" style="margin-top:10px;font-size:11px">'+esc(legalNote)+'</div>':'')
+       +(S.est.notes?'<div class="ft">'+esc(S.est.notes).replace(/\n/g,'<br>')+'</div>':'<div class="ft">'+T('Vă mulțumim!')+'</div>'));
+  const doc='<!doctype html><html lang="'+L+'"><head><meta charset="utf-8"><title>'+esc(docTitle)+' '+esc(S.est.number||'')+'</title><style>'
+    +'body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#0f1c33;padding:32px;max-width:800px;margin:0 auto;font-size:13px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2f6bff;padding-bottom:16px;margin-bottom:20px}.ti{font-size:22px;font-weight:800;color:#2f6bff}.muted{color:#6b7793}.box{display:flex;gap:24px;margin:0 0 20px}.box>div{flex:1;background:#f4f6fb;border-radius:10px;padding:12px 14px}.box h4{font-size:11px;text-transform:uppercase;color:#6b7793;margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px 10px;border-bottom:1px solid #e5e9f2;text-align:left}th{background:#0f1c33;color:#fff;font-size:11px;text-transform:uppercase}.r{text-align:right}.tot{margin-top:16px;margin-left:auto;width:280px}.tot div{display:flex;justify-content:space-between;padding:5px 0}.tot .g{font-size:17px;font-weight:800;border-top:2px solid #0f1c33;margin-top:6px;padding-top:8px}.ft{margin-top:30px;color:#6b7793;font-size:11px;border-top:1px solid #e5e9f2;padding-top:12px}@media print{.noprint{display:none}tr{page-break-inside:avoid}}'
+    +'</style></head><body><div class="hd"><div>'+logo+'<div style="font-size:18px;font-weight:800">'+esc(brand||f.name||'Firma')+'</div>'+(brand?'<div class="muted" style="font-size:11px">'+T('Marca comercială a')+' '+esc(f.name||'')+'</div>':'')+'<div class="muted">'+(f.idno?esc(idLabel)+': '+esc(f.idno)+'<br>':'')+(function(){var au=f.automations||{};var a=[f.address,[au.zip,au.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');return a?esc(a)+'<br>':'';})()+(f.phone?T('Tel:')+' '+esc(f.phone):'')+'</div></div>'
+    +'<div style="text-align:right"><div class="ti">'+docTitle+'</div><div style="font-weight:700;font-size:15px">'+T('Nr.')+' '+esc(S.est.number||'—')+'</div><div class="muted">'+T('Data:')+' '+esc(fmtDate(S.est.issue_date))+((!isLiv&&S.est.valid_until)?'<br>'+T('Valabil până la:')+' '+esc(fmtDate(S.est.valid_until)):'')+'</div></div></div>'
+    /* ►► HOTFIX-FIN-TITLE — titlul introdus de utilizator (`S.est.title`) se salva, se recitea și
+       apărea în listă, dar PDF-ul îl omitea: antetul arăta doar TIPUL documentului și numărul.
+       Titlul e o informație distinctă de număr, deci primește propriul rând. `esc()` obligatoriu. */
+    +(S.est.title?'<div style="font-size:16px;font-weight:700;margin:0 0 14px;color:#0f1c33">'+esc(S.est.title)+'</div>':'')
+    +'<div class="box"><div><h4>'+T('Furnizor')+'</h4><b>'+esc(brand||f.name||'')+'</b>'+(brand?'<div style="font-size:10px;color:#6b7793">'+T('Marca comercială a')+' '+esc(f.name||'')+'</div>':'')+'</div><div><h4>'+T('Client')+'</h4><b>'+esc(cl.name||'—')+'</b></div></div>'
+    +'<table><thead>'+tabHead+'</thead><tbody>'+(rows||'<tr><td colspan="'+colsN+'" style="text-align:center;color:#888;padding:18px">'+T('Fără linii.')+'</td></tr>')+'</tbody></table>'
+    +totBlock+sigHtml
+    +(isLiv?'':companyFooterHtml())
+    +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
+    +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'
+    +'<script>function zoom(s){var l=document.getElementById("lb");document.getElementById("lbimg").src=s;l.style.display="flex";}document.addEventListener("keydown",function(e){if(e.key==="Escape"){var l=document.getElementById("lb");if(l)l.style.display="none";}});<\/script>'
+    +'</body></html>';
+  if(inPlace){ document.open(); document.write(doc); document.close(); return; }
+  if(w&&!w.closed){ try{ w.document.open(); w.document.write(doc); w.document.close(); }catch(e){ const w2=window.open('','_blank'); if(w2){ w2.document.write(doc); w2.document.close(); } } }
+  else { const w2=window.open('','_blank'); if(!w2){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } w2.document.write(doc); w2.document.close(); }
+}
+/* ---- SEMNĂTURĂ DIGITALĂ (acceptare ofertă) ---- */
+var _sg={};
+function signPad(){
+  if(!S.id){ toast('Salvează întâi oferta.'); return; }
+  const cl=(S.clients.find(c=>c.id===S.est.client_id)||{});
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:460px"><h3>✍️ Semnătură client (acceptare)</h3>'
+    +'<div class="field"><label>Nume semnatar</label><input id="sg-name" value="'+esc(S.est.signer_name||cl.name||'')+'"/></div>'
+    +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:.3rem">Semnează cu degetul / mouse-ul în casetă:</div>'
+    +'<canvas id="sg-canvas" width="430" height="180" style="border:1px dashed var(--line);border-radius:10px;width:100%;touch-action:none;background:#fff"></canvas>'
+    +'<div id="sg-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:space-between;margin-top:.6rem"><button class="btn" onclick="sgClear()">Șterge</button><div style="display:flex;gap:.5rem"><button class="btn" onclick="closeM()">Anulează</button><button class="btn primary" id="sg-save" onclick="sgSave()">Salvează semnătura</button></div></div></div></div>';
+  setTimeout(sgInit,60);
+}
+function sgInit(){ const c=$('sg-canvas'); if(!c) return; const ctx=c.getContext('2d'); ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#0f1c33'; _sg={c,ctx,drawing:false,has:false};
+  const pos=e=>{ const r=c.getBoundingClientRect(); return {x:(e.clientX-r.left)*(c.width/r.width), y:(e.clientY-r.top)*(c.height/r.height)}; };
+  c.addEventListener('pointerdown',e=>{ e.preventDefault(); _sg.drawing=true; _sg.has=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); try{c.setPointerCapture(e.pointerId);}catch(_){}});
+  c.addEventListener('pointermove',e=>{ if(!_sg.drawing) return; e.preventDefault(); const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); });
+  c.addEventListener('pointerup',()=>{ _sg.drawing=false; });
+}
+function sgClear(){ if(_sg.ctx){ _sg.ctx.clearRect(0,0,_sg.c.width,_sg.c.height); _sg.has=false; } }
+async function sgSave(){
+  if(!_sg.has){ $('sg-msg').textContent='Semnează în casetă întâi.'; return; }
+  const btn=$('sg-save'); if(btn) btn.disabled=true;
+  try{
+    const blob=await new Promise(res=>_sg.c.toBlob(res,'image/png'));
+    const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
+    const path=tid+'/signatures/'+S.id+'_'+Date.now()+'.png';
+    const up=await sb.storage.from('docs').upload(path,blob,{contentType:'image/png'}); if(up.error) throw up.error;
+    const name=($('sg-name').value||'').trim()||null; const now=new Date().toISOString();
+    // Scrierea întoarce chiar starea canonică: `updated_at` e pus de trigger cu now() al
+    // serverului, deci NU poate fi ghicit în client. Fără `.single()` — ca să distingem
+    // „update-ul a eșuat" (u.error) de „a reușit, dar nu putem citi înapoi" (0 rânduri).
+    const u=await sb.from('estimates').update({signature_url:path,signer_name:name,signed_at:now,status:'accepted'})
+      .eq('id',S.id).select('updated_at,signature_url,signer_name,signed_at,status');
+    if(u.error){
+      if(isNetErr(u.error)){ console.error('sgSave (rezultat incert)', u.error); closeM(); docStale('Semnarea poate fi înregistrată.'); return; }
+      throw u.error;                                        // eroare clară ⇒ semnarea NU s-a înregistrat
+    }
+    const row=(u.data||[])[0];
+    if(!row || !row.updated_at){                            // semnat pe server, dar starea canonică nu s-a putut citi
+      console.error('sgSave: semnare reușită, citirea stării canonice a eșuat', u);
+      closeM(); docStale('Semnarea a fost înregistrată.'); return;
+    }
+    S.est.signature_url=row.signature_url; S.est.signer_name=row.signer_name; S.est.signed_at=row.signed_at; S.est.status=row.status;
+    S._updatedAt=row.updated_at;                            // tokenul de concurență optimistă, la zi
+    closeM(); toast('✅ Semnătură salvată. Ofertă acceptată.'); render();
+    historyReset();                                          // abia după sincronizarea canonică
+  }catch(e){ if(btn) btn.disabled=false; $('sg-msg').textContent='Eroare: '+(e.message||e); }
+}
+
+/* ---- conversii ---- */
+async function toInvoice(){
+  if(!S.id){ toast('Salvează întâi oferta.'); return; }
+  await save();
+  if(S.id) window.open('factura.html?estimate='+S.id,'_blank');
+}
+async function toSite(){
+  if(!S.est.client_id){ toast('Alege un client.'); return; }
+  const t=totals(); const tid=(await sb.from('memberships').select('tenant_id').eq('active',true).limit(1).maybeSingle()).data.tenant_id;
+  const name=prompt('Denumirea șantierului:', (S.clients.find(c=>c.id===S.est.client_id)||{}).name||'Șantier nou'); if(name===null) return;
+  const ins=await sb.from('sites').insert({tenant_id:tid,name:name||'Șantier nou',client_id:S.est.client_id,budget:t.total,status:'planned',source_estimate_id:S.id||null}).select('id').single();
+  if(ins.error){ toast('Eroare: '+ins.error.message); return; }
+  toast('✅ Șantier creat. Deschid graficul…'); setTimeout(()=>location.href='grafic.html?site='+ins.data.id,700);
+}
+
+/* ════ ISTORIC LOCAL — „↶ Anulează" / „↷ Refă" ════════════════════════════════
+   Acoperă DOAR modificările locale nesalvate din editor. Nu atinge niciodată
+   metadatele serverului (id/tenant_id/updated_at/semnătura) și nu face niciun
+   apel la Supabase. După o salvare reușită (RPC 0117) istoricul repornește din
+   starea canonică întoarsă de server ⇒ nu se poate anula peste ultima salvare. */
+const HIST_MAX=50, HIST_WAIT=500;
+/* Whitelist explicit: doar câmpurile pe care editorul le trimite legitim către
+   save_estimate + starea client de care depinde salvarea (markerul auto/manual
+   al numărului). Semnătura (signature_url/signer_name/signed_at) NU intră. */
+const HIST_DOC=['status','number','client_id','title','issue_date','valid_until','notes','disc_mode','disc_value','vat_mode','vat_value','materials_mode','skonto_off','skonto_pct','plan_url'];
+const HIST_LINE=['name','qty','unit','unit_price','vat_rate','disc','group','kind','norm_code','description','photo_url','cat_id','cat_src','_catName','_catPrice','_catUnit','_catDesc','_catPhoto',
+  'sub_id','sub_price_id','sub_price_at','sub_price_amount','sub_price_currency','sub_price_name','sub_price_unit'];
+let HIST={ cur:null, past:[], future:[], applying:false, tmr:null, key:null };
+function captureHistoryState(){
+  const d={}; HIST_DOC.forEach(k=>{ d[k]=(S.est[k]===undefined?null:S.est[k]); });
+  return JSON.stringify({ doc:d, autoNum:(S._autoNum===undefined?null:S._autoNum),
+    lines:(S.lines||[]).map(l=>{ const o={}; HIST_LINE.forEach(k=>{ o[k]=(l[k]===undefined?null:l[k]); }); return o; }),
+    groups:(S.groups||[]).map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0})) });
+}
+function applyHistoryState(snap){
+  const st=JSON.parse(snap); HIST.applying=true;
+  try{
+    HIST_DOC.forEach(k=>{ S.est[k]=st.doc[k]; });          // doar cheile din whitelist
+    if(st.autoNum!==null) S._autoNum=st.autoNum;
+    S.lines=(st.lines||[]).map(l=>Object.assign({},l));
+    S.groups=(st.groups||[]).map(g=>Object.assign({},g));
+    render();                                              // randare + totaluri prin funcțiile existente
+    saveDraftDz();                                          // schița locală rămâne sincronă (no-op dacă S.id)
+  } finally { HIST.applying=false; }
+}
+function historyButtons(){ const u=$('btn-undo'), r=$('btn-redo'); if(u) u.disabled=!HIST.past.length; if(r) r.disabled=!HIST.future.length; }
+function historyCommit(){
+  if(HIST.applying) return;
+  clearTimeout(HIST.tmr); HIST.tmr=null; HIST.key=null;
+  const snap=captureHistoryState();
+  if(HIST.cur===null){ HIST.cur=snap; historyButtons(); return; }
+  if(snap===HIST.cur) return;                              // stări identice nu se salvează
+  HIST.past.push(HIST.cur); if(HIST.past.length>HIST_MAX) HIST.past.shift();
+  HIST.cur=snap; HIST.future.length=0; historyButtons();
+}
+function historyFlush(){ if(HIST.tmr) historyCommit(); }   // finalizează tastarea în așteptare
+function historyTouch(el){                                 // tastare: un pas per control, nu per caracter
+  if(HIST.applying) return;
+  if(HIST.key && HIST.key!==el) historyCommit();           // alt control ⇒ pas logic nou
+  HIST.key=el; clearTimeout(HIST.tmr); HIST.tmr=setTimeout(historyCommit,HIST_WAIT);
+}
+function historyUndo(){ historyFlush(); if(!HIST.past.length) return; HIST.future.push(HIST.cur); HIST.cur=HIST.past.pop(); applyHistoryState(HIST.cur); historyButtons(); }
+function historyRedo(){ historyFlush(); if(!HIST.future.length) return; HIST.past.push(HIST.cur); HIST.cur=HIST.future.pop(); applyHistoryState(HIST.cur); historyButtons(); }
+function historyReset(){ clearTimeout(HIST.tmr); HIST.tmr=null; HIST.key=null; HIST.past=[]; HIST.future=[]; HIST.cur=captureHistoryState(); historyButtons(); }
+function histSkip(el){ return !!(el && el.closest && el.closest('#modal-mount')); } // în modale comite butonul lor de salvare
+function historyInit(){
+  document.addEventListener('input', e=>{ if(!histSkip(e.target)) historyTouch(e.target); });   // bubble: handlerul inline a mutat deja S
+  document.addEventListener('change', e=>{ if(!histSkip(e.target)) historyCommit(); });
+  document.addEventListener('blur', e=>{ if(!histSkip(e.target)) historyFlush(); }, true);      // blur nu bulează
+  document.addEventListener('keydown', e=>{
+    if(!(e.ctrlKey||e.metaKey) || e.altKey) return;
+    if(histSkip(e.target)) return;                          // în modale rămâne undo-ul nativ al câmpului
+    const k=(e.key||'').toLowerCase();
+    if(k==='z' && !e.shiftKey){ if(!HIST.past.length && !HIST.tmr) return; e.preventDefault(); historyUndo(); }
+    else if((k==='z' && e.shiftKey) || k==='y'){ if(!HIST.future.length) return; e.preventDefault(); historyRedo(); }
+  });
+  historyReset();
+}
+/* Acțiuni structurale (onclick / drag / modale / AI) — un pas logic fiecare.
+   Câmpurile cu oninput/onchange NU se ambalează: sunt acoperite de listenerele de mai sus. */
+['addLine','addLineG','delLine','newGroup','groupSelection','addSelToGroup','delGroup','catalogNew','pickCatalog','pickSubPrice','lineRemovePhoto','skontoToggle','rebuildLinesFromDOM','rebuildGroupsFromDOM','saveLineDetails','cfLinkLine','lcSave','attachPlan','aiOfferRun','aiNotes','saveNewClient'].forEach(function(n){
+  const f=window[n]; if(typeof f!=='function') return;
+  window[n]=function(){ historyFlush(); const r=f.apply(this,arguments); if(r&&typeof r.then==='function') r.then(historyCommit,historyCommit); else historyCommit(); return r; };
+});
+boot();
+</script>
+<script src="catalog-form.js"></script>
+<script src="i18n.js"></script>
+</body>
+</html>

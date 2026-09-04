@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="robots" content="noindex" />
+<title>Acces — Cod373</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="client-shell.css" />
+<style>
+  /* Tokenii locali se mapează din cei canonici (`client-shell.css`). Înainte,
+     `acces.html` nu declara deloc `--accent`, iar cifra „373" din marcă ieșea
+     ALBASTRĂ aici și PORTOCALIE în `portal.html` — două culori pentru același
+     logo, pe două ecrane consecutive ale aceluiași client. */
+  :root{--bg:var(--c373-bg);--surface:var(--c373-surface);--line:var(--c373-line);--text:var(--c373-ink);--muted:var(--c373-muted);--primary:var(--c373-primary);--red:var(--c373-red);--green:var(--c373-green)}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--c373-font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.1rem}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--c373-r-lg);max-width:380px;width:100%;padding:1.4rem 1.3rem 1.5rem;box-shadow:var(--c373-shadow-2)}
+  .logo{display:flex;align-items:center;gap:.5rem;justify-content:center;margin-bottom:1rem}
+  h2{font-size:1.15rem;margin:.2rem 0 .15rem;text-align:center}
+  .sub{color:var(--muted);font-size:.86rem;text-align:center;margin:0 0 1rem}
+  .banner{background:#eef2ff;border:1px solid var(--primary);border-radius:12px;padding:.7rem .85rem;margin-bottom:.9rem}
+  .banner b{display:block;font-size:.98rem}.banner .s{color:#2c4a9c;font-size:.82rem;margin-top:.1rem}
+  label{display:block;font-size:.82rem;font-weight:600;margin:.55rem 0 .25rem}
+  input{width:100%;padding:.7rem .8rem;border:1px solid var(--line);border-radius:11px;font-size:1rem;outline:none;background:#fff}
+  input:focus{border-color:var(--primary)}
+  .pwwrap{position:relative}
+  .pweye{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;font-size:1.1rem;opacity:.55;padding:.2rem}
+  .btn{width:100%;padding:.85rem;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:1rem;font-weight:700;cursor:pointer;margin-top:.9rem}
+  .btn[disabled]{opacity:.6}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--text)}
+  .alt{text-align:center;font-size:.85rem;color:var(--muted);margin:.8rem 0 0}
+  .alt a{color:var(--primary);font-weight:600;cursor:pointer;text-decoration:none}
+  .hint{font-size:.76rem;color:var(--muted);margin-top:.25rem}
+  .msg{border-radius:10px;padding:.55rem .7rem;font-size:.85rem;margin-bottom:.2rem}
+  .msg.err{background:#fdecec;color:var(--red);border:1px solid #f6c9c9}
+  .msg.ok{background:#e9f7ef;color:var(--green);border:1px solid #bfe6cd}
+  /* ── ecranul de ACTIVARE (INVITE1-B) ── */
+  .wel{text-align:center;margin-bottom:.9rem}
+  .wel h1{font-size:1.35rem;margin:.1rem 0 .3rem;line-height:1.25}
+  .wel .co{font-size:.92rem;color:var(--muted);margin:0 0 .5rem}
+  .wel .co b{color:var(--text)}
+  .chip{display:inline-block;background:#eef2ff;color:#2c4a9c;border:1px solid var(--primary);
+        border-radius:999px;padding:.2rem .7rem;font-size:.82rem;font-weight:700}
+  .ro{background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:.6rem .75rem;
+      font-size:.9rem;word-break:break-all}
+  .ro .k{display:block;font-size:.72rem;color:var(--muted);font-weight:600;margin-bottom:.1rem}
+  input[readonly]{background:var(--bg);color:var(--muted)}
+  .req{font-size:.76rem;color:var(--muted);margin-top:.3rem}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+  /* ── DARK MODE: acces.html n-avea deloc. Doar variabile — zero redesign de login. ── */
+  @media (prefers-color-scheme: dark){
+    /* Se rescriu tokenii CANONICI, nu doar cei locali: componentele partajate
+       din `client-shell.css` citesc `--c373-*`, iar marca ar fi rămas altfel pe
+       bleumarinul temei deschise, invizibilă pe fundal întunecat (clasa KB#129). */
+    :root{--c373-bg:#0f1420;--c373-surface:#161d2c;--c373-line:#2a3446;--c373-ink:#e8edf7;--c373-muted:#94a2bd;--c373-surface-2:#1b2333}
+    :root{--bg:#0f1420;--surface:#161d2c;--line:#2a3446;--text:#e8edf7;--muted:#94a2bd}
+    /* Badge-ul mărcii își păstrează bleumarinul de brand și pe tema închisă;
+       fără bordură s-ar topi în fundal. */
+    .cs-brand-badge{box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+    input{background:#0f1420;color:var(--text)}
+    input[readonly]{background:#0c111b}
+    .banner{background:#17233f}
+    .banner .s{color:#a9c0f5}
+    .chip{background:#17233f;color:#a9c0f5}
+    .msg.err{background:#3a1a1a;border-color:#6b2b2b}
+    .msg.ok{background:#12301f;border-color:#255c3a}
+    .card{box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  }
+</style>
+</head>
+<body data-mediu="RECOVERY">
+  <div class="card">
+    <!-- `translate="no"` e obligatoriu: `'Cod'` e cheie reală în dicționar
+         (`i18n.js` → {ru:'Код'}), iar nodul de text „Cod" e separat de „373",
+         deci observatorul din i18n traducea numele produsului în „Код373". -->
+    <div class="logo"><span class="cs-brand" translate="no"><span class="cs-brand-badge" aria-hidden="true">373</span><span class="cs-brand-name">Cod<span>373</span></span></span></div>
+    <div id="box"><div class="sub">Se încarcă…</div></div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="i18n.js"></script>
+<script>
+const SUPABASE_URL='https://iuhtzkloanbyfwuohvux.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1aHR6a2xvYW5ieWZ3dW9odnV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNzgzMTcsImV4cCI6MjEwMjk1NDMxN30._3bCH3emQTADMVo9-CD3wYBCdLDs6_UT2Z82_1TpNCw';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+function esc(s){return(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function base(){ return location.href.split('?')[0].split('#')[0].replace(/\/[^/]*$/,'/'); }
+function msg(t,k){ const m=$('acc-msg'); if(m) m.innerHTML=t?'<div class="msg '+(k||'err')+'">'+esc(t)+'</div>':''; }
+const ROLE_LABELS={owner:'Proprietar',admin:'Administrator',manager:'Responsabil',accountant:'Contabil',worker:'Lucrător',driver:'Șofer',subcontractor:'Subcontractant',client:'Client'};
+const FIELD=['worker','driver','client','subcontractor'];
+const token=new URLSearchParams(location.search).get('invite');
+
+/* ══ i18n LOCAL pentru ecranul de activare (INVITE1-B) ═══════════════════════════════════════
+   Caz special, deliberat: motorul din `i18n.js` alege limba din `localStorage` → browser, dar
+   pagina de activare trebuie randată în LIMBA FIRMEI, cunoscută abia după `invite_info` și
+   ÎNAINTE de orice autentificare. Deci limba vine din invitație, nu din preferința celui care
+   deschide linkul. Dicționarul e mic și local — nu dublăm motorul, doar sursa limbii. */
+let AL='ro';                                   /* limba activă a ecranului de activare */
+const AT={
+  'Bun venit':                 {ru:'Добро пожаловать',de:'Willkommen',en:'Welcome'},
+  'te-a invitat în Cod373':    {ru:'приглашает вас в Cod373',de:'lädt Sie zu Cod373 ein',en:'has invited you to Cod373'},
+  'Rol':                       {ru:'Роль',de:'Rolle',en:'Role'},
+  'Email':                     {ru:'Эл. почта',de:'E-Mail',en:'Email'},
+  'Parolă nouă':               {ru:'Новый пароль',de:'Neues Passwort',en:'New password'},
+  'Confirmă parola':           {ru:'Подтвердите пароль',de:'Passwort bestätigen',en:'Confirm password'},
+  'Telefon':                   {ru:'Телефон',de:'Telefon',en:'Phone'},
+  'Activează contul':          {ru:'Активировать аккаунт',de:'Konto aktivieren',en:'Activate account'},
+  'Minim 6 caractere.':        {ru:'Минимум 6 символов.',de:'Mindestens 6 Zeichen.',en:'At least 6 characters.'},
+  'Parolele nu coincid.':      {ru:'Пароли не совпадают.',de:'Die Passwörter stimmen nicht überein.',en:'The passwords do not match.'},
+  'Îl folosim pentru contact. Recuperarea parolei rămâne pe email.':
+    {ru:'Используем для связи. Восстановление пароля остаётся по эл. почте.',
+     de:'Wir nutzen ihn für den Kontakt. Die Passwort-Wiederherstellung läuft weiterhin per E-Mail.',
+     en:'We use it to contact you. Password recovery stays by email.'},
+  'Autentifică-te pentru a accepta invitația.':
+    {ru:'Войдите, чтобы принять приглашение.',de:'Melden Sie sich an, um die Einladung anzunehmen.',en:'Sign in to accept the invitation.'},
+  'Parolă':                    {ru:'Пароль',de:'Passwort',en:'Password'},
+  'Intră și acceptă':          {ru:'Войти и принять',de:'Anmelden und annehmen',en:'Sign in and accept'},
+  'Ai deja cont? Autentifică-te':{ru:'Уже есть аккаунт? Войти',de:'Sie haben schon ein Konto? Anmelden',en:'Already have an account? Sign in'},
+  'Invitația a expirat.':      {ru:'Срок приглашения истёк.',de:'Die Einladung ist abgelaufen.',en:'The invitation has expired.'},
+  'Invitația a fost anulată.': {ru:'Приглашение отменено.',de:'Die Einladung wurde storniert.',en:'The invitation was cancelled.'},
+  'Invitația a fost deja folosită.':{ru:'Приглашение уже использовано.',de:'Die Einladung wurde bereits verwendet.',en:'The invitation has already been used.'},
+  'Link de invitație invalid.':{ru:'Недействительная ссылка-приглашение.',de:'Ungültiger Einladungslink.',en:'Invalid invitation link.'},
+  'Cere una nouă responsabilului.':{ru:'Попросите новое у ответственного.',de:'Bitten Sie die verantwortliche Person um eine neue.',en:'Ask the responsible person for a new one.'},
+  'Se activează…':             {ru:'Активация…',de:'Wird aktiviert…',en:'Activating…'},
+  'Scrie un email valid.':     {ru:'Введите действительный адрес эл. почты.',de:'Bitte eine gültige E-Mail-Adresse eingeben.',en:'Enter a valid email address.'},
+  'Alege emailul cu care vei intra în Cod373. Tot pe el se face recuperarea parolei.':
+    {ru:'Выберите эл. почту для входа в Cod373. На неё же приходит восстановление пароля.',
+     de:'Wählen Sie die E-Mail-Adresse, mit der Sie sich bei Cod373 anmelden. Auch die Passwort-Wiederherstellung läuft darüber.',
+     en:'Choose the email you will sign in to Cod373 with. Password recovery also goes there.'},
+  'Contul tău este activ.':    {ru:'Ваш аккаунт активен.',de:'Ihr Konto ist aktiv.',en:'Your account is active.'},
+  'Expiră':                    {ru:'Истекает',de:'Läuft ab am',en:'Expires'},
+  'Această invitație este destinată altui cont.':
+    {ru:'Это приглашение предназначено другому аккаунту.',de:'Diese Einladung ist für ein anderes Konto bestimmt.',en:'This invitation is for a different account.'},
+  'Acceptă invitația':{ru:'Принять приглашение',de:'Einladung annehmen',en:'Accept invitation'},
+  'Invitația este pentru':{ru:'Приглашение для',de:'Die Einladung gilt für',en:'The invitation is for'},
+  'Ești autentificat ca':{ru:'Вы вошли как',de:'Sie sind angemeldet als',en:'You are signed in as'},
+  'Ieși și intră cu contul invitat':
+    {ru:'Выйти и войти с приглашённым аккаунтом',de:'Abmelden und mit dem eingeladenen Konto anmelden',en:'Sign out and sign in with the invited account'}
+};
+function t(s){ if(AL==='ro') return s; const e=AT[s]; return (e&&e[AL])||s; }
+/* eticheta rolului, în limba firmei */
+const ROLE_I18N={
+  worker:{ru:'Рабочий',de:'Arbeiter',en:'Worker'}, driver:{ru:'Водитель',de:'Fahrer',en:'Driver'},
+  manager:{ru:'Руководитель',de:'Bauleiter',en:'Manager'}, accountant:{ru:'Бухгалтер',de:'Buchhalter',en:'Accountant'},
+  admin:{ru:'Администратор',de:'Administrator',en:'Administrator'}, owner:{ru:'Владелец',de:'Inhaber',en:'Owner'},
+  subcontractor:{ru:'Субподрядчик',de:'Nachunternehmer',en:'Subcontractor'}, client:{ru:'Клиент',de:'Kunde',en:'Client'}
+};
+function roleLabel(r){ if(AL==='ro') return ROLE_LABELS[r]||r; const e=ROLE_I18N[r]; return (e&&e[AL])||ROLE_LABELS[r]||r; }
+
+/* `ac` explicit: managerele de parole au nevoie de `new-password` la creare și de
+   `current-password` la autentificare — altfel propun/completează greșit. */
+function eyeWrap(id, ac){ return '<div class="pwwrap"><input id="'+id+'" type="password" autocomplete="'+(ac||'new-password')+'" placeholder="••••••••"/><button type="button" class="pweye" aria-label="'+esc(t('Parolă'))+'" onclick="var i=document.getElementById(\''+id+'\');if(i.type===\'password\'){i.type=\'text\';this.textContent=\'🙈\'}else{i.type=\'password\';this.textContent=\'👁\'}">👁</button></div>'; }
+
+async function init(){
+  /* Ordinea contează: contextul invitației se citește ÎNAINTE de a decide ecranul, ca limba
+     firmei să fie știută din prima randare — altfel s-ar vedea RO și apoi ar sări în DE. */
+  let inf=null;
+  if(token){
+    try{ const { data }=await sb.rpc('invite_info',{p_token:token}); inf=(data&&data[0])||null; }catch(e){}
+    if(inf && inf.lang) AL=inf.lang;
+  }
+  let session=null;
+  try{ const r=await sb.auth.getSession(); session=r.data&&r.data.session; }catch(e){}
+
+  /* INVITE1-B.1: TOKENUL are prioritate față de sesiune.
+     Înainte, `if(session) return finish()` era PRIMUL, deci oricine ajungea pe link cu o sesiune
+     deja deschisă — adminul care tocmai a creat invitația în același browser, sau cineva venit
+     prin magic link — sărea complet peste ecranul de activare: fără „Bun venit", fără parolă,
+     fără telefon. Activarea trebuie să fie ecranul pe care îl vezi când ai un link de invitație,
+     indiferent ce sesiune ai în browser. */
+  if(token){
+    if(!inf) return renderInviteDead(null);                       /* inexistent: zero divulgare */
+    if(inf.status!=='pending') return renderInviteDead(inf.status);
+    if(session){
+      /* Contul din browser e cel invitat? Comparăm cu emailul REAL al sesiunii, nu cu ce
+         pretinde formularul. Dacă da, nu-i mai cerem parolă — doar acceptarea. Dacă nu,
+         NU consumăm invitația (0146 ar refuza oricum) și o spunem pe șleau. */
+      let cur=null, anon=false;
+      try{ const u=await sb.auth.getUser(); const uu=(u.data&&u.data.user)||{};
+           cur=uu.email||null; anon=!!uu.is_anonymous; }catch(e){}
+      /* O sesiune DEMO (anonimă) nu e un cont: 0146 o refuză oricum cu `ANON`. N-are rost s-o
+         punem pe ecranul de acceptare ca să eșueze după clic — o tratăm ca „fără sesiune" și
+         omul își face contul real aici. */
+      if(anon) return renderActivate(inf);
+      const invited=String(inf.email||'').trim().toLowerCase();
+      if(invited && cur && cur.trim().toLowerCase()===invited) return renderAcceptSignedIn(inf);
+      if(invited && cur) return renderWrongAccount(inf, cur);
+      /* invitație fără email (linkul E credențiala): contul curent o poate accepta */
+      return renderAcceptSignedIn(inf);
+    }
+    return renderActivate(inf);
+  }
+  if(session) return finish();
+  renderLogin();
+}
+
+/* ══ ECRANUL DE ACTIVARE (INVITE1-B) ═════════════════════════════════════════════════════════
+   Un link de invitație valid NU mai duce la formularul generic de cont: duce la un ecran care
+   spune cine ești, cine te-a invitat și cu ce rol, în limba FIRMEI. Nu cerem nimic din ce firma
+   știe deja — numele nu se retastează, telefonul vine pre-completat din fișa de angajat.
+   Emailul e READ-ONLY: din 0146 invitația e legată de el, deci un câmp editabil ar fi o minciună. */
+let INF=null;                                   /* contextul invitației (invite_info) */
+function firstName(n){ const s=String(n||'').trim(); return s? s.split(/\s+/)[0] : ''; }
+
+function renderActivate(inf){
+  INF=inf; AL=inf.lang||'ro';
+  try{ document.documentElement.lang=AL; }catch(e){}
+  const nm=firstName(inf.display_name);
+  const exp=inf.expires_at? String(inf.expires_at).slice(0,10) : '';
+  const head='<div class="wel">'
+    +'<h1>'+esc(t('Bun venit'))+(nm?(', '+esc(nm)):'')+'</h1>'
+    +'<p class="co"><b>'+esc(inf.tenant_name||'')+'</b> '+esc(t('te-a invitat în Cod373'))+'</p>'
+    +'<span class="chip">'+esc(t('Rol'))+': '+esc(roleLabel(inf.role))+'</span></div>'
+    +'<div id="acc-msg"></div>';
+
+  /* ── CONT EXISTENT: nu-i cerem o parolă nouă, doar să se autentifice ── */
+  if(inf.has_account){
+    $('box').innerHTML=head
+      +'<p class="sub">'+esc(t('Autentifică-te pentru a accepta invitația.'))+'</p>'
+      +'<label for="a-email">'+esc(t('Email'))+'</label>'
+      +'<input id="a-email" type="email" autocomplete="username" readonly value="'+esc(inf.email||'')+'"/>'
+      +'<label for="a-pass">'+esc(t('Parolă'))+'</label>'+eyeWrap('a-pass','current-password')
+      +'<button class="btn" id="a-btn" onclick="doActivateExisting()">'+esc(t('Intră și acceptă'))+'</button>'
+      +(exp?'<p class="alt">'+esc(t('Expiră'))+' '+esc(exp)+'</p>':'');
+    const p=$('a-pass'); if(p) p.focus();
+    return;
+  }
+
+  /* ── CONT NOU: parolă + confirmare + telefon, un singur CTA ──
+     KB#99: invitația FĂRĂ email (fluxul „Copiază linkul" / WhatsApp) nu mai e un fund de sac.
+     CU email ⇒ câmp READ-ONLY: 0146 leagă invitația de el, deci un câmp editabil ar fi o minciună.
+     FĂRĂ email ⇒ câmp EDITABIL: userul își alege identitatea de login. Tokenul rămâne SINGURA
+     autoritate pentru firmă/rol/entitate — `redeem_invite` (0146) nici nu citește emailul
+     clientului pe ramura fără email, deci ce se scrie aici NU poate muta rolul sau fișa. */
+  $('box').innerHTML=head
+    +'<label for="a-email">'+esc(t('Email'))+'</label>'
+    +(inf.email
+      ? '<input id="a-email" type="email" autocomplete="username" readonly value="'+esc(inf.email)+'"/>'
+      : '<input id="a-email" type="email" autocomplete="username" inputmode="email" placeholder="nume@exemplu.com"/>'
+        +'<div class="hint">'+esc(t('Alege emailul cu care vei intra în Cod373. Tot pe el se face recuperarea parolei.'))+'</div>')
+    +'<label for="a-pass">'+esc(t('Parolă nouă'))+'</label>'+eyeWrap('a-pass','new-password')
+    +'<div class="req">'+esc(t('Minim 6 caractere.'))+'</div>'
+    +'<label for="a-pass2">'+esc(t('Confirmă parola'))+'</label>'+eyeWrap('a-pass2','new-password')
+    +'<label for="a-phone">'+esc(t('Telefon'))+'</label>'
+    +'<input id="a-phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="069 123 456" value="'+esc(inf.phone_prefill||'')+'"/>'
+    /* NU promitem recuperare prin telefon: SMS OTP nu există (INVITE1 §11) */
+    +'<div class="hint">'+esc(t('Îl folosim pentru contact. Recuperarea parolei rămâne pe email.'))+'</div>'
+    +'<button class="btn" id="a-btn" onclick="doActivate()">'+esc(t('Activează contul'))+'</button>'
+    +'<p class="alt"><a onclick="renderLogin()">'+esc(t('Ai deja cont? Autentifică-te'))+'</a></p>'
+    +(exp?'<p class="alt">'+esc(t('Expiră'))+' '+esc(exp)+'</p>':'');
+  /* invitație fără email ⇒ primul lucru de completat e emailul, nu parola */
+  const p=(!inf.email && $('a-email')) ? $('a-email') : $('a-pass'); if(p) p.focus();
+}
+
+/* invitație inutilizabilă: spunem DOAR de ce, fără firmă/email/nume (0147 nici nu ni le mai dă) */
+function renderInviteDead(status){
+  const m={expired:'Invitația a expirat.',revoked:'Invitația a fost anulată.',accepted:'Invitația a fost deja folosită.'}[status]
+        || 'Link de invitație invalid.';
+  $('box').innerHTML='<div id="acc-msg"></div><p class="sub">'+esc(t(m))+'<br>'+esc(t('Cere una nouă responsabilului.'))+'</p>';
+  renderLoginBelow();
+}
+function renderLoginBelow(){ const d=document.createElement('div'); d.innerHTML='<p class="alt"><a onclick="renderLogin()">'+esc(t('Ai deja cont? Autentifică-te'))+'</a></p>'; $('box').appendChild(d); }
+
+/* ── deja autentificat CU CONTUL INVITAT: nu-i cerem parolă, doar confirmarea ── */
+function renderAcceptSignedIn(inf){
+  INF=inf; AL=inf.lang||'ro';
+  try{ document.documentElement.lang=AL; }catch(e){}
+  const nm=firstName(inf.display_name);
+  $('box').innerHTML='<div class="wel">'
+    +'<h1>'+esc(t('Bun venit'))+(nm?(', '+esc(nm)):'')+'</h1>'
+    +'<p class="co"><b>'+esc(inf.tenant_name||'')+'</b> '+esc(t('te-a invitat în Cod373'))+'</p>'
+    +'<span class="chip">'+esc(t('Rol'))+': '+esc(roleLabel(inf.role))+'</span></div>'
+    +'<div id="acc-msg"></div>'
+    +(inf.phone_prefill!==undefined?'<label for="a-phone">'+esc(t('Telefon'))+'</label>'
+      +'<input id="a-phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="069 123 456" value="'+esc(inf.phone_prefill||'')+'"/>'
+      +'<div class="hint">'+esc(t('Îl folosim pentru contact. Recuperarea parolei rămâne pe email.'))+'</div>':'')
+    +'<button class="btn" id="a-btn" onclick="doAcceptSignedIn()">'+esc(t('Acceptă invitația'))+'</button>';
+}
+async function doAcceptSignedIn(){
+  if(_activating) return; _activating=true; $('a-btn').disabled=true; msg(t('Se activează…'),'ok');
+  await saveProfileBits((($('a-phone')&&$('a-phone').value)||'').trim());
+  finish();
+}
+/* ── autentificat cu ALT cont: NU consumăm invitația ── */
+function renderWrongAccount(inf, currentEmail){
+  INF=inf; AL=inf.lang||'ro';
+  try{ document.documentElement.lang=AL; }catch(e){}
+  $('box').innerHTML='<div class="wel"><h1>'+esc(t('Această invitație este destinată altui cont.'))+'</h1></div>'
+    +'<div id="acc-msg"></div>'
+    +'<div class="ro"><span class="k">'+esc(t('Invitația este pentru'))+'</span>'+esc(inf.email||'')+'</div>'
+    +'<div class="ro" style="margin-top:.5rem"><span class="k">'+esc(t('Ești autentificat ca'))+'</span>'+esc(currentEmail)+'</div>'
+    +'<button class="btn" onclick="switchAccountForInvite()">'+esc(t('Ieși și intră cu contul invitat'))+'</button>';
+}
+async function switchAccountForInvite(){
+  try{ await sb.auth.signOut({ scope:'local' }); }catch(e){}
+  location.reload();   /* revine pe același link, acum fără sesiune ⇒ ecranul de activare */
+}
+
+/* păstrat pentru compatibilitate cu apeluri vechi (ex. reInvite) */
+function renderInvite(inf){ return renderActivate(inf); }
+
+function renderLogin(){
+  $('box').innerHTML='<h2>Intră în cont</h2><p class="sub">Autentifică-te ca să continui.</p>'
+    +'<div id="acc-msg"></div>'
+    +'<label>Email sau telefon</label><input id="a-id" type="text" autocomplete="username" placeholder="nume@firma.md sau 069..."/>'
+    +'<label>Parolă</label>'+eyeWrap('a-pass')
+    +'<button class="btn" id="a-btn" onclick="doLogin()">Intră</button>'
+    +'<p class="alt"><a onclick="doMagic()">Intră cu link pe email</a> · <a onclick="doForgot()">Am uitat parola</a></p>'
+    +'<button class="btn btn-ghost" id="a-demo" onclick="doDemo()" style="margin-top:.7rem">🎬 <b>Încearcă demo</b></button>'
+    +'<div class="hint" style="text-align:center">Fără înregistrare — datele de probă se șterg automat după 7 zile.</div>'
+    +(token?'<p class="alt"><a onclick="reInvite()">‹ Înapoi la invitație</a></p>':'');
+  const p=$('a-pass'); if(p) p.setAttribute('autocomplete','current-password');
+}
+async function reInvite(){ try{ const { data }=await sb.rpc('invite_info',{p_token:token}); const inf=(data&&data[0])||null; if(inf&&inf.status==='pending') return renderInvite(inf); }catch(e){} renderLogin(); }
+
+/* Datele post-autentificare care NU sunt securitate (telefon, limbă) se scriu într-un singur
+   loc, ca ambele fluxuri (cont nou / cont existent) să se comporte identic. */
+async function saveProfileBits(phone){
+  let uid=null;
+  try{ uid=((await sb.auth.getUser()).data.user||{}).id; }catch(e){}
+  if(!uid) return;
+  /* profiles.phone e CANONICUL userului; employees.phone rămâne contact al fișei (nu-l atingem) */
+  if(phone){ try{ await sb.from('profiles').upsert({ id:uid, phone }); }catch(e){} }
+  /* limba firmei devine limba INIȚIALĂ a userului — funcția din 0147 nu suprascrie o preferință */
+  if(INF&&INF.lang){ try{ await sb.rpc('profile_init_lang',{p_lang:INF.lang}); }catch(e){} }
+}
+
+/* ── CONT NOU: parolă + confirmare + telefon, într-o singură acțiune ── */
+let _activating=false;
+async function doActivate(){
+  if(_activating) return;                       /* dublu-click ⇒ o singură activare */
+  /* KB#99: emailul vine din INVITAȚIE când ea are unul (0146 o leagă de el) și din FORMULAR
+     când nu are. În ambele cazuri e DOAR identitatea de login: firma, rolul și fișa vin din
+     token, iar `redeem_invite` le derivă exclusiv din rândul invitației. */
+  const typed=(INF&&INF.email) ? null : String(($('a-email')&&$('a-email').value)||'').trim().toLowerCase();
+  const email=String((INF&&INF.email)||typed||'').trim().toLowerCase();
+  const pass=$('a-pass').value||'', pass2=$('a-pass2').value||'', phone=($('a-phone').value||'').trim();
+  /* emailul se validează PRIMUL: e primul câmp din formular pe ramura fără email */
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){
+    /* un email lipsă din FORMULAR nu e un link stricat — nu minți despre cauză */
+    if(typed!==null){ msg(t('Scrie un email valid.')); if($('a-email')) $('a-email').focus(); return; }
+    msg(t('Link de invitație invalid.')); return;
+  }
+  if(pass.length<6){ msg(t('Minim 6 caractere.')); $('a-pass').focus(); return; }
+  if(pass!==pass2){ msg(t('Parolele nu coincid.')); $('a-pass2').focus(); return; }
+  _activating=true; $('a-btn').disabled=true; msg(t('Se activează…'),'ok');
+  const { data, error }=await sb.auth.signUp({ email, password:pass });
+  if(error){
+    _activating=false; $('a-btn').disabled=false;
+    /* emailul are deja cont ⇒ nu-i cerem parolă nouă, îl trecem pe fluxul de autentificare */
+    /* KB#99: pe invitația fără email fixăm ACUM emailul tastat în INF — altfel ecranul de
+       „cont existent" s-ar redesena cu câmpul gol și ar redeveni exact fundul de sac reparat. */
+    if(/registered|already/i.test(error.message||'')){ INF.email=INF.email||email; INF.has_account=true; return renderActivate(INF); }
+    msg(error.message); return;
+  }
+  let session=data&&data.session;
+  if(!session){
+    const r=await sb.auth.signInWithPassword({ email, password:pass });
+    if(r.error){ _activating=false; $('a-btn').disabled=false;
+      msg(/not confirmed/i.test(r.error.message||'')
+        ? 'Contul s-a creat, dar firma cere confirmarea pe email.' : r.error.message); return; }
+  }
+  await saveProfileBits(phone);
+  finish();                                     /* redeem + rutare după rol, fără shell intermediar */
+}
+
+/* ── CONT EXISTENT: doar autentificare, apoi acceptarea invitației ── */
+async function doActivateExisting(){
+  if(_activating) return;
+  const email=String((INF&&INF.email)||'').trim().toLowerCase();
+  const pass=$('a-pass').value||'';
+  if(!pass){ msg(t('Parolă')); $('a-pass').focus(); return; }
+  _activating=true; $('a-btn').disabled=true; msg(t('Se activează…'),'ok');
+  const r=await sb.auth.signInWithPassword({ email, password:pass });
+  if(r.error){ _activating=false; $('a-btn').disabled=false; msg(r.error.message); return; }
+  await saveProfileBits(($('a-phone')&&$('a-phone').value||'').trim());
+  finish();
+}
+
+async function doLogin(){
+  let id=($('a-id').value||'').trim(), pass=$('a-pass').value||'';
+  if(!id||!pass){ msg('Completează emailul/telefonul și parola.'); return; }
+  $('a-btn').disabled=true; msg('Se conectează…','ok');
+  if(!id.includes('@')){ // telefon → rezolvă emailul
+    try{ const r=await sb.rpc('email_for_phone',{p_phone:id}); if(r.data){ id=r.data; } else { $('a-btn').disabled=false; msg('Nu am găsit cont cu acest telefon. Încearcă cu emailul.'); return; } }
+    catch(e){ $('a-btn').disabled=false; msg('Încearcă cu emailul.'); return; }
+  }
+  const { error }=await sb.auth.signInWithPassword({ email:id.toLowerCase(), password:pass });
+  if(error){ $('a-btn').disabled=false; msg(/Invalid login/i.test(error.message||'')?'Email sau parolă greșite. (Dacă ai fost invitat și n-ai pus încă parolă, folosește „Intră cu link pe email".)':error.message); return; }
+  finish();
+}
+async function doMagic(){ const id=($('a-id')&&$('a-id').value||'').trim(); if(!id||!id.includes('@')){ msg('Scrie întâi emailul.'); return; }
+  const { error }=await sb.auth.signInWithOtp({ email:id.toLowerCase(), options:{ emailRedirectTo: base()+'acces.html'+(token?('?invite='+encodeURIComponent(token)):'') , shouldCreateUser:false } });
+  msg(error?error.message:'📧 Ți-am trimis un link de logare pe email. Deschide-l.', error?'err':'ok');
+}
+async function doForgot(){ const id=($('a-id')&&$('a-id').value||'').trim(); if(!id||!id.includes('@')){ msg('Scrie întâi emailul.'); return; }
+  const { error }=await sb.auth.resetPasswordForEmail(id.toLowerCase(), { redirectTo: base()+'app.html' });
+  msg(error?error.message:'📧 Ți-am trimis un link de resetare a parolei pe email.', error?'err':'ok');
+}
+
+/* Demo izolat: sesiune anonimă + firmă demo cu date de probă (RPC start_demo).
+   Dacă „Anonymous sign-ins" e oprit în Supabase, afișăm un mesaj prietenos. */
+async function doDemo(){
+  const b=$('a-demo'); if(b&&b.disabled) return; if(b) b.disabled=true;
+  msg('Se pregătește contul demo…','ok');
+  /* KB#63: sesiunea existentă se închide EXPLICIT înainte de demo — altfel un tab deschis
+     pe app rămâne cu firma veche în state și jetonul demo nou în storage (stare-himeră).
+     scope:'local' — celelalte dispozitive ale utilizatorului rămân conectate. */
+  try{ const { data:{ session:_s } }=await sb.auth.getSession(); if(_s) await sb.auth.signOut({ scope:'local' }); }catch(e){}
+  const r=await sb.auth.signInAnonymously();
+  if(r.error){ if(b) b.disabled=false;
+    msg(/anonymous|disabled|not enabled/i.test(r.error.message||'')?'Demo indisponibil momentan. Încearcă mai târziu sau creează un cont.':r.error.message); return; }
+  const { error }=await sb.rpc('start_demo',{ p_lang:(window.C373lang?C373lang():'ro')||'ro' });
+  if(error){ if(b) b.disabled=false; msg('Nu am putut porni demo. Încearcă din nou.'); try{ await sb.auth.signOut(); }catch(e){} return; }
+  location.replace('app.html');
+}
+
+/* INVITE1/0146: motivele de refuz sunt DISTINCTE și se spun omului. Înainte, rezultatul lui
+   `redeem_invite` era ignorat complet (`try{...}catch{}`), deci o invitație pentru altcineva
+   ducea tăcut în aplicație fără acces — părea că produsul e stricat. */
+const REDEEM_MSG={
+  WRONGEMAIL:'Invitația e pentru altă adresă de email. Intră cu adresa la care ai primit invitația.',
+  EXPIRED:'Invitația a expirat. Cere una nouă responsabilului.',
+  REVOKED:'Invitația a fost anulată.',
+  USED:'Invitația a fost deja folosită.',
+  NOTFOUND:'Link de invitație invalid.',
+  ENTITY_TAKEN:'Fișa e deja legată de alt cont. Anunță responsabilul.',
+  ANON:'Ești într-un cont demo. Ieși din demo și intră cu contul tău.'
+};
+async function finish(){
+  if(token){
+    let res=null;
+    try{ const { data }=await sb.rpc('redeem_invite',{p_token:token}); res=data; }catch(e){}
+    /* Refuzul NU mai trimite mai departe: omul rămâne aici, cu explicația și cu opțiunea
+       de a se autentifica cu contul corect. */
+    if(res && res!=='OK' && REDEEM_MSG[res]){
+      /* Pe email greșit ieșim LOCAL din contul curent: altfel omul rămâne logat cu contul
+         nepotrivit și reîncearcă la nesfârșit același link. Celelalte dispozitive rămân conectate. */
+      if(res==='WRONGEMAIL'||res==='ANON'){ try{ await sb.auth.signOut({ scope:'local' }); }catch(e){} }
+      renderLogin();                 // reconstruiește #box (deci și #acc-msg gol)…
+      msg(REDEEM_MSG[res]);          // …abia apoi scriem mesajul, altfel l-ar șterge
+      return;
+    }
+  }
+  let role=null;
+  try{
+    /* rolul CEL MAI ÎNALT, ca în boot-ul din app.html — `limit(1)` fără ordonare lua un rând
+       oarecare, deci cineva cu două apartenențe putea fi rutat după rolul greșit. */
+    const { data:mem }=await sb.from('memberships').select('role').eq('active',true);
+    const rank=r=>{ const i=['owner','admin','manager','accountant','driver','worker','subcontractor','client'].indexOf(r); return i<0?999:i; };
+    role=((mem||[]).slice().sort((a,b)=>rank(a.role)-rank(b.role))[0]||{}).role||null;
+  }catch(e){}
+  location.replace(FIELD.includes(role)?'mobil.html':'app.html');
+}
+
+sb.auth.onAuthStateChange((evt)=>{ if(evt==='SIGNED_IN'){ /* la revenirea din magic link */ } });
+init();
+</script>
+</body>
+</html>
