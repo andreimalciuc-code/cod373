@@ -225,7 +225,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='355';
+const APP_BUILD='356';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -558,7 +558,11 @@ const NAV={
      direct `public.documents`, unde rolul `client` e DENY din 0188; clientul își vede
      documentele exclusiv prin contractul de share (`my_client_shared_documents`).
      Aceeași grijă ca la contabil mai sus: două suprafețe de documente, două chei. */
-  client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['cdocs','📁','Documente'],['poze','📷','Poze']]
+  /* ►► CLIENT-HANDOVER1 — `dosare` e a 6-a destinație, adică exact plafonul declarat
+     mai sus („bara de jos rămâne la 4–6 destinații”); `worker` stă deja la 6. Cheia e
+     DISTINCTĂ de `cdocs` și de `acte`: dosarul de predare e o ORGANIZARE și o DOVADĂ
+     peste contractul de share, nu o a treia cale de acces la fișiere. */
+  client:[['acasa','🏠','Proiecte'],['oferte','📄','Oferte'],['facturi','💳','Facturi'],['cdocs','📁','Documente'],['poze','📷','Poze'],['dosare','📑','Predări']]
 };
 function mCtx(){ return S.ctx||{}; }
 function mCap(c){ const a=mCtx().caps; return !!(a && a.indexOf(c)>=0); }
@@ -667,7 +671,7 @@ function render(){
   const OUTSIDE=['taskuri','scan','chat'];
   if(!nav.find(n=>n[0]===S.view) && OUTSIDE.indexOf(S.view)<0) S.view=nav[0][0];
   $('bottom').innerHTML=nav.map(n=>'<button class="'+(S.view===n[0]?'on':'')+'" onclick="goV(\''+n[0]+'\')"><span class="bi">'+n[1]+'</span>'+n[2]+'</button>').join('');
-  const fn={acasa:scrAcasa,echipa:scrEchipa,depozit:scrDepozit,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs,cdocs:scrClientDocs}[S.view];
+  const fn={acasa:scrAcasa,echipa:scrEchipa,depozit:scrDepozit,program:scrProgram,scule:scrScule,comanda:scrComanda,pontaj:scrPontaj,poze:scrPoze,livrari:scrLivrari,santiere:scrSantiere,defecte:scrDefecte,oferte:scrClientOferte,facturi:scrClientFacturi,taskuri:scrTaskuri,scan:scrScanMove,chat:openChat,fin:scrFinInvoices,plati:scrFinPayments,acte:scrDocs,cdocs:scrClientDocs,dosare:scrClientHandovers}[S.view];
   const sc=$('screen'); if(sc){ sc.scrollTop=0; sc.style.paddingBottom=''; sc.style.animation='none'; void sc.offsetWidth; sc.style.animation=(window._navBack?'slideBack':'screenIn')+' .24s ease'; }
   const cf=document.getElementById('cart-fab'); if(cf){ cf.style.display='none'; cf.innerHTML=''; }
   window._navBack=false;
@@ -993,6 +997,84 @@ function openDocUrl(url, id){
   if(/\.(jpe?g|png|gif|webp|heic|bmp)$/.test(u)){ openLightbox([url],0); return; }
   if(/\.(mp4|mov|webm|m4v)$/.test(u) && typeof mVidPlay==='function'){ mVidPlay(url); return; }
   window.open(url,'_blank');
+}
+/* ►► CLIENT-HANDOVER1 · D141 — DOSARELE DE PREDARE ale clientului AUTENTIFICAT.
+   Aici, nu în `app.html`: rolul `client` e în `MOBILE_ONLY_ROLES` (app.html:1974) și e
+   redirecționat spre `mobil.html` — deci asta E suprafața de birou a clientului.
+
+   Dosarul e o ORGANIZARE și o DOVADĂ peste contractul CLIENT-SHARE, NU o cale de acces:
+   `my_client_handovers()` trece deja fiecare item prin `app.doc_share_ok`, deci orice id
+   ajuns aici se rezolvă prin ACELAȘI emitent ca documentele partajate (`openClientDoc`
+   → Edge `portal-media`). Zero cale paralelă, zero acces nou la blob.
+
+   FORMA RĂSPUNSULUI E ALTA DECÂT LA VECIN. `my_client_shared_documents` (mai sus)
+   întoarce RÂNDURI și se citește `(data||[])`; `my_client_handovers` întoarce un OBIECT
+   ({ok:true,handovers:[...]}). Un `(data||[])` copiat de la vecin ar da o listă
+   PERMANENT goală, fără nicio eroare — se citește `data.handovers`.
+
+   Dacă migrarea nu e aplicată, PostgREST răspunde 404: secțiunea NU EXISTĂ, deci nu se
+   afișează nicio eroare — același idiom de promisiune păzită ca la documentele partajate. */
+async function scrClientHandovers(){
+  $('screen').innerHTML='<div class="scr-title">📑 '+esc(mt('Predări'))+'</div><div id="ch"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  var rows=[];
+  try{
+    const {data,error}=await sb.rpc('my_client_handovers');
+    if(!error) rows=((data && data.handovers)||[]);
+  }catch(e){ rows=[]; }
+  if(!rows.length){ $('ch').innerHTML='<div class="empty"><div class="ei">📑</div>'+esc(mt('Niciun dosar de predare încă.'))+'</div>'; return; }
+  $('ch').innerHTML=rows.map(function(h){
+    const done=!!h.confirmed_at;
+    /* canalul e un FAPT înregistrat de server (`confirmed_channel`), nu o deducere din UI */
+    const chan=mt((h.confirmed_channel==='account')?'prin cont':'prin portal');
+    const docs=h.docs||[];
+    const na=+h.unavailable||0;
+    const head=[h.site_name?esc(h.site_name):'', esc(mt('Publicat la'))+' '+esc(fmtDT(h.published_at))].filter(Boolean).join(' · ');
+    return '<div class="card"><div class="row"><div class="grow">'
+      +'<div class="t">📑 '+esc(h.title||mt('Dosar de predare'))+'</div>'
+      +(head?'<div class="s">'+head+'</div>':'')+'</div>'
+      +(done?'<span class="pill green">✓ '+esc(mt('Primire confirmată'))+'</span>':'')+'</div>'
+      /* nota firmei: culoarea se DECLARĂ, altfel pe tema închisă rămâne pe cea moștenită */
+      +(h.note?'<div class="s" style="margin-top:.5rem;color:var(--ink)">'+esc(h.note)+'</div>':'')
+      +'<div class="s" style="margin-top:.7rem">'+esc(mt('Documente predate'))+': '+docs.length+'</div>'
+      +docs.map(function(d){
+         const sz=mDocSize(d.size_bytes);
+         return '<div class="row" style="margin-top:.5rem"><div class="grow">'
+           +'<div class="t" translate="no" style="font-size:.9rem">'+mDocIcon(d.mime,d.name)+' '+esc(d.name||'')+'</div>'
+           +(sz?'<div class="s">'+sz+'</div>':'')+'</div>'
+           /* URL semnat la CLIC, niciodată pentru toată lista: TTL-ul e de 300 s */
+           +'<button class="mini-btn gh" onclick="openClientDoc(this,\''+esc(d.id)+'\')">'+esc(mt('Deschide'))+'</button></div>'; }).join('')
+      /* itemii care nu se mai pot servi: un NUMĂR, niciodată o listă — clientul află că
+         dosarul e incomplet fără să afle ce anume i s-a retras */
+      +(na>0?'<div class="s" style="margin-top:.5rem">'+esc(mt('Documente indisponibile'))+': '+na+'</div>':'')
+      +(done
+        ? '<div class="row" style="margin-top:.7rem"><div class="grow s">'+esc(mt('Confirmat la'))+'</div>'
+          +'<span class="s">'+esc(fmtDT(h.confirmed_at))+' · '+esc(chan)+'</span></div>'
+        /* Confirmarea NU e acceptare a lucrărilor, a calității sau a plății — textul de sub
+           buton spune exact atât cât înseamnă gestul, și stă lângă el, nu într-un subsol. */
+        : '<div class="s" style="margin-top:.7rem">'+esc(mt('Confirmarea înseamnă doar că ai primit dosarul.'))+'</div>'
+          +'<button class="btn" style="margin-top:.5rem" onclick="confirmHandover(this,\''+esc(h.id)+'\')">✓ '+esc(mt('Confirm primirea'))+'</button>')
+      +'</div>'; }).join('')
+    /* aceeași gazdă de eroare pe care o caută `openClientDoc` (`#cd-err`), ca funcția să fie
+       refolosită NEATINSĂ — fără ea, un refuz de emitere ar rămâne tăcut */
+    +'<div class="s" id="cd-err" style="color:var(--red);min-height:1rem;margin-top:.4rem"></div>';
+}
+/* ►► REFUZUL DE BUSINESS VINE ÎN CORPUL UNUI 200. `my_client_handover_confirm` răspunde
+   {ok:true,already:...} sau {error:'forbidden'} — nu prin eroare de transport. A verifica
+   doar `error` ar anunța SUCCES pe un refuz; e o clasă de defect deja înregistrată aici
+   (vezi `respondOferta`). Iar `already:true` E SUCCES: dosarul era deja confirmat, deci
+   mesajul rămâne același — nu se rutează pe ramura de eșec.
+   După confirmare NU atingem DOM-ul optimist: re-cerem ecranul de la server, ca data și
+   canalul afișate să fie cele ÎNREGISTRATE, nu cele presupuse. */
+async function confirmHandover(btn,id){
+  const label=btn.innerHTML; btn.disabled=true; btn.textContent='⏳ '+mt('Se procesează…');
+  function fail(msg){ btn.disabled=false; btn.innerHTML=label; toast('⛔ '+mt(msg)); }
+  try{
+    const {data,error}=await sb.rpc('my_client_handover_confirm',{p_handover_id:id});
+    if(error){ fail('Încearcă din nou mai târziu.'); return; }
+    if(!data || !data.ok){ fail('A apărut o eroare. Încearcă din nou.'); return; }
+    toast('✅ '+mt('Primirea a fost confirmată.'));
+    scrClientHandovers();
+  }catch(e){ fail('Încearcă din nou mai târziu.'); }
 }
 function receipt(number,total,issue){
   openSheet('Chitanță',

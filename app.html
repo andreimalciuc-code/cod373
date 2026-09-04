@@ -4560,6 +4560,185 @@ async function siteDocShareToggle(docId, isShared, siteId, siteName){
   toast('✅ '+C373t(off?'Partajarea a fost oprită.':'Document partajat cu clientul.'));
   siteDocs(siteId, siteName);                    // re-citire din server, nu din memorie
 }
+/* ════════ CLIENT-HANDOVER1 · D140/D141 — dosarul de predare a șantierului ════════
+   Dosarul e o ORGANIZARE și o DOVADĂ peste contractul CLIENT-SHARE, niciodată o a doua
+   poartă: un item NU deschide un blob. Clientul vede un document doar dacă
+   `app.doc_share_ok` e adevărat, iar publicarea REFUZĂ un dosar cu itemi nepartajați
+   (0209:412) în loc să-i partajeze singură — altfel ar re-partaja tăcut exact ce biroul
+   a retras deliberat. De aceea butonul 🔗 de aici cheamă ACELAȘI `client_share_document`
+   ca lista de documente, nu o cale paralelă.
+
+   DOUĂ autorități, deliberat diferite: CITIREA e {owner,admin,manager,contabil}
+   (`client_handovers_for_site`, 0209:433), SCRIEREA e {owner,admin,manager}
+   (`app.handover_mgmt`, 0209:259). Un singur gard ar fi ascuns dosarul contabilului sau
+   i-ar fi oferit butoane pe care serverul le refuză. */
+const HANDOVER_READ_ROLES=['owner','admin','manager','accountant'];
+function canHandoverRead(){ return HANDOVER_READ_ROLES.includes(state.role); }
+function canHandoverWrite(){ return SHARE_ROLES.includes(state.role); }   /* = app.handover_mgmt */
+const HANDOVER_ERR={
+  HANDOVER_FORBIDDEN:'Nu ai drepturi pentru dosarul de predare.',
+  HANDOVER_PUBLISHED:'Dosarul e deja publicat și nu mai poate fi schimbat.',
+  HANDOVER_EMPTY:'Dosarul nu are documente. Alege cel puțin unul.',
+  HANDOVER_UNSHARED:'Unele documente nu sunt partajate cu clientul. Partajează-le întâi.',
+  DOC_NOT_IN_SITE:'Documentul nu aparține acestui șantier.',
+  SITE_NO_CLIENT:'Șantierul nu are client atribuit.',
+  SITE_NOT_FOUND:'Șantierul nu a fost găsit.'
+};
+/* Un singur loc care citește refuzul. Toate RPC-urile de dosar întorc `json`, deci un
+   refuz de business stă în `r.data.error`, NU în `r.error` — aceeași capcană ca la
+   partajare (4553-4559). `count` vine doar de la HANDOVER_UNSHARED. */
+function hoFail(r){
+  if(r&&r.error) return isNetErr(r.error)?netMsg():r.error.message;
+  const d=(r&&r.data)||{};
+  if(d.error) return C373t(HANDOVER_ERR[d.error]||'Acțiunea nu a putut fi făcută.')+(d.count?(' ('+d.count+')'):'');
+  return null;
+}
+function hoErr(msg){ return '<div style="margin-bottom:.9rem;color:var(--red);font-size:.85rem">'+esc(msg)+'</div>'; }
+/* Starea NU se stochează nicăieri: vine derivată din bază (`app.handover_state`, 0209:243),
+   dintr-o singură sursă. Aici doar o îmbrăcăm. */
+function hoStatePill(st){
+  const m={draft:['Ciornă','plan'],published:['Publicat','active'],received:['Primire confirmată','done']}[st];
+  return m?('<span class="pill '+m[1]+'">'+esc(C373t(m[0]))+'</span>'):'';
+}
+async function siteHandover(siteId, siteName){
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:600px">'
+    +'<div class="modal-head"><h3>📑 '+esc(C373t('Dosar de predare'))+' — '+esc(siteName||'')+'</h3><button class="x" onclick="closeModal()">×</button></div>'
+    +'<div class="modal-body" id="ho-body"><div class="loading">'+esc(C373t('Se încarcă…'))+'</div></div></div></div>';
+  let r; try{ r=await sb.rpc('client_handovers_for_site',{p_site_id:siteId}); }
+  catch(e){ const b=$('ho-body'); if(b) b.innerHTML=hoErr(isNetErr(e)?netMsg():((e&&e.message)||String(e))); return; }
+  const f=hoFail(r); const body=$('ho-body'); if(!body) return;
+  if(f){ body.innerHTML=hoErr(f); return; }
+  const list=(r.data&&r.data.handovers)||[];
+  const w=canHandoverWrite();
+  const sArg=jsArg(siteName);
+  let html='<p style="color:var(--muted);font-size:.82rem;margin-top:0">'
+    +esc(C373t('Dosarul adună documentele deja partajate cu clientul și păstrează dovada predării. Nu acordă singur acces: un document intră în dosar doar dacă e partajat.'))+'</p>';
+  if(!list.length) html+='<div style="color:var(--muted);font-size:.85rem;margin:.6rem 0">'+esc(C373t('Niciun dosar de predare încă.'))+'</div>';
+  list.forEach(h=>{
+    const items=h.items||[];
+    const unshared=items.filter(i=>!i.shared).length;
+    html+='<div style="border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem;margin-bottom:.7rem">'
+      +'<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.35rem">'
+        +'<b>'+esc(h.title||C373t('Dosar de predare'))+'</b>'+hoStatePill(h.state)
+        +(h.state==='draft'?'<span style="color:var(--muted);font-size:.78rem">'+esc(C373t('clientul nu îl vede'))+'</span>':'')
+      +'</div>'
+      +(h.note?'<div style="color:var(--muted);font-size:.82rem;margin-bottom:.35rem">'+esc(h.note)+'</div>':'')
+      +(h.published_at?'<div style="font-size:.8rem;color:var(--muted)">'+esc(C373t('Publicat la'))+' '+esc(fmtDT(h.published_at))+'</div>':'')
+      /* Canalul se AFIȘEAZĂ, fiindcă „portal" și „cont" nu sunt aceeași dovadă: unul e un
+         credențial anonim valid cu nume liber, celălalt o identitate verificată (0209:114). */
+      +(h.confirmed_at?'<div style="font-size:.8rem;color:var(--ok,var(--text))">✅ '+esc(C373t('Confirmat la'))+' '+esc(fmtDT(h.confirmed_at))
+          +' '+esc(C373t(h.confirmed_channel==='account'?'prin cont':'prin portal'))
+          +(h.confirmed_name?' — '+esc(h.confirmed_name):'')+'</div>':'')
+      +'<div style="margin:.45rem 0 .3rem;font-size:.82rem;font-weight:600">'+esc(C373t('Documente predate'))+' ('+items.length+')</div>';
+    if(!items.length) html+='<div style="color:var(--muted);font-size:.82rem">—</div>';
+    items.forEach(i=>{
+      html+='<div style="display:flex;align-items:center;gap:.45rem;padding:.2rem 0;font-size:.85rem">'
+        /* Documentul șters din Coș rămâne în dosar ca NUME (snapshot), estompat: dosarul e
+           dovada a ce s-a predat, nu o listă vie de fișiere (0209:214). */
+        +'<span translate="no" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+        +(i.exists?'':';opacity:.55')+'">'+esc(i.name)+'</span>'
+        +(i.shared?'<span class="pill active">'+esc(C373t('Partajat'))+'</span>'
+                  :'<span class="pill delay" title="'+esc(C373t('Partajează documentul cu clientul ca să-l poți publica.'))+'">'+esc(C373t('Nepartajat'))+'</span>')
+        +'</div>';
+    });
+    if(h.state==='draft'&&w){
+      html+='<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem">'
+        +'<button class="btn-ghost" onclick="handoverPick(\''+h.id+'\',\''+siteId+'\',\''+sArg+'\')">📁 '+esc(C373t('Documente predate'))+'</button>'
+        +'<button class="btn" onclick="handoverPublish(\''+h.id+'\',\''+siteId+'\',\''+sArg+'\')">📣 '+esc(C373t('Publică dosarul'))+'</button>'
+        +'<button class="btn-ghost" onclick="handoverDiscard(\''+h.id+'\',\''+siteId+'\',\''+sArg+'\')">🗑 '+esc(C373t('Renunță'))+'</button>'
+      +'</div>'
+      +(unshared?'<div style="color:var(--red);font-size:.8rem;margin-top:.35rem">'+esc(C373t('Unele documente nu sunt partajate cu clientul. Partajează-le întâi.'))+'</div>':'');
+    }
+    if(h.state!=='draft') html+='<div style="color:var(--muted);font-size:.78rem;margin-top:.5rem">'+esc(C373t('Un dosar publicat nu mai poate fi modificat.'))+'</div>';
+    html+='</div>';
+  });
+  if(w) html+='<button class="btn-ghost" style="width:100%;justify-content:center;padding:.7rem" onclick="handoverCreate(\''+siteId+'\',\''+sArg+'\')">＋ '+esc(C373t('Creează dosar de predare'))+'</button>';
+  body.innerHTML=html;
+}
+async function handoverCreate(siteId, siteName){
+  let r; try{ r=await sb.rpc('client_handover_create',{p_site_id:siteId,p_title:C373t('Dosar de predare'),p_note:null}); }
+  catch(e){ toast('⚠️ '+(isNetErr(e)?netMsg():((e&&e.message)||String(e)))); return; }
+  const f=hoFail(r); if(f){ toast('⚠️ '+f); return; }
+  siteHandover(siteId, siteName);                  /* re-citire din server, nu din memorie */
+}
+async function handoverDiscard(hoId, siteId, siteName){
+  if(!confirm(C373t('Renunți la această ciornă? Nu se mai poate recupera.'))) return;
+  let r; try{ r=await sb.rpc('client_handover_discard',{p_handover_id:hoId}); }
+  catch(e){ toast('⚠️ '+(isNetErr(e)?netMsg():((e&&e.message)||String(e)))); return; }
+  const f=hoFail(r); if(f){ toast('⚠️ '+f); return; }
+  siteHandover(siteId, siteName);
+}
+async function handoverPublish(hoId, siteId, siteName){
+  if(!confirm(C373t('Publici dosarul? Clientul îl va vedea imediat.'))) return;
+  let r; try{ r=await sb.rpc('client_handover_publish',{p_handover_id:hoId}); }
+  catch(e){ toast('⚠️ '+(isNetErr(e)?netMsg():((e&&e.message)||String(e)))); return; }
+  const f=hoFail(r); if(f){ toast('⚠️ '+f); siteHandover(siteId, siteName); return; }
+  toast('✅ '+C373t('Dosarul a fost publicat.'));
+  siteHandover(siteId, siteName);
+}
+/* Alegerea documentelor. Sursa e ACEEAȘI ca la `siteDocs`: documentele legate de șantier
+   prin modelul canonic (`entity_type='site'`). Starea de partajare se citește din
+   `client_document_shares`, exact ca la 4520 — nu se deduce din dosar. */
+async function handoverPick(hoId, siteId, siteName){
+  const b=$('ho-body'); if(b) b.innerHTML='<div class="loading">'+esc(C373t('Se încarcă…'))+'</div>';
+  let docs=[], shares={}, chosen={};
+  try{
+    const d=await sb.from('documents').select('id,name,mime,size_bytes')
+      .eq('entity_type','site').eq('entity_id',siteId).order('created_at',{ascending:false});
+    if(d.error) throw d.error;
+    docs=d.data||[];
+    const sh=await sb.from('client_document_shares').select('document_id')
+      .eq('site_id',siteId).is('revoked_at',null);
+    (sh.data||[]).forEach(x=>{ shares[x.document_id]=true; });
+    const cur=await sb.rpc('client_handovers_for_site',{p_site_id:siteId});
+    const h=(((cur.data&&cur.data.handovers)||[]).filter(x=>x.id===hoId)[0])||null;
+    ((h&&h.items)||[]).forEach(i=>{ if(i.document_id) chosen[i.document_id]=true; });
+  }catch(e){ if(b) b.innerHTML=hoErr(isNetErr(e)?netMsg():((e&&e.message)||String(e))); return; }
+  if(!b) return;
+  const sArg=jsArg(siteName);
+  let html='<p style="color:var(--muted);font-size:.82rem;margin-top:0">'
+    +esc(C373t('Un document intră în dosar doar dacă e partajat cu clientul.'))+'</p>';
+  if(!docs.length) html+='<div style="color:var(--muted);font-size:.85rem;margin:.6rem 0">'+esc(C373t('Niciun document la acest șantier. Încarcă întâi documente.'))+'</div>';
+  docs.forEach(d=>{
+    const sh=!!shares[d.id];
+    html+='<div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--line)">'
+      +'<input type="checkbox" id="hp-'+d.id+'" data-hp="'+d.id+'"'+(chosen[d.id]?' checked':'')+' style="width:18px;height:18px;flex:none">'
+      +'<label for="hp-'+d.id+'" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.88rem;cursor:pointer" translate="no">'+esc(d.name)+'</label>'
+      +'<span style="color:var(--muted);font-size:.78rem;flex:none">'+esc(fmtSize(d.size_bytes))+'</span>'
+      /* Acțiunea de partajare de aici e ACELAȘI contract CLIENT-SHARE (`client_share_document`),
+         nu o poartă nouă: dosarul nu capătă niciodată autoritate proprie asupra unui blob. */
+      +(sh?'<span class="pill active" style="flex:none">'+esc(C373t('Partajat'))+'</span>'
+          :(canShareDocs()?'<button class="iconbtn" style="flex:none" title="'+esc(C373t('Partajează cu clientul'))+'" onclick="handoverShareOne(\''+d.id+'\',\''+hoId+'\',\''+siteId+'\',\''+sArg+'\')">🔗</button>'
+                          :'<span class="pill delay" style="flex:none">'+esc(C373t('Nepartajat'))+'</span>'))
+      +'</div>';
+  });
+  html+='<div style="display:flex;gap:.4rem;margin-top:.8rem">'
+    +'<button class="btn" onclick="handoverSaveItems(\''+hoId+'\',\''+siteId+'\',\''+sArg+'\')">'+esc(C373t('Salvează'))+'</button>'
+    +'<button class="btn-ghost" onclick="siteHandover(\''+siteId+'\',\''+sArg+'\')">'+esc(C373t('Anulează'))+'</button>'
+  +'</div>';
+  b.innerHTML=html;
+}
+/* Partajare din ecranul de alegere: aceeași cale ca butonul 🔗 din lista de documente,
+   apoi re-desenăm ecranul ca starea să vină din server, nu din DOM. Selecția în curs se
+   păstrează, altfel operatorul ar pierde bifele la fiecare partajare. */
+async function handoverShareOne(docId, hoId, siteId, siteName){
+  const keep=[].slice.call(document.querySelectorAll('[data-hp]')).filter(x=>x.checked).map(x=>x.getAttribute('data-hp'));
+  let r; try{ r=await sb.rpc('client_share_document',{p_document_id:docId}); }
+  catch(e){ toast('⚠️ '+(isNetErr(e)?netMsg():((e&&e.message)||String(e)))); return; }
+  if(r.error){ toast('⚠️ '+(isNetErr(r.error)?netMsg():r.error.message)); return; }
+  const d=r.data||{};
+  if(d.error){ toast('⚠️ '+C373t(SHARE_ERR[d.error]||'Acțiunea nu a putut fi făcută.')); return; }
+  toast('✅ '+C373t('Document partajat cu clientul.'));
+  await handoverPick(hoId, siteId, siteName);
+  keep.concat([docId]).forEach(id=>{ const el=document.getElementById('hp-'+id); if(el) el.checked=true; });
+}
+async function handoverSaveItems(hoId, siteId, siteName){
+  const ids=[].slice.call(document.querySelectorAll('[data-hp]')).filter(x=>x.checked).map(x=>x.getAttribute('data-hp'));
+  let r; try{ r=await sb.rpc('client_handover_set_items',{p_handover_id:hoId,p_document_ids:ids}); }
+  catch(e){ toast('⚠️ '+(isNetErr(e)?netMsg():((e&&e.message)||String(e)))); return; }
+  const f=hoFail(r); if(f){ toast('⚠️ '+f); return; }
+  siteHandover(siteId, siteName);
+}
 /* ════════ FLEET1-C — pozele vehiculului: categorie, principală, istoric ════════
    Modelul canonic e `vehicle_photos` (0154): un RÂND per poză, cu categorie, descriere,
    ordine și marcaj de principală. Modelul vechi (`photo_url` + `photos[]`) NU se șterge.
@@ -5637,6 +5816,9 @@ function siteHub(siteId, siteName){
     /* SITE-DOCS1: documentele şantierului, pe modelul canonic `documents` (entity_type='site').
        Intră ÎNAINTEA locaţiei fiindcă e o acţiune de lucru, nu una de navigare. */
     +(canSee('documente')?'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteDocs(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📁</span> '+esc(C373t('Documentele șantierului'))+'</button>':'')
+    /* CLIENT-HANDOVER1: dosarul de predare stă lângă documente fiindcă le ORGANIZEAZĂ.
+       Poarta e citirea (owner/admin/manager/contabil); scrierea se re-verifică înăuntru. */
+    +(canHandoverRead()?'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteHandover(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📑</span> '+esc(C373t('Dosar de predare'))+'</button>':'')
     +'<button class="btn-ghost" style="width:100%;justify-content:flex-start;gap:.6rem;padding:.8rem 1rem;margin:.2rem 0" onclick="siteLocation(\''+siteId+'\',\''+esc(siteName).replace(/\x27/g,"")+'\')"><span style="font-size:1.1rem">📍</span> '+esc(C373t('Locație / Navigare (GPS)'))+'</button>'
     +btns+'</div></div></div>';
 }

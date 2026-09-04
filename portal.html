@@ -64,10 +64,15 @@
   .doc-row:last-child{border-bottom:none}
   .doc-ic{flex:0 0 auto;font-size:1.1rem;line-height:1}
   .doc-main{flex:1 1 auto;min-width:0}
-  .doc-name{font-size:.9rem;font-weight:600;overflow-wrap:anywhere;color:var(--ink)}
-  .doc-meta{font-size:.78rem;color:var(--muted);margin-top:.1rem;overflow-wrap:anywhere}
+  .doc-name{display:block;font-size:.9rem;font-weight:600;overflow-wrap:anywhere;color:var(--ink)}
+  .doc-meta{display:block;font-size:.78rem;color:var(--muted);margin-top:.1rem;overflow-wrap:anywhere}
+  /* ►► Ținta de atingere respectă pragul de 44×44 CSS px. `2.25rem` (36 px) era sub el, pe un
+     control care e singura cale a clientului către document — iar shell-ul își declarase deja
+     standardul în `.cs-btn` (`min-height:2.75rem`). Aliniem la el în loc să inventăm o valoare.
+     `min-width` acoperă etichetele scurte („Open"), unde înălțimea singură n-ar fi ajuns. */
   .doc-open{flex:0 0 auto;border:1px solid var(--line);background:var(--c373-surface-2);color:var(--ink);
-            border-radius:var(--c373-r-pill);padding:.4rem .8rem;font-size:.82rem;font-weight:600;cursor:pointer;min-height:2.25rem}
+            border-radius:var(--c373-r-pill);padding:.4rem .8rem;font-size:.82rem;font-weight:600;cursor:pointer;
+            min-height:2.75rem;min-width:2.75rem}
   .doc-open:disabled{opacity:.55;cursor:default}
   .ord{border:1px solid var(--line);border-radius:var(--c373-r-sm);padding:.55rem .7rem;margin:.4rem 0}
   .ord-h{font-size:.78rem;color:var(--muted);margin-bottom:.25rem}
@@ -168,9 +173,20 @@ function docIcon(mime,name){
    minute. Browserul trimite un IDENTIFICATOR de document — niciodată o cale.
    Fereastra se deschide SINCRON, în gestul de clic: după `await`, `window.open` e
    blocat de browser ca pop-up nesolicitat. */
+/* ►► CLIENT-HANDOVER1 — slotul de eroare se REZOLVĂ, nu se presupune. `openSharedDoc`
+   scria orice refuz în `#docs-err`, elementul cardului „Documente partajate". Dosarul
+   de predare are propriile butoane de deschidere, iar cardul de documente partajate
+   poate lipsi cu totul (zero documente partajate direct, dar un dosar publicat):
+   atunci `#docs-err` e `null` și FIECARE eșec de descărcare devenea tăcut. Butonul
+   își declară slotul prin `data-err`; fără atribut se cade pe `#docs-err`, deci
+   comportamentul documentelor partajate rămâne identic. */
+function docErrSlot(btn){
+  const id=(btn && btn.getAttribute('data-err'))||'docs-err';
+  return document.getElementById(id)||document.getElementById('docs-err');
+}
 async function openSharedDoc(btn){
   const id=btn && btn.getAttribute('data-doc'); if(!id) return;
-  const err=document.getElementById('docs-err'); if(err) err.textContent='';
+  const err=docErrSlot(btn); if(err) err.textContent='';
   const tk=new URLSearchParams(location.search).get('token'); if(!tk) return;
   const w=window.open('','_blank');
   const label=btn.textContent;
@@ -284,6 +300,19 @@ function renderFirm(firm){
   const docsP = sb.rpc('portal_shared_documents',{p_token:token}).then(function(r){
     return (r && !r.error && r.data && r.data.ok && Array.isArray(r.data.docs)) ? r.data.docs : [];
   }).catch(function(){ return []; });
+  /* ►► CLIENT-HANDOVER1 — dosarul de predare. ORGANIZARE și DOVADĂ peste contractul
+     CLIENT-SHARE: NU deschide niciun blob în plus. Serverul a filtrat deja fiecare
+     item prin `app.doc_share_ok`, deci orice id ajuns aici se rezolvă pe calea
+     EXISTENTĂ (`openSharedDoc` → `portal-media`); nicio cale paralelă de acces.
+     Cererea pleacă odată cu cea de documente partajate, ca tururile de rețea să se
+     suprapună. Degradare TĂCUTĂ, identică: dacă migrarea nu e aplicată, RPC-ul
+     răspunde cu eroare PostgREST și secțiunea pur și simplu nu apare.
+     Un refuz de business vine ÎN corpul 200 ca `{error:…}`, nu ca eroare de
+     transport — de aceea condiția cere explicit `ok` ȘI `handover`, nu doar
+     absența lui `r.error`. */
+  const handoverP = sb.rpc('portal_handover',{p_token:token}).then(function(r){
+    return (r && !r.error && r.data && r.data.ok && r.data.handover) ? r.data.handover : null;
+  }).catch(function(){ return null; });
 
   let mediaUrls=[];
   if(data.photo_paths && data.photo_paths.length){
@@ -323,6 +352,57 @@ function renderFirm(firm){
           +'</div>'; }).join('')
       +'</div><div class="err-msg" id="docs-err"></div></div>';
   }
+  /* Dosarul de predare se compune ca STRING, ca toate celelalte secțiuni: pagina se
+     scrie într-un singur `innerHTML` mai jos, deci aici nu se atinge DOM-ul și nu
+     rămâne niciun `await` după acel punct.
+     Documentele reutilizează markup-ul și butonul secțiunii „Documente partajate";
+     singura diferență e `data-err`, care trimite eșecurile în slotul acestui card.
+     `unavailable` se arată ca NUMĂR, niciodată ca listă: serverul reține deliberat
+     CARE documente au fost retrase — clientul află doar că dosarul e incomplet. */
+  let handoverHtml='';
+  const ho=await handoverP;
+  if(ho){
+    const hdocs=Array.isArray(ho.docs)?ho.docs:[];
+    const hna=+ho.unavailable||0;
+    let hb='';
+    if(ho.title) hb+='<div style="font-weight:600" translate="no">'+esc(ho.title)+'</div>';
+    if(ho.published_at) hb+='<div style="font-size:.8rem;color:var(--muted);margin-top:.15rem">'+esc(T('Publicat la')+' '+fmtd(ho.published_at))+'</div>';
+    if(ho.note) hb+='<div style="margin-top:.55rem;color:var(--muted);font-size:.88rem;white-space:pre-wrap" translate="no">'+esc(ho.note)+'</div>';
+    if(hdocs.length){
+      hb+='<div style="font-size:.8rem;font-weight:600;color:var(--muted);margin:.8rem 0 .1rem">Documente predate</div><div class="docs-list">'
+        +hdocs.map(function(d){
+          const meta=[fmtSize(d.size_bytes), d.valid_until?(T('Valabil până la')+' '+fmtd(d.valid_until)):''].filter(Boolean).join(' · ');
+          return '<div class="doc-row"><span class="doc-ic" aria-hidden="true">'+docIcon(d.mime,d.name)+'</span>'
+            +'<span class="doc-main"><span class="doc-name" translate="no">'+esc(d.name||'')+'</span>'
+            +(meta?'<span class="doc-meta">'+esc(meta)+'</span>':'')+'</span>'
+            +'<button class="doc-open" type="button" data-doc="'+esc(d.id)+'" data-err="ho-err" onclick="openSharedDoc(this)">'+esc(T('Deschide'))+'</button>'
+            +'</div>'; }).join('')
+        +'</div>';
+    }
+    if(hna>0) hb+='<div style="font-size:.8rem;color:var(--muted);margin-top:.5rem">'+esc(T('Documente indisponibile')+': '+hna)+'</div>';
+    hb+='<div class="err-msg" id="ho-err"></div>';
+    if(ho.confirmed_at){
+      /* Starea „gata" — aceeași formă de casetă-notă ca oferta acceptată. Fără buton:
+         confirmarea e un fapt înregistrat, nu o acțiune repetabilă. */
+      hb+='<div class="cs-card cs-card-note" style="text-align:center;margin:.7rem 0 0"><b>✅ '+esc(T('Primire confirmată'))+'</b>'
+        +'<div style="color:var(--muted);font-size:.88rem;margin-top:.3rem">'
+        +esc(T('Confirmat la')+' '+fmtd(ho.confirmed_at)+' · '+T(ho.confirmed_channel==='account'?'prin cont':'prin portal'))
+        +'</div></div>';
+    } else {
+      /* Confirmarea înseamnă STRICT „am primit dosarul" — nu e acceptare a lucrărilor,
+         a calității sau a plății. Clarificarea de sub buton nu e decor: fără ea, un
+         buton lângă documente de predare se citește ca semnătură de recepție. */
+      hb+='<div style="margin-top:.85rem;border-top:1px solid var(--line);padding-top:.7rem">'
+        +'<div style="color:var(--muted);font-size:.88rem;margin-bottom:.6rem">Am primit dosarul de predare.</div>'
+        +'<label for="ho-name" style="display:block;font-size:.8rem;font-weight:600;margin-bottom:.3rem">Numele tău (opțional)</label>'
+        +'<input id="ho-name" class="cs-field" placeholder="Numele tău (opțional)" autocomplete="name" style="margin-bottom:.6rem">'
+        +'<div id="ho-msg" class="err-msg" role="alert"></div>'
+        +'<button id="ho-btn" class="cs-btn cs-btn-primary cs-btn-block" type="button" data-handover="'+esc(ho.id)+'" onclick="confirmHandover(this)">✅ Confirm primirea</button>'
+        +'<div style="color:var(--muted);font-size:.8rem;margin-top:.5rem;text-align:center">Confirmarea înseamnă doar că ai primit dosarul.</div>'
+        +'</div>';
+    }
+    handoverHtml='<div class="cs-card cs-rise cs-rise-2"><h3 class="cs-card-title">Dosar de predare</h3>'+hb+'</div>';
+  }
   let ordersHtml='';
   if(data.orders && data.orders.length){
     const OST={sent:'Comandat',confirmed:'Confirmat',received:'Livrat'};
@@ -344,7 +424,9 @@ function renderFirm(firm){
     +'<div class="cs-prog-meta"><span>Progres lucrări</span><span><b>'+(s.progress||0)+'%</b></span></div></div>'
     +'<div class="cs-hero-pills"><span class="cs-pill cs-pill-on-dark">'+esc(T((SL[s.status]||['—'])[0]))+'</span>'
     +(s.deadline?'<span class="cs-pill cs-pill-on-dark"><span>Termen<span>: '+esc(fmtd(s.deadline))+'</span></span></span>':'')+'</div></div>'
-    +stagesHtml+photoHtml+docsHtml+ordersHtml+hoursHtml+costHtml
+    /* Dosarul de predare stă imediat după grafic: e actul de închidere al
+       proiectului, deci se citește ÎNAINTEA secțiunilor de rutină. */
+    +stagesHtml+handoverHtml+photoHtml+docsHtml+ordersHtml+hoursHtml+costHtml
     +'<div class="cs-card cs-card-note cs-rise cs-rise-4"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
   applyLang();
 })();
@@ -394,6 +476,29 @@ async function acceptOffer(){
     if(r.error || (r.data && r.data.error)) throw new Error('fail');
     location.reload();
   }catch(e){ var mEl=document.getElementById('acc-msg'); if(mEl) mEl.textContent=T('A apărut o eroare. Încearcă din nou.'); if(b){ b.disabled=false; b.textContent='✅ '+T('Accept și pornește lucrarea'); } }
+}
+/* ►► CLIENT-HANDOVER1 — confirmarea primirii dosarului. Aceleași reguli ca la
+   `acceptOffer`: tokenul se recitește din URL ÎN handler (nu se poartă în closure),
+   butonul se blochează și își schimbă eticheta ÎNAINTE de `await`, iar un refuz de
+   business sosit ÎN corpul 200 (`{error:…}`) e tratat identic cu o eroare de
+   transport — a verifica doar `r.error` ar raporta succes pe un refuz.
+   `{ok:true, already:true}` NU e eroare: dosarul era deja confirmat (alt tab, cont
+   autentificat), deci se reîncarcă la fel ca la o confirmare proaspătă și pagina
+   arată starea reală. Nu se cere nume: contractul acceptă `p_name` NULL, iar un
+   nume tastat în portal nu e oricum o identitate. */
+async function confirmHandover(btn){
+  var token=new URLSearchParams(location.search).get('token');
+  var id=btn && btn.getAttribute('data-handover');
+  if(!token || !id) return;
+  var mEl=document.getElementById('ho-msg'); if(mEl) mEl.textContent='';
+  var nEl=document.getElementById('ho-name');
+  var name=((nEl&&nEl.value)||'').trim();
+  btn.disabled=true; btn.textContent=T('Se procesează…');
+  try{ var r=await sb.rpc('portal_handover_confirm',{p_token:token, p_handover_id:id, p_name:name||null});
+    if(r.error || !r.data || r.data.error || !r.data.ok) throw new Error('fail');
+    location.reload();
+  }catch(e){ if(mEl) mEl.textContent=T('A apărut o eroare. Încearcă din nou.');
+    btn.disabled=false; btn.textContent='✅ '+T('Confirm primirea'); }
 }
 </script>
 <script>applyLang();</script>
