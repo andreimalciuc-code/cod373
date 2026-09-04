@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Cod373 — Factură</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="sortable.min.js"></script>
 <style>
   :root{ --ink:#0f1c33; --muted:#6b7793; --line:#e6eaf2; --primary:#2f6bff; --bg:#f4f6fb; --red:#dc2626; --green:#16a34a; }
   *{ box-sizing:border-box; } body{ margin:0; font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; color:var(--ink); background:var(--bg); font-size:14px; }
@@ -544,7 +544,20 @@ function renderLines(){
 }
 function taGrow(el){ if(!el) return; el.style.height='auto'; el.style.height=(el.scrollHeight)+'px'; }
 function lnameSize(){ try{ document.querySelectorAll('.lines textarea.lname').forEach(taGrow); }catch(e){} }
+/* ►► HOTFIX-FIN-REORDER1 — biblioteca de glisare e LOCALĂ (`sortable.min.js`, precache SW),
+   nu de pe CDN. Cauza reprodusă: dacă `Sortable` lipsea la încărcare, `initLineSort` arunca,
+   pagina se randa PERFECT normal, dar nu mai glisa NIMIC — nici poziții, nici grupuri — și
+   fără niciun mesaj. Un editor care tace când o capabilitate a dispărut e mai rău decât unul
+   care se plânge: utilizatorul crede că trage greșit. De aceea garda de mai jos raportează.
+   Service worker-ul NU interceptează cross-origin (`sw.js`), deci scriptul de pe CDN nu era
+   niciodată în cache: pagina venea din cache, biblioteca nu venea deloc. */
 function initLineSort(){
+  if(typeof Sortable==='undefined'){
+    const T=window.C373t||function(s){return s;};
+    try{ toast('⚠️ '+T('Reordonarea pozițiilor nu s-a putut activa. Reîncarcă pagina.')); }catch(e){}
+    try{ console.error('initLineSort: Sortable indisponibil'); }catch(e){}
+    return;
+  }
   document.querySelectorAll('#lines-wrap .lbody').forEach(tb=>{ Sortable.create(tb,{ group:'fclines', handle:'.grip', animation:150, onEnd:rebuildLinesFromDOM }); });
   const gw=$('groups-wrap'); if(gw) Sortable.create(gw,{ handle:'.ggrip', animation:150, onEnd:rebuildGroupsFromDOM });
 }
