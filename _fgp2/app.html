@@ -663,7 +663,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 let sb = null;
 const state = { session:null, tenant:null, role:null, view:null };
-function cfgOk(){ return SUPABASE_URL.startsWith('http') && SUPABASE_KEY.startsWith('sb_'); }
+function cfgOk(){ /* SHIM DOAR PENTRU STAGING _fgp2: proiectul RECOVERY nu are cheie `sb_publishable_`, ci doar perechea LEGACY (JWT `anon`). Acceptam si formatul vechi. NU exista in sursa din repo si dispare odata cu directorul de staging. */ return SUPABASE_URL.startsWith('http') && (SUPABASE_KEY.startsWith('sb_') || SUPABASE_KEY.startsWith('eyJ')); }
 
 /* ════ HELPERS ════ */
 function $(id){ return document.getElementById(id); }
