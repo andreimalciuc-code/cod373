@@ -56,7 +56,7 @@
   .addline{ background:none; border:1px dashed var(--line); color:var(--primary); border-radius:9px; padding:.5rem .8rem; cursor:pointer; font-size:.85rem; margin-top:.5rem; }
 </style>
 </head>
-<body data-mediu="RECOVERY">
+<body>
 <header>
   <h1>🧾 Factură</h1>
   <span id="hd-num" class="sub"></span>
@@ -238,7 +238,7 @@ async function loadInvoice(id){
   if(S.inv.inv_type!=='normal') loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
   if(it.error){ docLoadFailed('Pozițiile facturii nu au putut fi citite.', it.error.message); return; }
-  const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
+  const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, /* FIN-GROUP-DISCOUNT1 — activarea se propagă: la reîncărcare ȘI la conversia ofertă→factură. `null` din bază rămâne `undefined` (moștenit), NU `false`. Fără asta, o ofertă cu reducere activă pe o poziție din grup s-ar converti într-o factură pe alți bani. */ disc_active:(x.disc_active===true||x.disc_active===false)?x.disc_active:undefined, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
   /* CDI1: fără „auto-curățare" pe amprentă — două linii legitime pot fi identice (KB#114);
      dedup-ul de client transforma deschiderea într-o editare distructivă. Coruperea se
      detectează STRUCTURAL (poziții duplicate) și blochează Save-ul, nu șterge linii. */
@@ -255,7 +255,7 @@ async function fromEstimate(eid){
   const it=await sb.from('estimate_items').select('*').eq('estimate_id',eid);
   if(it.error){ const T=window.C373t||function(s){return s;}; toast('⚠️ '+T('Pozițiile ofertei nu au putut fi citite. Reîncarcă pagina înainte de a continua.')); S._needsReload=true; const _b=$('btn-save'); if(_b) _b.disabled=true; return; }
   const items=(it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0));
-  if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
+  if(items.length) S.lines=items.map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, /* FIN-GROUP-DISCOUNT1 — activarea se propagă: la reîncărcare ȘI la conversia ofertă→factură. `null` din bază rămâne `undefined` (moștenit), NU `false`. Fără asta, o ofertă cu reducere activă pe o poziție din grup s-ar converti într-o factură pe alți bani. */ disc_active:(x.disc_active===true||x.disc_active===false)?x.disc_active:undefined, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
   reorderLinesBySection();
   S._fromEstimate=eid;
 }

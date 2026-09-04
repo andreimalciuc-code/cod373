@@ -64,7 +64,7 @@
   .addline{ background:none; border:1px dashed var(--line); color:var(--primary); border-radius:9px; padding:.5rem .8rem; cursor:pointer; font-size:.85rem; margin-top:.5rem; }
 </style>
 </head>
-<body data-mediu="RECOVERY">
+<body>
 <header>
   <h1>📋 Ofertă / Deviz</h1>
   <span id="hd-num" class="sub"></span>
@@ -236,7 +236,7 @@ async function loadEstimate(id){
   if(it.error){ docLoadFailed('Pozițiile ofertei nu au putut fi citite.', it.error.message); return; }
   const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>{ const c=S.catalog.find(c=>c.name===x.name&&c.src==='norm'); const cid=x.material_id||x.service_id||null; const csrc=x.material_id?'material':(x.service_id?'service':null);
     const cat=cid?S.catalog.find(z=>z.id===cid&&z.src===csrc):null;
-    return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null,
+    return { name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, /* FIN-GROUP-DISCOUNT1 — starea de activare se reîncarcă cu TREI valori. `null` din bază TREBUIE să rămână `undefined` (moștenit), NU `false`: altfel o linie negrupată și-ar pierde reducerea la simpla redeschidere a documentului. */ disc_active:(x.disc_active===true||x.disc_active===false)?x.disc_active:undefined, group:x.group_id||'', kind:x.kind||'service', norm_code:c?c.norm_code:null, description:x.description||'', photo_url:x.photo_url||null,
       // legătura la catalog e acum PERSISTENTĂ (migr 0127): se reface la fiecare
       // deschidere, deci „Actualizează produsul existent" rămâne disponibilă
       cat_id:cid, cat_src:csrc,
