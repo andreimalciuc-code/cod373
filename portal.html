@@ -280,6 +280,7 @@ function renderFirm(firm){
     }
     stagesHtml='<div class="cs-card cs-rise cs-rise-1"><h3 class="cs-card-title">Graficul lucrărilor</h3>'+body+'</div>';
   }
+  const invoicePaymentsP=Promise.resolve(sb.rpc('portal_invoice_states',{p_token:token})).catch(e=>({error:e}));
   let costHtml='';
   if(data.show_costs && s.budget!=null){
     costHtml='<div class="cs-card cs-rise cs-rise-4"><h3 class="cs-card-title">Detalii financiare</h3><div class="cs-kv"><span class="cs-kv-k">Buget contractat</span><span class="cs-kv-v">'+money(s.budget)+'</span></div></div>';
@@ -340,6 +341,22 @@ function renderFirm(firm){
      `translate="no"`: observatorul i18n traduce orice text care se potrivește exact
      cu o cheie de dicționar, iar un document numit „Contract" ar fi tradus. */
   let docsHtml='';
+  const paymentResult=await invoicePaymentsP;
+  let invoicePaymentsHtml='';
+  if(paymentResult.error||!paymentResult.data||paymentResult.data.error){
+    invoicePaymentsHtml='<div class="cs-card">'+esc(T('Nu am putut încărca situația facturilor.'))+'</div>';
+  }else if(paymentResult.data.shared){
+    const rows=paymentResult.data.invoices;
+    if(!Array.isArray(rows)||rows.some(i=>!i.currency||['total','payable','paid_to_date','outstanding'].some(k=>i[k]==null||!Number.isFinite(Number(i[k]))))){
+      invoicePaymentsHtml='<div class="cs-card">'+esc(T('Nu am putut încărca situația facturilor.'))+'</div>';
+    }else{
+      invoicePaymentsHtml='<div class="cs-card"><h3 class="cs-card-title">'+esc(T('Facturi'))+'</h3>'+rows.map(i=>{
+        const state=i.status==='cancelled'?'Anulată':+i.outstanding<=0.005?'Plătită':i.overdue?'Restantă':i.pay_state==='partial'?'Parțial plătită':'Neachitată';
+        const row=(label,n)=>'<div class="cs-kv"><span class="cs-kv-k">'+esc(T(label))+'</span><span class="cs-kv-v">'+Number(n).toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+esc(i.currency)+'</span></div>';
+        return '<div style="padding:.75rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere"><b>'+esc(i.number||'—')+'</b> · '+esc(T(state))+(i.due_date?'<div>'+esc(T('Scadență'))+' '+esc(i.due_date)+'</div>':'')+row('Total factură',i.total)+(+i.payable!==+i.total?row('De plată',i.payable):'')+row('Achitat până acum',i.paid_to_date)+row('Rest de plată',i.outstanding)+'</div>';
+      }).join('')+(!rows.length?esc(T('Nu ai facturi încă.')):'')+'</div>';
+    }
+  }
   const sharedDocs=await docsP;
   if(sharedDocs.length){
     docsHtml='<div class="cs-card cs-rise cs-rise-3"><h3 class="cs-card-title">Documente partajate</h3><div class="docs-list">'
@@ -426,7 +443,7 @@ function renderFirm(firm){
     +(s.deadline?'<span class="cs-pill cs-pill-on-dark"><span>Termen<span>: '+esc(fmtd(s.deadline))+'</span></span></span>':'')+'</div></div>'
     /* Dosarul de predare stă imediat după grafic: e actul de închidere al
        proiectului, deci se citește ÎNAINTEA secțiunilor de rutină. */
-    +stagesHtml+handoverHtml+photoHtml+docsHtml+ordersHtml+hoursHtml+costHtml
+    +stagesHtml+handoverHtml+photoHtml+docsHtml+ordersHtml+hoursHtml+costHtml+invoicePaymentsHtml
     +'<div class="cs-card cs-card-note cs-rise cs-rise-4"><b>Aveți întrebări?</b><div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Contactați echipa de proiect pentru orice detaliu legat de lucrare.</div></div>';
   applyLang();
 })();

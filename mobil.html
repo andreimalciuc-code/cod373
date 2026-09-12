@@ -225,7 +225,7 @@
 const SUPABASE_URL='https://vzatmfhkwiojqkowtftg.supabase.co';
 const SUPABASE_KEY='sb_publishable_wNj9S8eta39n1Gkq_g-gfA_idl_pbPy';
 let sb=null; const S={ session:null, tenant:null, role:null, view:'acasa' };
-const APP_BUILD='356';
+const APP_BUILD='357';
 function cfgOk(){ return SUPABASE_URL.startsWith('http')&&SUPABASE_KEY.startsWith('sb_'); }
 function $(id){return document.getElementById(id);}
 /* ►► SCOPING PE FIRMA ACTIVĂ (RC1-E2E). RLS lasă un membru să citească rândurile TUTUROR
@@ -911,37 +911,34 @@ async function respondOferta(id,status,upd){
 }
 
 /* CLIENT — Facturi & plăți */
+let clientInvoiceRows=[];
+function clientInvoiceMoney(n,currency){return Number(n).toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+esc(currency||'');}
+function clientInvoicePayment(id,receiptOnly){
+  const i=clientInvoiceRows.find(x=>x.id===id); if(!i||i.status==='cancelled') return;
+  if(receiptOnly){ if(+i.outstanding<=0.005) receipt(i.number,+i.paid_to_date,i.issue_date,i.currency); }
+  else if(+i.outstanding>0.005) payInvoiceSheet(i.id,i.number,+i.outstanding,i.currency);
+}
 async function scrClientFacturi(){
-  $('screen').innerHTML='<div class="scr-title">💳 Facturile mele</div><div id="cf"><div class="loading">Se încarcă…</div></div>';
-  /* ►► D65 — contractul întoarce DEJA doar facturile proprii; filtrul pe șantier
-     dispare (era și nesigur, și greșit: o factură fără șantier nu se vedea deloc). */
-  const {data,error}=await sb.rpc('my_client_invoices');
-  if(error){ $('cf').innerHTML='<div class="empty"><div class="ei">⚠️</div>Nu am putut încărca facturile.</div>'; return; }
-  const mine=(data||[]);
-  if(!mine.length){ $('cf').innerHTML='<div class="empty"><div class="ei">💳</div>Nu ai facturi încă.</div>'; return; }
-  const st={draft:['Ciornă','grey'],sent:['De plată','amber'],paid:['Plătită','green'],overdue:['Restantă','red'],cancelled:['Anulată','grey']};
-  $('cf').innerHTML=mine.map(i=>{ const s=st[i.status]||['—','grey'];
-    /* ►► KB#110 — „De achitat" arăta `i.total`: o factură de 2.400 cu 900 încasați cerea
-       tot 2.400, iar una achitată integral cerea în continuare suma întreagă. Soldul vine
-       acum de la SERVER (`outstanding`, migrarea 0193), derivat din ACEEAȘI autoritate
-       canonică pe care o folosește biroul (`app.invoice_paid_state` + `app.pay_state`).
-       NU recalculăm nimic aici: `total - paid` ar fi a treia semantică de plată din produs
-       și ar diverge tăcut la prima stornare (`payments.kind='reversal'`).
-       Fallback-ul la total NU e formulă nouă — e exact comportamentul dinainte, păstrat
-       pentru cazul în care un client din cache-ul SW prinde un contract fără câmpurile noi. */
-    const tot=+i.total||0;
-    const rest=(i.outstanding!=null)?(+i.outstanding||0):tot;
-    const paid=(i.paid_to_date!=null)?(+i.paid_to_date||0):0;
-    const partial=(i.pay_state==='partial')||(paid>0.005&&rest>0.005);
-    /* un rest de 0 nu se „plătește": butonul dispare când nu mai e nimic de achitat */
-    const payable=(i.status==='sent'||i.status==='overdue')&&rest>0.005;
-    return '<div class="card"><div class="row"><div class="grow"><div class="t">Factura '+esc(i.number||'—')+'</div><div class="s">'+(i.due_date?'Scadență '+esc(i.due_date):(i.issue_date?'Emisă '+esc(i.issue_date):''))+'</div></div><span class="pill '+s[1]+'">'+s[0]+'</span></div>'
-    +(partial?'<div class="row" style="margin-top:.5rem"><div class="grow s">'+esc(mt('Total factură'))+'</div><span class="s">'+money(tot)+'</span></div>'
-             +'<div class="row"><div class="grow s">'+esc(mt('Achitat până acum'))+'</div><span class="s">'+money(paid)+'</span></div>':'')
-    +'<div class="row" style="margin-top:.5rem"><div class="grow s">'+esc(mt(partial?'Rest de plată':'De achitat'))+'</div><b>'+money(rest)+'</b></div>'
-    +(payable?'<button class="btn" style="margin-top:.7rem" onclick="payInvoiceSheet(\''+i.id+'\',\''+esc(i.number||'')+'\','+rest+')">💳 Plătește</button>':'')
-    +(i.status==='paid'?'<button class="btn btn-line" style="margin-top:.7rem" onclick="receipt(\''+esc(i.number||'')+'\','+(paid||tot)+',\''+esc(i.issue_date||'')+'\')">🧾 Vezi chitanța</button>':'')
-    +'</div>'; }).join('');
+  clientInvoiceRows=[];
+  $('screen').innerHTML='<div class="scr-title">💳 '+esc(mt('Facturile mele'))+'</div><div id="cf"><div class="loading">'+esc(mt('Se încarcă…'))+'</div></div>';
+  const host=$('cf');
+  let result; try{result=await sb.rpc('my_client_invoice_states');}catch(e){result={error:e};}
+  if($('cf')!==host)return;
+  const mine=result.data||[];
+  if(result.error||!Array.isArray(mine)||mine.some(i=>!i.currency||['total','payable','paid_to_date','outstanding'].some(k=>i[k]==null||!Number.isFinite(Number(i[k]))))){
+    host.innerHTML='<div class="empty">⚠️ '+esc(mt('Nu am putut încărca facturile.'))+'</div>'; return;
+  }
+  clientInvoiceRows=mine;
+  if(!mine.length){host.innerHTML='<div class="empty">💳 '+esc(mt('Nu ai facturi încă.'))+'</div>';return;}
+  host.innerHTML=mine.map(i=>{
+    const rest=+i.outstanding,paid=+i.paid_to_date;
+    const state=i.status==='cancelled'?['Anulată','grey']:rest<=0.005?['Plătită','green']:i.overdue?['Restantă','red']:i.pay_state==='partial'?['Parțial plătită','amber']:['Neachitată','amber'];
+    const row=(label,n)=>'<div class="row" style="margin-top:.35rem"><span class="grow s">'+esc(mt(label))+'</span><b>'+clientInvoiceMoney(n,i.currency)+'</b></div>';
+    return '<div class="card"><div class="row"><div class="grow"><div class="t">'+esc(mt('Factura'))+' '+esc(i.number||'—')+'</div><div class="s">'+(i.due_date?esc(mt('Scadență'))+' '+esc(i.due_date):'')+'</div></div><span class="pill '+state[1]+'">'+esc(mt(state[0]))+'</span></div>'
+      +row('Total factură',i.total)+(+i.payable!==+i.total?row('De plată',i.payable):'')+row('Achitat până acum',paid)+row('Rest de plată',rest)
+      +(i.status!=='cancelled'&&rest>0.005?'<button class="btn" style="margin-top:.7rem" onclick="clientInvoicePayment(\''+i.id+'\')">💳 '+esc(mt('Plătește'))+'</button>':'')
+      +(i.status!=='cancelled'&&rest<=0.005?'<button class="btn btn-line" style="margin-top:.7rem" onclick="clientInvoicePayment(\''+i.id+'\',true)">🧾 '+esc(mt('Vezi chitanța'))+'</button>':'')+'</div>';
+  }).join('');
 }
 /* ►► CLIENT-SHARE1 · D139 — documentele partajate cu clientul autentificat.
    NU se citește `public.documents`: rolul `client` e DENY acolo din 0188. Sursa e
@@ -1076,17 +1073,17 @@ async function confirmHandover(btn,id){
     scrClientHandovers();
   }catch(e){ fail('Încearcă din nou mai târziu.'); }
 }
-function receipt(number,total,issue){
+function receipt(number,total,issue,currency){
   openSheet('Chitanță',
     '<div class="card" style="margin:0;text-align:center"><div style="font-size:2.2rem">✅</div>'
     +'<div class="t" style="margin-top:.4rem">Plată confirmată</div>'
     +'<div class="s">Factura '+esc(number)+'</div>'
-    +'<div style="font-size:1.7rem;font-weight:800;margin:.6rem 0">'+money(total)+'</div>'
+    +'<div style="font-size:1.7rem;font-weight:800;margin:.6rem 0">'+clientInvoiceMoney(total,currency)+'</div>'
     +'<div class="s">'+(issue?'Emisă: '+esc(issue):'')+'</div>'
     +'<div class="s" style="margin-top:.8rem;color:var(--green)">Achitată integral · Mulțumim!</div></div>'
     +'<p style="font-size:.75rem;color:var(--muted);margin-top:.8rem;text-align:center">Chitanță generată de Cod373 ('+esc(S.email||'')+').</p>');
 }
-async function payInvoiceSheet(id,number,total){
+async function payInvoiceSheet(id,number,total,currency){
   /* SEC-CLIENT-PAYMENT1 — contract invoice-scoped (0187), NU SELECT direct pe `bank_accounts`.
      Vechiul cod lua `ba[0]` dintr-un select FĂRĂ `order by`, dintr-o tabelă internă de trezorerie
      (care are și `balance`), deci putea arăta un IBAN care NU e cel de pe factura clientului.
@@ -1099,7 +1096,7 @@ async function payInvoiceSheet(id,number,total){
       a.swift?'<b>SWIFT/BIC:</b> '+esc(a.swift):'', a.note?esc(a.note):''].filter(Boolean).join('<br>');
   openSheet('Plată factura '+number,
     '<div id="pay-msg"></div>'
-    +'<div class="card" style="margin:0 0 1rem;text-align:center"><div class="s">Sumă de plată</div><div style="font-size:1.8rem;font-weight:800;margin-top:.2rem">'+money(total)+'</div></div>'
+    +'<div class="card" style="margin:0 0 1rem;text-align:center"><div class="s">Sumă de plată</div><div style="font-size:1.8rem;font-weight:800;margin-top:.2rem">'+clientInvoiceMoney(total,currency)+'</div></div>'
     +(accs.length?'<div class="card" style="margin:0 0 1rem"><div class="s">'+esc(mt('Transfer bancar către'))+'</div>'
         +accs.map(a=>'<div style="margin-top:.3rem">'+bankBlock(a)+'</div>').join('')+'</div>':'')
     /* KB#48A: butonul „Plătește online" chema `pay_invoice`, care marca factura

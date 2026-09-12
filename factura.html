@@ -17,9 +17,10 @@
   .btn:hover{ background:#f1f5f9; } .btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); } .btn.green{ background:var(--green); color:#fff; border-color:var(--green); }
   .btn:disabled{ opacity:.4; cursor:default; } .btn:disabled:hover{ background:#fff; }
   .hbtn{ padding:.42rem .6rem; font-size:1rem; line-height:1; }
-  .wrap{ max-width:1440px; margin:0 auto; padding:1.1rem; display:grid; grid-template-columns:1fr 320px; gap:1.1rem; align-items:start; }
+  .wrap{ max-width:1440px; margin:0 auto; padding:1.1rem; display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:1.1rem; align-items:start; }
+  .left,.right,.field{ min-width:0; } select{ min-width:0; }
   .lines{ table-layout:fixed; }
-  @media(max-width:1200px){ .wrap{ grid-template-columns:1fr; } }
+  @media(max-width:1200px){ .wrap{ grid-template-columns:minmax(0,1fr); } }
   .panel{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:1.1rem; margin-bottom:1.1rem; }
   .panel h3{ margin:0 0 .8rem; font-size:.95rem; }
   .right{ position:sticky; top:72px; }
@@ -28,18 +29,21 @@
   input[type=number]{ -moz-appearance:textfield; }
   input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   input:focus,select:focus,textarea:focus{ border-color:var(--primary); }
-  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+  .row2{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:.6rem; }
   .lines{ width:100%; border-collapse:collapse; }
   .lines th{ text-align:left; font-size:.7rem; text-transform:uppercase; color:var(--muted); padding:.3rem .35rem; border-bottom:1px solid var(--line); }
   .lines td{ padding:.25rem .25rem; vertical-align:top; border-bottom:1px solid #f1f4fa; }
-  /* FIN-UNIT-GROSS1 — „Descriere" e SINGURA coloana elastica: toate celelalte au latime fixa,
-     deci fiecare coloana noua se scade direct din ea. Masurat pe LIVE, la ~768px containerul
-     lasa descrierii 96px fara coloana noua si 18px cu ea — nu se mai poate citi ce scrii.
-     `min-width` NU e o solutie: sub `table-layout:fixed` browserul ignora min/max-width pe
-     celule (verificat: regula se aplica, latimea ramane neschimbata).
-     Regula e deci: coloana INFORMATIVA cedeaza prima. Nu se pierde nimic — „Total cu TVA"
-     ramane pe rand, iar PDF-ul tipareste pretul unitar brut la orice latime. */
-  @media (max-width:1000px){ .lines th.ugh, .lines td.ugc{ display:none; } }
+  /* Prețul brut este editabil: pe ecrane înguste păstrăm coloanele, cu scroll local. */
+  @media (max-width:1200px){
+    .lsec,.lgroup>div:last-child{ overflow-x:auto; }
+    .lines{ min-width:950px; }
+    .right{ position:static; }
+  }
+  @media (max-width:500px){
+    .row2{ grid-template-columns:minmax(0,1fr); }
+    #hd-num,#pay-hist .sub{ overflow-wrap:anywhere; }
+    .panel .btn,.panel .addline{ white-space:normal; }
+  }
   .lines td input{ padding:.45rem .5rem; } .grip{ cursor:grab; color:#c2cbdb; padding:.4rem .1rem; }
   .ta-wrap{ position:relative; }
   .lines td textarea.lname{ width:100%; padding:.45rem .5rem; resize:none; overflow:hidden; line-height:1.3; min-height:2.2em; white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:.88rem; }
@@ -120,11 +124,10 @@ function lifePillHtml(){ const k=lifeKey(); return '<span class="pill '+k+'">'+(
 /* Starea de plată vine din instantaneul fiscal (invoice_snapshot → payment/outstanding),
    adică din registrul canonic — niciodată dintr-un câmp editabil. */
 function payPillHtml(){
-  const sn=S._snap; if(!sn||!sn.payment) return '';
-  const paid=+(sn.payment.paid_to_date||0), tot=+((sn.stored&&sn.stored.total)||S.inv.total||0);
-  const st = paid<=0.005 ? ['○','Neachitată','draft'] : (paid+0.005>=tot ? ['●','Achitată','paid'] : ['◐','Parțial achitată','sent']);
+  const pv=payView(); if(!pv) return '';
+  const st = pv.settled ? ['●','Achitată','paid'] : (pv.paid<=0.005 ? ['○','Neachitată','draft'] : ['◐','Parțial achitată','sent']);
   let h='<span class="pill '+st[2]+'" style="margin-left:.35rem">'+st[0]+' '+TS(st[1])+'</span>';
-  const out=Math.round((tot-paid)*100)/100;
+  const out=pv.out;
   if(S.inv.due_date && out>0.005 && lifeKey()!=='cancelled'
      && String(S.inv.due_date).slice(0,10) < (typeof coToday==='function'?coToday():new Date().toISOString().slice(0,10))){
     h+='<span class="pill overdue" style="margin-left:.35rem">⚠ '+TS('Restantă')+'</span>';
@@ -154,6 +157,8 @@ async function refreshSnap(){
        S._snap = r.error ? null : (r.data||null); }
   catch(e){ S._snap=null; }
   const el=$('hd-status'); if(el) el.innerHTML=lifePillHtml()+payPillHtml()+stActions();
+  const panel=$('pay-summary'); if(panel) panel.innerHTML=paySummaryHtml();
+  return S._snap;
 }
 async function stSet(st){
   if(!S.id){ toast('Salvează documentul întâi.'); return; }
@@ -170,6 +175,11 @@ let S={ id:null, role:null, canEdit:false, firm:{}, tenant:null,
         lines:[], groups:[], clients:[], catalog:[], lineThumbs:{} };
 function gid(){ return 'g'+Date.now().toString(36)+Math.floor(Math.random()*1000); }
 function coDateFmt(){ return (S.firm&&S.firm.automations&&S.firm.automations.date_fmt)||'DD.MM.YYYY'; }
+function coToday(){
+  const tz=S.firm&&S.firm.automations&&S.firm.automations.tz;
+  if(tz){ try{ return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }catch(e){} }
+  const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function fmtDate(iso){ if(!iso) return ''; const s=String(iso).slice(0,10); const p=s.split('-'); if(p.length<3) return s; const y=p[0],m=p[1],d=p[2]; const f=coDateFmt(); return f==='YYYY-MM-DD'?s:f==='DD/MM/YYYY'?(d+'/'+m+'/'+y):f==='MM/DD/YYYY'?(m+'/'+d+'/'+y):(d+'.'+m+'.'+y); }
 /* ── schiță auto-salvată (factură nouă) ── */
 let _dzT=null;
@@ -198,6 +208,7 @@ async function boot(){
   render();
   signLineThumbs();
   historyInit();
+  if(param('payment')==='full') await markPaid(true);
   document.addEventListener('input',scheduleDraft); document.addEventListener('change',scheduleDraft);
   if(S._restored) toast('↩️ Schiță nesalvată restaurată.');
 }
@@ -231,11 +242,11 @@ async function loadCatalog(){
 async function loadInvoice(id){
   const e=await sb.from('invoices').select('*').eq('id',id).single();
   if(e.error){ docLoadFailed('Factura nu a putut fi citită.', e.error.message); return; }
-  S.id=id; S._updatedAt=e.data.updated_at; setTimeout(refreshSnap,0); S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
+  S.id=id; S._updatedAt=e.data.updated_at; CUR=(e.data.currency||S.firm.currency||'MDL').toUpperCase(); S.inv={ status:e.data.status, number:e.data.number||'', client_id:e.data.client_id||'', title:e.data.title||'', site_id:e.data.site_id||null,
     issue_date:e.data.issue_date||new Date().toISOString().slice(0,10), due_date:e.data.due_date||'',
     disc_mode:e.data.disc_mode||'none', disc_value:+e.data.disc_value||0, vat_mode:e.data.vat_mode||'line', vat_value:+e.data.vat_value||0, materials_mode:e.data.materials_mode||'detailed', skonto_off:!!e.data.skonto_off, skonto_pct:(e.data.skonto_pct!=null?+e.data.skonto_pct:null), inv_type:e.data.inv_type||'normal', contract_total:(e.data.contract_total!=null?+e.data.contract_total:null), retention_pct:(e.data.retention_pct!=null?+e.data.retention_pct:null), bank_choice:e.data.bank_choice||'', amount_paid:(e.data.amount_paid!=null?+e.data.amount_paid:null), plan_url:e.data.plan_url||null };
   S.groups=Array.isArray(e.data.groups)?e.data.groups.map(g=>({id:g.id,name:g.name||'',vat:+g.vat||0,disc:+g.disc||0,pos:(typeof g.pos==='number'?g.pos:undefined)})):[];
-  if(S.inv.inv_type!=='normal') loadAbschlaege();
+  if(S.inv.inv_type!=='normal') await loadAbschlaege();
   const it=await sb.from('invoice_items').select('*').eq('invoice_id',id);
   if(it.error){ docLoadFailed('Pozițiile facturii nu au putut fi citite.', it.error.message); return; }
   const mapped=((it.data||[]).sort((a,b)=>(a.position||0)-(b.position||0))).map(x=>({ name:x.name, qty:+x.qty, unit:x.unit, unit_price:+x.unit_price, vat_rate:+x.vat_rate, disc:+x.disc||0, /* FIN-GROUP-DISCOUNT1 — activarea se propagă: la reîncărcare ȘI la conversia ofertă→factură. `null` din bază rămâne `undefined` (moștenit), NU `false`. Fără asta, o ofertă cu reducere activă pe o poziție din grup s-ar converti într-o factură pe alți bani. */ disc_active:(x.disc_active===true||x.disc_active===false)?x.disc_active:undefined, group:x.group_id||'', kind:x.kind||'service', description:x.description||'', photo_url:x.photo_url||null }));
@@ -247,6 +258,8 @@ async function loadInvoice(id){
   if(!S.lines.length) S.lines=[blankLine()];
   if(!docLoadTripwire(it.data, e.data)) return;
   S._loaded=true; const _b=$('btn-save'); if(_b) _b.disabled=false;
+  S._savedContent=paymentContent();
+  await refreshSnap();
 }
 async function fromEstimate(eid){
   const e=await sb.from('estimates').select('client_id,title,disc_mode,disc_value,vat_mode,vat_value,groups,materials_mode,skonto_off,skonto_pct').eq('id',eid).single();
@@ -488,13 +501,6 @@ function render(){
           +'<option value="__off"'+(S.inv.bank_choice==='__off'?' selected':'')+'>✕ Nu afișa niciun cont</option>'
         +'</select></div>'
       ):'')
-      /* KB#48A: „Sumă încasată" nu mai e un câmp tastat. Suma plătită e proiecția
-         registrului de plăți, menținută server-side; se modifică doar prin
-         „Înregistrează încasare". Două mecanisme active ar fi însemnat păstrarea
-         defectului: un scalar decorativ pe care nimic nu îl reconcilia. */
-      +'<div class="field"><label>💵 Încasat</label>'
-        +'<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem .1rem;flex-wrap:wrap"><b style="font-size:1.02rem">'+money(+S.inv.amount_paid||0)+'</b>'
-        +'<span class="sub" style="font-size:.78rem">se modifică prin „Înregistrează încasare"</span></div></div>'
       +'<div style="border-top:1px dashed var(--line);margin-top:.5rem;padding-top:.6rem">'
         +'<div class="field"><label>🇩🇪 Tip factură (decontare pe stadii)</label><select id="f-invtype" onchange="setInvType(this.value)">'
           +'<option value="normal"'+(S.inv.inv_type==='normal'?' selected':'')+'>Factură normală</option>'
@@ -522,11 +528,12 @@ function render(){
     +'<div class="right"><div class="panel"><h3>Sumar</h3><div id="sum"></div>'
         +'<button class="btn primary" style="width:100%;margin-top:.8rem" onclick="save()">💾 Salvează factura</button>'
         +'<button class="btn" style="width:100%;margin-top:.5rem" onclick="save(true)">🖨 Salvează & PDF</button>'
-        +(S.inv.status!=='paid'?'<button class="btn green" style="width:100%;margin-top:.5rem" onclick="markPaid()">💵 Înregistrează încasare</button>':'<div class="sub" style="margin-top:.6rem;text-align:center">✅ Factură încasată</div>')
+        +'<div id="pay-summary">'+paySummaryHtml()+'</div>'
       +'</div>'
+      +(S.id?'<div class="panel"><h3>'+esc(TS('Istoric încasări'))+'</h3><div id="pay-hist"></div></div>':'')
       +'<div class="panel"><h3>e-Factura (SFS)</h3><div class="sub">Poți genera XML-ul pentru SFS din lista de Facturi (butonul 🏛️). Integrarea completă cu SFS se activează la cerere.</div></div>'
     +'</div></div>';
-  renderLines(); renderSummary();
+  renderLines(); renderSummary(); payHistoryLoad();
 }
 function optBar(){
   const dm=S.inv.disc_mode||'none', vm=S.inv.vat_mode||'none', mm=S.inv.materials_mode||'detailed';
@@ -781,7 +788,7 @@ async function saveLineDetails(i){
   }
   closeM(); toast('✅ Detalii salvate.'); renderLines(); signLineThumbs();
 }
-function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
+function renderSummary(){ if(!$('sum')) return; const t=totals(); const vm=S.inv.vat_mode||'none';
   let h='<div class="totrow"><span class="sub">Subtotal</span><b>'+money(t.gross)+'</b></div>';
   if(t.disc>0.005) h+='<div class="totrow"><span class="sub">Reducere</span><b style="color:var(--green)">−'+money(t.disc)+'</b></div>';
   h+='<div class="totrow"><span class="sub">TVA'+(vm==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>';
@@ -804,12 +811,6 @@ function renderSummary(){ const t=totals(); const vm=S.inv.vat_mode||'none';
     if(+S.inv.contract_total>0){ const vF=(S.firm.vat_rate!=null?+S.firm.vat_rate:20); const cg=Math.round((+S.inv.contract_total)*(1+vF/100)*100)/100;
       const billed=(S.inv.inv_type==='schluss')?t.total:((S._absch||[]).reduce((s,x)=>s+(+x.total||0),0)+t.total); const rest=Math.round((cg-billed)*100)/100;
       h+='<div class="sub" style="font-size:.76rem;margin-top:.45rem;border-top:1px dashed var(--line);padding-top:.4rem">📋 Contract (cu TVA): <b>'+money(cg)+'</b><br>Facturat (cu această factură): <b>'+money(billed)+'</b> · Rest de facturat: <b>'+money(Math.max(0,rest))+'</b></div>'; }
-  }
-  // Sumă încasată / avans primit → Achitat + Rest de plată
-  const paid=+S.inv.amount_paid||0;
-  if(paid>0.005){ const baseDue=(S.inv.inv_type!=='normal'||S.inv.retention_pct>0)?deTotals().payable:t.total; const rest=Math.round((baseDue-paid)*100)/100;
-    h+='<div class="totrow"><span class="sub" style="color:var(--green)">💵 Achitat / avans încasat</span><b style="color:var(--green)">−'+money(paid)+'</b></div>';
-    h+='<div class="totrow g" style="border-top:2px solid var(--ink,#0f1c33)"><span>'+(rest>0.005?'Rest de plată':(rest<-0.005?'De rambursat':'Achitat integral'))+'</span><span>'+money(Math.abs(rest)<0.005?0:rest)+'</span></div>';
   }
   const au=(S.firm&&S.firm.automations)||{};
   if(au.prepay_show!==false && S.inv.status!=='paid' && S.inv.inv_type==='normal'){
@@ -1275,6 +1276,8 @@ async function save(thenPdf){
     const nel=$('f-num'); if(nel) nel.value=S.inv.number;
     history.replaceState(null,'',base()+'factura.html?id='+S.id);
     if($('btn-dup')) $('btn-dup').style.display='';
+    S._savedContent=paymentContent();
+    await refreshSnap(); render();
     historyReset();   // starea salvată devine noul punct de bază: nu se poate anula peste ea
     clearDraftDz(); $('btn-save').disabled=false; const dp=(t.gross>0?Math.round(t.disc/t.gross*1000)/10:0); toast('✅ Factură salvată.'+(dp>0?' Reducere '+dp+'%':'')); if(thenPdf) pdf();
   }catch(e){
@@ -1328,37 +1331,128 @@ const PAY_ERR={
   PAYMENT_BANK_TX_ALREADY_APPLIED:'Această tranzacție bancară a fost deja alocată unei facturi.',
   PAYMENT_CURRENCY_MISMATCH:'Moneda tranzacției nu corespunde facturii.',
   PAYMENT_SOURCE_INVALID:'Sursa încasării nu este validă.',
+  /* 0212 — contractul de corecție și poarta de registru */
+  PAYMENT_INVOICE_CANCELLED:'Factura este anulată. Nu se pot înregistra încasări pe ea.',
+  PAYMENT_NOT_FOUND:'Încasarea nu mai există.',
+  PAYMENT_NOT_ON_INVOICE:'Încasarea nu este legată de o factură.',
+  PAYMENT_ALREADY_REVERSED:'Această încasare a fost deja stornată.',
+  PAYMENT_IS_REVERSAL:'Aceasta este deja o stornare — nu poate fi stornată din nou.',
   FISCAL_FORBIDDEN:'Nu ai dreptul să vezi datele financiare ale acestei facturi.',
   FISCAL_INVOICE_NOT_FOUND:'Factura nu mai există.'};
 function payErrMsg(e){ const T=window.C373t||function(s){return s;};
   const m=((e&&e.message)||''); const c=m.match(/PAYMENT_[A-Z_]+|FISCAL_[A-Z_]+/);
   return (c&&PAY_ERR[c[0]])?T(PAY_ERR[c[0]]):('Eroare: '+m); }
 
-async function markPaid(){
+/* ►► FIN-INVOICE-PAYMENT1 — metodele de încasare. O SINGURĂ listă în tot produsul:
+   `mobil.html` afișa deja exact aceste patru chei (`MET` din `scrFinPayments`),
+   iar `bank_payment_reconcile` scrie `'transfer'`. Nu se inventează un vocabular
+   nou; se refolosește cel pe care baza îl conține deja. */
+const PAY_METHODS=[['transfer','Transfer bancar'],['numerar','Numerar'],['card','Card'],['altul','Altul']];
+function payMethodLabel(m){ const T=window.C373t||function(s){return s;};
+  const f=PAY_METHODS.find(x=>x[0]===m); return f?T(f[1]):(m||''); }
+
+/* Situația plății aparține facturii salvate, nu preview-ului liniilor nesalvate. */
+function payView(){
+  const sn=S._snap;
+  if(!sn||!sn.payment||sn.payable==null||sn.outstanding==null||sn.payment.paid_to_date==null) return null;
+  const payable=+sn.payable, paid=+sn.payment.paid_to_date, out=+sn.outstanding;
+  if(![payable,paid,out].every(Number.isFinite)) return null;
+  return {payable,paid,out,settled:out<=0.005};
+}
+function paymentContent(){
+  const v=JSON.parse(captureHistoryState()); delete v.autoNum;
+  v.lines=v.lines.map(l=>{ const r={}; ['name','qty','unit','unit_price','vat_rate','disc','disc_active','group','kind','description','photo_url'].forEach(k=>r[k]=l[k]); return r; });
+  return JSON.stringify(v);
+}
+function paymentReady(){
+  if(!S.id){ toast(TS('Salvează întâi factura.')); return false; }
+  if(S._needsReload||!S._loaded){ toast(TS('Documentul trebuie reîncărcat înainte de a continua editarea.')); return false; }
+  if(S._savedContent!==paymentContent()){ toast(TS('Salvează modificările facturii înainte de încasare sau PDF.')); return false; }
+  return true;
+}
+function paySummaryHtml(){
+  if(!S.id) return '';
+  const pv=payView();
+  if(!pv) return '<div class="sub" style="margin-top:.6rem">'+esc(TS('Situația încasărilor nu a putut fi încărcată.'))+'</div>';
+  const row=(label,n)=>'<div class="totrow"><span>'+esc(TS(label))+'</span><b>'+money(n)+'</b></div>';
+  return '<div style="border-top:1px solid var(--line);margin-top:.7rem;padding-top:.6rem"><div class="sub">'+esc(TS('Situația facturii salvate'))+'</div>'
+    +row('De plată:',pv.payable)+row('Achitat',pv.paid)+row('Rest de plată:',pv.out)+payPillHtml()
+    +((S.canEdit&&lifeKey()!=='cancelled'&&!pv.settled)?'<button class="btn green" style="width:100%;margin-top:.5rem" onclick="markPaid()">'+esc(TS('Înregistrează plata'))+'</button><button class="btn" style="width:100%;margin-top:.5rem" onclick="markPaid(true)">'+esc(TS('Marchează ca plătită'))+'</button>':'')+'</div>';
+}
+
+/* Refuzul invalidează soldul din dialog, nu cheia cererii. */
+function payDialogSummary(){
+  const pv=payView();
+  if(!pv) return '<div class="sub">'+esc(TS('Situația încasărilor nu a putut fi încărcată.'))+'</div>';
+  const p=S._snap.payment;
+  const row=(label,n)=>'<div style="display:flex;justify-content:space-between;gap:.5rem"><span>'+esc(TS(label))+'</span><b>'+money(n)+'</b></div>';
+  return row('De plată:',pv.payable)
+    +(+p.opening_paid>0.005?row('Sold plătit anterior / istoric:',+p.opening_paid):'')
+    +(+p.ledger_paid>0.005?row('Încasări înregistrate:',+p.ledger_paid):'')
+    +row('Deja plătit:',pv.paid)+row('Sold rămas:',pv.out);
+}
+async function payRefreshRejected(error,kind,btn,msg){
+  if(!msg) return;
+  // Diagnostic fără date personale și fără eroare brută în textul interfeței.
+  msg.dataset.rpcError=JSON.stringify({code:error.code||'',message:error.message||''});
+  msg.textContent=payErrMsg(error);
+  await refreshSnap();
+  if($(kind+'-msg')!==msg) return; // dialog închis/înlocuit în timpul citirii
+  const summary=$(kind+'-snapshot');
+  if(summary) summary.innerHTML=payDialogSummary();
+  const pv=payView();
+  if(!pv){ if(btn) btn.hidden=true; return; }
+  if(kind==='pay'){
+    const amount=$('pay-amt'); if(amount) amount.value=num2(pv.out);
+    const confirmed=$('pay-confirm-amount'); if(confirmed) confirmed.textContent=money(pv.out);
+    const fields=$('pay-fields'); if(fields) fields.hidden=pv.settled;
+    const state=$('pay-settled'); if(state) state.hidden=!pv.settled;
+    if(btn){ btn.hidden=pv.settled; btn.disabled=false; btn.textContent=TS(btn.dataset.full==='true'?'Confirmă și înregistrează':'Înregistrează'); }
+  }else if(btn){
+    // Stornarea păstrează suma și identitatea încasării, inclusiv la sold zero.
+    btn.hidden=/PAYMENT_ALREADY_REVERSED|PAYMENT_IS_REVERSAL|PAYMENT_NOT_FOUND|PAYMENT_NOT_ON_INVOICE|FORBIDDEN/.test(error.message||'');
+    btn.disabled=false; btn.textContent=TS('Anulează încasarea');
+  }
+}
+
+async function markPaid(full){
   const T=window.C373t||function(s){return s;};
-  if(!S.id){ toast(T('Salvează întâi factura.')); return; }
+  if(!paymentReady()) return;
   const r=await sb.rpc('invoice_snapshot',{p_invoice:S.id});
   if(r.error){ toast('⚠️ '+payErrMsg(r.error)); return; }
-  const s=r.data||{}, p=s.payment||{}; const out=+s.outstanding||0;
+  S._snap=r.data||null; const pv=payView();
+  if(!pv){ toast(T('Situația încasărilor nu a putut fi încărcată.')); return; }
+  const out=pv.out;
   // cheia de idempotență se generează O DATĂ, la deschiderea dialogului: un retry
   // după timeout sau un dublu clic retrimit ACEEAȘI cerere, nu una nouă
   S._payReq='pay-'+S.id+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-  const row=(lbl,val,strong,muted)=>'<div style="display:flex;justify-content:space-between'+(muted?';color:var(--muted)':'')+'"><span>'+esc(T(lbl))+'</span>'+(strong?'<b>':'<span>')+money(val)+(strong?'</b>':'</span>')+'</div>';
-  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:430px"><h3>💵 '+esc(T('Înregistrează încasare'))+'</h3>'
+  const azi=(typeof coToday==='function'?coToday():new Date().toISOString().slice(0,10));
+  /* „Marchează ca plătită" e ACEEAȘI cale, cu suma prestabilită pe restul exact —
+     niciodată un `update status='paid'`. Confirmarea arată suma care se va
+     înregistra, ca operatorul să vadă ce eveniment financiar produce. */
+  const titlu = full ? '✅ '+T('Marchează ca plătită') : '💵 '+T('Înregistrează plata');
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:430px"><h3>'+esc(titlu)+'</h3>'
     +'<div id="pay-msg" style="color:var(--red);font-size:.82rem"></div>'
-    +'<div style="font-size:.9rem;line-height:1.85;margin:.4rem 0 .7rem">'
-      +row('De plată:', s.payable, true)
-      +((+p.opening_paid||0)>0.005?row('Sold plătit anterior / istoric:', p.opening_paid, false, true):'')
-      +((+p.ledger_paid||0)>0.005?row('Încasări înregistrate:', p.ledger_paid, false, true):'')
-      +row('Deja plătit:', p.paid_to_date, true)
-      +'<div style="border-top:1px solid #e5e9f2;margin-top:.25rem;padding-top:.25rem">'+row('Sold rămas:', out, true)+'</div>'
-    +'</div>'
+    +'<div id="pay-snapshot" style="font-size:.9rem;line-height:1.85;margin:.4rem 0 .7rem">'+payDialogSummary()+'</div>'
+    +'<div id="pay-settled"'+(out<=0.005?'':' hidden')+' style="font-size:.86rem;color:var(--muted)">'+esc(T('Factura este achitată integral.'))+'</div>'
+    +'<div id="pay-fields">'
     +(out<=0.005
-      ? '<div style="font-size:.86rem;color:var(--muted)">'+esc(T('Factura este achitată integral.'))+'</div>'
-      : '<div class="field"><label>'+esc(T('Suma încasată'))+'</label><input id="pay-amt" type="number" step="0.01" min="0.01" value="'+num2(out)+'"/></div>'
-       +'<div class="field"><label>'+esc(T('Data încasării'))+'</label><input id="pay-date" type="date" value="'+esc(new Date().toISOString().slice(0,10))+'"/></div>')
-    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem"><button class="btn" onclick="closeM()">'+esc(T('Renunță'))+'</button>'
-    +(out<=0.005?'':'<button class="btn green" id="pay-go" onclick="payApply()">'+esc(T('Înregistrează'))+'</button>')
+      ? ''
+      : (full
+          ? '<div style="font-size:.9rem;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:9px;padding:.55rem .7rem;line-height:1.5">'
+             +esc(T('Se va înregistra o încasare de'))+' <b id="pay-confirm-amount">'+money(out)+'</b> '+esc(T('cu data de azi. Factura devine „Achitată".'))+'</div>'
+             +'<input type="hidden" id="pay-amt" value="'+num2(out)+'"><input type="hidden" id="pay-date" value="'+esc(azi)+'">'
+             +'<div class="field" style="margin-top:.6rem"><label>'+esc(T('Metoda de plată'))+'</label><select id="pay-method">'
+               +PAY_METHODS.map(function(m){ return '<option value="'+m[0]+'">'+esc(T(m[1]))+'</option>'; }).join('')+'</select></div>'
+             +'<input type="hidden" id="pay-ref" value="">'
+          : '<div class="field"><label>'+esc(T('Suma încasată'))+'</label><input id="pay-amt" type="number" step="0.01" min="0.01" value="'+num2(out)+'"/></div>'
+           +'<div class="row2"><div class="field"><label>'+esc(T('Data încasării'))+'</label><input id="pay-date" type="date" value="'+esc(azi)+'"/></div>'
+           +'<div class="field"><label>'+esc(T('Metoda de plată'))+'</label><select id="pay-method">'
+             +PAY_METHODS.map(function(m){ return '<option value="'+m[0]+'">'+esc(T(m[1]))+'</option>'; }).join('')+'</select></div></div>'
+           +'<div class="field"><label>'+esc(T('Referință / notă'))+' <span class="sub" style="font-weight:400">'+esc(T('(opțional)'))+'</span></label>'
+             +'<input id="pay-ref" type="text" maxlength="200" placeholder="'+esc(T('ex: OP 1234 / chitanța 56'))+'"/></div>'))
+    +'</div><div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem"><button class="btn" onclick="closeM()">'+esc(T('Renunță'))+'</button>'
+    +(out<=0.005?'':'<button class="btn green" id="pay-go" data-full="'+!!full+'" onclick="payApply()">'+esc(full?T('Confirmă și înregistrează'):T('Înregistrează'))+'</button>')
     +'</div></div></div>';
 }
 
@@ -1367,33 +1461,133 @@ async function payApply(){
   const btn=$('pay-go'), msg=$('pay-msg');
   const amt=+(($('pay-amt')&&$('pay-amt').value)||0);
   const dt=(($('pay-date')&&$('pay-date').value)||null);
+  const met=(($('pay-method')&&$('pay-method').value)||null);
+  const ref=((($('pay-ref')&&$('pay-ref').value)||'').trim()||null);
   if(!(amt>0)){ if(msg) msg.textContent=T('Suma trebuie să fie mai mare decât zero.'); return; }
   if(btn){ btn.disabled=true; btn.textContent=T('Se înregistrează…'); }   // starea reală e impusă de server, nu de buton
-  const r=await sb.rpc('invoice_payment_apply',{p_invoice:S.id,p_amount:amt,p_request_id:S._payReq,p_paid_date:dt,p_source:'manual'});
+  const r=await sb.rpc('invoice_payment_apply',{p_invoice:S.id,p_amount:amt,p_request_id:S._payReq,
+                                                p_paid_date:dt,p_method:met,p_reference:ref,p_source:'manual'});
   if(r.error){
-    if(btn){ btn.disabled=false; btn.textContent=T('Înregistrează'); }
-    // rețea incertă: NU reîncercăm automat — aceeași cheie e deja pregătită dacă
-    // operatorul redeschide dialogul, iar serverul refuză o a doua înregistrare
+    // Rezultat incert: se blochează editorul până la reload/readback, fără retry automat.
     if(isNetErr(r.error)){ closeM(); docStale(T('Încasarea poate fi înregistrată.')); return; }
-    if(msg) msg.textContent=payErrMsg(r.error);
+    await payRefreshRejected(r.error,'pay',btn,msg);
     return;
   }
   const s=r.data||{};
   S.inv.status=s.status||S.inv.status;
   if(s.payment&&s.payment.paid_to_date!=null) S.inv.amount_paid=+s.payment.paid_to_date;
   closeM();
-  // plata atinge `invoices` ⇒ `trg_invoices_touch` a mutat `updated_at`; fără
-  // resincronizare, următoarea salvare a operatorului ar pica pe DOC_CONFLICT
+  await payAfterWrite(T('Încasare înregistrată.'), s);
+}
+
+/* ►► Coada comună a oricărei scrieri de plată (încasare SAU stornare).
+   Plata atinge `invoices` ⇒ `trg_invoices_touch` a mutat `updated_at`; fără
+   resincronizare, următoarea salvare a operatorului ar pica pe DOC_CONFLICT. */
+async function payAfterWrite(mesaj, s){
+  const T=window.C373t||function(x){return x;};
   const c=await sb.from('invoices').select('updated_at').eq('id',S.id).maybeSingle();
-  if(c.error||!c.data||!c.data.updated_at){ docStale(T('Încasarea a fost înregistrată.')); return; }
+  if(c.error||!c.data||!c.data.updated_at){ docStale(mesaj); return; }
   S._updatedAt=c.data.updated_at;
-  toast('✅ '+T('Încasare înregistrată.')+' '+T('Sold rămas:')+' '+money(s.outstanding));
-  render(); refreshSnap(); historyReset();
+  toast('✅ '+mesaj+' '+T('Sold rămas:')+' '+money(s&&s.outstanding));
+  await refreshSnap(); render(); historyReset();
+}
+
+/* ════ ISTORICUL ÎNCASĂRILOR + CORECȚIA ════════════════════════════════════
+   Registrul se citește DIRECT din `payments` — RLS îl deschide exact rolurilor
+   financiare (0115), deci nu e nevoie de un contract nou doar ca să afișăm.
+   Corecția, în schimb, trece obligatoriu prin `invoice_payment_void` (0212):
+   rândul original rămâne, iar stornarea e un eveniment nou. */
+async function payHistoryLoad(force){
+  if(!$('pay-hist')||!S.id) return;
+  const seq=S._histSeq=(S._histSeq||0)+1;
+  const T=window.C373t||function(x){return x;};
+  const r=await sb.from('payments')
+    .select('id,amount,paid_date,method,reference,kind,reverses_id,source,created_by,created_at')
+    .eq('invoice_id',S.id).order('created_at',{ascending:true});
+  if(seq!==S._histSeq) return;
+  const host=$('pay-hist'); if(!host) return;
+  if(r.error){ host.innerHTML='<div class="sub">'+esc(T('Istoricul încasărilor nu a putut fi încărcat.'))+'</div>'; return; }
+  const rows=r.data||[];
+  S._payRows=rows;
+  if(!rows.length){ host.innerHTML='<div class="sub">'+esc(T('Nicio încasare înregistrată încă.'))+'</div>'; return; }
+  // cine a înregistrat: se rezolvă din fișele de angajat, citibile de birou.
+  {
+    S._payWho={};
+    const ids=[...new Set(rows.map(x=>x.created_by).filter(Boolean))];
+    if(ids.length){ try{ const e=await sb.from('employees').select('user_id,full_name').eq('tenant_id',S.tenant).in('user_id',ids);
+      (e.data||[]).forEach(x=>{ if(x.user_id) S._payWho[x.user_id]=x.full_name; }); }catch(_e){} }
+  }
+  if(seq!==S._histSeq||host!==$('pay-hist')) return;
+  const stornate={}; rows.forEach(x=>{ if(x.kind==='reversal'&&x.reverses_id) stornate[x.reverses_id]=x; });
+  host.innerHTML=rows.map(function(x){
+    const rev=(x.kind==='reversal');
+    const anulata=!!stornate[x.id];
+    const cine=x.created_by?(S._payWho[x.created_by]||''):'';
+    const semn=rev?'+':'−';   // stornarea ADAUGĂ la sold, încasarea îl scade
+    return '<div style="display:flex;gap:.5rem;align-items:flex-start;padding:.45rem 0;border-bottom:1px solid var(--line)'
+      +((rev||anulata)?';opacity:.72':'')+'">'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-weight:600'+(anulata?';text-decoration:line-through':'')+'">'
+          +(rev?'↩︎ '+esc(T('Stornare')):'💵 '+esc(payMethodLabel(x.method)||T('Încasare')))+'</div>'
+        +'<div class="sub" style="font-size:.76rem">'+esc(fmtDate(x.paid_date)||'—')
+          +(cine?(' · '+esc(cine)):'')
+          +(x.reference?(' · '+esc(x.reference)):'')
+          +(anulata?(' · '+esc(T('anulată'))):'')+'</div>'
+      +'</div>'
+      +'<div style="text-align:right;white-space:nowrap">'
+        +'<b'+(rev?' style="color:#b45309"':'')+'>'+semn+money(x.amount)+'</b>'
+        +((!rev&&!anulata&&S.canEdit)
+            ? '<div><button class="btn" style="padding:.12rem .45rem;font-size:.72rem;margin-top:.2rem;color:#b45309" onclick="payVoid(\''+x.id+'\')">'+esc(T('Anulează încasarea'))+'</button></div>'
+            : '')
+      +'</div></div>';
+  }).join('');
+}
+
+/* Corecția NU șterge nimic: cere un motiv, apoi scrie o stornare prin contract. */
+function payVoid(id){
+  const T=window.C373t||function(x){return x;};
+  if(!paymentReady()) return;
+  const p=(S._payRows||[]).find(x=>x.id===id); if(!p) return;
+  S._voidReq='void-'+id+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+  $('modal-mount').innerHTML='<div class="ov" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:420px"><h3>↩︎ '+esc(T('Anulează încasarea'))+'</h3>'
+    +'<div id="void-msg" style="color:var(--red);font-size:.82rem"></div>'
+    +'<div id="void-snapshot" style="font-size:.9rem;line-height:1.85;margin:.4rem 0 .7rem">'+payDialogSummary()+'</div>'
+    +'<div style="font-size:.9rem;line-height:1.8;margin:.3rem 0 .6rem">'
+      +'<div style="display:flex;justify-content:space-between"><span>'+esc(T('Suma'))+'</span><b>'+money(p.amount)+'</b></div>'
+      +'<div style="display:flex;justify-content:space-between;color:var(--muted)"><span>'+esc(T('Data'))+'</span><span>'+esc(fmtDate(p.paid_date)||'—')+'</span></div>'
+    +'</div>'
+    +'<div class="sub" style="font-size:.79rem;line-height:1.5;margin-bottom:.5rem">'
+      +esc(T('Încasarea rămâne în istoric și se marchează drept anulată printr-o stornare. Soldul de plată crește la loc.'))+'</div>'
+    +'<div class="field"><label>'+esc(T('Motivul corecției'))+' <span class="sub" style="font-weight:400">'+esc(T('(opțional)'))+'</span></label>'
+      +'<input id="void-reason" type="text" maxlength="200" placeholder="'+esc(T('ex: încasare înregistrată de două ori'))+'"/></div>'
+    +'<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem"><button class="btn" onclick="closeM()">'+esc(T('Renunță'))+'</button>'
+    +'<button class="btn" id="void-go" style="color:#b45309" onclick="payVoidApply(\''+id+'\')">'+esc(T('Anulează încasarea'))+'</button></div></div></div>';
+}
+
+async function payVoidApply(id){
+  const T=window.C373t||function(x){return x;};
+  const btn=$('void-go'), msg=$('void-msg');
+  const motiv=((($('void-reason')&&$('void-reason').value)||'').trim()||null);
+  if(btn){ btn.disabled=true; btn.textContent=T('Se anulează…'); }
+  const r=await sb.rpc('invoice_payment_void',{p_payment:id,p_request_id:S._voidReq,p_reason:motiv});
+  if(r.error){
+    if(isNetErr(r.error)){ closeM(); docStale(T('Corecția poate fi înregistrată.')); return; }
+    await payRefreshRejected(r.error,'void',btn,msg);
+    return;
+  }
+  const s=r.data||{};
+  S.inv.status=s.status||S.inv.status;
+  if(s.payment&&s.payment.paid_to_date!=null) S.inv.amount_paid=+s.payment.paid_to_date;
+  closeM();
+  await payAfterWrite(T('Încasare anulată.'), s);
 }
 
 async function pdf(inPlace){
+  if(S.id&&!paymentReady()) return;
   // Deschidem fereastra SINCRON (în gestul de click), înainte de orice await — altfel browserul/PWA blochează pop-up-ul după createSignedUrl și nu se deschide nimic.
   let w=null; if(!inPlace){ w=window.open('','_blank'); if(!w){ toast('Permite ferestrele pop-up pentru această pagină.'); return; } try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF…</title><style>body{font-family:system-ui,-apple-system,Arial;color:#0f1c33;display:flex;height:100vh;margin:0;align-items:center;justify-content:center;font-size:15px}</style><div>⏳ Se pregătește documentul…</div>'); }catch(e){} }
+  if(S.id){ await refreshSnap(); if(!payView()){ if(w) w.close(); toast(TS('Situația încasărilor nu a putut fi încărcată.')); return; } }
+  const payment=payView();
   const t=totals(); const cl=S.clients.find(c=>c.id===S.inv.client_id)||{};
   const de=(S.inv.inv_type!=='normal'||S.inv.retention_pct>0)?deTotals():null;
   const showDiscCol=S.inv.disc_mode==='line', vmode=S.inv.vat_mode||'none';
@@ -1457,14 +1651,14 @@ async function pdf(inPlace){
       +(t.disc>0.005?'<div><span>'+T('Reducere:')+'</span><b>−'+money(t.disc)+'</b></div>':'')
       +'<div><span>'+T('TVA:')+(vmode==='total'&&(+S.inv.vat_value)?(' '+num2(S.inv.vat_value)+'%'):'')+'</span><b>'+money(t.vat)+'</b></div>'
       +'<div class="g"><span>'+T('TOTAL:')+'</span><span>'+money(t.total)+'</span></div>'
-      +(de?(((S.inv.inv_type==='schluss')?(S._absch||[]).map(function(x){return '<div><span>− '+T('Avans')+' '+esc(x.number||'')+'</span><b>−'+money(x.total)+'</b></div>';}).join(''):'')+(de.ret>0?'<div><span>− '+T('Reținere garanție')+' '+num2(S.inv.retention_pct)+'%</span><b>−'+money(de.ret)+'</b></div>':'')+'<div class="g"><span>'+(S.inv.inv_type==='schluss'?'Restbetrag / '+T('De plată acum'):T('De plată acum'))+':</span><span>'+money(de.payable)+'</span></div>'):'')
-      +(function(){ var paid=+S.inv.amount_paid||0; if(!(paid>0.005)) return ''; var baseDue=de?de.payable:t.total; var rest=Math.round((baseDue-paid)*100)/100; return '<div><span>'+T('Achitat / avans încasat:')+'</span><b>−'+money(paid)+'</b></div><div class="g"><span>'+(rest>0.005?T('Rest de plată:'):(rest<-0.005?T('De rambursat:'):T('Achitat integral')))+'</span><span>'+money(Math.abs(rest)<0.005?0:rest)+'</span></div>'; })()
+      +(de?(((S.inv.inv_type==='schluss')?(S._absch||[]).map(function(x){return '<div><span>− '+T('Avans')+' '+esc(x.number||'')+'</span><b>−'+money(x.total)+'</b></div>';}).join(''):'')+(de.ret>0?'<div><span>− '+T('Reținere garanție')+' '+num2(S.inv.retention_pct)+'%</span><b>−'+money(de.ret)+'</b></div>':'')+'<div class="g"><span>'+(S.inv.inv_type==='schluss'?'Restbetrag / '+T('De plată acum'):T('De plată acum'))+':</span><span>'+money(payment?payment.payable:de.payable)+'</span></div>'):'')
+      +(payment?'<div><span>'+T('Achitat')+'</span><b>'+money(payment.paid)+'</b></div><div class="g"><span>'+T('Rest de plată:')+'</span><span>'+money(payment.out)+'</span></div>':'')
       +'</div>'
     +(()=>{ const pn=prepayNote(t.total); return (pn&&S.inv.status!=='paid')?'<div style="margin-top:12px;margin-left:auto;width:380px;padding:11px 13px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:9px;font-size:12px;color:#065f46;line-height:1.5">💸 '+T('La achitarea 100% în avans beneficiați de o reducere suplimentară de')+' <b>'+num2(pn.pct)+'%</b> '+T('din suma finală')+' ('+T('economisiți')+' <b>'+money(pn.save)+'</b>). '+T('Total cu avans:')+' <b>'+money(pn.after)+'</b></div>':''; })()
     +(function(){ var bt=bankTextForPdf(); return bt?'<div style="margin-top:14px;font-size:12px;color:#0f1c33"><b>'+T('Date pentru plată:')+'</b><br>'+bt+'</div>':''; })()
     +(legalNote?'<div class="muted" style="margin-top:10px;font-size:11px">'+esc(legalNote)+'</div>':'')
     +companyFooterHtml()
-    +'<div class="ft">'+T('Factură generată cu Cod373.')+' '+(S.inv.status==='paid'?T('ACHITATĂ.'):T('Vă rugăm achitați până la scadență.'))+'</div>'
+    +'<div class="ft">'+T('Factură generată cu Cod373.')+' '+(payment&&payment.settled&&lifeKey()!=='cancelled'?T('ACHITATĂ.'):T('Vă rugăm achitați până la scadență.'))+'</div>'
     +'<div class="noprint" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">🖨 '+T('Tipărește / Salvează PDF')+'</button></div>'
     +'<div id="lb" class="noprint" onclick="this.style.display=\'none\'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:9999;cursor:zoom-out"><img id="lbimg" style="max-width:92%;max-height:92%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)"></div>'
     +'<script>function zoom(s){var l=document.getElementById("lb");document.getElementById("lbimg").src=s;l.style.display="flex";}document.addEventListener("keydown",function(e){if(e.key==="Escape"){var l=document.getElementById("lb");if(l)l.style.display="none";}});<\/script>'
@@ -1483,8 +1677,8 @@ const HIST_MAX=50, HIST_WAIT=500;
    save_invoice + starea client de care depinde salvarea (markerul auto/manual al
    numărului). NU intră: efactura_status/efactura_id/efactura_sent_at și legătura
    estimate_id (S._fromEstimate) — sunt protejate de server (0117). */
-const HIST_DOC=['status','number','client_id','site_id','title','issue_date','due_date','disc_mode','disc_value','vat_mode','vat_value','materials_mode','skonto_off','skonto_pct','inv_type','contract_total','retention_pct','bank_choice','amount_paid','plan_url'];
-const HIST_LINE=['name','qty','unit','unit_price','vat_rate','disc','group','kind','description','photo_url','cat_id','_catName','_catPrice','_catUnit','_catDesc','_catPhoto'];
+const HIST_DOC=['number','client_id','site_id','title','issue_date','due_date','disc_mode','disc_value','vat_mode','vat_value','materials_mode','skonto_off','skonto_pct','inv_type','contract_total','retention_pct','bank_choice','plan_url'];
+const HIST_LINE=['name','qty','unit','unit_price','vat_rate','disc','disc_active','group','kind','description','photo_url','cat_id','_catName','_catPrice','_catUnit','_catDesc','_catPhoto'];
 let HIST={ cur:null, past:[], future:[], applying:false, tmr:null, key:null };
 function captureHistoryState(){
   const d={}; HIST_DOC.forEach(k=>{ d[k]=(S.inv[k]===undefined?null:S.inv[k]); });

@@ -1259,12 +1259,14 @@ const MODULES = {
       {key:'partial',label:'Parțial achitate', test:r=>r._pay&&r._pay.pay_state==='partial'},
       {key:'paid',   label:'Achitate',         test:r=>r._pay&&r._pay.pay_state==='paid'},
       {key:'overdue',label:'Restante',         test:r=>r._pay&&r._pay.overdue} ],
-    select:'id,number,title,status,total,issue_date,due_date,efactura_status,inv_type,clients(name,idno)',
+    select:'id,number,title,status,total,currency,issue_date,due_date,efactura_status,inv_type,clients(name,idno)',
     columns:[
       {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
       {label:'Tip',get:r=>{ const m={abschlag:['Abschlag','#7a5af8'],schluss:['Schluss','#16b364']}[r.inv_type]; return m?'<span style="background:'+m[1]+';color:#fff;border-radius:6px;padding:.1rem .4rem;font-size:.72rem;font-weight:600">'+m[0]+'</span>':'<span style="color:var(--muted);font-size:.78rem">—</span>'; }},
       {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
-      {label:'Total',get:r=>money(r.total)},
+      {label:'Total',get:r=>invoiceMoney(r.total,r.currency)},
+      {label:'Achitat',get:r=>r._pay?invoiceMoney(r._pay.paid_to_date,r.currency):'—'},
+      {label:'Rest de plată',get:r=>r._pay?invoiceMoney(r._pay.outstanding,r.currency):'—'},
       {label:'Emisă',get:r=>dt(r.issue_date)},
       {label:'Scadență',get:r=>dt(r.due_date)},
       {label:'Stare',get:r=>lifePill(r)+' '+payPill(r._pay)+' '+overduePill(r._pay)} ],
@@ -6311,18 +6313,19 @@ async function renderPostcalc(){
 }
 async function postcalcDetail(siteId, siteName){
   const [invR,moR,tsR,empR,estR]=await Promise.all([
-    sb.from('invoices').select('number,total,status,estimate_id,site_id'),
+    sb.from('invoices').select('id,number,total,currency,status,estimate_id,site_id').eq('tenant_id',state.tenant),
     sb.from('material_orders').select('number,total,ordered_at').eq('site_id',siteId),
     sbAll(function(){ return sb.from('timesheets').select('hours,employee_id,work_date').eq('site_id',siteId).order('id',{ascending:true}); }),
     sb.from('employees').select('id,full_name,hourly_rate'),
     sb.from('estimates').select('id,number,total').eq('site_id',siteId)
   ]);
+  let states={}; try{states=await invoicePaymentMap();}catch(e){}
   const estIds=(estR.data||[]).map(e=>e.id);
   const inv=(invR.data||[]).filter(i=>i.site_id===siteId||estIds.includes(i.estimate_id));
   const emp={}; (empR.data||[]).forEach(e=>emp[e.id]={n:e.full_name,r:+e.hourly_rate||0});
   const lab={}; (tsR.data||[]).forEach(t=>{ const e=emp[t.employee_id]||{n:'—',r:0}; lab[t.employee_id]=lab[t.employee_id]||{n:e.n,h:0,c:0}; lab[t.employee_id].h+=+t.hours||0; lab[t.employee_id].c+=(+t.hours||0)*e.r; });
   const sec=(title,rowsHtml)=>'<div style="font-weight:700;margin:.8rem 0 .3rem">'+title+'</div>'+(rowsHtml||'<div style="color:var(--muted);font-size:.85rem">—</div>');
-  const invH=inv.length?'<table class="tbl"><tbody>'+inv.map(i=>'<tr><td>'+esc(i.number||'—')+'</td><td style="text-align:right">'+money(i.total)+'</td><td>'+(i.status==='paid'?'✅':'⏳')+'</td></tr>').join('')+'</tbody></table>':'';
+  const invH=inv.length?'<table class="tbl"><tbody>'+inv.map(i=>'<tr><td>'+esc(i.number||'—')+'</td><td style="text-align:right">'+invoiceMoney(i.total,i.currency)+'</td><td>'+(i.status==='cancelled'?lifePill(i):payPill(states[i.id]))+'</td></tr>').join('')+'</tbody></table>':'';
   const matH=(moR.data||[]).length?'<table class="tbl"><tbody>'+(moR.data||[]).map(o=>'<tr><td>'+esc(o.number||'comandă')+'</td><td style="text-align:right">'+money(o.total)+'</td></tr>').join('')+'</tbody></table>':'';
   const labH=Object.values(lab).length?'<table class="tbl"><tbody>'+Object.values(lab).map(l=>'<tr><td>'+esc(l.n)+'</td><td style="text-align:right">'+(Math.round(l.h*10)/10)+' h</td><td style="text-align:right">'+money(l.c)+'</td></tr>').join('')+'</tbody></table>':'';
   $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px">'
@@ -6330,49 +6333,44 @@ async function postcalcDetail(siteId, siteName){
     +'<div class="modal-body">'+sec('🧾 Facturat',invH)+sec('🛒 Materiale (comenzi)',matH)+sec('⏱️ Manoperă (pontaj × tarif)',labH)+'</div></div></div>';
 }
 
+/* Situația încasărilor se citește din aceeași proiecție ca lista de facturi. */
+function invoiceMoney(n,currency){ return n==null?'—':Number(n).toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+esc(currency||curUnit()); }
+async function invoicePaymentMap(){
+  const r=await sb.rpc('invoice_payment_states',{p_tenant_id:state.tenant});
+  if(r.error) throw r.error;
+  const map={}; (r.data||[]).forEach(x=>map[x.invoice_id]=x); return map;
+}
 /* ════ RESTANȚE & REMINDERE (Mahnwesen) ════ */
 async function renderRestante(){
   $('content').innerHTML='<div class="panel"><div class="panel-head"><h3>⏰ Facturi restante</h3></div><div id="mod-body"><div class="loading">Se încarcă…</div></div></div>';
-  const { data, error }=await sb.from('invoices').select('id,number,total,issue_date,due_date,status,client_id,clients(name,email)');
+  const { data, error }=await sb.from('invoices').select('id,number,total,currency,issue_date,due_date,status,client_id,clients(name,email)').eq('tenant_id',state.tenant);
   if(error){ $('mod-body').innerHTML='<div class="empty">Eroare: '+esc(error.message)+'</div>'; return; }
-  const today=new Date().toISOString().slice(0,10);
-  const overdue=(data||[]).filter(i=>i.status!=='paid'&&i.due_date&&i.due_date<today).sort((a,b)=>a.due_date<b.due_date?-1:1);
+  let pay; try{ pay=await invoicePaymentMap(); }catch(e){ $('mod-body').innerHTML='<div class="empty">'+esc(C373t('Situația încasărilor nu a putut fi încărcată.'))+'</div>'; return; }
+  const today=coToday();
+  const overdue=(data||[]).map(i=>Object.assign(i,{_pay:pay[i.id]})).filter(i=>i.status!=='cancelled'&&i._pay&&i._pay.overdue).sort((a,b)=>a.due_date<b.due_date?-1:1);
   window._restante={}; overdue.forEach(i=>window._restante[i.id]=i);
   if(!overdue.length){ $('mod-body').innerHTML='<div class="empty"><div class="ei">✅</div>Nicio factură restantă. Felicitări!</div>'; return; }
-  const tot=overdue.reduce((s,i)=>s+(+i.total||0),0);
+  const sums={}; overdue.forEach(i=>{ const c=i.currency||curUnit(); sums[c]=(sums[c]||0)+Number(i._pay.outstanding); });
+  const totalText=Object.keys(sums).sort().map(c=>invoiceMoney(sums[c],c)).join(' · ');
   const days=d=>Math.floor((new Date(today)-new Date(d))/86400000);
   const rows=overdue.map(i=>{ const d=days(i.due_date); const sev=d>30?'#dc2626':(d>7?'#d97706':'#6b7280');
-    return '<tr><td class="tname">'+esc(i.number||'—')+'</td><td>'+esc(i.clients?i.clients.name:'—')+'</td><td>'+money(i.total)+'</td><td>'+dt(i.due_date)+'</td><td style="color:'+sev+';font-weight:700">'+d+' zile</td>'
-      +'<td><div class="rowact"><button class="iconbtn" title="Marchează plătită" onclick="invoicePaid(\''+i.id+'\')" style="color:#16a34a">✅</button><button class="iconbtn" title="Trimite reminder pe email" onclick="invoiceReminder(\''+i.id+'\')">📧</button></div></td></tr>'; }).join('');
-  $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută factură sau client…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.9rem">Total restant: <b style="color:#dc2626">'+money(tot)+'</b> · '+overdue.length+' facturi</div>'
-    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Factură</th><th>Client</th><th>Sumă</th><th>Scadență</th><th>Întârziere</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    return '<tr><td class="tname">'+esc(i.number||'—')+'</td><td>'+esc(i.clients?i.clients.name:'—')+'</td><td>'+invoiceMoney(i._pay.outstanding,i.currency)+'</td><td>'+dt(i.due_date)+'</td><td style="color:'+sev+';font-weight:700">'+d+' zile</td>'
+      +'<td><div class="rowact"><button class="iconbtn" title="Marchează ca plătită" onclick="invoicePaid(\''+i.id+'\')" style="color:#16a34a">✅</button><button class="iconbtn" title="Trimite reminder pe email" onclick="invoiceReminder(\''+i.id+'\')">📧</button></div></td></tr>'; }).join('');
+  $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută factură sau client…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.9rem">Total restant: <b style="color:#dc2626">'+totalText+'</b> · '+overdue.length+' facturi</div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Factură</th><th>Client</th><th>Rest de plată</th><th>Scadență</th><th>Întârziere</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 /* KB#48A: „încasat" nu mai e o schimbare de status, ci o plată CU SUMĂ, scrisă în
    registrul canonic. Vechiul `update({status:'paid'})` nu scria nimic nicăieri și
    e acum refuzat de bază (PAYMENT_CONTRACT_REQUIRED). */
-async function invoicePaid(id){
-  const fs=await fiscalSnapshot(id,false);
-  if(!fs.ok){ toast('⚠️ '+fs.msg); return; }
-  const s=fs.snap, out=+s.outstanding||0;
-  if(out<=0.005){ toast(fiscalT('Factura este achitată integral.')); return; }
-  const raw=prompt(fiscalT('Suma încasată')+' — '+fiscalT('sold rămas:')+' '+money(out), (Math.round(out*100)/100).toFixed(2));
-  if(raw===null) return;
-  const amt=+String(raw).replace(',','.');
-  if(!(amt>0)){ toast(fiscalT('Suma trebuie să fie mai mare decât zero.')); return; }
-  // fără `sbRetry`: la o eroare de rețea nu știm dacă plata a intrat, iar o a doua
-  // trimitere cu altă cheie ar fi o a DOUA plată
-  const r=await sb.rpc('invoice_payment_apply',{p_invoice:id,p_amount:amt,p_request_id:payReqId(id),p_source:'manual'});
-  if(r.error){ toast(isNetErr(r.error)?netMsg():('⚠️ '+payErrApp(r.error))); return; }
-  const ns=r.data||{};
-  toast('✅ '+fiscalT('Încasare înregistrată.')+' '+fiscalT('Sold rămas:')+' '+money(ns.outstanding));
-  renderRestante();
+function invoicePaid(id){
+  window.open('factura.html?id='+encodeURIComponent(id)+'&payment=full','_blank');
 }
 function invoiceReminder(id){
   const i=(window._restante||{})[id]; if(!i) return; const cl=i.clients||{};
-  const today=new Date().toISOString().slice(0,10); const d=Math.floor((new Date(today)-new Date(i.due_date))/86400000);
+  const today=coToday(); const d=Math.floor((new Date(today)-new Date(i.due_date))/86400000);
   const firm=(state.firm&&state.firm.name)||'';
   const subject='Reamintire plată — factura '+(i.number||'');
-  const body='Bună ziua'+(cl.name?', '+cl.name:'')+',\n\nVă reamintim că factura '+(i.number||'')+' în valoare de '+money(i.total)+', scadentă la '+dt(i.due_date)+', este restantă de '+d+' zile.\n\nVă rugăm să efectuați plata. Dacă ați achitat deja, vă rugăm să ignorați acest mesaj.\n\nCu respect,\n'+firm;
+  const body='Bună ziua'+(cl.name?', '+cl.name:'')+',\n\nVă reamintim că factura '+(i.number||'')+' cu rest de plată '+invoiceMoney(i._pay.outstanding,i.currency)+', scadentă la '+dt(i.due_date)+', este restantă de '+d+' zile.\n\nVă rugăm să efectuați plata. Dacă ați achitat deja, vă rugăm să ignorați acest mesaj.\n\nCu respect,\n'+firm;
   emailCompose({ client_id:i.client_id, to:cl.email||'', name:cl.name||'', subject, body });
 }
 
@@ -9668,22 +9666,24 @@ async function renderDashboard(){
   const counts=await Promise.all(defs.map(d=>sb.from(d[1]).select('*',{count:'exact',head:true}).then(r=>r.count||0)));
   let kpis='', chartHtml='';
   if(fin){
-    /* KB#48A: nimic din proiect nu setează vreodată `status='overdue'` (zero
-       apariții), deci KPI-ul „Restant" citea permanent 0 în timp ce modulul
-       Restanțe lista facturi restante. Se derivă din scadență, exact ca filtrul
-       „Restante" din lista de facturi și ca `buck()` din cash-flow — nu e nevoie
-       de un motor global de status pentru asta. */
-    const { data:inv }=await sb.from('invoices').select('total,status,due_date');
-    let facturat=0,incasat=0,restant=0; const _t0=coToday();
-    (inv||[]).forEach(i=>{ const t=+i.total||0; facturat+=t;
-      if(i.status==='paid') incasat+=t;
-      else if(i.status!=='cancelled' && i.due_date && String(i.due_date).slice(0,10)<_t0) restant+=t; });
-    const neincasat=facturat-incasat;
-    kpis+=kpiCard(TR('kpiFacturat'),money(facturat),'facturi')
-      +kpiCard(TR('kpiIncasat'),money(incasat),'facturi','var(--green)')
-      +kpiCard(TR('kpiNeincasat'),money(neincasat),'facturi','var(--amber)')
-      +kpiCard(TR('kpiRestant'),money(restant),'facturi','var(--red)');
-    chartHtml=dashCharts(inv||[], facturat, incasat);
+    const {data:inv,error}=await sb.from('invoices').select('id,total,currency,status,due_date').eq('tenant_id',state.tenant);
+    let pay=null; try{ pay=await invoicePaymentMap(); }catch(e){}
+    if(error||!pay){ kpis+='<div class="panel">'+esc(C373t('Situația încasărilor nu a putut fi încărcată.'))+'</div>'; }
+    else {
+      const groups={};
+      (inv||[]).forEach(i=>{ if(i.status==='cancelled') return; const p=pay[i.id]; if(!p) return;
+        const c=i.currency||curUnit(); const g=groups[c]||(groups[c]={rows:[],facturat:0,incasat:0,restant:0,out:0});
+        g.rows.push(Object.assign({},i,{_pay:p}));g.facturat+=+i.total||0;g.incasat+=+p.paid_to_date||0;g.out+=+p.outstanding||0;if(p.overdue)g.restant+=+p.outstanding||0;
+      });
+      if(!Object.keys(groups).length) groups[curUnit()]={rows:[],facturat:0,incasat:0,restant:0,out:0};
+      Object.keys(groups).sort().forEach(c=>{ const g=groups[c];
+        kpis+=kpiCard(TR('kpiFacturat'),invoiceMoney(g.facturat,c),'facturi')
+          +kpiCard(TR('kpiIncasat'),invoiceMoney(g.incasat,c),'facturi','var(--green)')
+          +kpiCard(TR('kpiNeincasat'),invoiceMoney(g.out,c),'facturi','var(--amber)')
+          +kpiCard(TR('kpiRestant'),invoiceMoney(g.restant,c),'facturi','var(--red)');
+        chartHtml+='<div class="sub">'+esc(c)+'</div>'+dashCharts(g.rows,g.facturat,g.incasat);
+      });
+    }
   }
   let cashHtml=''; if(fin){ try{ cashHtml=await cashWidget(); }catch(e){} }
   let fleetHtml=''; try{ fleetHtml=await fleetAlert(); }catch(e){}
@@ -9704,20 +9704,29 @@ async function renderDashboard(){
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+TR('thProiect')+'</th><th>'+TR('thBuget')+'</th><th>'+TR('thProgres')+'</th><th>'+TR('thTermen')+'</th><th>'+TR('thStare')+'</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 async function cashWidget(){
-  const today=new Date(); today.setHours(0,0,0,0); const iso=d=>new Date(d).toISOString().slice(0,10);
-  const t0=iso(today), t7=iso(new Date(today.getTime()+7*86400000)), t30=iso(new Date(today.getTime()+30*86400000));
-  let ir,sr; try{ [ir,sr]=await Promise.all([ sb.from('invoices').select('total,status,due_date'), sb.from('supplier_invoices').select('total,status,due_date') ]); }catch(e){ return ''; }
-  const buck=list=>{ const o={overdue:0,d7:0,d30:0,total:0}; (list||[]).filter(x=>x.status!=='paid').forEach(x=>{ const v=+x.total||0; o.total+=v; const d=x.due_date; if(!d) return; if(d<t0) o.overdue+=v; if(d>=t0&&d<=t7) o.d7+=v; if(d>=t0&&d<=t30) o.d30+=v; }); return o; };
-  const rec=buck(ir&&ir.data), pay=buck(sr&&sr.data);
-  const cell=(v,col)=>'<td class="r" style="white-space:nowrap'+(col?';color:'+col:'')+'">'+money(v)+'</td>';
-  const netRow=['overdue','d7','d30','total'].map(k=>{ const v=rec[k]-pay[k]; return '<td class="r" style="color:'+(v>=0?'#16a34a':'#dc2626')+'">'+money(v)+'</td>'; }).join('');
+  const t0=coToday(), base=new Date(t0+'T12:00:00');
+  const t7=isoLocal(new Date(base.getTime()+7*86400000)),t30=isoLocal(new Date(base.getTime()+30*86400000));
+  let ir,sr,states;
+  try{ [ir,sr,states]=await Promise.all([
+    sb.from('invoices').select('id,currency,status,due_date').eq('tenant_id',state.tenant),
+    sb.from('supplier_invoices').select('total,currency,status,due_date').eq('tenant_id',state.tenant),invoicePaymentMap()
+  ]); }catch(e){ return ''; }
+  if(ir.error||sr.error) return '';
+  const all={}; const empty=()=>({overdue:0,d7:0,d30:0,total:0});
+  function add(side,c,v,d){const g=all[c]||(all[c]={rec:empty(),pay:empty()});const o=g[side];o.total+=v;if(!d)return;if(d<t0)o.overdue+=v;if(d>=t0&&d<=t7)o.d7+=v;if(d>=t0&&d<=t30)o.d30+=v;}
+  (ir.data||[]).forEach(i=>{const p=states[i.id];if(i.status!=='cancelled'&&p&&+p.outstanding>0)add('rec',i.currency||CUR,+p.outstanding,i.due_date);});
+  // Datoriile furnizorilor își păstrează contractul existent; fără compensare între monede.
+  (sr.data||[]).forEach(i=>{if(i.status!=='paid')add('pay',i.currency||CUR,+i.total||0,i.due_date);});
+  if(!Object.keys(all).length)all[CUR]={rec:empty(),pay:empty()};
+  const rows=Object.keys(all).sort().map(c=>{const g=all[c],ks=['overdue','d7','d30','total'];
+    const cells=o=>ks.map(k=>'<td class="r" style="white-space:nowrap">'+invoiceMoney(o[k],c)+'</td>').join('');
+    const net={};ks.forEach(k=>net[k]=g.rec[k]-g.pay[k]);
+    return '<tr><td class="tname">💵 De încasat</td>'+cells(g.rec)+'</tr>'
+      +'<tr><td class="tname">💸 De plătit</td>'+cells(g.pay)+'</tr>'
+      +'<tr style="font-weight:700;border-top:2px solid var(--line)"><td>Net (sold)</td>'+cells(net)+'</tr>';
+  }).join('');
   return '<div class="panel" style="margin-bottom:1.4rem"><div class="panel-head"><h3>💰 Cash pe termen scurt</h3></div>'
-   +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th class="r">Restant</th><th class="r">≤ 7 zile</th><th class="r">≤ 30 zile</th><th class="r">Total</th></tr></thead><tbody>'
-   +'<tr><td class="tname" style="color:#16a34a">💵 De încasat</td>'+cell(rec.overdue,'#dc2626')+cell(rec.d7)+cell(rec.d30)+cell(rec.total)+'</tr>'
-   +'<tr><td class="tname" style="color:#dc2626">💸 De plătit</td>'+cell(pay.overdue,'#dc2626')+cell(pay.d7)+cell(pay.d30)+cell(pay.total)+'</tr>'
-   +'<tr style="font-weight:700;border-top:2px solid var(--line)"><td>Net (sold)</td>'+netRow+'</tr>'
-   +'</tbody></table></div>'
-   +'<div style="padding:.4rem 1.2rem .7rem;font-size:.78rem;color:var(--muted)">„Restant" = depășit scadența. Detalii: <a onclick="go(\'restante\')" style="cursor:pointer;color:var(--primary)">Restanțe</a> · <a onclick="go(\'platibil\')" style="cursor:pointer;color:var(--primary)">Plăți furnizori</a>.</div></div>';
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th class="r">Restant</th><th class="r">≤ 7 zile</th><th class="r">≤ 30 zile</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 async function fleetAlert(){
   if(typeof canSee==='function' && !canSee('flota')) return '';
@@ -9759,10 +9768,10 @@ function dashCharts(inv, facturat, incasat){
   const bar = '<div style="margin-bottom:1.2rem"><div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted);margin-bottom:.4rem"><span>Încasat din total facturat</span><b style="color:var(--green)">'+pct+'%</b></div>'
     +'<div style="height:14px;background:var(--red-soft);border-radius:10px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:var(--green);border-radius:10px"></div></div></div>';
   // facturi după stare
-  const labels={draft:['Ciornă','#94a3b8'],sent:['Trimise','#2f6bff'],paid:['Plătite','#16b364'],overdue:['Restante','#f04438'],cancelled:['Anulate','#cbd5e1']};
-  const cnt={}; inv.forEach(i=>{ cnt[i.status]=(cnt[i.status]||0)+1; });
+  const labels={unpaid:['Neachitate','#94a3b8'],partial:['Parțial achitate','#2f6bff'],paid:['Achitate','#16b364'],overdue:['Restante','#f04438']};
+  const cnt={}; inv.forEach(i=>{ if(!i._pay)return;const k=i._pay.overdue?'overdue':i._pay.pay_state;cnt[k]=(cnt[k]||0)+1; });
   const max=Math.max(1,...Object.values(cnt));
-  const order=['draft','sent','paid','overdue','cancelled'].filter(s=>cnt[s]);
+  const order=['unpaid','partial','paid','overdue'].filter(s=>cnt[s]);
   const bars = order.length? order.map(s=>{ const c=labels[s]||[s,'#94a3b8']; const w=Math.round((cnt[s]/max)*100);
     return '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem"><div style="width:80px;font-size:.8rem;color:var(--muted)">'+c[0]+'</div><div style="flex:1;height:18px;background:var(--bg);border-radius:6px;overflow:hidden"><div style="height:100%;width:'+Math.max(w,6)+'%;background:'+c[1]+';border-radius:6px"></div></div><b style="width:28px;text-align:right">'+cnt[s]+'</b></div>'; }).join('')
     : '<div style="color:var(--muted);font-size:.85rem">Nicio factură încă.</div>';
@@ -16061,6 +16070,7 @@ async function genPortal(siteId){
       +'<label style="display:flex;align-items:center;gap:.5rem;margin:.25rem 0;cursor:pointer"><input type="checkbox" id="portal-orders" onchange="portalSetFlag(\'show_orders\',this.checked)"> 📦 '+esc(tz('Comenzile de materiale (fără prețuri)'))+'</label>'
       +'<label style="display:flex;align-items:center;gap:.5rem;margin:.25rem 0;cursor:pointer"><input type="checkbox" id="portal-hours" onchange="portalSetFlag(\'show_hours\',this.checked)"> ⏱️ '+esc(tz('Orele de lucru și cine lucrează'))+'</label>'
       +'<label style="display:flex;align-items:center;gap:.5rem;margin:.25rem 0;cursor:pointer"><input type="checkbox" id="portal-costs" onchange="portalSetFlag(\'show_costs\',this.checked)"> 💰 '+esc(tz('Bugetul contractat (detalii financiare)'))+'</label>'
+      +'<label style="display:flex;align-items:center;gap:.5rem;margin:.25rem 0;cursor:pointer"><input type="checkbox" id="portal-invoices" onchange="portalSetInvoicePayments(this)"> 💳 '+esc(tz('Facturi: total, achitat și rest'))+'</label>'
     +'</div>'
     +'<div class="field"><label style="font-size:.8rem;color:var(--muted)">'+esc(tz('Link'))+'</label><input id="portal-url" readonly value="'+esc(url)+'" style="font-size:.82rem"/></div>'
     +portalLifecycleHtml(data.expires_at)
@@ -16130,6 +16140,16 @@ async function portalRevoke(){
   if(box) box.innerHTML='<span class="pill" style="background:var(--red-soft);color:var(--red)">'+esc(tz('Revocat'))+'</span>'
     +'<span style="color:var(--muted)">'+esc(tz('Linkul nu mai funcționează.'))+'</span>';
   toast('✅ '+tz('Link revocat.'));
+}
+async function portalSetInvoicePayments(input){
+  const p=window._portalLink||{},on=input.checked;
+  if(!p.token){input.checked=!on;return;} input.disabled=true;
+  try{
+    const {data,error}=await sb.from('client_portal_links').update({show_invoice_payments:on}).eq('token',p.token).eq('tenant_id',state.tenant).select('show_invoice_payments').single();
+    if(error||!data)throw error||new Error('Salvarea a eșuat.');
+    input.checked=data.show_invoice_payments;toast('✅ '+tz('Salvat'));
+  }catch(e){input.checked=!on;toast(tz('Salvarea a eșuat.'));}
+  finally{input.disabled=false;}
 }
 function portalSetFlag(flag,on){ const p=window._portalLink||{}; if(!p.token) return; const upd={}; upd[flag]=!!on; sb.from('client_portal_links').update(upd).eq('token',p.token).then(({error})=>{ if(error){ toast('Eroare: '+esc(error.message)); return; } toast('✅ '+tz('Salvat')); }); }
 async function portalSetPhotos(on){ const p=window._portalLink||{}; if(!p.token) return; const pick=$('portal-photos-pick');
