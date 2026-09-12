@@ -13,6 +13,7 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    "Istoricul încasărilor":{ru:"История платежей",de:"Zahlungsverlauf",en:"Payment history"},
     "Transfer bancar":{ru:"Банковский перевод",de:"Banküberweisung",en:"Bank transfer"},
     "Achitat":{ru:"Оплачено",de:"Bezahlt",en:"Paid"},
     "Salvarea a eșuat.":{ru:"Не удалось сохранить.",de:"Speichern fehlgeschlagen.",en:"Saving failed."},

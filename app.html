@@ -244,6 +244,25 @@
   .panel-head{padding:1.05rem 1.2rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:1rem}
   .panel-head h3{font-size:.98rem;font-weight:700}
   .tbl-wrap{overflow-x:auto}
+  /* Facturi: bani vizibili, metadate împachetate; mobilul scrollează doar tabelul. */
+  .tbl.invoice-list{table-layout:fixed;min-width:940px;font-size:.8rem}
+  .tbl.invoice-list th,.tbl.invoice-list td{padding:.55rem .45rem;white-space:normal!important;overflow-wrap:anywhere}
+  .tbl.invoice-list th:nth-child(1){width:28px!important}
+  .tbl.invoice-list th:nth-child(2){width:30px!important}
+  .tbl.invoice-list th:nth-child(4){width:12%}
+  .tbl.invoice-list th:nth-child(5),.tbl.invoice-list th:nth-child(6),.tbl.invoice-list th:nth-child(7){width:12%}
+  .tbl.invoice-list th:nth-child(8){width:9%}
+  .tbl.invoice-list th:nth-child(9){width:15%}
+  .tbl.invoice-list th:last-child{width:132px}
+  .tbl.invoice-list td:nth-child(5),.tbl.invoice-list td:nth-child(6),.tbl.invoice-list td:nth-child(7){font-variant-numeric:tabular-nums}
+  .tbl.invoice-list .rowact{gap:.15rem;flex-wrap:nowrap}
+  .tbl.invoice-list .rowact>.iconbtn:nth-child(n+4):not(.rowact-more){display:none}
+  .tbl.invoice-list .rowact>.rowact-more{display:inline-flex}
+  .invoice-list-meta{color:var(--muted);font-size:.72rem;margin-top:.2rem}
+  .pay-app-summary{display:flex;justify-content:space-between;gap:.6rem;line-height:1.8;flex-wrap:wrap}
+  .pay-app-history-row{display:flex;justify-content:space-between;gap:.7rem;border-bottom:1px solid var(--line);padding:.65rem 0;overflow-wrap:anywhere}
+  .pay-app-history-row>div{min-width:0}
+
   .tbl{width:100%;border-collapse:collapse;font-size:.86rem}
   .tbl th{text-align:left;padding:.7rem 1.2rem;color:var(--muted);font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--line);white-space:nowrap}
   .tbl td{padding:.8rem 1.2rem;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -1261,13 +1280,11 @@ const MODULES = {
       {key:'overdue',label:'Restante',         test:r=>r._pay&&r._pay.overdue} ],
     select:'id,number,title,status,total,currency,issue_date,due_date,efactura_status,inv_type,clients(name,idno)',
     columns:[
-      {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'},
-      {label:'Tip',get:r=>{ const m={abschlag:['Abschlag','#7a5af8'],schluss:['Schluss','#16b364']}[r.inv_type]; return m?'<span style="background:'+m[1]+';color:#fff;border-radius:6px;padding:.1rem .4rem;font-size:.72rem;font-weight:600">'+m[0]+'</span>':'<span style="color:var(--muted);font-size:.78rem">—</span>'; }},
+      {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'+invoiceListMeta(r)},
       {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
       {label:'Total',get:r=>invoiceMoney(r.total,r.currency)},
       {label:'Achitat',get:r=>r._pay?invoiceMoney(r._pay.paid_to_date,r.currency):'—'},
       {label:'Rest de plată',get:r=>r._pay?invoiceMoney(r._pay.outstanding,r.currency):'—'},
-      {label:'Emisă',get:r=>dt(r.issue_date)},
       {label:'Scadență',get:r=>dt(r.due_date)},
       {label:'Stare',get:r=>lifePill(r)+' '+payPill(r._pay)+' '+overduePill(r._pay)} ],
     fields:[
@@ -6334,6 +6351,10 @@ async function postcalcDetail(siteId, siteName){
 }
 
 /* Situația încasărilor se citește din aceeași proiecție ca lista de facturi. */
+function invoiceListMeta(r){
+  const type={abschlag:'Abschlag',schluss:'Schluss'}[r.inv_type];
+  return '<div class="invoice-list-meta">'+(type?esc(tz('Tip'))+': '+esc(type)+' · ':'')+esc(tz('Emisă'))+': '+dt(r.issue_date)+'</div>';
+}
 function invoiceMoney(n,currency){ return n==null?'—':Number(n).toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+esc(currency||curUnit()); }
 async function invoicePaymentMap(){
   const r=await sb.rpc('invoice_payment_states',{p_tenant_id:state.tenant});
@@ -6355,16 +6376,13 @@ async function renderRestante(){
   const days=d=>Math.floor((new Date(today)-new Date(d))/86400000);
   const rows=overdue.map(i=>{ const d=days(i.due_date); const sev=d>30?'#dc2626':(d>7?'#d97706':'#6b7280');
     return '<tr><td class="tname">'+esc(i.number||'—')+'</td><td>'+esc(i.clients?i.clients.name:'—')+'</td><td>'+invoiceMoney(i._pay.outstanding,i.currency)+'</td><td>'+dt(i.due_date)+'</td><td style="color:'+sev+';font-weight:700">'+d+' zile</td>'
-      +'<td><div class="rowact"><button class="iconbtn" title="Marchează ca plătită" onclick="invoicePaid(\''+i.id+'\')" style="color:#16a34a">✅</button><button class="iconbtn" title="Trimite reminder pe email" onclick="invoiceReminder(\''+i.id+'\')">📧</button></div></td></tr>'; }).join('');
+      +'<td><div class="rowact"><button class="iconbtn" title="Înregistrează încasare" onclick="payDialog(\''+i.id+'\')" style="color:#16a34a">✅</button><button class="iconbtn" title="Trimite reminder pe email" onclick="invoiceReminder(\''+i.id+'\')">📧</button></div></td></tr>'; }).join('');
   $('mod-body').innerHTML='<div class="seg" style="padding:.6rem 1.2rem .2rem">'+uiSearchBox('mod-body',C373t('Caută factură sau client…'))+'<span id="mod-body-cnt" style="font-size:.8rem;color:var(--muted)"></span></div><div style="padding:.15rem 1.2rem .4rem;font-size:.9rem">Total restant: <b style="color:#dc2626">'+totalText+'</b> · '+overdue.length+' facturi</div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Factură</th><th>Client</th><th>Rest de plată</th><th>Scadență</th><th>Întârziere</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 /* KB#48A: „încasat" nu mai e o schimbare de status, ci o plată CU SUMĂ, scrisă în
    registrul canonic. Vechiul `update({status:'paid'})` nu scria nimic nicăieri și
    e acum refuzat de bază (PAYMENT_CONTRACT_REQUIRED). */
-function invoicePaid(id){
-  window.open('factura.html?id='+encodeURIComponent(id)+'&payment=full','_blank');
-}
 function invoiceReminder(id){
   const i=(window._restante||{})[id]; if(!i) return; const cl=i.clients||{};
   const today=coToday(); const d=Math.floor((new Date(today)-new Date(i.due_date))/86400000);
@@ -12506,7 +12524,7 @@ function renderList(){
       +'</div></td></tr>';
   }).join('');
   const hint=m.bulkOrder?'👉 Bifează poziții și apasă „🛒 '+esc(m.bulkOrder.label||'Creează comandă')+'" sus, sau apasă pe un rând pentru opțiuni.':'👉 Apasă pe un rând pentru opțiuni · bifează pentru acțiuni în masă.';
-  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">'+hint+'</div><div class="tbl-wrap"><table class="tbl"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+  $('mod-body').innerHTML='<div style="padding:.35rem 1.2rem;font-size:.78rem;color:var(--muted)">'+hint+'</div><div class="tbl-wrap"><table class="tbl'+(m.payStates?' invoice-list':'')+'"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
   if(bulk) updateBulkBtn();
   signThumbs();
   if(key==='flota') vehListPhotoPatch(data);      // FLEET1-C: miniatura = principala canonică
@@ -12553,6 +12571,14 @@ async function orderItemsView(id){
 function jsArg(s){ return esc(s||'').replace(/\x27/g,''); }
 function rowActions(key,m,r){
   const a=[], id=r.id;
+  if(m.payStates&&FINANCE_ROLES.includes(state.role)){
+    if(r._pay&&r._pay.outstanding>0.005&&r.status!=='cancelled'){
+      a.push({i:'💵',l:tz('Înregistrează încasare'),f:"payDialog('"+id+"')"});
+      a.push({i:'✅',l:tz('Marchează ca plătită'),f:"payDialogFull('"+id+"')"});
+    }
+    a.push({i:'🧾',l:tz('Istoricul încasărilor'),f:"payHistory('"+id+"')"});
+  }
+
   if(m.orderItems) a.push({i:'👁',l:tz('Previzualizare comandă'),f:"orderItemsView('"+id+"')"});
   if(m.geoLoc) a.push({i:'📍',l:'Locație pe hartă',f:"geoSet('"+m.table+"','"+id+"','"+jsArg(r.name||r.label||'')+"')"});
   if(m.fields && !m.pageEditor && !m.orderItems) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});
@@ -15667,10 +15693,146 @@ const PAY_ERR_APP={
   PAYMENT_BANK_TX_INVALID:'Tranzacția bancară nu este validă.',
   PAYMENT_BANK_TX_ALREADY_APPLIED:'Această tranzacție bancară a fost deja alocată unei facturi.',
   PAYMENT_CURRENCY_MISMATCH:'Moneda tranzacției nu corespunde facturii.',
-  PAYMENT_SOURCE_INVALID:'Sursa încasării nu este validă.'};
-function payErrApp(e){ const m=((e&&e.message)||''); const c=m.match(/PAYMENT_[A-Z_]+/);
+  PAYMENT_SOURCE_INVALID:'Sursa încasării nu este validă.',
+  /* 0212 — contractul de corecție și poarta de registru */
+  PAYMENT_INVOICE_CANCELLED:'Factura este anulată. Nu se pot înregistra încasări pe ea.',
+  PAYMENT_NOT_FOUND:'Încasarea nu mai există.',
+  PAYMENT_NOT_ON_INVOICE:'Încasarea nu este legată de o factură.',
+  PAYMENT_ALREADY_REVERSED:'Această încasare a fost deja stornată.',
+  PAYMENT_IS_REVERSAL:'Aceasta este deja o stornare — nu poate fi stornată din nou.',
+  FISCAL_FORBIDDEN:'Nu ai dreptul să vezi datele financiare ale acestei facturi.',
+  FISCAL_INVOICE_NOT_FOUND:'Factura nu mai există.'};
+
+function payErrApp(e){ const m=((e&&e.message)||''); const c=m.match(/PAYMENT_[A-Z_]+|FISCAL_[A-Z_]+/);
   return (c&&PAY_ERR_APP[c[0]])?fiscalT(PAY_ERR_APP[c[0]]):('Eroare: '+m); }
 function payReqId(id){ return 'app-'+id+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8); }
+/* Încasare contextuală: snapshot canonic, o cheie pe dialog, zero status update. */
+const PAY_METHODS_APP=[['transfer','Transfer bancar'],['numerar','Numerar'],['card','Card'],['altul','Altul']];
+let payAppContext=null, payAppUncertain=false;
+function payAppAllowed(){
+  if(!FINANCE_ROLES.includes(state.role)){ toast(fiscalT(PAY_ERR_APP.PAYMENT_FORBIDDEN)); return false; }
+  if(payAppUncertain){ toast(fiscalT('Documentul trebuie reîncărcat înainte de a continua editarea.')); return false; }
+  return true;
+}
+function payAppView(s){
+  if(!s||!s.payment||s.payable==null||s.outstanding==null||s.payment.paid_to_date==null) return null;
+  const v={payable:+s.payable,paid:+s.payment.paid_to_date,out:+s.outstanding};
+  return [v.payable,v.paid,v.out].every(Number.isFinite)?v:null;
+}
+function payAppSummary(c){
+  const v=payAppView(c.snap), T=fiscalT;
+  if(!v) return esc(T('Situația încasărilor nu a putut fi încărcată.'));
+  const row=(label,n)=>'<div class="pay-app-summary"><span>'+esc(T(label))+'</span><b>'+invoiceMoney(n,c.snap.currency)+'</b></div>';
+  return row('De plată:',v.payable)+row('Deja plătit:',v.paid)+row('Sold rămas:',v.out);
+}
+function payAppShell(c,title,body,footer){
+  $('modal-mount').innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><div class="modal-head"><h3>'+esc(fiscalT(title))+'</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-body">'
+    +'<div id="pay-app-msg" role="status" style="color:var(--red)"></div><div id="pay-app-summary">'+payAppSummary(c)+'</div>'+body+'</div><div class="modal-foot">'
+    +'<button class="btn-ghost" onclick="closeModal()">'+esc(fiscalT('Închide'))+'</button>'+footer+'</div></div></div>';
+  c.msg=$('pay-app-msg');
+}
+function payAppCurrent(c){ return payAppContext===c&&c.tenant===state.tenant&&c.msg===$('pay-app-msg'); }
+async function payAppOpen(id,mode){
+  if(!payAppAllowed()||(payAppContext&&payAppContext.busy)) return;
+  const c={id,mode,tenant:state.tenant,req:payReqId(id),busy:true,snap:null}; payAppContext=c;
+  payAppShell(c,mode==='history'?'Istoricul încasărilor':(mode==='full'?'Marchează ca plătită':'Înregistrează încasare'),'','');
+  $('pay-app-summary').textContent=fiscalT('Se încarcă…');
+  let r; try{r=await sb.rpc('invoice_snapshot',{p_invoice:id});}catch(e){r={error:e};}
+  c.busy=false;
+  if(!payAppCurrent(c)) return;
+  if(r.error){ closeModal(); toast(payErrApp(r.error)); return; }
+  c.snap=r.data;
+  if(!payAppView(c.snap)){ closeModal(); toast(fiscalT('Situația încasărilor nu a putut fi încărcată.')); return; }
+  if(!FINANCE_ROLES.includes(state.role)) return;
+  if(mode==='history'){ payAppShell(c,'Istoricul încasărilor','<div id="pay-app-history">'+esc(fiscalT('Se încarcă…'))+'</div>',''); await payAppHistoryLoad(c); return; }
+  if(c.snap.status==='cancelled'){ closeModal(); toast(fiscalT(PAY_ERR_APP.PAYMENT_INVOICE_CANCELLED)); return; }
+  const v=payAppView(c.snap), T=fiscalT, full=mode==='full';
+  const methods=PAY_METHODS_APP.map(m=>'<option value="'+m[0]+'">'+esc(T(m[1]))+'</option>').join('');
+  const body='<div id="pay-app-settled"'+(v.out<=0.005?'':' hidden')+'>'+esc(T('Factura este achitată integral.'))+'</div>'
+    +'<div id="pay-app-fields"'+(v.out<=0.005?' hidden':'')+'>'
+    +(full?'<p>'+esc(T('Se va înregistra o încasare de'))+' <b id="pay-app-confirm">'+invoiceMoney(v.out,c.snap.currency)+'</b> '+esc(T('cu data de azi. Factura devine „Achitată".'))+'</p>':'')
+    +'<div class="field"'+(full?' hidden':'')+'><label for="pay-app-amount">'+esc(T('Suma încasată'))+'</label><input id="pay-app-amount" type="number" step="0.01" value="'+v.out.toFixed(2)+'"></div>'
+    +'<div class="field"'+(full?' hidden':'')+'><label for="pay-app-date">'+esc(T('Data încasării'))+'</label><input id="pay-app-date" type="date" value="'+esc(coToday())+'"></div>'
+    +'<div class="field"><label for="pay-app-method">'+esc(T('Metoda de plată'))+'</label><select id="pay-app-method">'+methods+'</select></div>'
+    +'<div class="field"><label for="pay-app-ref">'+esc(T('Referință / notă'))+' '+esc(T('(opțional)'))+'</label><input id="pay-app-ref" maxlength="200"></div></div>';
+  payAppShell(c,full?'Marchează ca plătită':'Înregistrează încasare',body,'<button class="btn-primary" id="pay-app-go"'+(v.out<=0.005?' hidden':'')+' onclick="payAppApply()">'+esc(T(full?'Confirmă și înregistrează':'Înregistrează'))+'</button>');
+}
+function payDialog(id){ return payAppOpen(id,'partial'); }
+function payDialogFull(id){ return payAppOpen(id,'full'); }
+function payHistory(id){ return payAppOpen(id,'history'); }
+async function payAppRejected(c,error){
+  if(!payAppCurrent(c)) return;
+  c.msg.dataset.rpcError=JSON.stringify({code:error.code||'',message:error.message||''});
+  c.msg.textContent=payErrApp(error);
+  let r; try{r=await sb.rpc('invoice_snapshot',{p_invoice:c.id});}catch(e){r={error:e};}
+  if(!payAppCurrent(c)) return;
+  c.snap=r.error?null:r.data;
+  $('pay-app-summary').innerHTML=payAppSummary(c);
+  const v=payAppView(c.snap), btn=$('pay-app-go');
+  if(!v){ if(btn) btn.hidden=true; return; }
+  if(c.mode==='void'){
+    if(btn){ btn.hidden=/PAYMENT_ALREADY_REVERSED|PAYMENT_IS_REVERSAL|PAYMENT_NOT_FOUND|PAYMENT_NOT_ON_INVOICE|FORBIDDEN/.test(error.message||''); btn.disabled=false; }
+  }else{
+    if($('pay-app-amount')) $('pay-app-amount').value=v.out.toFixed(2);
+    if($('pay-app-confirm')) $('pay-app-confirm').innerHTML=invoiceMoney(v.out,c.snap.currency);
+    const blocked=v.out<=0.005||c.snap.status==='cancelled';
+    $('pay-app-fields').hidden=blocked; $('pay-app-settled').hidden=v.out>0.005;
+    if(btn){ btn.hidden=blocked; btn.disabled=false; }
+  }
+  // c.req rămâne aceeași, inclusiv când suma se corectează după refuz.
+}
+async function payAppApply(){
+  const c=payAppContext;
+  if(!c||!['partial','full','void'].includes(c.mode)||c.busy||!payAppCurrent(c)||!payAppAllowed()||!payAppView(c.snap)) return;
+  const isVoid=c.mode==='void';
+  if(!isVoid&&(c.snap.status==='cancelled'||payAppView(c.snap).out<=0.005)) return;
+  const amount=isVoid?null:(c.mode==='full'?payAppView(c.snap).out:Number($('pay-app-amount').value));
+  if(!isVoid&&(!Number.isFinite(amount)||amount<=0)){ c.msg.textContent=fiscalT(PAY_ERR_APP.PAYMENT_AMOUNT_INVALID); return; }
+  const args=isVoid?{p_payment:c.payment.id,p_request_id:c.req,p_reason:$('pay-app-reason').value.trim()||null}
+    :{p_invoice:c.id,p_amount:amount,p_request_id:c.req,p_paid_date:$('pay-app-date').value||null,p_method:$('pay-app-method').value,p_reference:$('pay-app-ref').value.trim()||null,p_source:'manual'};
+  c.busy=true; $('pay-app-go').disabled=true;
+  let r; try{r=await sb.rpc(isVoid?'invoice_payment_void':'invoice_payment_apply',args);}catch(e){r={error:e};}
+  if(r.error){
+    if(isNetErr(r.error)){
+      payAppUncertain=true;
+      if(payAppCurrent(c)){ c.msg.textContent=fiscalT(isVoid?'Corecția poate fi înregistrată.':'Încasarea poate fi înregistrată.')+' '+fiscalT('Documentul trebuie reîncărcat înainte de a continua editarea.'); $('pay-app-go').hidden=true; }
+      c.busy=false; return;
+    }
+    await payAppRejected(c,r.error); c.busy=false; return;
+  }
+  c.busy=false;
+  if(c.tenant!==state.tenant) return;
+  if(payAppCurrent(c)) closeModal();
+  // Reîncărcare din server, fără ajustarea locală a paid/outstanding/status.
+  if(curModuleKey()==='restante') await renderRestante();
+  else if(curModuleKey()==='facturi') await renderModule('facturi');
+  toast(fiscalT(isVoid?'Încasare anulată.':'Încasare înregistrată.'));
+}
+async function payAppHistoryLoad(c){
+  const host=$('pay-app-history');
+  let r; try{r=await sb.from('payments').select('id,amount,paid_date,method,reference,kind,reverses_id,created_by,created_at').eq('tenant_id',c.tenant).eq('invoice_id',c.id).order('created_at',{ascending:true});}catch(e){r={error:e};}
+  if(!payAppCurrent(c)||host!==$('pay-app-history')) return;
+  if(r.error){ host.textContent=fiscalT('Istoricul încasărilor nu a putut fi încărcat.'); return; }
+  c.rows=r.data||[];
+  const who={}, ids=[...new Set(c.rows.map(x=>x.created_by).filter(Boolean))];
+  if(ids.length){ try{const e=await sb.from('employees').select('user_id,full_name').eq('tenant_id',c.tenant).in('user_id',ids); (e.data||[]).forEach(x=>who[x.user_id]=x.full_name);}catch(e){} }
+  if(!payAppCurrent(c)||host!==$('pay-app-history')) return;
+  const reversed=new Set(c.rows.filter(x=>x.kind==='reversal').map(x=>x.reverses_id));
+  host.innerHTML=c.rows.length?c.rows.map(x=>{
+    const rev=x.kind==='reversal', cancelled=reversed.has(x.id), method=PAY_METHODS_APP.find(m=>m[0]===x.method);
+    return '<div class="pay-app-history-row"><div><b'+(cancelled?' style="text-decoration:line-through"':'')+'>'+esc(fiscalT(rev?'Stornare':(method?method[1]:'Încasare')))+'</b><div>'+dt(x.paid_date)+(who[x.created_by]?' · '+esc(who[x.created_by]):'')+(x.reference?' · '+esc(x.reference):'')+(cancelled?' · '+esc(fiscalT('anulată')):'')+'</div></div><div>'+(rev?'+':'−')+invoiceMoney(x.amount,c.snap.currency)
+      +(!rev&&!cancelled&&FINANCE_ROLES.includes(state.role)?'<div><button class="btn-ghost" onclick="payAppVoid(\''+x.id+'\')">'+esc(fiscalT('Anulează încasarea'))+'</button></div>':'')+'</div></div>';
+  }).join(''):esc(fiscalT('Nicio încasare înregistrată încă.'));
+}
+function payAppVoid(id){
+  const old=payAppContext;
+  if(!old||old.busy||!payAppCurrent(old)||!payAppAllowed()) return;
+  const p=(old.rows||[]).find(x=>x.id===id);
+  if(!p||p.kind==='reversal'||old.rows.some(x=>x.reverses_id===id)) return;
+  const c={id:old.id,tenant:old.tenant,mode:'void',payment:p,snap:old.snap,req:payReqId(id),busy:false};payAppContext=c;
+  payAppShell(c,'Anulează încasarea','<p>'+invoiceMoney(p.amount,c.snap.currency)+' · '+dt(p.paid_date)+'</p><p>'+esc(fiscalT('Încasarea rămâne în istoric și se marchează drept anulată printr-o stornare. Soldul de plată crește la loc.'))+'</p><div class="field"><label for="pay-app-reason">'+esc(fiscalT('Motivul corecției'))+' '+esc(fiscalT('(opțional)'))+'</label><input id="pay-app-reason" maxlength="200"></div>','<button class="btn-primary" id="pay-app-go" onclick="payAppApply()">'+esc(fiscalT('Anulează încasarea'))+'</button>');
+}
+
 async function genEfactura(id){
   /* KB#48A — DOUĂ schimbări de fond:
      1) generarea NU mai marchează documentul „trimis". Înainte scria
