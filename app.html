@@ -275,7 +275,18 @@
      stivuiau pe 3 linii, fiindcă primele două cereau 157,1px din 154,6 disponibili (ratau cu
      2,5px). Compactăm DOAR aici: padding mai mic şi line-height explicit. Clasa `.pill` rămâne
      neatinsă global. Textul stării NU se ascunde şi nu se trunchiază. */
-  .tbl.invoice-list .pill{padding:.1rem .4rem;line-height:1.15;margin:0}
+  /* V437-KB157 — `.pill` e `white-space:nowrap` global (`app.html:317`), fără `overflow:hidden`
+     şi fără `text-overflow`: ce nu încape IESE din celulă, sub coloana de acţiuni, care e
+     `position:sticky` şi opacă ⇒ textul dispare sub ea. Măsurat: „◐ Parţial achitată" cere
+     110,5px din 115,7 utili (RO, la 1280), dar traducerile cer 120,9 (DE) şi 139,3 (RU).
+     Nicio ajustare de lăţime nu rezolvă: RU cere 126,5px DOAR pentru glife, iar o celulă care
+     să-l ţină pe o linie ar fi mai lată decât cei 15% dinaintea v437 — adică nu încăpea NICI
+     înainte. Singura soluţie care păstrează textul INTEGRAL e împachetarea lui, local.
+     `overflow-wrap:anywhere` se moşteneşte de la celulă (`:249`), deci nici un cuvânt mai lung
+     decât coloana nu poate ieşi. Consecinţa acceptată şi raportată: în RU/DE rândul creşte la
+     lăţimile la care textul se împachetează — text complet, în loc de text ascuns.
+     Traducerile NU se scurtează ca să încapă; `.pill` rămâne neatins global. */
+  .tbl.invoice-list .pill{padding:.1rem .4rem;line-height:1.15;margin:0;white-space:normal}
   .tbl.invoice-list .rowact{gap:.15rem;flex-wrap:nowrap}
   .tbl.invoice-list .rowact>.iconbtn:nth-child(n+4):not(.rowact-more){display:none}
   .tbl.invoice-list .rowact>.rowact-more{display:inline-flex}
