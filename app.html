@@ -248,7 +248,8 @@
   .tbl.invoice-list{table-layout:fixed;min-width:940px;font-size:.8rem}
   .tbl.invoice-list th,.tbl.invoice-list td{padding:.55rem .45rem;white-space:normal!important;overflow-wrap:anywhere}
   .tbl.invoice-list th:nth-child(1){width:28px!important}
-  .tbl.invoice-list th:nth-child(2){width:30px!important}
+  .tbl.invoice-list th:nth-child(2){width:42px!important}
+  .tbl.invoice-list th:nth-child(2),.tbl.invoice-list td:nth-child(2){white-space:nowrap!important;overflow-wrap:normal}
   .tbl.invoice-list th:nth-child(4){width:12%}
   .tbl.invoice-list th:nth-child(5),.tbl.invoice-list th:nth-child(6),.tbl.invoice-list th:nth-child(7){width:12%}
   .tbl.invoice-list th:nth-child(8){width:9%}
@@ -258,6 +259,7 @@
   .tbl.invoice-list .rowact{gap:.15rem;flex-wrap:nowrap}
   .tbl.invoice-list .rowact>.iconbtn:nth-child(n+4):not(.rowact-more){display:none}
   .tbl.invoice-list .rowact>.rowact-more{display:inline-flex}
+  .invoice-list-clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.2;max-height:2.4em}
   .invoice-list-meta{color:var(--muted);font-size:.72rem;margin-top:.2rem}
   .pay-app-summary{display:flex;justify-content:space-between;gap:.6rem;line-height:1.8;flex-wrap:wrap}
   .pay-app-history-row{display:flex;justify-content:space-between;gap:.7rem;border-bottom:1px solid var(--line);padding:.65rem 0;overflow-wrap:anywhere}
@@ -1278,10 +1280,10 @@ const MODULES = {
       {key:'partial',label:'Parțial achitate', test:r=>r._pay&&r._pay.pay_state==='partial'},
       {key:'paid',   label:'Achitate',         test:r=>r._pay&&r._pay.pay_state==='paid'},
       {key:'overdue',label:'Restante',         test:r=>r._pay&&r._pay.overdue} ],
-    select:'id,number,title,status,total,currency,issue_date,due_date,efactura_status,inv_type,clients(name,idno)',
+    select:'id,number,title,status,updated_at,total,currency,issue_date,due_date,efactura_status,inv_type,clients(name,idno)',
     columns:[
-      {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname" style="font-size:.96rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'+invoiceListMeta(r)},
-      {label:'Client',get:r=>esc(r.clients?r.clients.name:'—')},
+      {label:'Lucrări / nr.',get:r=>(r.title?'<span class="tname invoice-list-clamp" title="'+esc(r.title)+'" style="font-size:.86rem">'+esc(r.title)+'</span>':'<span style="color:var(--muted);font-style:italic">(fără titlu)</span>')+'<div style="color:var(--muted);font-size:.76rem;margin-top:1px">'+esc(r.number||'—')+'</div>'+invoiceListMeta(r)},
+      {label:'Client',get:r=>'<span class="invoice-list-clamp" title="'+esc(r.clients?r.clients.name:'—')+'">'+esc(r.clients?r.clients.name:'—')+'</span>'},
       {label:'Total',get:r=>invoiceMoney(r.total,r.currency)},
       {label:'Achitat',get:r=>r._pay?invoiceMoney(r._pay.paid_to_date,r.currency):'—'},
       {label:'Rest de plată',get:r=>r._pay?invoiceMoney(r._pay.outstanding,r.currency):'—'},
@@ -6383,6 +6385,35 @@ async function renderRestante(){
 /* KB#48A: „încasat" nu mai e o schimbare de status, ci o plată CU SUMĂ, scrisă în
    registrul canonic. Vechiul `update({status:'paid'})` nu scria nimic nicăieri și
    e acum refuzat de bază (PAYMENT_CONTRACT_REQUIRED). */
+/* Starea documentului folosește CAS-ul citit o dată cu lista. */
+const invoiceStatusBusy=new Set();
+async function invoiceStatus(id,status){
+  if(!canDo('facturi','u')||!FINANCE_ROLES.includes(state.role)||invoiceStatusBusy.has(id)) return;
+  const r=listState.key==='facturi'&&(listState.rows||[]).find(x=>x.id===id);
+  if(!r||!((r.status==='draft'&&status==='sent')||(r.status==='sent'&&status==='cancelled'))) return;
+  const tenant=state.tenant, expected=r.updated_at;
+  if(status==='cancelled'&&!confirm(tz('Anulezi această factură?'))) return;
+  const refresh=async()=>{if(state.tenant===tenant&&curModuleKey()==='facturi') await renderModule('facturi');};
+  if(!expected){ await refresh(); toast(tz('Documentul s-a schimbat între timp. Lista a fost reîncărcată.')); return; }
+  invoiceStatusBusy.add(id);
+  try{
+    const result=await sb.rpc('invoice_set_status',{p_invoice_id:id,p_status:status,p_expected_updated_at:expected});
+    if(state.tenant!==tenant) return;
+    if(result.error){
+      const raw=String(result.error.message||''), match=raw.match(/DOC_CONFLICT|STATUS_FORBIDDEN|INVOICE_HAS_PAYMENTS/), code=match&&match[0];
+      if(code==='DOC_CONFLICT'){ await refresh(); toast(tz('Documentul s-a schimbat între timp. Lista a fost reîncărcată.')); }
+      else if(code==='STATUS_FORBIDDEN') toast(tz('Nu ai dreptul să schimbi starea acestui document.'));
+      else if(code==='INVOICE_HAS_PAYMENTS'){
+        actionsSheet(tz('Factura are încasări. Stornează-le întâi din „Istoricul încasărilor”, apoi reîncearcă anularea.'),[
+          {i:'🧾',l:tz('Istoricul încasărilor'),f:"payHistory('"+id+"')"}]);
+      }else{ await refresh(); toast(isNetErr(result.error)?netMsg():payErrApp(result.error)); }
+      return;
+    }
+    await refresh(); toast(tz('Stare actualizată'));
+  }catch(e){ await refresh(); toast(isNetErr(e)?netMsg():payErrApp(e)); }
+  finally{invoiceStatusBusy.delete(id);}
+}
+
 function invoiceReminder(id){
   const i=(window._restante||{})[id]; if(!i) return; const cl=i.clients||{};
   const today=coToday(); const d=Math.floor((new Date(today)-new Date(i.due_date))/86400000);
@@ -12579,6 +12610,10 @@ function rowActions(key,m,r){
     a.push({i:'🧾',l:tz('Istoricul încasărilor'),f:"payHistory('"+id+"')"});
   }
 
+  if(m.payStates&&canDo(key,'u')&&FINANCE_ROLES.includes(state.role)){
+    if(r.status==='draft') a.push({i:'➤',l:tz('Marchează ca trimisă'),f:"invoiceStatus('"+id+"','sent')"});
+    if(r.status==='sent') a.push({i:'⊘',l:tz('Anulează factura'),f:"invoiceStatus('"+id+"','cancelled')",d:true});
+  }
   if(m.orderItems) a.push({i:'👁',l:tz('Previzualizare comandă'),f:"orderItemsView('"+id+"')"});
   if(m.geoLoc) a.push({i:'📍',l:'Locație pe hartă',f:"geoSet('"+m.table+"','"+id+"','"+jsArg(r.name||r.label||'')+"')"});
   if(m.fields && !m.pageEditor && !m.orderItems) a.push({i:'👁',l:'Previzualizare',f:"recordPreview('"+key+"','"+id+"')"});

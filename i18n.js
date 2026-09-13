@@ -13,6 +13,10 @@
 
   // Dicționar: cheia = textul ROMÂNESC exact (trim). Valoare = {ru,de,en}.
   var D = {
+    "Anulezi această factură?":{ru: "Аннулировать этот счёт?", de: "Diese Rechnung stornieren?", en: "Cancel this invoice?"},
+    "Documentul s-a schimbat între timp. Lista a fost reîncărcată.":{ru: "Документ был изменён. Список обновлён.", de: "Das Dokument wurde inzwischen geändert. Die Liste wurde neu geladen.", en: "The document has changed. The list has been reloaded."},
+    "Factura are încasări. Stornează-le întâi din „Istoricul încasărilor”, apoi reîncearcă anularea.":{ru: "По счёту есть платежи. Сначала сторнируйте их в «Истории платежей», затем повторите аннулирование.", de: "Für die Rechnung liegen Zahlungen vor. Stornieren Sie diese zuerst im Zahlungsverlauf und versuchen Sie es erneut.", en: "This invoice has payments. Reverse them in Payment history first, then try cancelling again."},
+
     "Istoricul încasărilor":{ru:"История платежей",de:"Zahlungsverlauf",en:"Payment history"},
     "Transfer bancar":{ru:"Банковский перевод",de:"Banküberweisung",en:"Bank transfer"},
     "Achitat":{ru:"Оплачено",de:"Bezahlt",en:"Paid"},
